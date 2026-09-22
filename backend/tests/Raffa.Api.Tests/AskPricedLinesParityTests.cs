@@ -11,6 +11,7 @@ using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Market;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -62,7 +63,22 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
                 "ConnectionStrings:DocumentsContracts",
                 "Host=localhost;Port=5432;Database=raffa_dev;Username=raffa;Password=raffa;Include Error Detail=true");
             builder.UseSetting("ConnectionStrings:Storage", "UseDevelopmentStorage=true");
+
+            // Both sides also read each line's stored market comparison, which wins over the
+            // adapter; these cases are about the adapter's band, so the corpus matches nothing.
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IMarketPriceMatcher>();
+                services.AddSingleton<IMarketPriceMatcher>(new NoMarketPriceMatcher());
+            });
         });
+    }
+
+    private sealed class NoMarketPriceMatcher : IMarketPriceMatcher
+    {
+        public Task<IReadOnlyList<MarketPriceMatch?>> MatchAsync(
+            MarketPriceContext context, IReadOnlyList<MarketPriceLine> lines, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<MarketPriceMatch?>>(new MarketPriceMatch?[lines.Count]);
     }
 
     [Fact]

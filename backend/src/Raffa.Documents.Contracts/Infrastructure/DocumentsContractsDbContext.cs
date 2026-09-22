@@ -32,6 +32,9 @@ public sealed class DocumentsContractsDbContext(DbContextOptions<DocumentsContra
     // hand-written per-table RLS test.
     public DbSet<ContractNegotiationStep> ContractNegotiationSteps => Set<ContractNegotiationStep>();
 
+    /// <summary>Each line item's last market comparison (<see cref="Application.LineItemMarketPriceService"/>).</summary>
+    public DbSet<ContractLineItemMarketPrice> ContractLineItemMarketPrices => Set<ContractLineItemMarketPrice>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Required so migrations emit `CREATE EXTENSION IF NOT EXISTS "vector"` (ADR-003).
@@ -50,6 +53,7 @@ public sealed class DocumentsContractsDbContext(DbContextOptions<DocumentsContra
         modelBuilder.ApplyConfiguration(new EmbeddingConfiguration());
         modelBuilder.ApplyConfiguration(new ExtractionEvidenceConfiguration());
         modelBuilder.ApplyConfiguration(new ContractNegotiationStepConfiguration());
+        modelBuilder.ApplyConfiguration(new ContractLineItemMarketPriceConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

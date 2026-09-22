@@ -141,6 +141,21 @@ function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
           sourceSpan: "§6.2",
           sourcePage: 9,
           confidence: 0.97,
+          market: {
+            matched: true,
+            recordId: "MKT-DBU-CH",
+            product: "Premium DBU",
+            geography: "CH",
+            currency: "CHF",
+            termMonths: 12,
+            unitPriceP25: 0.4,
+            unitPriceP50: 0.5,
+            unitPriceP75: 0.6,
+            sampleSize: 40,
+            provenance: "representative market data · mock feed · updated 2026-07-01",
+            marketUpdatedAt: "2026-07-01T00:00:00Z",
+            checkedAt: "2026-09-22T08:00:00Z",
+          },
         },
       ],
       clauses: [
@@ -892,8 +907,8 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(within(raise).getByText("Worth raising")).toHaveClass("tag-neutral");
       const row = within(raise).getByRole("listitem");
       expect(row).toHaveTextContent("Liability cap");
-      expect(row).toHaveTextContent("—");
-      expect(row).not.toHaveTextContent("12 months fees");
+      // Below the auto-accept bar but sourced (p.27): the value reads, as a product row's does.
+      expect(within(row).getByText("12 months fees")).toHaveClass("contract360-clause-normalized");
       expect(within(row).getByText("Worth raising in negotiation.")).toBeInTheDocument();
       expect(within(row).getByRole("link", { name: "p.27 · §17.2" })).toHaveAttribute("href", "/documents/doc-1/viewer?page=27&clause=cl-1");
       expect(screen.queryByRole("button", { name: /standard clause/ })).toBeNull();
@@ -995,6 +1010,11 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(within(products).getByText("CHF 0.55")).toBeInTheDocument();
       expect(within(products).getByText("CHF 66,000")).toBeInTheDocument();
       expect(within(products).getByText("CHF 500k")).toBeInTheDocument();
+      // The line's stored market comparison: P50 with its region · term · n, and the delta vs it.
+      expect(within(products).getByText("CHF 0.5")).toBeInTheDocument();
+      expect(within(products).getByText("CH · 12 mo · n=40")).toBeInTheDocument();
+      expect(within(products).getByText("+10%")).toHaveClass("is-accent");
+      expect(within(products).getByText(/median \(P50\)/)).toBeInTheDocument();
 
       const obligations = screen.getByRole("region", { name: "Obligations" });
       expect(within(obligations).getByText("You must")).toBeInTheDocument();

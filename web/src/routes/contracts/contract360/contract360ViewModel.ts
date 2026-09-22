@@ -439,7 +439,7 @@ export function buildClauseRows(
   return clauses.map((c) => ({
     clauseId: c.clauseId,
     type: c.clauseType,
-    normalized: officializedOrDash(c.normalizedValue ?? c.rawText, isScoredFactOfficialized(c.confidence, autoAcceptThreshold)),
+    normalized: officializedOrDash(c.normalizedValue ?? c.rawText, isExtractedRowShown(c, autoAcceptThreshold)),
     risk: getClauseRiskTag(c.riskLevel),
     why: leverageWhy(c.riskLevel),
     viewerHref: clauseViewerHref(c, documents),
@@ -475,12 +475,26 @@ function truncateSpan(text: string): string {
   return text.length <= MAX_SPAN_PREVIEW ? text : `${text.slice(0, MAX_SPAN_PREVIEW - 1)}…`;
 }
 
-/** Short `p.N · §` reference for the highlight header. `null` when there is no page and no span. */
+/** "§17.2", "17.2", "Section 8.4", "Art. 5" -- a span that names a section rather than quoting one. */
+const SECTION_LABEL = /^(?:(?:section|clause|art(?:icle)?)\.?\s*)?(\d+(?:\.\d+)*[a-z]?)\.?$/i;
+
+/**
+ * The `§` half of a reference. Extraction fills `sourceSpan` with a verbatim quote
+ * (`StagedExtractionJsonSchemas`' "a verbatim quote of at most 300 characters"), so only a span that
+ * is itself a section label reads as one; a quoted sentence is never printed as "§aggregate
+ * liability is…" -- the quote lives in the evidence card.
+ */
+function sectionLabel(span: string): string | null {
+  if (span.startsWith("§")) return truncateSpan(span);
+  const match = SECTION_LABEL.exec(span);
+  return match === null ? null : `§${match[1]}`;
+}
+
+/** Short `p.N · §` reference for the highlight header. `null` when there is neither a page nor a section label. */
 export function formatShortReference(row: { sourcePage: number | null; sourceSpan: string | null }): string | null {
-  const spanRaw = row.sourceSpan === null ? null : row.sourceSpan.replace(/\s+/g, " ").trim();
-  const span = spanRaw === null || spanRaw === "" ? null : truncateSpan(spanRaw);
+  const span = row.sourceSpan === null ? "" : row.sourceSpan.replace(/\s+/g, " ").trim();
+  const section = span === "" ? null : sectionLabel(span);
   const page = row.sourcePage !== null ? `p.${row.sourcePage}` : null;
-  const section = span === null ? null : span.startsWith("§") ? span : `§${span}`;
   if (page !== null && section !== null) return `${page} · ${section}`;
   if (page !== null) return page;
   if (section !== null) return section;
@@ -488,8 +502,8 @@ export function formatShortReference(row: { sourcePage: number | null; sourceSpa
 }
 
 /**
- * An extracted list row (product · obligation · risk) is shown when its confidence clears the
- * auto-accept threshold *or* it points at a real page/span in a linked document -- the same
+ * An extracted list row (product · obligation · risk · clause) is shown when its confidence clears
+ * the auto-accept threshold *or* it points at a real page/span in a linked document -- the same
  * "sourced or officialized" rule the V2 drawer applied; otherwise its figures read as an em dash
  * and the row stays.
  */
@@ -497,7 +511,8 @@ export function isExtractedRowShown(
   row: { confidence: number | null; sourcePage: number | null; sourceSpan: string | null },
   autoAcceptThreshold: number,
 ): boolean {
-  return isScoredFactOfficialized(row.confidence, autoAcceptThreshold) || formatShortReference(row) !== null;
+  const sourced = row.sourcePage !== null || (row.sourceSpan !== null && row.sourceSpan.trim() !== "");
+  return isScoredFactOfficialized(row.confidence, autoAcceptThreshold) || sourced;
 }
 
 /**
@@ -737,19 +752,28 @@ export const SECTION_COPY = {
 
 // ---- 01 Leverage ----------------------------------------------------------------------------
 
+export interface LeverEntry {
+  /** The priced lines this wording belongs to; empty when the lever reads the same on every line. */
+  lines: string[];
+  /** The pack's own rationale, the line prefix lifted off. */
+  body: string;
+}
+
 export interface LeverCard {
   key: string;
   /** "{type} lever", the card's kicker. */
   kicker: string;
   /** The lever named in two or three words (the mock's big headline slot). */
   headline: string;
-  /** The pack's own rationale for this contract. */
-  body: string;
+  /** One unlabelled entry when every priced line reads the same; otherwise one per distinct wording, each naming its lines. */
+  entries: LeverEntry[];
   /** The first (strongest) lever carries the accent treatment (`strength==='Strong'`). */
   strong: boolean;
 }
 
-const LEVER_HEADLINES: Readonly<Record<ContractStrategyBody["whereYouCanPush"][number]["leverType"], string>> = {
+type LeverType = ContractStrategyBody["whereYouCanPush"][number]["leverType"];
+
+const LEVER_HEADLINES: Readonly<Record<LeverType, string>> = {
   Volume: "Order size",
   Term: "Term length",
   Utilization: "Utilisation",
@@ -762,38 +786,45 @@ const LEVER_HEADLINES: Readonly<Record<ContractStrategyBody["whereYouCanPush"][n
 export const LEVERS_NOT_YET_AVAILABLE =
   "Levers light up once the renewal strategy has a priced line to work from — the clauses and obligations below are already validated.";
 
-export interface LeverGroup {
-  /** The priced line these levers belong to (`StrategyPackBuilder`'s own `"{description}: "` prefix), `null` on a single-line contract. */
-  line: string | null;
-  cards: LeverCard[];
-}
-
 /**
  * `d.levers` from the strategy pack's `whereYouCanPush` (`StrategyPackBuilder`: strongest first,
  * every lever type per priced line, each rationale prefixed by the line's own description when the
- * contract has more than one). The prefix is lifted off the card and becomes the group heading, so
- * a two-line contract reads as two labelled sets of seven rather than fourteen look-alike cards.
- * The wire carries no strength grade, so only the very first card is "strong"; `citationKeys` are
- * pack-internal keys (never rendered, R-ASK-08), so there is no "Rests on" line.
+ * contract has more than one). One card per lever type, in the order the pack first names it: a
+ * lever that reads the same on every line is shown once, and only a lever whose wording differs
+ * (e.g. each line's own order size) names the lines inside its card -- so a two-line contract
+ * reads as seven cards, not two identical sets of seven. The wire carries no strength grade, so
+ * only the very first card is "strong"; `citationKeys` are pack-internal keys (never rendered,
+ * R-ASK-08), so there is no "Rests on" line.
  */
-export function buildLeverGroups(strategy: ContractStrategyBody | null, lineDescriptions: readonly string[] = []): LeverGroup[] {
+export function buildLeverCards(strategy: ContractStrategyBody | null, lineDescriptions: readonly string[] = []): LeverCard[] {
   if (strategy === null) return [];
-  const groups: LeverGroup[] = [];
-  strategy.whereYouCanPush.forEach((lever, index) => {
+  const byType = new Map<LeverType, { line: string | null; body: string }[]>();
+  const allLines = new Set<string | null>();
+  for (const lever of strategy.whereYouCanPush) {
     const line = lineDescriptions.find((description) => description !== "" && lever.rationale.startsWith(`${description}: `)) ?? null;
     const body = line === null ? lever.rationale : lever.rationale.slice(line.length + 2);
-    const card: LeverCard = {
-      key: `${lever.leverType}-${index}`,
-      kicker: `${LEVER_HEADLINES[lever.leverType]} lever`,
-      headline: LEVER_HEADLINES[lever.leverType],
-      body,
+    allLines.add(line);
+    byType.set(lever.leverType, [...(byType.get(lever.leverType) ?? []), { line, body }]);
+  }
+  return [...byType].map(([leverType, levers], index) => {
+    const entries: { lines: (string | null)[]; body: string }[] = [];
+    for (const { line, body } of levers) {
+      const entry = entries.find((candidate) => candidate.body === body);
+      if (entry === undefined) entries.push({ lines: [line], body });
+      else if (!entry.lines.includes(line)) entry.lines.push(line);
+    }
+    const shared = entries.length === 1 && entries[0].lines.length === allLines.size;
+    return {
+      key: leverType,
+      kicker: `${LEVER_HEADLINES[leverType]} lever`,
+      headline: LEVER_HEADLINES[leverType],
+      entries: entries.map((entry) => ({
+        lines: shared ? [] : entry.lines.filter((line): line is string => line !== null),
+        body: entry.body,
+      })),
       strong: index === 0,
     };
-    const group = groups.find((candidate) => candidate.line === line);
-    if (group === undefined) groups.push({ line, cards: [card] });
-    else group.cards.push(card);
   });
-  return groups;
 }
 
 // ---- 02 Products & pricing --------------------------------------------------------------------
@@ -805,22 +836,55 @@ export interface ProductLine {
   meta: string;
   qty: string;
   price: string;
+  /** The matched market record's median (P50) unit price, or an em dash. */
   market: string;
+  /** "UK · 12 mo · n=14" under the market figure; "no match" for a line compared with nothing comparable; empty before any comparison. */
+  marketMeta: string;
+  /** Hover detail: the market product, its P25–P75 band and the corpus's own provenance label. */
+  marketTitle: string | null;
+  /** "+14%" / "-8%" -- the line's unit price against the market P50. */
   delta: string;
+  /** Paying above the market median. */
   deltaAccent: boolean;
-  /** Bar widths, `Math.round(price/max*100)%` -- pay is always the full bar while no market price exists. */
+  /** Bar widths, `Math.round(value/max(price, market)*100)%` -- pay is the full bar while no market price exists. */
   payWidth: string;
   marketWidth: string;
   annual: string;
 }
 
-export const PRODUCT_NOTE =
-  "Prices are the negotiated rate on the validated document; the market column and the delta light up with the Benchmark Service.";
+type ProductMarketBody = NonNullable<Contract360ProductBody["market"]>;
+
+export const PRODUCT_NOTE_UNCHECKED =
+  "Prices are the negotiated rate on the validated document; the market column fills once the lines have been compared with the market data.";
+export const PRODUCT_NOTE_NO_MATCH =
+  "No comparable market record for these lines yet — a match needs the same supplier, a product the line names and the contract's own currency.";
+
+/** The foot note under the table: what the market column is, and where its figures come from. */
+export function buildProductNote(products: readonly Contract360ProductBody[]): string {
+  const markets = products.map((p) => p.market).filter((m): m is ProductMarketBody => m !== null);
+  if (markets.length === 0) return PRODUCT_NOTE_UNCHECKED;
+  if (!markets.some((m) => m.matched)) return PRODUCT_NOTE_NO_MATCH;
+  return "Market is the median (P50) unit price of the closest market record for the same supplier, product and currency — representative market data (mock feed), never converted between currencies. Hover a figure for its range and date.";
+}
+
+/** `(price / P50 - 1)`, rounded to a whole percent: "+14%", "-8%", "0%". */
+export function formatVersusMarket(unitPrice: number, p50: number): string {
+  const percent = Math.round((unitPrice / p50 - 1) * 100);
+  return `${percent > 0 ? "+" : ""}${percent}%`;
+}
+
+function percentOf(value: number, max: number): string {
+  return `${Math.round((value / max) * 100)}%`;
+}
 
 /**
- * `d.products`: one row per line item. `tabs.benchmark` is per metric, not per line, so `market`
- * and `delta` are an honest em dash and the pay bar fills the track (`mktW:'0%'`, `payW:'100%'` in
- * the mock's own no-market branch). An unofficialized line keeps its row with dashed figures.
+ * `d.products`: one row per line item. The market figures are the line's own stored comparison
+ * (`products[].market`, written when the document was extracted and refreshed when stale): the
+ * matched record's P50 with its region, term and sample size, the delta of the line's unit price
+ * against it, and both bars scaled to the larger of the two. A line compared with nothing
+ * comparable, or not compared yet, keeps an honest em dash and a full pay bar (`mktW:'0%'`,
+ * `payW:'100%'` in the mock's own no-market branch). An unofficialized line keeps its row with
+ * dashed figures.
  */
 export function buildProductLines(
   products: readonly Contract360ProductBody[],
@@ -830,20 +894,46 @@ export function buildProductLines(
   return products.map((p) => {
     const officialized = isExtractedRowShown(p, autoAcceptThreshold);
     const meta = [p.sku, p.unit].filter((part): part is string => part !== null && part.trim() !== "").join(" · ");
+    const price = officialized ? p.unitPrice : null;
+    const market = p.market;
+    const p50 = market !== null && market.matched ? market.unitPriceP50 : null;
+    const marketCurrency = market?.currency ?? currency;
+    const compared = price !== null && p50 !== null && p50 > 0;
+    const max = compared ? Math.max(price, p50) : 0;
     return {
       key: p.lineItemId,
       name: p.description !== "" ? p.description : (p.sku ?? "Line item"),
       meta,
       qty: officialized && p.quantity !== null ? formatPlainNumber(p.quantity) : UNOFFICIALIZED_PLACEHOLDER,
       price: officialized ? formatMoney(p.unitPrice, currency) : UNOFFICIALIZED_PLACEHOLDER,
-      market: UNOFFICIALIZED_PLACEHOLDER,
-      delta: UNOFFICIALIZED_PLACEHOLDER,
-      deltaAccent: false,
-      payWidth: officialized && p.unitPrice !== null ? "100%" : "0%",
-      marketWidth: "0%",
+      market: p50 !== null ? formatMoney(p50, marketCurrency) : UNOFFICIALIZED_PLACEHOLDER,
+      marketMeta: market === null ? "" : p50 !== null ? formatMarketMeta(market) : "no match",
+      marketTitle: p50 !== null && market !== null ? formatMarketTitle(market, marketCurrency) : null,
+      delta: compared ? formatVersusMarket(price, p50) : UNOFFICIALIZED_PLACEHOLDER,
+      deltaAccent: compared && price > p50,
+      payWidth: compared ? percentOf(price, max) : price !== null ? "100%" : "0%",
+      marketWidth: compared ? percentOf(p50, max) : "0%",
       annual: officialized ? formatMoney(p.annualCost, currency) : UNOFFICIALIZED_PLACEHOLDER,
     };
   });
+}
+
+function formatMarketMeta(market: ProductMarketBody): string {
+  return [
+    market.geography,
+    market.termMonths !== null ? `${market.termMonths} mo` : null,
+    market.sampleSize !== null ? `n=${market.sampleSize}` : null,
+  ]
+    .filter((part): part is string => part !== null && part !== "")
+    .join(" · ");
+}
+
+function formatMarketTitle(market: ProductMarketBody, currency: string): string {
+  const band =
+    market.unitPriceP25 !== null && market.unitPriceP75 !== null
+      ? `P25 ${formatMoney(market.unitPriceP25, currency)} – P75 ${formatMoney(market.unitPriceP75, currency)}`
+      : null;
+  return [market.product, band, market.provenance].filter((part): part is string => part !== null && part !== "").join(" · ");
 }
 
 // ---- 03 Clauses that matter -------------------------------------------------------------------
@@ -890,7 +980,7 @@ function toClauseItem(
   return {
     clauseId: clause.clauseId,
     type: clause.clauseType,
-    normalized: officializedOrDash(clause.normalizedValue ?? clause.rawText, isScoredFactOfficialized(clause.confidence, autoAcceptThreshold)),
+    normalized: officializedOrDash(clause.normalizedValue ?? clause.rawText, isExtractedRowShown(clause, autoAcceptThreshold)),
     ask,
     source: formatShortReference(clause),
     viewerHref: clauseViewerHref(clause, documents),

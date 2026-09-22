@@ -34,12 +34,14 @@ import {
   buildRecommendation,
   buildRiskItems,
   buildScoreParts,
-  buildLeverGroups,
+  buildLeverCards,
+  buildProductNote,
   buildClauseGroups,
   buildClosedOutcome,
   standardClausesLabel,
   terminatedActionText,
-  PRODUCT_NOTE,
+  PRODUCT_NOTE_NO_MATCH,
+  PRODUCT_NOTE_UNCHECKED,
   SECTION_COPY,
   clauseViewerHref,
   computeNeedsAttention,
@@ -47,6 +49,8 @@ import {
   formatPriorityFact,
   formatReviewCountLine,
   formatShortReference,
+  formatVersusMarket,
+  isExtractedRowShown,
   formatTrackerMeta,
   getClauseRiskTag,
   leverageWhy,
@@ -96,6 +100,26 @@ function product(overrides: Partial<Contract360ProductBody> = {}): Contract360Pr
     sourceSpan: "§6.2",
     sourcePage: 9,
     confidence: 0.97,
+    market: null,
+    ...overrides,
+  };
+}
+
+function marketBand(overrides: Partial<NonNullable<Contract360ProductBody["market"]>> = {}): NonNullable<Contract360ProductBody["market"]> {
+  return {
+    matched: true,
+    recordId: "MKT-DBU-CH",
+    product: "Premium DBU",
+    geography: "CH",
+    currency: "CHF",
+    termMonths: 12,
+    unitPriceP25: 0.4,
+    unitPriceP50: 0.5,
+    unitPriceP75: 0.6,
+    sampleSize: 40,
+    provenance: "representative market data · mock feed · updated 2026-07-01",
+    marketUpdatedAt: "2026-07-01T00:00:00Z",
+    checkedAt: "2026-09-22T08:00:00Z",
     ...overrides,
   };
 }
@@ -541,19 +565,22 @@ describe("why — the clauses behind it", () => {
     expect(LEVERAGE_LEGEND).toBe("Push to change · Worth raising · Standard terms");
   });
 
-  it("buildClauseRows carries type · accepted value · leverage · why · viewer href; unofficialized values stay as a dashed row", () => {
+  it("buildClauseRows carries type · value · leverage · why · viewer href; a sourced value shows, an unsourced unofficialized one stays a dashed row", () => {
     const documents: Contract360DocumentBody[] = [
       { documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "x" },
     ];
+    // Below the auto-accept bar but pointing at p.27: sourced, so the value reads (same rule as products).
     const [row] = buildClauseRows([clause()], documents, AUTO_ACCEPT_THRESHOLD);
     expect(row).toEqual({
       clauseId: "cl-1",
       type: "Liability cap",
-      normalized: UNOFFICIALIZED_PLACEHOLDER,
+      normalized: "12 months fees",
       risk: { variant: "neutral", label: LEVERAGE_WORTH_RAISING },
       why: "Worth raising in negotiation.",
       viewerHref: "/documents/doc-1/viewer?page=27&clause=cl-1",
     });
+
+    expect(buildClauseRows([clause({ sourcePage: null, sourceSpan: null })], documents)[0].normalized).toBe(UNOFFICIALIZED_PLACEHOLDER);
 
     const accepted = buildClauseRows([clause({ confidence: 0.97 })], documents)[0];
     expect(accepted.normalized).toBe("12 months fees");
@@ -591,6 +618,19 @@ describe("why — the clauses behind it", () => {
     expect(evidence.citation).toContain("…");
     expect(evidence.citation).not.toContain("A".repeat(80));
     expect(evidence.quote).toBe("12 months fees");
+  });
+
+  it("a quoted span is never printed as a section: only a section label earns the §", () => {
+    const quote = "Aggregate liability is capped at 2x fees paid in the preceding 12 months.";
+    expect(formatShortReference({ sourcePage: 2, sourceSpan: quote })).toBe("p.2");
+    expect(formatShortReference({ sourcePage: null, sourceSpan: quote })).toBeNull();
+    expect(formatShortReference({ sourcePage: 12, sourceSpan: "8.4" })).toBe("p.12 · §8.4");
+    expect(formatShortReference({ sourcePage: 12, sourceSpan: "Section 8.4" })).toBe("p.12 · §8.4");
+    expect(formatShortReference({ sourcePage: 12, sourceSpan: "Art. 5" })).toBe("p.12 · §5");
+    expect(formatShortReference({ sourcePage: 12, sourceSpan: "§ 17.2" })).toBe("p.12 · § 17.2");
+    // A quote-only row is still sourced, so its value is shown rather than dashed.
+    expect(isExtractedRowShown({ confidence: 0.5, sourcePage: null, sourceSpan: quote }, AUTO_ACCEPT_THRESHOLD)).toBe(true);
+    expect(isExtractedRowShown({ confidence: 0.5, sourcePage: null, sourceSpan: "  " }, AUTO_ACCEPT_THRESHOLD)).toBe(false);
   });
 
   it("buildClauseEvidence marks the normalised value inside the raw text, else the whole wording, and cites file · p.N · §", () => {
@@ -660,41 +700,103 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(mixed).toHaveLength(10);
   });
 
-  it("02 Leverage: one card per pack lever, grouped by priced line with the line prefix lifted off, strongest first", () => {
+  it("02 Leverage: one card per lever type, strongest first -- identical wording shown once, differing wording names its line", () => {
+    const quarterEnd = "Today (2026-09-22) is within 8 day(s) of a calendar quarter-end.";
     const pack = {
       contractId: "c-1",
       whenYouMustMove: { renewalDate: null, cancellationDeadline: null, daysLeft: null, passedDeadline: false, explanation: "" },
       whereYouCanPush: [
         { leverType: "Volume" as const, rationale: "SAP S/4HANA: This line orders 570 — cite the order size.", citationKeys: ["k-1"] },
         { leverType: "Term" as const, rationale: "SAP S/4HANA: Committed term is 24 months.", citationKeys: [] },
+        { leverType: "QuarterEnd" as const, rationale: `SAP S/4HANA: ${quarterEnd}`, citationKeys: [] },
         { leverType: "Volume" as const, rationale: "Onboarding fee: No quantity is recorded on this line.", citationKeys: [] },
+        { leverType: "Term" as const, rationale: "Onboarding fee: Committed term is 24 months.", citationKeys: [] },
+        { leverType: "QuarterEnd" as const, rationale: `Onboarding fee: ${quarterEnd}`, citationKeys: [] },
       ],
       targets: [],
       nextSteps: [],
       openWeakFacts: [],
     };
-    const groups = buildLeverGroups(pack, ["SAP S/4HANA", "Onboarding fee"]);
-    expect(groups.map((group) => [group.line, group.cards.map((card) => [card.kicker, card.headline, card.body, card.strong])])).toEqual([
-      ["SAP S/4HANA", [["Order size lever", "Order size", "This line orders 570 — cite the order size.", true], ["Term length lever", "Term length", "Committed term is 24 months.", false]]],
-      ["Onboarding fee", [["Order size lever", "Order size", "No quantity is recorded on this line.", false]]],
+    const cards = buildLeverCards(pack, ["SAP S/4HANA", "Onboarding fee"]);
+    expect(cards.map((card) => [card.kicker, card.headline, card.entries, card.strong])).toEqual([
+      [
+        "Order size lever",
+        "Order size",
+        [
+          { lines: ["SAP S/4HANA"], body: "This line orders 570 — cite the order size." },
+          { lines: ["Onboarding fee"], body: "No quantity is recorded on this line." },
+        ],
+        true,
+      ],
+      ["Term length lever", "Term length", [{ lines: [], body: "Committed term is 24 months." }], false],
+      ["Quarter end lever", "Quarter end", [{ lines: [], body: quarterEnd }], false],
     ]);
-    expect(JSON.stringify(groups)).not.toContain("k-1");
-    // A single-line contract carries no prefix: one unnamed group, the rationale untouched.
-    const single = buildLeverGroups(pack, []);
-    expect(single).toHaveLength(1);
-    expect(single[0].line).toBeNull();
-    expect(single[0].cards[0].body).toBe("SAP S/4HANA: This line orders 570 — cite the order size.");
-    expect(buildLeverGroups(null)).toEqual([]);
+    expect(JSON.stringify(cards)).not.toContain("k-1");
+
+    // Three lines, two sharing a wording: the shared wording names both lines, the odd one its own.
+    const threeLines = buildLeverCards(
+      {
+        ...pack,
+        whereYouCanPush: [
+          { leverType: "Term" as const, rationale: "A: Committed term is 12 months.", citationKeys: [] },
+          { leverType: "Term" as const, rationale: "B: Committed term is 12 months.", citationKeys: [] },
+          { leverType: "Term" as const, rationale: "C: Committed term is 36 months.", citationKeys: [] },
+          { leverType: "Bundle" as const, rationale: "A: This contract bundles 3 priced lines.", citationKeys: [] },
+        ],
+      },
+      ["A", "B", "C"],
+    );
+    expect(threeLines.map((card) => card.entries)).toEqual([
+      [
+        { lines: ["A", "B"], body: "Committed term is 12 months." },
+        { lines: ["C"], body: "Committed term is 36 months." },
+      ],
+      // A lever only one line carries still names that line.
+      [{ lines: ["A"], body: "This contract bundles 3 priced lines." }],
+    ]);
+
+    // A single-line contract carries no prefix: every card unlabelled, the rationale untouched.
+    const single = buildLeverCards(pack, []);
+    expect(single[0].entries).toEqual([
+      { lines: [], body: "SAP S/4HANA: This line orders 570 — cite the order size." },
+      { lines: [], body: "Onboarding fee: No quantity is recorded on this line." },
+    ]);
+    expect(buildLeverCards({ ...pack, whereYouCanPush: [pack.whereYouCanPush[0]] }, [])[0].entries).toEqual([
+      { lines: [], body: "SAP S/4HANA: This line orders 570 — cite the order size." },
+    ]);
+    expect(buildLeverCards(null)).toEqual([]);
   });
 
-  it("02 Products & pricing: pay figures from the line, market and delta an honest dash, unofficialized lines dashed but kept", () => {
+  it("02 Products & pricing: pay figures from the line; before any market comparison, market and delta an honest dash; unofficialized lines dashed but kept", () => {
     const [line] = buildProductLines([product()], "CHF");
-    expect(line).toMatchObject({ name: "Premium DBU — committed", meta: "SKU-1 · DBU/yr", qty: "120,000", price: "CHF 0.55", market: "—", delta: "—", payWidth: "100%", marketWidth: "0%", annual: "CHF 66,000" });
+    expect(line).toMatchObject({ name: "Premium DBU — committed", meta: "SKU-1 · DBU/yr", qty: "120,000", price: "CHF 0.55", market: "—", marketMeta: "", marketTitle: null, delta: "—", payWidth: "100%", marketWidth: "0%", annual: "CHF 66,000" });
     const [sourced] = buildProductLines([product({ confidence: 0.71 })], "CHF");
     expect(sourced.price).toBe("CHF 0.55");
     const [unofficial] = buildProductLines([product({ confidence: 0.71, sourceSpan: null, sourcePage: null })], "CHF");
     expect(unofficial).toMatchObject({ name: "Premium DBU — committed", qty: UNOFFICIALIZED_PLACEHOLDER, price: UNOFFICIALIZED_PLACEHOLDER, annual: UNOFFICIALIZED_PLACEHOLDER, payWidth: "0%" });
-    expect(PRODUCT_NOTE).toMatch(/Benchmark Service/);
+    expect(buildProductNote([product()])).toBe(PRODUCT_NOTE_UNCHECKED);
+  });
+
+  it("02 Products & pricing: a matched line shows the market P50 with region · term · n, the delta vs P50 and bars scaled to the larger", () => {
+    const [above] = buildProductLines([product({ market: marketBand() })], "CHF");
+    expect(above).toMatchObject({ market: "CHF 0.5", marketMeta: "CH · 12 mo · n=40", delta: "+10%", deltaAccent: true, payWidth: "100%", marketWidth: "91%" });
+    expect(above.marketTitle).toBe("Premium DBU · P25 CHF 0.4 – P75 CHF 0.6 · representative market data · mock feed · updated 2026-07-01");
+
+    const [below] = buildProductLines([product({ unitPrice: 0.4, market: marketBand() })], "CHF");
+    expect(below).toMatchObject({ delta: "-20%", deltaAccent: false, payWidth: "80%", marketWidth: "100%" });
+    expect(formatVersusMarket(0.5, 0.5)).toBe("0%");
+
+    // Compared, nothing comparable: an honest dash that says so, the pay bar full.
+    const noMatch = marketBand({ matched: false, recordId: null, product: null, geography: null, currency: null, termMonths: null, unitPriceP25: null, unitPriceP50: null, unitPriceP75: null, sampleSize: null, provenance: null, marketUpdatedAt: null });
+    const [unmatched] = buildProductLines([product({ market: noMatch })], "CHF");
+    expect(unmatched).toMatchObject({ market: "—", marketMeta: "no match", marketTitle: null, delta: "—", deltaAccent: false, payWidth: "100%", marketWidth: "0%" });
+
+    // An unofficialized price still shows the market figure, but no delta is drawn against a hidden price.
+    const [hidden] = buildProductLines([product({ confidence: 0.71, sourceSpan: null, sourcePage: null, market: marketBand() })], "CHF");
+    expect(hidden).toMatchObject({ price: UNOFFICIALIZED_PLACEHOLDER, market: "CHF 0.5", delta: "—", payWidth: "0%", marketWidth: "0%" });
+
+    expect(buildProductNote([product({ market: noMatch })])).toBe(PRODUCT_NOTE_NO_MATCH);
+    expect(buildProductNote([product({ market: noMatch }), product({ market: marketBand() })])).toMatch(/median \(P50\).*same supplier, product and currency.*mock feed/);
   });
 
   it("03 Clauses that matter: High/Critical push, Medium raise, the rest standard; the ask slot is the leverage copy", () => {
@@ -703,7 +805,8 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
         clause({ clauseId: "cl-high", clauseType: "Price increase", riskLevel: "High", confidence: 0.97 }),
         clause({ clauseId: "cl-med", clauseType: "Liability cap", riskLevel: "Medium", confidence: 0.97 }),
         clause({ clauseId: "cl-low", clauseType: "Confidentiality", riskLevel: "Low", confidence: 0.97 }),
-        clause({ clauseId: "cl-none", clauseType: "Notices", riskLevel: null, confidence: 0.6 }),
+        clause({ clauseId: "cl-weak", clauseType: "Audit", riskLevel: "Low", confidence: 0.6 }),
+        clause({ clauseId: "cl-none", clauseType: "Notices", riskLevel: null, confidence: 0.6, sourcePage: null, sourceSpan: null }),
       ],
       contractBody().tabs.documents,
     );
@@ -716,6 +819,9 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(groups.groups[0].items[0].viewerHref).toBe("/documents/doc-1/viewer?page=27&clause=cl-high");
     expect(groups.standard.map((item) => [item.clauseId, item.ask, item.normalized])).toEqual([
       ["cl-low", null, "12 months fees"],
+      // Below the auto-accept bar but sourced: the value reads, as it does for products.
+      ["cl-weak", null, "12 months fees"],
+      // Neither officialized nor sourced: the em dash, the row stays.
       ["cl-none", null, UNOFFICIALIZED_PLACEHOLDER],
     ]);
     expect(buildClauseGroups([clause({ riskLevel: "Low" })]).groups).toEqual([]);

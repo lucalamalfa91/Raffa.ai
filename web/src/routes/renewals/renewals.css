@@ -232,8 +232,11 @@
   font-size: 12px;
 }
 
-/* ---- Negotiation TODO sub-surface (task E29/F04/US01/T01, wave w19 NW-85: "`.table` sub-surface,
-   Mark-done `.btn-secondary`, Open/Done tags") ----------------------------------------------- */
+/* ---- Negotiation TODO sub-surface (task E29/F04/US01/T01, wave w19 NW-85: Mark-done
+   `.btn-secondary`, Open/Done tags). A stacked list rather than the ruling's `.table`: the pane is
+   380px wide and every cell holds a sentence, so a five-column table wrapped to one word per line.
+   Each point: topic 13px strong + tag · Current / Target / Why as 10px uppercase labels in a 56px
+   gutter beside 12px text (Why neutral-600) · 1px divider between points. ------------------------ */
 
 .renewal-pane-todos {
   margin-top: var(--space-4);
@@ -241,15 +244,69 @@
   border-top: 1px solid var(--color-divider);
 }
 
-.renewal-pane-todos-table {
-  margin-top: var(--space-2);
+.renewal-todos {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.renewal-todo {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.renewal-todo:first-child {
+  padding-top: 4px;
+}
+
+.renewal-todo-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.renewal-todo-topic {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: var(--weight-body-strong);
+  text-wrap: pretty;
+}
+
+.renewal-todo-head .tag {
+  flex: none;
+}
+
+.renewal-todo-facts {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 0;
   font-size: 12px;
 }
 
-.renewal-pane-todos-table th,
-.renewal-pane-todos-table td {
-  padding: var(--space-1) var(--space-2);
-  vertical-align: top;
+.renewal-todo-facts dt {
+  padding-top: 2px;
+  font-size: 10px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.renewal-todo-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.renewal-todo-facts .renewal-todo-why {
+  color: var(--color-neutral-600);
+}
+
+.btn.renewal-todo-done {
+  margin-top: 10px;
+  font-size: 12px;
 }
 
 @media (max-width: 900px) {

@@ -57,8 +57,10 @@ export function getNegotiationTodoStatusTag(status: RenewalNegotiationTodoStatus
  * `client.ts` provenance comment for why `reports/architecture/waves/w19.md`'s NW-85 row, not the
  * ADR bodies, is the citable source of that decision). Design anchor: `screens-v2.md` §7 (Renewals)
  * / §8 (Savings) -- both describe the same "list + status tag + action" shape this sub-surface
- * reuses; the wave's own ux-ui-designer ruling is the one naming this exact surface: "`.table`
- * sub-surface, Mark-done `.btn-secondary`, Open/Done tags."
+ * reuses; the wave's own ux-ui-designer ruling names "Mark-done `.btn-secondary`, Open/Done tags".
+ * Its "`.table` sub-surface" did not survive the pane: five columns of sentence-long current /
+ * target / why text inside a 380px column wrapped to one word per line, so each point is a stacked
+ * item instead -- topic + tag, then Current / Target / Why as full-width label rows.
  *
  * Embedded in `InsightCard.tsx`'s "Why it is here" pane, below the existing recommended-action
  * block -- the negotiation points Ask ranked and persisted for this contract
@@ -157,47 +159,38 @@ export default function NegotiationTodoList({ apiClient, tenantId, contractId }:
       {visibleTodos.length === 0 ? (
         <p className="micro-meta">No negotiation points yet.</p>
       ) : (
-        <table className="table renewal-pane-todos-table">
-          <thead>
-            <tr>
-              <th scope="col">Topic</th>
-              <th scope="col">Current → target</th>
-              <th scope="col">Why</th>
-              <th scope="col">Status</th>
-              <th scope="col">Mark done</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleTodos.map((todo) => {
-              const tag = getNegotiationTodoStatusTag(todo.status);
-              return (
-                <tr key={todo.pointKey}>
-                  <td>{todo.topic}</td>
-                  <td>
-                    {todo.current} → {todo.target}
-                  </td>
-                  <td>{todo.rationale}</td>
-                  <td>
-                    <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-                  </td>
-                  <td>
-                    {todo.status === "Open" && (
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        aria-label={`Mark ${todo.topic} done`}
-                        disabled={pendingKey !== null}
-                        onClick={() => handleTick(todo.pointKey)}
-                      >
-                        {pendingKey === todo.pointKey ? "Saving…" : "Mark done"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <ol className="renewal-todos">
+          {visibleTodos.map((todo) => {
+            const tag = getNegotiationTodoStatusTag(todo.status);
+            return (
+              <li key={todo.pointKey} className="renewal-todo">
+                <div className="renewal-todo-head">
+                  <span className="renewal-todo-topic">{todo.topic}</span>
+                  <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
+                </div>
+                <dl className="renewal-todo-facts">
+                  <dt>Current</dt>
+                  <dd>{todo.current}</dd>
+                  <dt>Target</dt>
+                  <dd>{todo.target}</dd>
+                  <dt>Why</dt>
+                  <dd className="renewal-todo-why">{todo.rationale}</dd>
+                </dl>
+                {todo.status === "Open" && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary renewal-todo-done"
+                    aria-label={`Mark ${todo.topic} done`}
+                    disabled={pendingKey !== null}
+                    onClick={() => handleTick(todo.pointKey)}
+                  >
+                    {pendingKey === todo.pointKey ? "Saving…" : "Mark done"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
       )}
 
       {tickError !== null && (
