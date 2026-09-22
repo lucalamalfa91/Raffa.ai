@@ -34,14 +34,37 @@ public sealed record InterviewResolution(
 
 public sealed record InterviewOption(string Key, string Label, string? Hint, InterviewResolution ResolvesTo);
 
+/// <remarks>Equality compares <see cref="Options"/> element by element, not by list reference, so
+/// a question decoded from <c>interview_json</c> equals the one that was serialized.</remarks>
 public sealed record InterviewQuestion(
     string Key,
     string Prompt,
     InterviewPresentation Presentation,
     bool AllowFreeText,
-    IReadOnlyList<InterviewOption> Options);
+    IReadOnlyList<InterviewOption> Options)
+{
+    public bool Equals(InterviewQuestion? other) =>
+        other is not null &&
+        string.Equals(Key, other.Key, StringComparison.Ordinal) &&
+        string.Equals(Prompt, other.Prompt, StringComparison.Ordinal) &&
+        Presentation == other.Presentation &&
+        AllowFreeText == other.AllowFreeText &&
+        Options.SequenceEqual(other.Options);
 
-public sealed record InterviewTurn(string Prompt, IReadOnlyList<InterviewQuestion> Questions);
+    public override int GetHashCode() => HashCode.Combine(Key, Prompt, Presentation, AllowFreeText, Options.Count);
+}
+
+/// <remarks>Equality compares <see cref="Questions"/> element by element (see
+/// <see cref="InterviewQuestion"/>).</remarks>
+public sealed record InterviewTurn(string Prompt, IReadOnlyList<InterviewQuestion> Questions)
+{
+    public bool Equals(InterviewTurn? other) =>
+        other is not null &&
+        string.Equals(Prompt, other.Prompt, StringComparison.Ordinal) &&
+        Questions.SequenceEqual(other.Questions);
+
+    public override int GetHashCode() => HashCode.Combine(Prompt, Questions.Count);
+}
 
 /// <summary>The client's reply to an interview: which message, which question, and either an
 /// option key or free text (the typed question itself).</summary>

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
+using Raffa.Chat.Application.Interview;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
@@ -55,11 +56,17 @@ public sealed class AskSupplierResolutionTests : IClassFixture<RaffaApiFactory>
         var asterCloudId = EntityId.New();
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
+        // ADR-030 supersedes this soonest-deadline pick with a "which contract?" interview while
+        // Chat:Interview:AskWhichContract is on (the default; AskInterviewTests covers it). This
+        // test pins the NW-80 fallback that still runs with the switch off.
         var factory = _factory
             .WithInMemoryAskEngine(recordingGateway)
             .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            {
                 services.AddSingleton<ISupplierNameLookup>(
-                    new StubSupplierNameLookup(new Dictionary<EntityId, string> { [asterCloudId] = "AsterCloud GmbH" }))));
+                    new StubSupplierNameLookup(new Dictionary<EntityId, string> { [asterCloudId] = "AsterCloud GmbH" }));
+                services.AddSingleton(new InterviewOptions { AskWhichContract = false });
+            }));
 
         var now = DateTimeOffset.UtcNow;
 

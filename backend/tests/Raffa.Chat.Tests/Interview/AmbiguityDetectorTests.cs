@@ -46,6 +46,8 @@ public sealed class AmbiguityDetectorTests
     [InlineData("When does a contract expire?")]
     [InlineData("Which documents are not askable yet?")]
     [InlineData("Quali contratti sono mal posizionati rispetto al mercato e dove risparmiare?")]
+    [InlineData("Quali contratti si rinnovano nei prossimi 120 giorni?")]
+    [InlineData("What does the master services agreement cover?")]
     public void A_question_today_answers_well_is_never_ambiguous(string question)
     {
         var signals = Detect(question);

@@ -49,6 +49,9 @@ public sealed class DeterministicQueryPlannerTests
     [InlineData("Which contracts renew in the next 3 months?", 90)]
     [InlineData("Which contracts renew in the next 1 year?", 365)]
     [InlineData("Which contracts renew in the next 2 years?", 730)]
+    [InlineData("Quali contratti si rinnovano nei prossimi 120 giorni?", 120)]
+    [InlineData("Quali contratti scadono nei prossimi 6 mesi?", 180)]
+    [InlineData("Quali contratti scadono nel prossimo 1 anno?", 365)]
     public void Normalizes_the_window_unit_to_days(string question, int expectedDays)
     {
         var decision = _router.Route(question);

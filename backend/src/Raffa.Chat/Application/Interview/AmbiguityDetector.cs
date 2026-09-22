@@ -74,13 +74,19 @@ public static class AmbiguityDetector
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // A noun the clause index or a structured pack can serve even without a lexicon match — RAG on
-    // it is a reasonable path today, so the interview stays out of the way.
+    // it is a reasonable path today, so the interview stays out of the way. A named contract
+    // document ("the master services agreement", "l'accordo quadro") is one such noun; the bare
+    // "contract"/"contratti" is not, so "over all my contract" still reads as vague. Italian
+    // renewal/expiry words mirror the English "renewal" ("quali contratti si rinnovano nei
+    // prossimi 120 giorni" is a date question, not an ambiguous one).
     private static readonly Regex DomainNounPattern = new(
         @"\b(liabilit\w*|indemn\w*|warrant\w*|obligation\w*|clause\w*|terms?|price\w*|fees?|discount\w*|" +
         @"uplift\w*|sla|penalt\w*|payment\w*|invoice\w*|licen[cs]\w*|users?|seats?|volume\w*|renewal\w*|" +
         @"notice|termination|data|gdpr|security|insurance|coverage|cap|" +
+        @"agreement\w*|msa|nda|dpa|sow|statement\s+of\s+work|order\s+forms?|" +
         @"responsabilit\w*|obblig\w*|clausol\w*|prezz\w*|scont\w*|penal\w*|pagament\w*|fattur\w*|" +
-        @"licenz\w*|utent\w*|assicura\w*|copertur\w*|garanz\w*|preavviso|disdetta|recesso|canone|canoni)\b",
+        @"licenz\w*|utent\w*|assicura\w*|copertur\w*|garanz\w*|preavviso|disdetta|recesso|canone|canoni|" +
+        @"rinnov\w*|scadenz\w*|scad[eo]\w*|accord[oi])\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static AmbiguitySignals Detect(
