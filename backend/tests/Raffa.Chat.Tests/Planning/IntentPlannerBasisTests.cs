@@ -34,7 +34,7 @@ public sealed class IntentPlannerBasisTests
     [Fact]
     public void A_lexicon_match_is_the_default_basis()
     {
-        var result = _planner.Plan("Where can I save the most this quarter?", null);
+        var result = _planner.Plan("Where can I save the most?", null);
 
         Assert.Equal(AskIntent.PortfolioStrategy, result.Intent);
         Assert.Equal(IntentPlanBasis.Lexicon, result.Basis);
@@ -44,7 +44,7 @@ public sealed class IntentPlannerBasisTests
     [Fact]
     public void A_bare_follow_up_is_marked_as_such()
     {
-        var result = _planner.Plan("e quindi?", null, "Where can I save the most this quarter?");
+        var result = _planner.Plan("e quindi?", null, "Where can I save the most?");
 
         Assert.Equal(AskIntent.PortfolioStrategy, result.Intent);
         Assert.Equal(IntentPlanBasis.FollowUp, result.Basis);

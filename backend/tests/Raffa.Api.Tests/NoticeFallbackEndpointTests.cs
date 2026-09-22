@@ -3,10 +3,13 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
+using Raffa.Chat.Application.Interview;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Raffa.Api.Tests;
 
@@ -317,7 +320,13 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         const string userId = "alice@example.com";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        var factory = _factory.WithInMemoryAskEngine(recordingGateway);
+        // ADR-030 supersedes case 5 with a "which contract?" interview while
+        // Chat:Interview:AskOnUnscopedNotice is on (the default); this test pins the NW-94 abstain
+        // that still runs with the switch off.
+        var factory = _factory
+            .WithInMemoryAskEngine(recordingGateway)
+            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+                services.AddSingleton(new InterviewOptions { AskOnUnscopedNotice = false })));
 
         var contract = new Contract
         {

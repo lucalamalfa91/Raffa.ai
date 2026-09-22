@@ -56,9 +56,10 @@ public sealed class AskRaffaQueryRouter
     ];
 
     // Relative date-window phrasing (spec §8.3: "Which contracts renew in the next 120 days?")
-    // that the keyword list above would otherwise miss when it is not paired with "renew".
+    // that the keyword list above would otherwise miss when it is not paired with "renew". The
+    // Italian twin ("nei prossimi 120 giorni") is the same window (GAP-ASK-ITALIAN-STRUCTURED-BLIND).
     private static readonly Regex NextNDaysPattern = new(
-        @"next\s+\d+\s+(day|days|month|months|year|years)",
+        @"(next|prossim[io])\s+\d+\s+(days?|months?|years?|giorn[oi]|mes[ei]|ann[oi])\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
@@ -98,7 +99,7 @@ public sealed class AskRaffaQueryRouter
             return new QueryRouteDecision(
                 trimmed,
                 QueryIntent.Structured,
-                "matched a relative date-window phrase ('next N days/months/years') — deterministic date filter, no LLM.");
+                "matched a relative date-window phrase ('next N days/months/years' / 'prossimi N giorni/mesi/anni') — deterministic date filter, no LLM.");
         }
 
         return new QueryRouteDecision(

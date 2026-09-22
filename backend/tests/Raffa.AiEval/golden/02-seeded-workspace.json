@@ -292,15 +292,7 @@
     "expectedNumbers": [
       "2026-10-31"
     ],
-    "knownGap": {
-      "id": "GAP-ASK-ITALIAN-STRUCTURED-BLIND",
-      "observedKind": "abstain",
-      "observedMarkdownContains": [
-        "Nothing in your validated contracts supports a reliable answer"
-      ],
-      "note": "Same English-only keyword lists: 'rinnovano' / 'prossimi 120 giorni' matches neither the structured keyword list nor the 'next N days' pattern, so the renewal-window calculator is never reached."
-    },
-    "notes": "The Italian twin of the spec §8.3 worked question."
+    "notes": "The Italian twin of the spec §8.3 worked question; 'prossimi N giorni' reaches the same renewal-window calculator as 'next N days'."
   },
   {
     "id": "seeded-clause-liability-aws-en",

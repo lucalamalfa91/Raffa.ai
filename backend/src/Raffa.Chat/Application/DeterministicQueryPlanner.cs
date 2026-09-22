@@ -25,7 +25,7 @@ public sealed class DeterministicQueryPlanner
     // amount/unit captured so the window size can actually be computed — the router only needs to
     // know the phrase is present, this planner needs to know what it says.
     private static readonly Regex NextNDaysPattern = new(
-        @"next\s+(\d+)\s+(day|days|month|months|year|years)",
+        @"(?:next|prossim[io])\s+(\d+)\s+(days?|months?|years?|giorn[oi]|mes[ei]|ann[oi])\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // A capitalized word (or run of capitalized words) that is not the question's first word is,
@@ -108,8 +108,8 @@ public sealed class DeterministicQueryPlanner
 
     private static int ToDays(int amount, string unit) => unit.ToLowerInvariant() switch
     {
-        "month" or "months" => amount * DaysPerMonth,
-        "year" or "years" => amount * DaysPerYear,
+        "month" or "months" or "mese" or "mesi" => amount * DaysPerMonth,
+        "year" or "years" or "anno" or "anni" => amount * DaysPerYear,
         _ => amount,
     };
 }
