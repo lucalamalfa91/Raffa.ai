@@ -30,8 +30,25 @@ public static class RegenerateOnce
             "pack given to you — do not invent, restate a different figure, or cite anything the " +
             "pack does not contain. An actionKey is a bare capability key such as renewals or " +
             "savings, never a citationKey, a playbook item or a route; leave out any you are unsure " +
-            "of. If the pack genuinely does not support an answer, set canDetermine to false instead.";
+            "of. Keep canDetermine true: a figure the pack does not hold is written as a bracketed " +
+            "placeholder such as [amount], never invented and never a reason to decline.";
     }
+
+    /// <summary>
+    /// The addendum for the one permitted retry when the first attempt declined to answer
+    /// (<c>canDetermine</c> false) — persona v2.4's rule 6 says Raffa never declines, so a decline
+    /// is treated like any other broken rule and regenerated once with the rule named. The
+    /// model's own decline reason is deliberately not echoed back: it would only anchor the retry
+    /// on what is missing instead of on the help the user asked for.
+    /// </summary>
+    public static string BuildDeclineRetryInstruction() =>
+        "Your previous reply declined to answer (canDetermine false). Ask Raffa never declines: " +
+        "answer again with canDetermine true and abstainReason null. Lead with the help the user " +
+        "asked for: use what the context pack does hold, cited, and give a concrete way forward - " +
+        "a ready-to-send draft, a plan, a checklist or the method to work it out - writing every " +
+        "figure, date or name the pack does not hold as a bracketed placeholder such as [amount] " +
+        "or [notice date], never an invented value. Close with one short line naming the document " +
+        "or data that would make it exact. Never apologise and never mention the pack.";
 
     /// <summary>
     /// The last-resort, honest fallback when even the retry still violates a guard (or the retry

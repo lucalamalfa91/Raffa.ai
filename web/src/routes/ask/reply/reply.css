@@ -2,20 +2,20 @@
  * Reply body — the AI turn's content column (route `/ask`, ADR-024; `Raffa.ai V2.dc.html`
  * "ASK RAFFA.AI — conversation with rich answers", the `m.isAi` block). Scoped to this reply's own
  * internal composition only -- the surrounding 72px role-column grid ("You" / "Raffa.ai") stays
- * `../ask.css`'s own `.ask-message`. Component classes (.btn, .abstain-block, .error-state,
+ * `../ask.css`'s own `.ask-message`. Component classes (.btn, .error-state,
  * .micro-meta) come from `../../../styles/components.css` (ADR-019); this file adds only this
  * folder's own composites, quoted from that block's inline styles:
  *
  *   content column: display:flex;flex-direction:column;gap:14px;min-width:0
  *   text:           font-size:14px;white-space:pre-line;text-wrap:pretty;max-width:72ch
- *   abstain:        border-left:2px solid accent;padding:10px 14px;font-size:13px;background:accent-100;max-width:72ch
+ *   abstain:        rendered as text (persona v2.4 retired the accent-left "cannot determine" block)
  *   evidence card:  see EvidenceCard.tsx's own header comment
  *   actions:        display:flex;flex-wrap:wrap;gap:8px; .btn font-size:12px;padding:7px 12px
  *   next:           display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;border-top:1px solid divider;padding-top:10px
  *                   "Next" 11px uppercase .08em neutral-600 · items 12px neutral-700, accent on hover
  *
  * `src/index.css` (the shared sheets) loads after every route sheet, so instance values on a
- * shared class (`.btn`, `.abstain-block`) carry one extra class of specificity here.
+ * shared class (`.btn`) carry one extra class of specificity here.
  */
 
 .reply-body {
@@ -58,14 +58,6 @@
 
 .reply-citation-ref:hover {
   text-decoration: underline;
-}
-
-/* ---- Abstain (`m.abstain`) ------------------------------------------------- */
-
-.reply-body .abstain-block {
-  padding: 10px 14px;
-  font-size: 13px;
-  max-width: 72ch;
 }
 
 /* ---- The evidence card (one per answer; `EvidenceCard.tsx`) ---------------- */

@@ -5,9 +5,6 @@ import ReplyMarkdown from "./ReplyMarkdown";
 import type { InterviewOption, InterviewReply, Reply, ReplyCitation } from "./replyTypes";
 import "./reply.css";
 
-/** The abstain block's lead-in (`abstainTitle` in `Raffa.ai V2.dc.html`, quoted). */
-export const ABSTAIN_TITLE = "I don't have data I trust enough to answer.";
-
 export interface ReplyBodyProps {
   reply: Reply;
   /** Shared by every inline `[n]` marker (`ReplyMarkdown`) and every row of the `EvidenceCard` --
@@ -46,9 +43,12 @@ function FollowUps({ questions, onFollowUp }: { questions: readonly string[]; on
  * Composes `kind` -> layout (R-WEB-04; requirements.md §6; ADR-024). One `Reply` in, one layout
  * out: `answer` gets the markdown, **one** evidence card (every citation grouped by supplier, the
  * reply's actions folded into that card's single action row -- `EvidenceCard.tsx`) and the
- * follow-ups; `redirect` and `refusal` share warm prose + one CTA; `abstain` is only ever the
- * accent-left block; `error` is the existing `.error-state`. This is the one place any of those
- * five layouts is chosen -- every other component in this folder only renders what it is told to.
+ * follow-ups; `redirect` and `refusal` share warm prose + one CTA; `abstain` is Raffa's own way
+ * forward when no grounded answer exists -- the same prose as any reply, never a "cannot determine"
+ * banner (the accent-left "I don't have data I trust enough to answer." block read as an error, and
+ * persona v2.4 retired it: Ask always proposes a solution); `error` is the existing `.error-state`.
+ * This is the one place any of those layouts is chosen -- every other component in this folder
+ * only renders what it is told to.
  *
  * Never renders an engineer route line or a guid (R-ASK-08): `Reply` (`replyTypes.ts`) has no
  * `route`/raw-id field for any variant to leak in the first place -- there is nothing here to
@@ -101,14 +101,15 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, onIntervi
     case "abstain":
       return (
         <div className="reply-body" data-reply-kind="abstain">
-          <div className="abstain-block">
-            <strong>{ABSTAIN_TITLE}</strong> {reply.reason}
-          </div>
+          {/* The server's proposal (a plan, a draft, the screen to open) as plain reply prose --
+              markdown, like an answer, with no citation to point at. Old conversations persisted
+              before persona v2.4 render their stored reason the same way: no banner. */}
+          <ReplyMarkdown text={reply.reason} citations={[]} onOpenCitation={onOpenCitation} />
           {/* ADR-024 "every abstain has a clickable next step" / parent story AC-1: the recovery
               action always renders secondary, never primary -- forced here regardless of the
               `kind` the mapper produced, the same defensive posture the redirect/refusal case
               above already takes with its own "only ever the first action" slice. AC-3: no
-              action is not an error -- the block above already renders on its own. */}
+              action is not an error -- the prose above already renders on its own. */}
           {reply.actions && reply.actions.length > 0 && (
             <ActionRow actions={reply.actions.map((action) => ({ ...action, kind: "secondary" }))} />
           )}

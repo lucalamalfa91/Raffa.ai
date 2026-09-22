@@ -14,9 +14,13 @@ namespace Raffa.Chat.Application.Reply;
 /// </summary>
 public static class CopilotReplyBuilder
 {
-    /// <summary>The abstain copy when there is no reason fit to show — the same sentence every
-    /// other "nothing supports an answer" path in Ask uses.</summary>
-    public const string DefaultAbstainReason = "Nothing in your validated contracts supports a reliable answer.";
+    /// <summary>The abstain copy when there is no reason fit to show. Persona v2.4: never a bare
+    /// "nothing supports an answer" — a way forward. (<c>Raffa.Api.AskCopilotService</c> answers
+    /// every decline with <c>Answering.HelpfulFallbackAnswer</c>'s proposal for the question before
+    /// it gets here; this is the last line for any other caller.)</summary>
+    public const string DefaultAbstainReason =
+        "Happy to help: name the supplier or the contract and tell me the goal (savings, a renewal, a " +
+        "market comparison or a clause), and I'll build the answer from your validated contracts.";
 
     // An abstain reason is shown to the user as is (the web prints it verbatim), so one that talks
     // about the machinery — the pack, its keys, the guards, a requirement id — is replaced by

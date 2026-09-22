@@ -14,8 +14,10 @@ namespace Raffa.Chat.Tests.Answering;
 /// model echoing a feature item's citation key as its action key (<c>raffa:renewals</c> — the live
 /// "Where can I save the most this quarter?" abstain) is answered on the first attempt; a model
 /// that tried to answer but failed the guards twice gets the pack's own facts as an answer, never
-/// the old "Showing the pack's own facts instead" abstain; a model that honestly cannot determine
-/// stays an abstain.
+/// the old "Showing the pack's own facts instead" abstain; a model that declines is regenerated
+/// once with persona v2.4's never-decline rule named (unless the caller keeps the decline for an
+/// interview); and a draft that relies on no pack item passes without a citation, still under the
+/// numeric guard.
 /// </summary>
 public sealed class AnswerComposerTests
 {
@@ -130,18 +132,99 @@ public sealed class AnswerComposerTests
         Assert.True(result.Value.Result.CanDetermine);
     }
 
+    // The live "mi aiuti a creare una mail che posso inviare per il rinnovo?" decline, answered on
+    // the retry with a ready-to-send draft that relies on no pack item: every contract detail is a
+    // bracketed placeholder, so there is nothing to cite.
+    private const string EmailQuestion = "mi aiuti a creare una mail che posso inviare per il rinnovo?";
+
+    private static AiAnswerResult UncitedDraft(string markdown) => Answer(markdown, []);
+
     [Fact]
-    public async Task A_model_that_honestly_cannot_determine_stays_an_abstain()
+    public async Task A_decline_is_regenerated_once_with_the_never_decline_rule_named()
+    {
+        var gateway = new ScriptedAnswerGateway(
+            Abstain("Nel pack attuale c'è solo il dato di criticità e non ci sono informazioni di rinnovo."),
+            UncitedDraft("**Oggetto:** Rinnovo del contratto [nome del contratto]\n\nGentile [nome del referente], ..."));
+
+        var result = await new AnswerComposer(gateway).AnswerAsync(EmailQuestion, ScreenshotSavingsPack.Build(), []);
+
+        Assert.Equal(2, gateway.Calls);
+        Assert.DoesNotContain("never declines", gateway.SystemPrompts[0], StringComparison.Ordinal);
+        Assert.Contains("Ask Raffa never declines", gateway.SystemPrompts[1], StringComparison.Ordinal);
+        Assert.False(result.Value.GuardIntervened);
+        Assert.False(result.Value.FallbackUsed);
+        Assert.True(result.Value.Result.CanDetermine);
+        Assert.StartsWith("**Oggetto:**", result.Value.Result.AnswerMarkdown!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_decline_the_caller_keeps_is_returned_without_a_retry()
+    {
+        var gateway = new ScriptedAnswerGateway(Abstain("The question is ambiguous: which contract do you mean?"));
+
+        var result = await new AnswerComposer(gateway).AnswerAsync(
+            Question, ScreenshotSavingsPack.Build(), [], keepDecline: reason => reason!.Contains("ambiguous", StringComparison.Ordinal));
+
+        Assert.Equal(1, gateway.Calls);
+        Assert.False(result.Value.Result.CanDetermine);
+        Assert.Equal("The question is ambiguous: which contract do you mean?", result.Value.Result.AbstainReason);
+    }
+
+    [Fact]
+    public async Task A_decline_that_survives_the_retry_goes_back_as_a_decline_for_the_caller_to_answer()
+    {
+        var gateway = new ScriptedAnswerGateway(
+            Abstain("No validated contract records legal fees."), Abstain("Still nothing on legal fees."));
+
+        var result = await new AnswerComposer(gateway).AnswerAsync("how much did we pay in legal fees last year?", ScreenshotSavingsPack.Build(), []);
+
+        Assert.Equal(2, gateway.Calls);
+        Assert.False(result.Value.GuardIntervened);
+        Assert.False(result.Value.FallbackUsed);
+        Assert.False(result.Value.Result.CanDetermine);
+    }
+
+    [Fact]
+    public async Task A_decline_whose_retry_call_fails_goes_back_as_the_first_decline()
     {
         var gateway = new ScriptedAnswerGateway(Abstain("No validated contract records legal fees."));
 
         var result = await new AnswerComposer(gateway).AnswerAsync("how much did we pay in legal fees last year?", ScreenshotSavingsPack.Build(), []);
 
-        Assert.Equal(1, gateway.Calls);
+        Assert.Equal(2, gateway.Calls);
         Assert.False(result.Value.GuardIntervened);
-        Assert.False(result.Value.FallbackUsed);
         Assert.False(result.Value.Result.CanDetermine);
         Assert.Equal("No validated contract records legal fees.", result.Value.Result.AbstainReason);
+    }
+
+    [Fact]
+    public async Task An_uncited_draft_passes_on_the_first_attempt()
+    {
+        var gateway = new ScriptedAnswerGateway(
+            UncitedDraft("Gentile [nome del referente],\n\nvi chiediamo una proposta di rinnovo entro il [data di risposta]."));
+
+        var result = await new AnswerComposer(gateway).AnswerAsync(EmailQuestion, ScreenshotSavingsPack.Build(), []);
+
+        Assert.Equal(1, gateway.Calls);
+        Assert.False(result.Value.GuardIntervened);
+        Assert.True(result.Value.Result.CanDetermine);
+        Assert.Empty(result.Value.Result.CitationKeys!);
+    }
+
+    [Fact]
+    public async Task An_uncited_draft_still_fails_on_an_invented_figure_or_a_dangling_marker()
+    {
+        var gateway = new ScriptedAnswerGateway(
+            UncitedDraft("Vi chiediamo uno sconto di EUR 99999 sul rinnovo."),
+            UncitedDraft("Vi chiediamo uno sconto sul rinnovo [1]."));
+        var pack = ScreenshotSavingsPack.Build();
+
+        var result = await new AnswerComposer(gateway).AnswerAsync(EmailQuestion, pack, []);
+
+        Assert.Equal(2, gateway.Calls);
+        Assert.True(result.Value.GuardIntervened);
+        Assert.NotNull(result.Value.GuardViolation);
+        Assert.DoesNotContain("99999", result.Value.Result.AnswerMarkdown ?? string.Empty, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -167,8 +250,12 @@ public sealed class AnswerComposerTests
     {
         public int Calls { get; private set; }
 
+        /// <summary>The system prompt of every call, in order — the retry's addendum included.</summary>
+        public List<string> SystemPrompts { get; } = [];
+
         public Task<Result<AiAnswerResult>> AnswerAsync(AiAnswerRequest request, CancellationToken cancellationToken = default)
         {
+            SystemPrompts.Add(request.SystemPrompt ?? string.Empty);
             var index = Calls++;
             return Task.FromResult(index < results.Length
                 ? Result<AiAnswerResult>.Success(results[index])

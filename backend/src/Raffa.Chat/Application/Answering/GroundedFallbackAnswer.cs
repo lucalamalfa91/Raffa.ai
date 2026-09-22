@@ -99,7 +99,13 @@ public static class GroundedFallbackAnswer
         ArgumentNullException.ThrowIfNull(metadata);
 
         var italian = IsItalian(question);
-        var candidates = pack.Where(item => item.Corpus != PackCorpus.Raffa && Clean(item.Snippet, italian).Length > 0).ToList();
+
+        // The calendar item only anchors a period question's dates for the model; quoted on its own
+        // it would read as a finding ("From your validated contracts: today is …").
+        var candidates = pack
+            .Where(item => item.Corpus != PackCorpus.Raffa && item.CitationKey != CalendarPackItem.CitationKey &&
+                Clean(item.Snippet, italian).Length > 0)
+            .ToList();
 
         var headline = BuildHeadline(candidates, pack, italian);
         var act = BuildActItems(candidates, headline, pack, italian);

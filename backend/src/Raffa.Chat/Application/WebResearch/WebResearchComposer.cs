@@ -156,13 +156,18 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(5)
             .ToList();
-        var named = hosts.Count == 0 ? (italian ? "nessuna" : "none") : string.Join(", ", hosts);
+        // Never a bare "not showing it": the sources found, then the two ways to a usable answer.
+        var lead = hosts.Count == 0
+            ? (italian ? "Il web pubblico non offre ancora fonti chiare su questo tema." : "The public web has no clear sources on this topic yet.")
+            : (italian
+                ? $"Ho trovato queste fonti pubbliche sul tema: {string.Join(", ", hosts)}."
+                : $"I found these public sources on the topic: {string.Join(", ", hosts)}.");
 
         return new WebResearchOutcome(
             WebResearchOutcomeKind.Abstained,
-            italian
-                ? $"Ho cercato sul web pubblico, ma la sintesi non ha superato i controlli di Raffa e non la mostro. Fonti trovate: {named}."
-                : $"I searched the public web, but the summary did not pass Raffa's grounding checks, so I am not showing it. Sources found: {named}.",
+            lead + (italian
+                ? " Per un confronto su cui puoi contare partiamo dai tuoi contratti: dimmi il fornitore, oppure restringi la ricerca a un prodotto, un servizio o un Paese e la rilancio."
+                : " For a comparison you can rely on, let's start from your contracts: name the supplier, or narrow the search to a product, a service or a country and I'll run it again."),
             [],
             provenance with { Sources = [] },
             SourceCount: sources.Count,

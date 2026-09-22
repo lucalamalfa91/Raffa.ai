@@ -29,8 +29,17 @@ namespace Raffa.Chat.Application.Answering;
 /// A model's action keys are repaired (<see cref="ActionKeyNormalizer"/>) before any guard runs —
 /// an optional button never sinks a grounded answer. When both attempts still fail and the model
 /// had tried to answer, the reply is <see cref="GroundedFallbackAnswer"/>'s answer composed from
-/// the pack's own facts, not an abstain; only a pack with nothing answer-bearing, or a model that
-/// honestly said it cannot determine, ends in an abstain.
+/// the pack's own facts, not an abstain.
+/// </para>
+///
+/// <para>
+/// Persona v2.4 (never decline): a first attempt that declines (<c>canDetermine</c> false) is
+/// regenerated once with <see cref="RegenerateOnce.BuildDeclineRetryInstruction"/>, exactly like a
+/// guard violation — unless the caller's <c>keepDecline</c> asks to keep it (an ambiguous question
+/// the caller turns into an interpretation menu instead). An answer that relies on no pack item (a
+/// draft, a plan) passes without a citation, still under <see cref="NumericGuard"/>. A result
+/// that still declines after all that is returned as such; the composition root turns it into a
+/// proposal the user can act on, never a bare "cannot determine".
 /// </para>
 /// </summary>
 public sealed class AnswerComposer(IAiGateway aiGateway)
@@ -54,6 +63,9 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
     /// <param name="pack">The already-assembled, already-budgeted context pack (R-ASK-04).</param>
     /// <param name="recentTurns">The conversation's last N turns (role, rendered markdown), oldest
     /// first — an empty list for a brand-new conversation.</param>
+    /// <param name="keepDecline">Given the first attempt's decline reason, whether to keep that
+    /// decline as is instead of regenerating it (the caller has a better reply for it, such as an
+    /// interpretation menu). <see langword="null"/> regenerates every decline.</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="pack"/> or
     /// <paramref name="recentTurns"/> is <see langword="null"/>.</exception>
@@ -61,6 +73,7 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
         string question,
         IReadOnlyList<PackItem> pack,
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
+        Func<string?, bool>? keepDecline = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
@@ -79,33 +92,48 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
 
         var firstResult = NormalizeActionKeys(first.Value);
         var firstVerdict = Validate(firstResult, pack);
-        if (firstVerdict.Passed)
+        var firstDeclined = firstVerdict.Passed && !firstResult.CanDetermine;
+        if (firstVerdict.Passed && (firstResult.CanDetermine || keepDecline?.Invoke(firstResult.AbstainReason) == true))
         {
             return Result<AnswerComposerResult>.Success(
                 new AnswerComposerResult(firstResult, GuardIntervened: false, GuardViolation: null));
         }
 
-        // R-ASK-06: "regenerated once with the violation named".
+        // R-ASK-06: "regenerated once with the violation named" — and persona v2.4: a decline is
+        // regenerated once too, with the never-decline rule named.
         var retrySystemPrompt = AnswerPromptV2.SystemPrompt + Environment.NewLine + Environment.NewLine +
-            RegenerateOnce.BuildRetryInstruction(firstVerdict.Violation!);
+            (firstDeclined
+                ? RegenerateOnce.BuildDeclineRetryInstruction()
+                : RegenerateOnce.BuildRetryInstruction(firstVerdict.Violation!));
 
         var retry = await CallGatewayAsync(promptedQuestion, packJson, retrySystemPrompt, cancellationToken)
             .ConfigureAwait(false);
 
         if (retry.IsFailure)
         {
-            return Result<AnswerComposerResult>.Success(
-                Downgrade(question, pack, first.Value.Metadata, firstVerdict.Violation!, modelTriedToAnswer: firstResult.CanDetermine));
+            // A decline has no violation to downgrade over: it goes back as it is, and the
+            // composition root answers it with a proposal.
+            return Result<AnswerComposerResult>.Success(firstDeclined
+                ? new AnswerComposerResult(firstResult, GuardIntervened: false, GuardViolation: null)
+                : Downgrade(question, pack, first.Value.Metadata, firstVerdict.Violation!, modelTriedToAnswer: firstResult.CanDetermine));
         }
 
         var retryResult = NormalizeActionKeys(retry.Value);
         var retryVerdict = Validate(retryResult, pack);
+        if (firstDeclined)
+        {
+            return Result<AnswerComposerResult>.Success(retryVerdict.Passed
+                ? new AnswerComposerResult(retryResult, GuardIntervened: false, GuardViolation: null)
+                : Downgrade(question, pack, retryResult.Metadata, retryVerdict.Violation!, modelTriedToAnswer: retryResult.CanDetermine));
+        }
+
         if (retryVerdict.Passed)
         {
             // The first attempt judged a savings pack sufficient; a retry that now retreats to
             // "cannot determine" is answering the retry instruction, not the pack — the calculators'
             // and the council's own facts still make a better reply than an abstain. On a clause or
-            // fact pack the retreat is believed: "that figure is not there" is a real answer.
+            // fact pack the retreat goes back as a decline, which the composition root answers
+            // with a proposal rather than pack facts that may not be about the question.
             if (firstResult.CanDetermine && !retryResult.CanDetermine && GroundedFallbackAnswer.IsSavingsShaped(pack) &&
                 ComposeGrounded(question, pack, retryResult.Metadata) is { } grounded)
             {
@@ -158,9 +186,11 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
         string question, string packJson, string systemPrompt, CancellationToken cancellationToken) =>
         aiGateway.AnswerAsync(new AiAnswerRequest(question, Evidence: [], systemPrompt, packJson), cancellationToken);
 
+    // allowUncitedGuidance: persona v2.4 lets a draft or a plan that relies on no pack item carry no
+    // citation; NumericGuard below still rejects any figure the pack does not hold.
     private static GuardVerdict Validate(AiAnswerResult result, IReadOnlyList<PackItem> pack)
     {
-        var grounding = GroundingGuard.Validate(result, pack);
+        var grounding = GroundingGuard.Validate(result, pack, allowUncitedGuidance: true);
         return grounding.Passed ? NumericGuard.Validate(result.AnswerMarkdown, pack) : grounding;
     }
 

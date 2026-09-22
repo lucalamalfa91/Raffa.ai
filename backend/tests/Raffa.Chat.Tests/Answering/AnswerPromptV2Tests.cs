@@ -42,7 +42,18 @@ public sealed class AnswerPromptV2Tests
         Assert.Contains("Never invent a number", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Cosa chiedere al fornitore", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("Never tables", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
-        Assert.Equal("answer-v2.3", AnswerPromptV2.Version);
+        Assert.Equal("answer-v2.4", AnswerPromptV2.Version);
         Assert.Contains("Name the supplier every time", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Prompt_never_lets_the_model_decline_and_asks_for_placeholders_instead_of_invented_figures()
+    {
+        Assert.Contains("Never refuse, never answer that you lack the data", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("always true and abstainReason always null", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("bracketed placeholder", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("ready to send", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("calendar item", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("set canDetermine to false", AnswerPromptV2.SystemPrompt, StringComparison.Ordinal);
     }
 }

@@ -467,10 +467,10 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       expect(document.querySelector(".abstain-block")).toBeNull();
     });
 
-    it("a genuine abstain reply renders the accent-left block with the reply's own reason", async () => {
+    it("an abstain reply renders the server's proposal as plain prose -- never the 'I don't have data I trust' banner", async () => {
       const abstainReply = answerReply({
         kind: "abstain",
-        answerMarkdown: "Nothing in the validated contracts supports a reliable answer.",
+        answerMarkdown: "Here's how to prepare the renewal: name the supplier and I'll draft a ready-to-send email.",
         citations: [],
         actions: [],
         followUps: [],
@@ -481,9 +481,9 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
 
-      expect(await screen.findByText(/I don't have data I trust enough to answer\./)).toBeInTheDocument();
-      expect(screen.getByText(/nothing in the validated contracts supports a reliable answer/i)).toBeInTheDocument();
-      expect(document.querySelector(".abstain-block")).not.toBeNull();
+      expect(await screen.findByText(/here's how to prepare the renewal/i)).toBeInTheDocument();
+      expect(screen.queryByText(/I don't have data I trust enough to answer/)).toBeNull();
+      expect(document.querySelector(".abstain-block")).toBeNull();
     });
 
     it("clicking a follow-up posts it as a new message in the same conversation", async () => {

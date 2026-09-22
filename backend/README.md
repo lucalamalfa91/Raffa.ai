@@ -1179,7 +1179,7 @@ itself (querying `PortfolioQueryService`/`Contract360QueryService`,
    notes, calculator output — every item citable, tagged `tenant`/
    `market`/`raffa`/`calc`).
 3. **Answer** (`Application.Answering.AnswerComposer`, persona prompt
-   `Prompts/answer/v2.3.md`) calls `IAiGateway.AnswerAsync` with the pack +
+   `Prompts/answer/v2.4.md`) calls `IAiGateway.AnswerAsync` with the pack +
    last N turns; `Fixtures.FixtureAiGateway.AnswerAsync` gives a
    deterministic v2 behaviour when a pack is supplied (cites the first N
    pack keys, copies their values verbatim — no chunk concatenation), so
@@ -1296,7 +1296,7 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    the council, never the turn. `Chat:Council` (`Enabled`, `MinPackItems`,
    `MaxItemsPerAgent`, `MaxPlays`) is the kill switch; the `analyst` role runs
    on `AiGateway:Models:Analyst` when set, else on the `answer` deployment.
-4. **Persona `answer-v2.3`** (`Prompts/answer/v2.3.md`, drift-tested against
+4. **Persona `answer-v2.4`** (`Prompts/answer/v2.4.md`, drift-tested against
    `AnswerPromptV2.SystemPrompt`): a senior negotiation consultant; a savings
    question is answered with the verdict on the goal first, then Diagnosi →
    Leve in ordine di valore → Piano e timing → Cosa chiedere al fornitore →
@@ -1310,6 +1310,23 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    v2.3 also adds two formatting rules: name the supplier on every contract
    reference ("Salesforce · MSA", never "the MSA" or "contract [2]") and
    write amounts with their currency code.
+   **v2.4 (never decline)** — Ask never answers "I don't have data I trust
+   enough to answer." Rule 6 keeps `canDetermine` true: a question the pack
+   covers only in part still gets a concrete way forward (a ready-to-send
+   email, a plan, a checklist) with every missing figure as a bracketed
+   placeholder (`[data di disdetta]`), never invented; a draft that relies on
+   no pack item carries no citation (`GroundingGuard`'s
+   `allowUncitedGuidance`, still under `NumericGuard`). A decline is
+   regenerated once with the rule named
+   (`RegenerateOnce.BuildDeclineRetryInstruction`) unless the caller keeps
+   it for an interpretation menu. A period question ("this quarter", "fine
+   trimestre") gets `Pack.CalendarPackItem` (today, the calendar quarter,
+   the next one, the year end) as pack values. Whatever still cannot be
+   answered — an empty pack, a second decline, a failed call — ends in
+   `Answering.HelpfulFallbackAnswer`'s proposal for that kind of question
+   (savings, renewals, market, clause, documents, an email draft, the
+   empty workspace), in the question's language; the web renders an
+   `abstain` as plain reply prose, never the old accent-left banner.
 
 Golden cases `seeded-savings-leve-20k-salesforce-it`,
 `seeded-savings-levers-20k-salesforce-en`,
