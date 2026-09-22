@@ -891,8 +891,8 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(within(raise).getByText("Worth raising")).toHaveClass("tag-neutral");
       const row = within(raise).getByRole("listitem");
       expect(row).toHaveTextContent("Liability cap");
-      expect(row).toHaveTextContent("—");
-      expect(row).not.toHaveTextContent("12 months fees");
+      // Below the auto-accept bar but sourced (p.27): the value reads, as a product row's does.
+      expect(within(row).getByText("12 months fees")).toHaveClass("contract360-clause-normalized");
       expect(within(row).getByText("Worth raising in negotiation.")).toBeInTheDocument();
       expect(within(row).getByRole("link", { name: "p.27 · §17.2" })).toHaveAttribute("href", "/documents/doc-1/viewer?page=27&clause=cl-1");
       expect(screen.queryByRole("button", { name: /standard clause/ })).toBeNull();

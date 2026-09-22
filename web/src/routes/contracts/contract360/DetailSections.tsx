@@ -155,7 +155,7 @@ function ClauseRow({
         <span className="contract360-clause-normalized">{item.normalized}</span>
       </button>
       <span className={`contract360-clause-ask${item.ask === null ? " is-standard" : ""}`}>{item.ask ?? "—"}</span>
-      <span className="contract360-clause-src">
+      <span className="contract360-clause-src" title={item.source ?? undefined}>
         {item.viewerHref !== null && item.source !== null ? (
           <DocumentViewerLink to={item.viewerHref} className="contract360-clause-viewer">
             {item.source}

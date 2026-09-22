@@ -47,6 +47,7 @@ import {
   formatPriorityFact,
   formatReviewCountLine,
   formatShortReference,
+  isExtractedRowShown,
   formatTrackerMeta,
   getClauseRiskTag,
   leverageWhy,
@@ -541,19 +542,22 @@ describe("why — the clauses behind it", () => {
     expect(LEVERAGE_LEGEND).toBe("Push to change · Worth raising · Standard terms");
   });
 
-  it("buildClauseRows carries type · accepted value · leverage · why · viewer href; unofficialized values stay as a dashed row", () => {
+  it("buildClauseRows carries type · value · leverage · why · viewer href; a sourced value shows, an unsourced unofficialized one stays a dashed row", () => {
     const documents: Contract360DocumentBody[] = [
       { documentId: "doc-1", fileName: "MSA.pdf", mimeType: "application/pdf", documentType: "Msa", processingStatus: "Completed", createdAt: "x" },
     ];
+    // Below the auto-accept bar but pointing at p.27: sourced, so the value reads (same rule as products).
     const [row] = buildClauseRows([clause()], documents, AUTO_ACCEPT_THRESHOLD);
     expect(row).toEqual({
       clauseId: "cl-1",
       type: "Liability cap",
-      normalized: UNOFFICIALIZED_PLACEHOLDER,
+      normalized: "12 months fees",
       risk: { variant: "neutral", label: LEVERAGE_WORTH_RAISING },
       why: "Worth raising in negotiation.",
       viewerHref: "/documents/doc-1/viewer?page=27&clause=cl-1",
     });
+
+    expect(buildClauseRows([clause({ sourcePage: null, sourceSpan: null })], documents)[0].normalized).toBe(UNOFFICIALIZED_PLACEHOLDER);
 
     const accepted = buildClauseRows([clause({ confidence: 0.97 })], documents)[0];
     expect(accepted.normalized).toBe("12 months fees");
@@ -591,6 +595,19 @@ describe("why — the clauses behind it", () => {
     expect(evidence.citation).toContain("…");
     expect(evidence.citation).not.toContain("A".repeat(80));
     expect(evidence.quote).toBe("12 months fees");
+  });
+
+  it("a quoted span is never printed as a section: only a section label earns the §", () => {
+    const quote = "Aggregate liability is capped at 2x fees paid in the preceding 12 months.";
+    expect(formatShortReference({ sourcePage: 2, sourceSpan: quote })).toBe("p.2");
+    expect(formatShortReference({ sourcePage: null, sourceSpan: quote })).toBeNull();
+    expect(formatShortReference({ sourcePage: 12, sourceSpan: "8.4" })).toBe("p.12 · §8.4");
+    expect(formatShortReference({ sourcePage: 12, sourceSpan: "Section 8.4" })).toBe("p.12 · §8.4");
+    expect(formatShortReference({ sourcePage: 12, sourceSpan: "Art. 5" })).toBe("p.12 · §5");
+    expect(formatShortReference({ sourcePage: 12, sourceSpan: "§ 17.2" })).toBe("p.12 · § 17.2");
+    // A quote-only row is still sourced, so its value is shown rather than dashed.
+    expect(isExtractedRowShown({ confidence: 0.5, sourcePage: null, sourceSpan: quote }, AUTO_ACCEPT_THRESHOLD)).toBe(true);
+    expect(isExtractedRowShown({ confidence: 0.5, sourcePage: null, sourceSpan: "  " }, AUTO_ACCEPT_THRESHOLD)).toBe(false);
   });
 
   it("buildClauseEvidence marks the normalised value inside the raw text, else the whole wording, and cites file · p.N · §", () => {
@@ -743,7 +760,8 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
         clause({ clauseId: "cl-high", clauseType: "Price increase", riskLevel: "High", confidence: 0.97 }),
         clause({ clauseId: "cl-med", clauseType: "Liability cap", riskLevel: "Medium", confidence: 0.97 }),
         clause({ clauseId: "cl-low", clauseType: "Confidentiality", riskLevel: "Low", confidence: 0.97 }),
-        clause({ clauseId: "cl-none", clauseType: "Notices", riskLevel: null, confidence: 0.6 }),
+        clause({ clauseId: "cl-weak", clauseType: "Audit", riskLevel: "Low", confidence: 0.6 }),
+        clause({ clauseId: "cl-none", clauseType: "Notices", riskLevel: null, confidence: 0.6, sourcePage: null, sourceSpan: null }),
       ],
       contractBody().tabs.documents,
     );
@@ -756,6 +774,9 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(groups.groups[0].items[0].viewerHref).toBe("/documents/doc-1/viewer?page=27&clause=cl-high");
     expect(groups.standard.map((item) => [item.clauseId, item.ask, item.normalized])).toEqual([
       ["cl-low", null, "12 months fees"],
+      // Below the auto-accept bar but sourced: the value reads, as it does for products.
+      ["cl-weak", null, "12 months fees"],
+      // Neither officialized nor sourced: the em dash, the row stays.
       ["cl-none", null, UNOFFICIALIZED_PLACEHOLDER],
     ]);
     expect(buildClauseGroups([clause({ riskLevel: "Low" })]).groups).toEqual([]);

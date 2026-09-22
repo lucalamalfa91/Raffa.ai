@@ -439,7 +439,7 @@ export function buildClauseRows(
   return clauses.map((c) => ({
     clauseId: c.clauseId,
     type: c.clauseType,
-    normalized: officializedOrDash(c.normalizedValue ?? c.rawText, isScoredFactOfficialized(c.confidence, autoAcceptThreshold)),
+    normalized: officializedOrDash(c.normalizedValue ?? c.rawText, isExtractedRowShown(c, autoAcceptThreshold)),
     risk: getClauseRiskTag(c.riskLevel),
     why: leverageWhy(c.riskLevel),
     viewerHref: clauseViewerHref(c, documents),
@@ -475,12 +475,26 @@ function truncateSpan(text: string): string {
   return text.length <= MAX_SPAN_PREVIEW ? text : `${text.slice(0, MAX_SPAN_PREVIEW - 1)}…`;
 }
 
-/** Short `p.N · §` reference for the highlight header. `null` when there is no page and no span. */
+/** "§17.2", "17.2", "Section 8.4", "Art. 5" -- a span that names a section rather than quoting one. */
+const SECTION_LABEL = /^(?:(?:section|clause|art(?:icle)?)\.?\s*)?(\d+(?:\.\d+)*[a-z]?)\.?$/i;
+
+/**
+ * The `§` half of a reference. Extraction fills `sourceSpan` with a verbatim quote
+ * (`StagedExtractionJsonSchemas`' "a verbatim quote of at most 300 characters"), so only a span that
+ * is itself a section label reads as one; a quoted sentence is never printed as "§aggregate
+ * liability is…" -- the quote lives in the evidence card.
+ */
+function sectionLabel(span: string): string | null {
+  if (span.startsWith("§")) return truncateSpan(span);
+  const match = SECTION_LABEL.exec(span);
+  return match === null ? null : `§${match[1]}`;
+}
+
+/** Short `p.N · §` reference for the highlight header. `null` when there is neither a page nor a section label. */
 export function formatShortReference(row: { sourcePage: number | null; sourceSpan: string | null }): string | null {
-  const spanRaw = row.sourceSpan === null ? null : row.sourceSpan.replace(/\s+/g, " ").trim();
-  const span = spanRaw === null || spanRaw === "" ? null : truncateSpan(spanRaw);
+  const span = row.sourceSpan === null ? "" : row.sourceSpan.replace(/\s+/g, " ").trim();
+  const section = span === "" ? null : sectionLabel(span);
   const page = row.sourcePage !== null ? `p.${row.sourcePage}` : null;
-  const section = span === null ? null : span.startsWith("§") ? span : `§${span}`;
   if (page !== null && section !== null) return `${page} · ${section}`;
   if (page !== null) return page;
   if (section !== null) return section;
@@ -488,8 +502,8 @@ export function formatShortReference(row: { sourcePage: number | null; sourceSpa
 }
 
 /**
- * An extracted list row (product · obligation · risk) is shown when its confidence clears the
- * auto-accept threshold *or* it points at a real page/span in a linked document -- the same
+ * An extracted list row (product · obligation · risk · clause) is shown when its confidence clears
+ * the auto-accept threshold *or* it points at a real page/span in a linked document -- the same
  * "sourced or officialized" rule the V2 drawer applied; otherwise its figures read as an em dash
  * and the row stays.
  */
@@ -497,7 +511,8 @@ export function isExtractedRowShown(
   row: { confidence: number | null; sourcePage: number | null; sourceSpan: string | null },
   autoAcceptThreshold: number,
 ): boolean {
-  return isScoredFactOfficialized(row.confidence, autoAcceptThreshold) || formatShortReference(row) !== null;
+  const sourced = row.sourcePage !== null || (row.sourceSpan !== null && row.sourceSpan.trim() !== "");
+  return isScoredFactOfficialized(row.confidence, autoAcceptThreshold) || sourced;
 }
 
 /**
@@ -906,7 +921,7 @@ function toClauseItem(
   return {
     clauseId: clause.clauseId,
     type: clause.clauseType,
-    normalized: officializedOrDash(clause.normalizedValue ?? clause.rawText, isScoredFactOfficialized(clause.confidence, autoAcceptThreshold)),
+    normalized: officializedOrDash(clause.normalizedValue ?? clause.rawText, isExtractedRowShown(clause, autoAcceptThreshold)),
     ask,
     source: formatShortReference(clause),
     viewerHref: clauseViewerHref(clause, documents),

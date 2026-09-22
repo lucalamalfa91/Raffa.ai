@@ -633,8 +633,10 @@
 
 /* ---- 04 Clauses that matter -----------------------------------------------------------------
    groups gap:26px · group head: 10px tag + 12px hint over a 2px text rule, padding-bottom:8px ·
-   rows flex wrap gap:6px 20px padding:13px 0 1px divider 13px: type 600 flex:0 1 150px · value
-   flex:1 1 260px · ask 12px accent-700 flex:1 1 220px · src 11px neutral-600 margin-left:auto ·
+   rows padding:13px 0 1px divider 13px: type 600 · value · ask 12px accent-700 · src 11px
+   neutral-600. The mock's flex-wrapped row let every cell float with its neighbours' widths, so
+   the columns zig-zagged row to row; one fixed track template per row keeps type, value, ask and
+   source on the same verticals in every group (a single stacked column under 720px) ·
    selected row (`c.bg`, citation landing) accent-100 · toggle btn-ghost padding:0 12px. */
 
 .contract360-clause-groups {
@@ -667,8 +669,8 @@
 }
 
 .contract360-clause {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr) minmax(0, 1.3fr) minmax(72px, 0.6fr);
   gap: 6px 20px;
   align-items: baseline;
   padding: 13px 0;
@@ -693,22 +695,24 @@
 }
 
 .contract360-clause-type {
-  flex: 0 1 150px;
-  min-width: 120px;
   font-weight: var(--weight-body-strong);
+  text-wrap: pretty;
   cursor: pointer;
 }
 
+/* The value falls back to the clause's whole wording when there is no normalised phrase; three
+   lines keep the row scannable, the full text is one click away in the evidence card. */
 .contract360-clause-normalized {
-  flex: 1 1 260px;
-  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   text-wrap: pretty;
   cursor: pointer;
 }
 
 .contract360-clause-ask {
-  flex: 1 1 220px;
-  min-width: 0;
   font-size: 12px;
   color: var(--color-accent-700);
   text-wrap: pretty;
@@ -719,10 +723,11 @@
 }
 
 .contract360-clause-src {
-  flex: 0 0 auto;
-  margin-left: auto;
+  overflow: hidden;
   font-size: 11px;
   color: var(--color-neutral-600);
+  text-align: right;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1059,15 +1064,20 @@
   .contract360-header-side {
     align-items: flex-start;
   }
-
-  .contract360-clause-src {
-    margin-left: 0;
-  }
 }
 
 @media (max-width: 720px) {
   .contract360-terms {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .contract360-clause {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .contract360-clause-src {
+    text-align: left;
   }
 
   .contract360-section {
