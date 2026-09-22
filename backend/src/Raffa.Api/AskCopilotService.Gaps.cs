@@ -28,7 +28,7 @@ internal sealed partial class AskCopilotService
     /// <summary>How many validated suppliers the "which contract?" reply offers as follow-ups.</summary>
     private const int MaxDraftSupplierFollowUps = 5;
 
-    private async Task<(CopilotReply Reply, bool GuardIntervened)> BuildCapabilityGapReplyAsync(
+    private async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildCapabilityGapReplyAsync(
         TenantId tenantId,
         string question,
         DomainGateResult gate,
@@ -46,7 +46,7 @@ internal sealed partial class AskCopilotService
         // no longer see refuses outright, never a silent fall-through to another contract.
         if (scopeContractId is not null && scopedContractItem is null)
         {
-            return (BuildUnseenScopeRefusal(portfolio), false);
+            return (BuildUnseenScopeRefusal(portfolio), false, false);
         }
 
         var (namedContractItem, disambiguationItem) = ResolveNamedContractItem(
@@ -57,12 +57,12 @@ internal sealed partial class AskCopilotService
 
         if (gap.Alternative != GapAlternative.DraftEmail)
         {
-            return (BuildAlternativeRedirect(gap, language, namedContractItem, routingContext), false);
+            return (BuildAlternativeRedirect(gap, language, namedContractItem, routingContext), false, false);
         }
 
         if (namedContractItem is null)
         {
-            return (BuildWhichContractRedirect(gap, language, gate.NamedSupplier, portfolio, supplierNames, routingContext), false);
+            return (BuildWhichContractRedirect(gap, language, gate.NamedSupplier, portfolio, supplierNames, routingContext), false, false);
         }
 
         return await BuildDraftReplyAsync(
@@ -136,9 +136,11 @@ internal sealed partial class AskCopilotService
     /// does, the pack budget, then <see cref="NegotiationDraftingWorkflow.DraftAsync"/>. A
     /// template fallback or a retried writer is audited as a guard intervention
     /// (<c>abstainGuardIntervened=True</c>), the same channel the answer role's regenerate-once
-    /// policy uses — which is what lets the golden set catch a fixture or prompt regression.
+    /// policy uses — which is what lets the golden set catch a fixture or prompt regression. The
+    /// template alone also sets <c>fallbackUsed=True</c>, the same audit key the answer role's
+    /// grounded fallback writes, so one filter finds every turn Raffa answered without the model.
     /// </summary>
-    private async Task<(CopilotReply Reply, bool GuardIntervened)> BuildDraftReplyAsync(
+    private async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildDraftReplyAsync(
         TenantId tenantId,
         string question,
         CapabilityGap gap,
@@ -182,7 +184,8 @@ internal sealed partial class AskCopilotService
         var reply = CapabilityGapReplyBuilder.Draft(
             gap, language, markdown, draft, boundedPack, actions, CapabilityGapCopy.AfterDraftFollowUps(language, supplierName));
 
-        var intervened = draft.Attempts > 1 || draft.Source == DraftSource.Template;
-        return (reply, intervened);
+        var fallbackUsed = draft.Source == DraftSource.Template;
+        var intervened = draft.Attempts > 1 || fallbackUsed;
+        return (reply, intervened, fallbackUsed);
     }
 }

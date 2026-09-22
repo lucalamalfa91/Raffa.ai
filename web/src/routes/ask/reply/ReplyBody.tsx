@@ -17,8 +17,9 @@ export interface ReplyBodyProps {
    * header comment for why: an `href="#id"` anchor cannot stay unique once more than one reply is
    * on screen at once, which every real conversation is. */
   onOpenCitation: (citation: ReplyCitation) => void;
-  /** `answer`/`draft`, and a capability-gap `redirect` (ADR-030) -- the kinds that carry
-   * `followUps`. */
+  /** A follow-up chip was clicked -- on an `answer`, on an `abstain` that carries next-step
+   * questions (`AbstainReply.followUps`), on a `draft`, or on a capability-gap `redirect`
+   * (ADR-030); never called for any other kind. */
   onFollowUp: (question: string) => void;
   /** ADR-030 D5: this turn's server message id -- what the feedback card submits against; `null`
    * for a client-built turn, which then never shows the card. */
@@ -27,6 +28,25 @@ export interface ReplyBodyProps {
   onSubmitFeedback?: (messageId: string, answers: FeedbackAnswers) => Promise<{ ok: boolean }>;
   /** ADR-030 D5: true once this turn's offer was answered (live or on resume) -- hides the card. */
   feedbackDone?: boolean;
+}
+
+/** The "Next" row of follow-up question chips, shared by `answer`, `abstain`, `draft` and a
+ * capability-gap `redirect` (ADR-030). */
+function FollowUps({ questions, onFollowUp }: { questions: readonly string[]; onFollowUp: (question: string) => void }) {
+  if (questions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="reply-followups">
+      <span className="reply-followups-label">Next</span>
+      {questions.map((question) => (
+        <button key={question} type="button" className="reply-followup" onClick={() => onFollowUp(question)}>
+          {question} →
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /**
@@ -50,18 +70,6 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, messageId
       <FeedbackCard offer={offer} onSubmit={(answers) => onSubmitFeedback(messageId, answers)} />
     ) : null;
 
-  const followUps = (questions: readonly string[]) =>
-    questions.length > 0 ? (
-      <div className="reply-followups">
-        <span className="reply-followups-label">Next</span>
-        {questions.map((question) => (
-          <button key={question} type="button" className="reply-followup" onClick={() => onFollowUp(question)}>
-            {question} →
-          </button>
-        ))}
-      </div>
-    ) : null;
-
   switch (reply.kind) {
     case "answer":
       return (
@@ -78,7 +86,7 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, messageId
 
           {reply.actions.length > 0 && <ActionRow actions={reply.actions} />}
 
-          {followUps(reply.followUps)}
+          <FollowUps questions={reply.followUps} onFollowUp={onFollowUp} />
         </div>
       );
 
@@ -102,7 +110,7 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, messageId
 
           {reply.actions.length > 0 && <ActionRow actions={reply.actions} />}
 
-          {followUps(reply.followUps)}
+          <FollowUps questions={reply.followUps} onFollowUp={onFollowUp} />
 
           {feedbackCard(reply.feedbackOffer)}
         </div>
@@ -118,7 +126,7 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, messageId
           {reply.actions.length > 0 && <ActionRow actions={reply.actions.slice(0, 1)} />}
           {/* ADR-030: a capability-gap redirect ("which contract?") offers one supplier per chip
               and the feedback card; every other redirect/refusal carries neither. */}
-          {followUps(reply.followUps ?? [])}
+          <FollowUps questions={reply.followUps ?? []} onFollowUp={onFollowUp} />
           {feedbackCard(reply.feedbackOffer)}
         </div>
       );
@@ -137,6 +145,8 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, messageId
           {reply.actions && reply.actions.length > 0 && (
             <ActionRow actions={reply.actions.map((action) => ({ ...action, kind: "secondary" }))} />
           )}
+          {/* A gap is never a dead end: the server's next-step questions, when it sent any. */}
+          <FollowUps questions={reply.followUps ?? []} onFollowUp={onFollowUp} />
         </div>
       );
 

@@ -219,7 +219,7 @@ ask-raffa-v2-data-flow.md` (§4 sequence, §5 five kinds, §8 provenance rows),
 
 | # | Gap | Effect on acceptance |
 |---|---|---|
-| 1 | The `answer` role's zero-based `[0]` marker (the screenshot's root cause on the fact path) is not fixed; the draft path is immune by design | A fact question whose live answer carries `[0]` still ends as before (retry, then abstain with recovery action). Follow-up: accept `[0]` as `[1]` or instruct the persona harder. |
+| 1 | The `answer` role's zero-based `[0]` marker (the screenshot's root cause on the fact path) is still rejected by `GroundingGuard`; the draft path is immune by design | Since `main`'s "never answer 'I don't have data I trust' when the pack holds the answer" change (merged into this branch), a fact question whose live answer carries `[0]` twice no longer ends in the pink block: `GroundedFallbackAnswer` answers from the pack's own facts, cited `[n]`, with `fallbackUsed=True` in the audit row. Follow-up still open: accept `[0]` as `[1]` or instruct the persona harder, so the model's own sentence survives. |
 | 2 | Greeting/off-domain lexicons still win first | *"Ciao, scrivimi una mail…"* is a greeting redirect, not a gap. |
 | 3 | The gap lexicon is conservative; the language heuristic is a word-count | A phrasing outside the lexicon gets the old honest abstain; a tie in the heuristic answers in English. |
 | 4 | `terraform validate` could not run in this harness (provider registry blocked) | `infra.yml` on the PR is the validate/plan gate. |

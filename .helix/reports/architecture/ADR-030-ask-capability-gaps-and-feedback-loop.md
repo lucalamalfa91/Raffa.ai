@@ -171,6 +171,10 @@ model, never from the catalog.
   design.
 - **Neutral**: the `answer` role's `[0]` mistake is not fixed here — the
   draft path is immune to it and the fact path keeps the gate (known gap).
+  The fact path's *outcome* did change on `main` while this ADR was open:
+  `GroundedFallbackAnswer` now answers from the pack's own facts when both
+  guarded attempts fail, so the pink block of the screenshot is gone there
+  too; the draft template sets the same `fallbackUsed=True` audit key.
 
 ## Pros and cons of the options
 

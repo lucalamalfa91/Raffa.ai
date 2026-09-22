@@ -101,7 +101,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 | `/contracts` | Portfolio, V2: header ("Portfolio" + "N validated contracts · CHF 4.2M annual · K notice deadlines within 45 days", or "Lights up from validated contracts"), one table sorted by notice deadline (Supplier · Contract · Annual spend · Ends · Give notice by · Status; **More columns** adds Start · Auto · Risk; rows inside the 45-day window tinted + accent bar; rows open Contract 360), and the reroute state ("Nothing to triage yet" → Upload a contract) while nothing is validated. Calls the real `GET /api/contracts` (now carrying `currency`). See "Portfolio" below. | E07/F01/US01/T01; V2 design alignment (Sept 2026) |
 | `/contracts/:id` | Contract 360, V2 **no tabs**: origin back link ("← Ask Raffa / Documents / Portfolio / Renewals / Savings", else "← Back"), supplier · title · "{type} · {spend} / year · N documents · {status}", **Ask about it** → `/ask?scope=<id>`; the **answers band** (Where you can save · When you must move · What to do, with Start negotiation / Assign to me or the negotiation tracker once acted); **Why — the clauses behind it** (clause rows with leverage tags; click → the original wording highlighted; **Open in document viewer**; `?clause=<id>`/`?page=<n>` pre-select it); **Details ▾** (key terms, documents, "N facts still need you — Review all →" when any `review_required` decision remains, priority score, Products/Obligations/Risks). Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `GET /api/contracts/{id}/evidence`, `POST /api/renewals/{id}/action`. See "Contract 360" below. | E07/F02/US01/T01; citation landing E13/F10/US01/T01; V2 layout (Sept 2026); details and Why E22/F04/US01/T01 |
 | `/contracts/:id/review` | Review / correction: 4-column field list (critical marker, extracted value + real source line, real per-field confidence tag from the extraction evidence, Accept/Correct) + right-hand evidence pane (file · page header, the quoted passage with the span highlighted, model + confidence, correction form, real correction-history trail) + gated "Mark as validated" that really signs the document off. Calls the real `GET /api/contracts/{id}`, `GET /api/contracts/{id}/corrections`, `GET /api/contracts/{id}/evidence`, `PATCH /api/contracts/{id}`, `POST /api/documents/{id}/validate`. Shares its whole lifecycle with the Documents review state through `routes/contracts/review/useReviewSession.ts`. See "Review / correction" below. | E07/F03/US01/T01 |
-| `/renewals` | Renewals, V2: header ("Renewals" + "N contracts with validated dates · sorted by priority"), one list sorted by score (Score · Supplier · contract · Renews in · Notice in · Status) and the selected row's **Why it is here** pane (recommended action + rationale, Start negotiation / Assign to me, "See the facts behind this →"), optional `?select=<contractId>` pre-selects that row (else the top-priority default, never a 500 on an unmatched/foreign id), plus loading/error states and the reroute "No renewal dates yet" while nothing is validated. Calls the real `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `POST /api/renewals/{id}/action`. See "Renewals" below. | E08/F01/US01/T01; V2 design alignment (Sept 2026); `?select=` E29/F03/US01/T01 |
+| `/renewals` | Renewals, V2: header ("Renewals" + "N contracts with validated dates · sorted by priority"), one list sorted by score (Score · Supplier · contract · Renews in · Notice in · Status) and the selected row's **Why it is here** pane (recommended action + rationale, Start negotiation / Assign to me, "See the facts behind this →"), optional `?select=<contractId>` pre-selects that row (else the top-priority default, never a 500 on an unmatched/foreign id), plus loading/error states and the reroute "No renewal dates yet" while nothing is validated. Calls the real `GET /api/renewals` (every row carries its own `priority` score, so there is no per-row priority call) and `POST /api/renewals/{id}/action`. See "Renewals" below. | E08/F01/US01/T01; V2 design alignment (Sept 2026); `?select=` E29/F03/US01/T01 |
 | `/quotes`, `/quotes/:id` | Quote check, V2: constant header ("Optional · new purchase" · intro sentence); landing = the dashed drop card (**Upload a quote** + "or use the sample: Databricks proposal Q-88213", optional supplier/currency/geography/date under a disclosure); loaded = the Supplier quote · Market range · Assessment band, the lines table (Line · Quoted · P50 · Position · Benchmark) and "Target and negotiation levers are one step further — shown only if you want them." revealing Target, then Negotiation (outcome capture); unmapped SKUs show the mapping block instead. Calls the real `POST /api/quotes`, `POST /api/quotes/{id}/assessment/recalculate`, `POST /api/negotiations/outcomes`. See "Quote check" below. | E08/F03/US01/T01; V2 design alignment (Sept 2026) |
 | `/savings` | Savings, V2 (not a rail item -- reached from Ask actions, Renewals and Contract 360): header + summary, three KPI cells (Contracts analyzed · Upcoming renewals · Savings identified, each with a meta line), the opportunities table (Supplier · Action · Estimate · Status; rows open Contract 360), a stale-labelled KPI degrade when the benchmark provider is unreachable, and the reroute "No savings opportunities yet" → Renewals. Calls the real `GET /api/savings/kpis`, `GET /api/savings`, plus `GET /api/contracts` for supplier names. See "Savings" below. | E08/F02/US01/T01; moved by E13/F09/US01/T01; V2 design alignment (Sept 2026) |
 | `/review` | Redirects to `/documents?filter=attention` -- Review is a *state* of Documents in V2, not its own rail destination or screen. The old `src/routes/review/` rail landing (V1 review queue) has been deleted. | E13/F09/US01/T01 |
@@ -639,9 +639,14 @@ the clauses behind it", then a "Details ▾" drawer. The Day-1 ten-tab strip is 
 tabs held is still on the page, inside the drawer.
 
 - **Fetch order** (`index.tsx`): `GET /api/contracts/{id}` first (a `404` is the named "not found"
-  state), then `GET /api/renewals` (this contract's recommendation) and `GET /api/renewals/{id}/
-  priority` together, both independently optional -- either failing degrades its own answer to an
-  honest "not yet", never the screen.
+  state; a contract whose `readiness` is not `ready` stops here, since the "still being prepared"
+  / "no validated facts yet" state shows nothing else -- so each 2 s re-read of a processing
+  contract costs one GET, not six, and a re-read is skipped while the previous one is still in
+  flight), then, once the contract is ready, `GET /api/renewals` (this contract's recommendation),
+  `GET /api/renewals/{id}/priority`, `GET /api/contracts/{id}/negotiation-steps`,
+  `GET /api/contracts/{id}/strategy` and `GET /api/contracts/{id}/evidence` together, each
+  independently optional -- one failing degrades its own answer to an honest "not yet", never the
+  screen.
 - **Header** (`Contract360Header.tsx`) -- the origin back link (`resolveBackLink`: Ask Raffa /
   Documents / Portfolio / Renewals / Savings from `state.from`, else a plain "← Back" that walks
   history), the supplier kicker (`resolveSupplierLabel`: the wire's `supplierName`, else the id
@@ -667,18 +672,19 @@ tabs held is still on the page, inside the drawer.
   The recorded action is the same `savedAction` on `GET /api/renewals` that the Renewals list, its
   pane and Contract 360 read, so all three agree. `NotStarted` renders as no action taken.
 - **Six numbered sections** (`DetailSections.tsx`, `Raffa.ai V2.dc.html` CONTRACT 360; none of them
-  collapses): **01 Leverage** (`buildLeverCards`, the strategy pack's `whereYouCanPush`, strongest
-  first; an honest one-liner while the pack has no lever), **02 Products & pricing**
+  collapses; Key terms leads): **01 Key terms** (see below), **02 Leverage** (`buildLeverGroups`, the
+  strategy pack's `whereYouCanPush` grouped per priced line with the line's own prefix lifted into
+  the group heading, strongest first; an honest one-liner while the pack has no lever), **03 Products & pricing**
   (`buildProductLines`: Product · Qty · You pay · Market · vs market · Annual; market and delta stay
-  an em dash until the Benchmark Service covers the line), **03 Clauses that matter**
+  an em dash until the Benchmark Service covers the line), **04 Clauses that matter**
   (`buildClauseGroups`: "Push to change" for High/Critical, "Worth raising" for Medium, the rest
   behind "Show N standard clauses ▾"; each row type · accepted value · the at-the-table note ·
   `p.N · §span` as a document-viewer link; clicking a row opens `ClauseHighlight.tsx`'s evidence
   card, the citation landing `?clause=<clauseId>` / `?page=<n>` (`resolveHighlightedClauseId`,
-  R-EVD-02) pre-selects it with no click), **04 Obligations** (`buildObligationColumns`: "You must" /
-  "{supplier} must", dated items first, the dot by criticality), **05 Risk factors**
-  (`buildScoreParts` over the explainable priority score, `buildRiskItems` tagged by severity) and
-  **06 Key terms** (`buildKeyTerms` as a cell grid, every term kept, unofficialized values as "—";
+  R-EVD-02) pre-selects it with no click), **05 Obligations** (`buildObligationColumns`: "You must" /
+  "{supplier} must", dated items first, the dot by criticality), **06 Risk factors**
+  (`buildScoreParts` over the explainable priority score, `buildRiskItems` tagged by severity) and,
+  first on the page, **01 Key terms** (`buildKeyTerms` as a cell grid, every term kept, unofficialized values as "—";
   the document family with each document's own status tag; a trailing **"N facts still need you —
   Review all →"** when `computeNeedsAttention` counts `review_required` decisions). Extracted list
   rows whose confidence is below the threshold but which point at a real page/span still show their
@@ -874,10 +880,13 @@ sorted by priority, the selected row's **Why it is here** pane, and the reroute 
 has validated dates. The Day-1 threshold strip, seven-column table, six-fact card and "Snooze" are
 gone with V2.
 
-- **Fetch order, gated on the whole score set** (`index.tsx`): `GET /api/renewals` first (a non-2xx
-  is the named "Renewals unavailable" error with Retry), then every row's own
-  `GET /api/renewals/{contractId}/priority` together before declaring ready -- Score is the sort
-  key. One row's failure degrades only its score to "—" (it sorts last), never the screen.
+- **Fetch order, one read** (`index.tsx`): `GET /api/renewals` (a non-2xx is the named "Renewals
+  unavailable" error with Retry). Every row carries its own `priority` -- the same object
+  `GET /api/renewals/{contractId}/priority` returns, computed server-side from the row's header facts
+  -- so the list paints already scored; Score is the sort key. A row the server sent without a score
+  reads "—" and sorts last, never the screen. The one-priority-call-per-row fan-out this replaced
+  was, on the demo server's 50 Postgres connections, enough on its own to starve every other request
+  into a 500 (backend README, "Postgres connections").
 - **List** (`RenewalTable.tsx`, `renewalPipelineViewModel.ts#buildRenewalRows`) -- Score (heading
   face, accent-700 from 80 up) · Supplier · contract · Renews in · Notice in (accent-700 inside the
   45-day window) · Status, sorted by score descending (ties: sooner notice, then id). The selected row

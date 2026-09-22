@@ -175,7 +175,7 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
 
   it("maps an abstain reply's answerMarkdown onto reason (the wire has no separate reason field)", () => {
     const mapped = mapConversationReplyToReply(
-      reply({ kind: "abstain", answerMarkdown: "Nothing in the validated contracts supports a reliable answer.", citations: [], actions: [] }),
+      reply({ kind: "abstain", answerMarkdown: "Nothing in the validated contracts supports a reliable answer.", citations: [], actions: [], followUps: [] }),
     );
 
     expect(mapped).toEqual({ kind: "abstain", reason: "Nothing in the validated contracts supports a reliable answer.", actions: [] });
@@ -194,6 +194,7 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
         answerMarkdown: "Nothing in the validated contracts supports a reliable answer.",
         citations: [],
         actions: [{ label: "Upload a contract", href: "/documents", kind: "upload" }],
+        followUps: [],
       }),
     );
 
@@ -201,6 +202,26 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
       kind: "abstain",
       reason: "Nothing in the validated contracts supports a reliable answer.",
       actions: [{ label: "Upload a contract", href: "/documents", kind: "primary" }],
+    });
+  });
+
+  // A gap is never a dead end: the server's next-step questions ride along on an abstain too.
+  it("maps an abstain reply's follow-up questions when the server sent some", () => {
+    const mapped = mapConversationReplyToReply(
+      reply({
+        kind: "abstain",
+        answerMarkdown: "Nothing in your validated contracts supports a reliable answer.",
+        citations: [],
+        actions: [],
+        followUps: ["Which contracts are most critical?", "Where can we save?"],
+      }),
+    );
+
+    expect(mapped).toEqual({
+      kind: "abstain",
+      reason: "Nothing in your validated contracts supports a reliable answer.",
+      actions: [],
+      followUps: ["Which contracts are most critical?", "Where can we save?"],
     });
   });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import type { ApiClient, Contract360Body, ContractFieldEvidenceBody, ContractStrategyBody, RenewalActionRow, RenewalPipelineItemBody, RenewalPriorityBody } from "../../../api/client";
 import { loadCurrentWorkspace } from "../../signin/workspaceStore";
@@ -45,14 +45,19 @@ type FetchState =
  * "CONTRACT 360 — three answers, then proof, then details"). One page: header (origin back link ·
  * supplier · title · meta), the answers band (Where you can save · When you must move · What to do,
  * with the recommended action / Assign to me, the tracker once acted, and "Close the cycle"), then
- * six numbered sections that never collapse: 01 Leverage · 02 Products & pricing · 03 Clauses that
- * matter (with the selected clause's original wording) · 04 Obligations · 05 Risk factors · 06 Key
- * terms (with the document family and a review-count line when facts still need a decision).
+ * six numbered sections that never collapse: 01 Key terms (with the document family and a
+ * review-count line when facts still need a decision) · 02 Leverage · 03 Products & pricing ·
+ * 04 Clauses that matter (with the selected clause's original wording) · 05 Obligations · 06 Risk
+ * factors.
  *
  * **Fetch order**: `getContract360` first -- a `404` is this screen's own "not found" state and
- * short-circuits the rest. Then `getRenewals` (for this contract's recommendation),
- * `getRenewalPriority`, `getNegotiationSteps` and `getContractStrategy` together, each independently
- * optional: a failure degrades its own answer to an honest "not yet" rather than failing the screen.
+ * short-circuits the rest, and a contract that is not `ready` yet stops here too (the fifth state
+ * renders `readiness` alone). Only a ready contract goes on to `getRenewals` (for this contract's
+ * recommendation), `getRenewalPriority`, `getNegotiationSteps`, `getContractStrategy` and
+ * `getContractEvidence` together, each independently optional: a failure degrades its own answer to
+ * an honest "not yet" rather than failing the screen. So the 2 s "still being prepared" re-read
+ * costs one GET, not six -- each of which, on the cross-origin demo host, also carried its own CORS
+ * preflight -- and the five run once, on the read that finds the contract ready.
  *
  * **Citation landing (R-EVD-02)**: `?clause=<clauseId>` / `?page=<n>` pre-select a real clause so
  * its wording is highlighted without a click; `location.state.from` drives the back label.
@@ -80,9 +85,14 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
   const [actionPending, setActionPending] = useState<AnswersActionPending>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [stepsError, setStepsError] = useState<string | null>(null);
+  // True from a read's first request to its last response. A silent re-read that finds one still
+  // in flight (a cold API answering slower than the 2 s cadence) is skipped rather than stacked.
+  const readInFlight = useRef(false);
 
   const load = useCallback((silent = false) => {
     if (!workspace || !contractId) return;
+    if (silent && readInFlight.current) return;
+    readInFlight.current = true;
 
     // A silent re-read (the "still being prepared" poll) refreshes the fetched contract in place --
     // no skeleton flash every 2 s, no reset of the drawer or the tracker.
@@ -115,6 +125,21 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
       // Citation landing: select the cited clause before the first paint of the ready state.
       setSelectedClauseId(resolveHighlightedClauseId(contract.tabs.clauses, clauseParam, pageParam));
 
+      // Not ready yet (processing / unavailable): the screen shows `readiness` and nothing else, so
+      // the five reads below would be thrown away. Paint the state and let the next re-read decide.
+      if (resolveReadinessCopy(contract.readiness) !== null) {
+        setFetchState({
+          phase: "ready",
+          contract,
+          renewals: [],
+          priority: null,
+          strategy: null,
+          evidence: [],
+          autoAcceptThreshold: AUTO_ACCEPT_THRESHOLD,
+        });
+        return;
+      }
+
       const [renewalsResult, priorityResult, stepsResult, strategyResult, evidenceResult] = await Promise.all([
         apiClient.getRenewals(workspace.id),
         apiClient.getRenewalPriority(workspace.id, contractId),
@@ -141,6 +166,8 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
         evidence: evidenceResult.ok && evidenceResult.evidence ? evidenceResult.evidence : [],
         autoAcceptThreshold: evidenceResult.ok && evidenceResult.autoAcceptThreshold != null ? evidenceResult.autoAcceptThreshold : AUTO_ACCEPT_THRESHOLD,
       });
+    }).finally(() => {
+      readInFlight.current = false;
     });
     // Depends on workspace?.id/contractId (primitives), not workspace itself: loadCurrentWorkspace()
     // returns a fresh object every call. clauseParam/pageParam come from location.search, which
@@ -351,7 +378,8 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
         onReopen={handleReopen}
       />
 
-      <LeverageSection strategy={strategy} />
+      <KeyTermsSection contract={contract} evidence={evidence} />
+      <LeverageSection strategy={strategy} lineDescriptions={tabs.products.map((product) => product.description)} />
       <ProductsSection contract={contract} autoAcceptThreshold={autoAcceptThreshold} />
       <ClausesSection
         contractId={contractId}
@@ -363,7 +391,6 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
       />
       <ObligationsSection contract={contract} supplierLabel={resolveSupplierLabel(header).label} autoAcceptThreshold={autoAcceptThreshold} />
       <RiskSection contract={contract} priority={priority} autoAcceptThreshold={autoAcceptThreshold} />
-      <KeyTermsSection contract={contract} evidence={evidence} />
     </div>
   );
 }

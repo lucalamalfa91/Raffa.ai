@@ -178,6 +178,14 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
     /// that rewrites a pack-grounded answer's own citation key to one no pack item has, guaranteed
     /// to fail grounding on both the first attempt and <c>Guards.RegenerateOnce</c>'s one retry —
     /// the real end-to-end "regenerate once, then downgrade" path, not a unit-level stand-in.
+    ///
+    /// <para>
+    /// The downgrade no longer ends in an abstain when the pack holds something quotable: the model
+    /// did try to answer, so the reply is <c>Answering.GroundedFallbackAnswer</c>'s answer made of
+    /// the pack's own facts (here, the tenant's own liability clause) — never the fabricated key —
+    /// and the audit row says so with <c>fallbackUsed=True</c> next to
+    /// <c>abstainGuardIntervened=True</c>.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task Guard_intervention_on_the_in_domain_path_is_recorded_in_the_audit_entry()
@@ -224,10 +232,12 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
         var response = await client.SendAsync(request);
         var body = await ParseAsync(response);
 
-        // The end-user-visible half of AC-7: an honest abstain, never the ungrounded citation key
-        // GuardViolatingAiGateway injected.
-        Assert.Equal("abstain", body.GetProperty("kind").GetString());
-        Assert.Equal(0, body.GetProperty("citations").GetArrayLength());
+        // The end-user-visible half of AC-7: the pack's own facts, cited, never the ungrounded
+        // citation key GuardViolatingAiGateway injected.
+        Assert.Equal("answer", body.GetProperty("kind").GetString());
+        Assert.Contains("CHF 450000", body.GetProperty("answerMarkdown").GetString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(GuardViolatingAiGateway.UngroundedCitationKey, body.GetProperty("answerMarkdown").GetString(), StringComparison.Ordinal);
+        Assert.NotEqual(0, body.GetProperty("citations").GetArrayLength());
 
         // The audit-visible half of AC-7 — this is the assertion the prior pass's review found
         // nothing could prove. `/api/chat/query` is a thin alias that also creates a conversation
@@ -236,8 +246,9 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
         // narrowed to the one AskCopilotService itself writes.
         var auditEntry = Assert.Single(
             recordingAuditWriter.Written,
-            entry => entry.TenantId == tenantId && entry.Action == "chat.abstained");
+            entry => entry.TenantId == tenantId && entry.Action == "chat.answered");
         Assert.Contains("abstainGuardIntervened=True", auditEntry.Detail);
+        Assert.Contains("fallbackUsed=True", auditEntry.Detail);
     }
 
     /// <summary>
@@ -320,7 +331,7 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
     /// </summary>
     private sealed class GuardViolatingAiGateway(IAiGateway inner) : IAiGateway
     {
-        private const string UngroundedCitationKey = "guard-test:not-in-pack";
+        public const string UngroundedCitationKey = "guard-test:not-in-pack";
 
         public Task<Result<AiClassificationResult>> ClassifyAsync(
             AiClassificationRequest request, CancellationToken cancellationToken = default) =>

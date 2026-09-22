@@ -34,7 +34,7 @@ import {
   buildRecommendation,
   buildRiskItems,
   buildScoreParts,
-  buildLeverCards,
+  buildLeverGroups,
   buildClauseGroups,
   buildClosedOutcome,
   standardClausesLabel,
@@ -199,6 +199,7 @@ function renewalItem(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalP
     daysUntilCancellationDeadline: 14,
     autoRenewal: true,
     action: "Start renewal negotiation now",
+    priority: null,
     insightCard: {
       facts: {
         supplierId: null,
@@ -622,8 +623,9 @@ describe("why — the clauses behind it", () => {
 
 describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
   it("labels", () => {
-    expect(SECTION_COPY.leverage).toEqual({ number: "01", title: "Leverage", description: "Where your negotiating power sits, strongest first." });
-    expect(SECTION_COPY.terms.number).toBe("06");
+    expect(SECTION_COPY.terms).toEqual({ number: "01", title: "Key terms", description: "The facts in one glance. Validated during review — no sources here." });
+    expect(SECTION_COPY.leverage.number).toBe("02");
+    expect(SECTION_COPY.risks.number).toBe("06");
     expect(formatReviewCountLine(2)).toBe("2 facts still need you — Review all →");
     expect(formatReviewCountLine(1)).toBe("1 facts still need you — Review all →");
     expect(standardClausesLabel(6, false)).toBe("Show 6 standard clauses ▾");
@@ -658,25 +660,31 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(mixed).toHaveLength(10);
   });
 
-  it("01 Leverage: one card per pack lever, strongest first, the type named -- never a citation key", () => {
-    const cards = buildLeverCards({
+  it("02 Leverage: one card per pack lever, grouped by priced line with the line prefix lifted off, strongest first", () => {
+    const pack = {
       contractId: "c-1",
       whenYouMustMove: { renewalDate: null, cancellationDeadline: null, daysLeft: null, passedDeadline: false, explanation: "" },
       whereYouCanPush: [
-        { leverType: "Volume", rationale: "This line orders 120,000 — cite the order size.", citationKeys: ["k-1"] },
-        { leverType: "Term", rationale: "A 36-month term is currency.", citationKeys: [] },
+        { leverType: "Volume" as const, rationale: "SAP S/4HANA: This line orders 570 — cite the order size.", citationKeys: ["k-1"] },
+        { leverType: "Term" as const, rationale: "SAP S/4HANA: Committed term is 24 months.", citationKeys: [] },
+        { leverType: "Volume" as const, rationale: "Onboarding fee: No quantity is recorded on this line.", citationKeys: [] },
       ],
       targets: [],
       nextSteps: [],
       openWeakFacts: [],
-    });
-    expect(cards.map((card) => [card.kicker, card.headline, card.strong])).toEqual([
-      ["Order size lever", "Order size", true],
-      ["Term length lever", "Term length", false],
+    };
+    const groups = buildLeverGroups(pack, ["SAP S/4HANA", "Onboarding fee"]);
+    expect(groups.map((group) => [group.line, group.cards.map((card) => [card.kicker, card.headline, card.body, card.strong])])).toEqual([
+      ["SAP S/4HANA", [["Order size lever", "Order size", "This line orders 570 — cite the order size.", true], ["Term length lever", "Term length", "Committed term is 24 months.", false]]],
+      ["Onboarding fee", [["Order size lever", "Order size", "No quantity is recorded on this line.", false]]],
     ]);
-    expect(cards[0].body).toBe("This line orders 120,000 — cite the order size.");
-    expect(JSON.stringify(cards)).not.toContain("k-1");
-    expect(buildLeverCards(null)).toEqual([]);
+    expect(JSON.stringify(groups)).not.toContain("k-1");
+    // A single-line contract carries no prefix: one unnamed group, the rationale untouched.
+    const single = buildLeverGroups(pack, []);
+    expect(single).toHaveLength(1);
+    expect(single[0].line).toBeNull();
+    expect(single[0].cards[0].body).toBe("SAP S/4HANA: This line orders 570 — cite the order size.");
+    expect(buildLeverGroups(null)).toEqual([]);
   });
 
   it("02 Products & pricing: pay figures from the line, market and delta an honest dash, unofficialized lines dashed but kept", () => {

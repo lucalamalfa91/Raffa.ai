@@ -7,33 +7,45 @@ using Raffa.Market;
 using Raffa.Worker;
 using Raffa.Worker.Commands;
 using Raffa.Messaging;
+using Raffa.SharedKernel.Persistence;
 using Raffa.Storage;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+// Same per-process Postgres pool budget as Raffa.Api/Program.cs (PostgresConnectionPool's own doc
+// comment): a Standard_B1ms server has 50 connections for every replica of both hosts, and one
+// extraction delivery holds a connection for as long as its run takes. Postgres__MaxPoolSize
+// overrides the default per environment; the module-side ceiling still caps whatever is set.
+var postgresMaxPoolSize = builder.Configuration.GetValue<int?>(PostgresConnectionPool.MaxPoolSizeConfigurationKey)
+    ?? PostgresConnectionPool.DefaultMaxPoolSize;
+string BoundPostgres(string connectionString) => PostgresConnectionPool.WithBudget(connectionString, postgresMaxPoolSize);
 
 // Same configuration key and fail-fast shape as Raffa.Api/Program.cs: both hosts read the
 // Documents/Contracts connection string from ConnectionStrings:DocumentsContracts so `dev`/`demo`
 // Container Apps share one config-naming convention across the API and worker Container Apps
 // (ADR-002, ADR-005).
-var documentsContractsConnectionString = builder.Configuration.GetConnectionString("DocumentsContracts")
+var documentsContractsConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("DocumentsContracts")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:DocumentsContracts' " +
-        "(set env var ConnectionStrings__DocumentsContracts in deployed environments).");
+        "(set env var ConnectionStrings__DocumentsContracts in deployed environments)."));
 
 // Same configuration key Raffa.Api/Program.cs reads (task E01/F09/US01/T01, r0-integration):
 // DocumentUploadService now requires IAuditWriter, which only AddAuditModule registers -- see
 // WorkerServiceCollectionExtensions.AddWorkerHost's own doc comment.
-var auditConnectionString = builder.Configuration.GetConnectionString("Audit")
+var auditConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("Audit")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:Audit' " +
-        "(set env var ConnectionStrings__Audit in deployed environments).");
+        "(set env var ConnectionStrings__Audit in deployed environments)."));
 
 // Same configuration key Raffa.Api/Program.cs reads (task E03/F03/US01/T02, renewal-action):
 // AddRenewalsModule now requires a connection string for its own first DbContext.
-var renewalsConnectionString = builder.Configuration.GetConnectionString("Renewals")
+var renewalsConnectionString = BoundPostgres(
+    builder.Configuration.GetConnectionString("Renewals")
     ?? throw new InvalidOperationException(
         "Missing required configuration 'ConnectionStrings:Renewals' " +
-        "(set env var ConnectionStrings__Renewals in deployed environments).");
+        "(set env var ConnectionStrings__Renewals in deployed environments)."));
 
 // Task E13/F02/US01/T02 (market-index): unlike the three connection strings above, this one is
 // optional -- ServiceCollectionExtensions.AddMarketModule's own DI swap already treats a null
@@ -43,7 +55,9 @@ var renewalsConnectionString = builder.Configuration.GetConnectionString("Renewa
 // when it is missing (IngestMarketCommand.RunAsync's own doc comment) -- there is no worker job
 // yet (this task's own scope is the operator CLI entry point, not a scheduled recompute) that
 // would otherwise silently no-op without ever telling an operator why.
-var marketConnectionString = builder.Configuration.GetConnectionString("Market");
+var marketConnectionString = builder.Configuration.GetConnectionString("Market") is { } rawMarketConnectionString
+    ? BoundPostgres(rawMarketConnectionString)
+    : null;
 
 // WorkerServiceCollectionExtensions.AddWorkerHost is the single source of truth for this host's
 // composition (module registration + queue consumer + hosted service) -- Raffa.Worker.Tests

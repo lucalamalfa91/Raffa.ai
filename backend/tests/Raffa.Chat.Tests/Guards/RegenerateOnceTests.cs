@@ -58,11 +58,20 @@ public sealed class RegenerateOnceTests
     {
         var result = RegenerateOnce.DowngradeToAbstain(Metadata, pack: [], "a violation was found.");
 
-        Assert.Contains("Nothing in the validated contracts supports a reliable answer", result.AbstainReason);
+        Assert.Equal("Nothing in your validated contracts supports a reliable answer.", result.AbstainReason);
     }
 
     [Fact]
-    public void DowngradeToAbstain_names_the_packs_own_facts_when_the_pack_is_non_empty()
+    public void BuildRetryInstruction_says_what_a_valid_action_key_looks_like()
+    {
+        var instruction = RegenerateOnce.BuildRetryInstruction(
+            "actionKey 'raffa:renewals' does not resolve to any capability in the catalog.");
+
+        Assert.Contains("bare capability key such as renewals", instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DowngradeToAbstain_gives_one_plain_sentence_even_when_the_pack_is_non_empty()
     {
         var pack = new[]
         {
@@ -83,13 +92,43 @@ public sealed class RegenerateOnceTests
 
         var result = RegenerateOnce.DowngradeToAbstain(Metadata, pack, "amount 'CHF 140' does not equal any pack value.");
 
-        Assert.Contains("amount 'CHF 140' does not equal any pack value.", result.AbstainReason);
-        Assert.Contains("Category · Market feed", result.AbstainReason);
-        Assert.Contains("unitPriceP50=132", result.AbstainReason);
+        Assert.Equal("Nothing in your validated contracts supports a reliable answer.", result.AbstainReason);
+        Assert.DoesNotContain("140", result.AbstainReason, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void DowngradeToAbstain_names_at_most_five_pack_items()
+    public void DowngradeToAbstain_never_shows_the_violation_or_raw_values_to_the_user()
+    {
+        var pack = new[]
+        {
+            new PackItem(
+                "calc:portfolio-target",
+                PackCorpus.Calc,
+                "Portfolio — saving target and coverage inside the window",
+                "target reachable",
+                Page: null,
+                Section: null,
+                Snippet: "Window 90 days, no amount named.",
+                Href: "/renewals",
+                PreviewUrl: null,
+                RecordId: null,
+                Provenance: "deterministic calculator",
+                Values: [new PackValue("windowDays", "90", PackValueKind.Number)]),
+        };
+
+        var result = RegenerateOnce.DowngradeToAbstain(
+            Metadata,
+            pack,
+            "actionKey 'raffa:renewals' does not resolve to any capability in the catalog — " +
+            "hrefs/actions are never model-authored (R-SYS-02).");
+
+        Assert.DoesNotContain("actionKey", result.AbstainReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("R-SYS", result.AbstainReason, StringComparison.Ordinal);
+        Assert.DoesNotContain("=", result.AbstainReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DowngradeToAbstain_never_lists_pack_items()
     {
         var pack = Enumerable.Range(1, 8)
             .Select(i => new PackItem(
@@ -109,8 +148,7 @@ public sealed class RegenerateOnceTests
 
         var result = RegenerateOnce.DowngradeToAbstain(Metadata, pack, "a violation was found.");
 
-        Assert.Contains("Item 5", result.AbstainReason);
-        Assert.DoesNotContain("Item 6", result.AbstainReason);
+        Assert.DoesNotContain("Item 1", result.AbstainReason, StringComparison.Ordinal);
     }
 
     [Fact]

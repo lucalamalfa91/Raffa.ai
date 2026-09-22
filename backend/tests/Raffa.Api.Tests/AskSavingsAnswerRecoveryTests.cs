@@ -1,0 +1,208 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Raffa.AiGateway;
+using Raffa.AiGateway.Configuration;
+using Raffa.AiGateway.Contracts;
+using Raffa.AiGateway.Fixtures;
+using Raffa.Api.Tests.TestSupport;
+using Raffa.Documents.Contracts.Domain;
+using Raffa.SharedKernel;
+using Raffa.SharedKernel.Suppliers;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Raffa.Api.Tests;
+
+/// <summary>
+/// The live "Where can I save the most this quarter?" turn, end to end over HTTP. It used to come
+/// back as "I don't have data I trust enough to answer. actionKey 'raffa:renewals' does not resolve
+/// to any capability in the catalog…" with an "Open Ask Raffa" button: the model had echoed a Raffa
+/// feature item's citation key as its action key, the grounding guard failed the whole answer, and
+/// the downgrade printed the guard's own words. Now the key is repaired and the answer stands, a
+/// model that cannot be trusted twice still gets the pack's own facts as an answer, and a savings
+/// answer always offers Savings and Renewals.
+/// </summary>
+public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : IClassFixture<RaffaApiFactory>
+{
+    private const string UserId = "alice@example.com";
+    private const string Question = "Where can I save the most this quarter?";
+
+    private static readonly DateTimeOffset Now = new(2026, 9, 21, 12, 0, 0, TimeSpan.Zero);
+
+    private WebApplicationFactory<Program> Host(IAiGateway gateway, IReadOnlyDictionary<EntityId, string> supplierNames) =>
+        factory
+            .WithPresentedCallersAsMembers()
+            .WithWebHostBuilder(builder => builder.UseSetting(
+                "ConnectionStrings:Chat",
+                "Host=localhost;Port=5432;Database=raffa_dev;Username=raffa;Password=raffa;Include Error Detail=true"))
+            .WithInMemoryAskEngine(gateway, new FixedClock(Now))
+            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+                services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(supplierNames))));
+
+    private static FixtureAiGateway Fixture() =>
+        new(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions());
+
+    private async Task<JsonDocument> AskSeededAsync(IAiGateway gateway)
+    {
+        var tenantId = TenantId.New();
+        var oracleId = EntityId.New();
+        var host = Host(gateway, new Dictionary<EntityId, string> { [oracleId] = "Oracle" });
+
+        var contract = new Contract
+        {
+            TenantId = tenantId,
+            SupplierId = oracleId,
+            Type = ContractDocumentType.OrderForm,
+            Status = "Completed",
+            Currency = "EUR",
+            AnnualSpend = 439000m,
+            AutoRenewal = true,
+            EndDate = DateOnly.FromDateTime(Now.UtcDateTime).AddDays(29 + 180),
+            CancellationDeadline = DateOnly.FromDateTime(Now.UtcDateTime).AddDays(29),
+            RenewalTermMonths = 12,
+            PaymentTerms = "Net 30",
+            CreatedAt = Now,
+        };
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        var client = host.CreateClient();
+
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/conversations")
+        {
+            Content = JsonContent.Create(new { scopeContractId = (string?)null }),
+        };
+        createRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        createRequest.Headers.Add("X-User-Id", UserId);
+        var createResponse = await client.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        using var created = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var conversationId = created.RootElement.GetProperty("id").GetGuid();
+
+        using var messageRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/messages")
+        {
+            Content = JsonContent.Create(new { question = Question }),
+        };
+        messageRequest.Headers.Add("X-Tenant-Id", tenantId.Value.ToString());
+        messageRequest.Headers.Add("X-User-Id", UserId);
+
+        var response = await client.SendAsync(messageRequest);
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.OK, $"{response.StatusCode}: {raw}");
+
+        return JsonDocument.Parse(raw);
+    }
+
+    private static List<string> ActionHrefs(JsonDocument reply) =>
+        reply.RootElement.GetProperty("actions").EnumerateArray()
+            .Select(a => a.GetProperty("href").GetString() ?? string.Empty)
+            .ToList();
+
+    [Fact]
+    public async Task A_raffa_prefixed_action_key_keeps_the_answer_and_a_contract_360_key_without_a_contract_is_dropped()
+    {
+        var gateway = new RecordingAiGateway(new ActionKeyEchoingGateway(Fixture(), ["raffa:renewals", "contract-360"]));
+
+        using var reply = await AskSeededAsync(gateway);
+
+        Assert.Equal("answer", reply.RootElement.GetProperty("kind").GetString());
+        Assert.Equal(1, gateway.Calls.Count(c => c == nameof(IAiGateway.AnswerAsync)));
+
+        var hrefs = ActionHrefs(reply);
+        Assert.Contains("/savings", hrefs);
+        Assert.Contains("/renewals", hrefs);
+        Assert.Equal("/savings", hrefs[0]);
+        Assert.DoesNotContain(hrefs, href => href.StartsWith("/contracts/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_model_that_cannot_be_trusted_twice_still_gets_the_packs_own_facts_as_an_answer()
+    {
+        var gateway = new RecordingAiGateway(new FabricatingGateway(Fixture()));
+
+        using var reply = await AskSeededAsync(gateway);
+
+        Assert.Equal("answer", reply.RootElement.GetProperty("kind").GetString());
+        Assert.Equal(2, gateway.Calls.Count(c => c == nameof(IAiGateway.AnswerAsync)));
+
+        var markdown = reply.RootElement.GetProperty("answerMarkdown").GetString()!;
+        Assert.StartsWith("Here's where you can save and what to negotiate", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain(FabricatingGateway.FabricatedFigure, markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("actionKey", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("R-SYS", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Showing the pack's own facts", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("calc:", markdown, StringComparison.Ordinal);
+
+        Assert.NotEqual(0, reply.RootElement.GetProperty("citations").GetArrayLength());
+        Assert.NotEqual(0, reply.RootElement.GetProperty("followUps").GetArrayLength());
+
+        var hrefs = ActionHrefs(reply);
+        Assert.Contains("/savings", hrefs);
+        Assert.Contains("/renewals", hrefs);
+        Assert.DoesNotContain("/ask", hrefs);
+    }
+
+    /// <summary>Returns every grounded answer with the given action keys, the way a live model
+    /// following prompt v2.2's rule 7 answered — a citation key where a bare capability key belongs.</summary>
+    private sealed class ActionKeyEchoingGateway(IAiGateway inner, IReadOnlyList<string> actionKeys) : IAiGateway
+    {
+        public async Task<Result<AiAnswerResult>> AnswerAsync(AiAnswerRequest request, CancellationToken cancellationToken = default)
+        {
+            var result = await inner.AnswerAsync(request, cancellationToken).ConfigureAwait(false);
+            return result.IsSuccess && result.Value.CanDetermine
+                ? Result<AiAnswerResult>.Success(result.Value with { ActionKeys = actionKeys })
+                : result;
+        }
+
+        public Task<Result<AiClassificationResult>> ClassifyAsync(AiClassificationRequest request, CancellationToken cancellationToken = default) =>
+            inner.ClassifyAsync(request, cancellationToken);
+
+        public Task<Result<AiExtractionResult>> ExtractAsync(AiExtractionRequest request, CancellationToken cancellationToken = default) =>
+            inner.ExtractAsync(request, cancellationToken);
+
+        public Task<Result<AiEmbeddingResult>> EmbedAsync(AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
+            inner.EmbedAsync(request, cancellationToken);
+
+        public Task<Result<AiOcrResult>> OcrAsync(AiOcrRequest request, CancellationToken cancellationToken = default) =>
+            inner.OcrAsync(request, cancellationToken);
+
+        public Task<Result<AiAnalysisResult>> AnalyzeAsync(AiAnalysisRequest request, CancellationToken cancellationToken = default) =>
+            inner.AnalyzeAsync(request, cancellationToken);
+    }
+
+    /// <summary>Adds a figure no pack holds to every grounded answer, so both attempts fail the
+    /// numeric guard.</summary>
+    private sealed class FabricatingGateway(IAiGateway inner) : IAiGateway
+    {
+        public const string FabricatedFigure = "EUR 987654";
+
+        public async Task<Result<AiAnswerResult>> AnswerAsync(AiAnswerRequest request, CancellationToken cancellationToken = default)
+        {
+            var result = await inner.AnswerAsync(request, cancellationToken).ConfigureAwait(false);
+            if (result.IsFailure || !result.Value.CanDetermine)
+            {
+                return result;
+            }
+
+            var markdown = $"{result.Value.AnswerMarkdown} You can save {FabricatedFigure} this quarter.";
+            return Result<AiAnswerResult>.Success(result.Value with { AnswerMarkdown = markdown, Answer = markdown });
+        }
+
+        public Task<Result<AiClassificationResult>> ClassifyAsync(AiClassificationRequest request, CancellationToken cancellationToken = default) =>
+            inner.ClassifyAsync(request, cancellationToken);
+
+        public Task<Result<AiExtractionResult>> ExtractAsync(AiExtractionRequest request, CancellationToken cancellationToken = default) =>
+            inner.ExtractAsync(request, cancellationToken);
+
+        public Task<Result<AiEmbeddingResult>> EmbedAsync(AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
+            inner.EmbedAsync(request, cancellationToken);
+
+        public Task<Result<AiOcrResult>> OcrAsync(AiOcrRequest request, CancellationToken cancellationToken = default) =>
+            inner.OcrAsync(request, cancellationToken);
+
+        public Task<Result<AiAnalysisResult>> AnalyzeAsync(AiAnalysisRequest request, CancellationToken cancellationToken = default) =>
+            inner.AnalyzeAsync(request, cancellationToken);
+    }
+}

@@ -47,11 +47,12 @@ type FetchState =
  * dates yet · Renewals are computed from validated end dates and notice periods. Upload a contract
  * to start. · Upload a contract".
  *
- * **Fetch order.** `getRenewals` first -- a non-2xx there is this screen's own error state. The
- * pipeline paints as soon as that list returns; each row's `GET /api/renewals/{contractId}/priority`
- * score fills in after (the Score column is the list's own sort key). No bulk priority endpoint
- * exists, so this is N calls, bounded by the underlying portfolio page ceiling; one row's fetch
- * failing degrades only that row's score to "—" (it then sorts last), never the whole screen.
+ * **Fetch order.** One read: `getRenewals` -- a non-2xx there is this screen's own error state.
+ * Every row carries its own `priority` (the same object `GET /api/renewals/{contractId}/priority`
+ * returns, computed server-side from the row's own header facts), so the list paints already scored
+ * and sorted. A row the server sent without a score reads "—" and sorts last, never the whole
+ * screen. The one-priority-call-per-row fan-out this replaced was, on the demo server's 50 Postgres
+ * connections, enough on its own to starve every other request into a 500.
  *
  * **Status shared with the Contract 360 tracker** (`racts`): the real write is
  * `POST /api/renewals/{id}/action`; every surface reads `savedAction` on the same
@@ -91,7 +92,7 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
     setFetchState({ phase: "loading" });
     setActionError(null);
 
-    void apiClient.getRenewals(workspace.id).then(async (result) => {
+    void apiClient.getRenewals(workspace.id).then((result) => {
       if (!result.ok || !result.renewals) {
         setFetchState({
           phase: "error",
@@ -105,25 +106,13 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
       }
 
       const items = result.renewals.items;
-      // Paint the pipeline as soon as the list is back -- waiting on N priority calls kept the
-      // screen on "Loading renewals…" for the whole fan-out (the same stall Portfolio hits when
-      // GET /api/contracts hangs). Scores fill in after; a failed row stays "—".
-      setFetchState({ phase: "ready", items, scores: {} });
-
-      const scoreEntries = await Promise.all(
-        items.map((item) =>
-          apiClient
-            .getRenewalPriority(workspace.id, item.contractId)
-            .then((priorityResult): readonly [string, number | null] => [
-              item.contractId,
-              priorityResult.ok && priorityResult.priority ? priorityResult.priority.totalScore : null,
-            ]),
-        ),
-      );
-
-      setFetchState((current) =>
-        current.phase === "ready" ? { ...current, scores: Object.fromEntries(scoreEntries) } : current,
-      );
+      // The score is on the row itself (see the route doc comment): one read paints the list
+      // scored; a row without one stays "—".
+      setFetchState({
+        phase: "ready",
+        items,
+        scores: Object.fromEntries(items.map((item) => [item.contractId, item.priority?.totalScore ?? null])),
+      });
     });
     // Depends on workspace?.id (a primitive), not workspace itself: loadCurrentWorkspace() returns a
     // fresh object every call, the same convention every other route's own load() callback follows.

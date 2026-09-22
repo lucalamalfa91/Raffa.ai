@@ -332,11 +332,16 @@ resource "azurerm_container_app" "api" {
       latest_revision = true
     }
 
+    # Every SPA call is cross-origin and carries `Authorization` + `x-tenant-id`, so each one is
+    # preflighted. `max_age_in_seconds` lets the browser keep the OPTIONS answer for an hour
+    # (Chromium caps at 2 h); without it Chromium keeps it for 5 s, so a 2 s poll repeats the
+    # preflight in front of every GET.
     cors {
       allowed_origins           = ["https://${var.spa_host_name}"]
       allowed_methods           = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
       allowed_headers           = ["*"]
       allow_credentials_enabled = false
+      max_age_in_seconds        = 3600
     }
   }
 

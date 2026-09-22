@@ -67,6 +67,8 @@ internal static class GoldenCaseEvaluator
     [
         "Document:", "Structured query", "not wired", "Appendix C rule", "deterministic filter on",
         "no deterministic handler", "citationKey", "PackItem", "SupplierId",
+        // The guard's own words, which the downgrade used to print as the abstain reason.
+        "actionKey", "R-SYS-", "Showing the pack's own facts",
     ];
 
     /// <summary>Checked against the entire response body, not just the rendered markdown — the
