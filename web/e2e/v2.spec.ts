@@ -131,6 +131,10 @@ const FORBIDDEN_REPLY_CHROME = [
   "Document:",
   "not wired",
   "chunk ",
+  // The grounding guard's own words, which a downgraded reply used to print verbatim.
+  "actionKey",
+  "R-SYS-",
+  "Showing the pack's own facts",
 ];
 
 const GUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;

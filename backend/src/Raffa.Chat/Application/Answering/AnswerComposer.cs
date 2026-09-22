@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
+using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Guards;
 using Raffa.Chat.Application.Pack;
 using Raffa.SharedKernel;
@@ -22,6 +23,14 @@ namespace Raffa.Chat.Application.Answering;
 /// "authorization before retrieval" — the same "operate on caller-supplied data" shape
 /// <c>RagAnswerService</c> and <c>DeterministicQueryHandler</c> already use, generalized here from
 /// an evidence list to a context pack).
+/// </para>
+///
+/// <para>
+/// A model's action keys are repaired (<see cref="ActionKeyNormalizer"/>) before any guard runs —
+/// an optional button never sinks a grounded answer. When both attempts still fail and the model
+/// had tried to answer, the reply is <see cref="GroundedFallbackAnswer"/>'s answer composed from
+/// the pack's own facts, not an abstain; only a pack with nothing answer-bearing, or a model that
+/// honestly said it cannot determine, ends in an abstain.
 /// </para>
 /// </summary>
 public sealed class AnswerComposer(IAiGateway aiGateway)
@@ -68,11 +77,12 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
             return Result<AnswerComposerResult>.Failure(first.Error);
         }
 
-        var firstVerdict = Validate(first.Value, pack);
+        var firstResult = NormalizeActionKeys(first.Value);
+        var firstVerdict = Validate(firstResult, pack);
         if (firstVerdict.Passed)
         {
             return Result<AnswerComposerResult>.Success(
-                new AnswerComposerResult(first.Value, GuardIntervened: false, GuardViolation: null));
+                new AnswerComposerResult(firstResult, GuardIntervened: false, GuardViolation: null));
         }
 
         // R-ASK-06: "regenerated once with the violation named".
@@ -84,22 +94,65 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
 
         if (retry.IsFailure)
         {
-            var downgraded = RegenerateOnce.DowngradeToAbstain(first.Value.Metadata, pack, firstVerdict.Violation!);
             return Result<AnswerComposerResult>.Success(
-                new AnswerComposerResult(downgraded, GuardIntervened: true, firstVerdict.Violation));
+                Downgrade(question, pack, first.Value.Metadata, firstVerdict.Violation!, modelTriedToAnswer: firstResult.CanDetermine));
         }
 
-        var retryVerdict = Validate(retry.Value, pack);
+        var retryResult = NormalizeActionKeys(retry.Value);
+        var retryVerdict = Validate(retryResult, pack);
         if (retryVerdict.Passed)
         {
+            // The first attempt judged a savings pack sufficient; a retry that now retreats to
+            // "cannot determine" is answering the retry instruction, not the pack — the calculators'
+            // and the council's own facts still make a better reply than an abstain. On a clause or
+            // fact pack the retreat is believed: "that figure is not there" is a real answer.
+            if (firstResult.CanDetermine && !retryResult.CanDetermine && GroundedFallbackAnswer.IsSavingsShaped(pack) &&
+                ComposeGrounded(question, pack, retryResult.Metadata) is { } grounded)
+            {
+                return Result<AnswerComposerResult>.Success(
+                    new AnswerComposerResult(grounded, GuardIntervened: true, firstVerdict.Violation, FallbackUsed: true));
+            }
+
             return Result<AnswerComposerResult>.Success(
-                new AnswerComposerResult(retry.Value, GuardIntervened: true, firstVerdict.Violation));
+                new AnswerComposerResult(retryResult, GuardIntervened: true, firstVerdict.Violation));
         }
 
-        var downgradedAfterRetry = RegenerateOnce.DowngradeToAbstain(retry.Value.Metadata, pack, retryVerdict.Violation!);
         return Result<AnswerComposerResult>.Success(
-            new AnswerComposerResult(downgradedAfterRetry, GuardIntervened: true, retryVerdict.Violation));
+            Downgrade(question, pack, retry.Value.Metadata, retryVerdict.Violation!, modelTriedToAnswer: retryResult.CanDetermine));
     }
+
+    /// <summary>
+    /// Both attempts failed a guard (or the retry call itself failed). When the model tried to
+    /// answer, the pack held something worth saying — <see cref="GroundedFallbackAnswer"/> says it,
+    /// quoting only the pack's own facts; otherwise, or when not even that passes the guards, the
+    /// honest abstain of <see cref="RegenerateOnce.DowngradeToAbstain"/>. Either way the violation
+    /// is kept for the audit row, never shown.
+    /// </summary>
+    private static AnswerComposerResult Downgrade(
+        string question, IReadOnlyList<PackItem> pack, AiCallMetadata metadata, string violation, bool modelTriedToAnswer)
+    {
+        if (modelTriedToAnswer && ComposeGrounded(question, pack, metadata) is { } grounded)
+        {
+            return new AnswerComposerResult(grounded, GuardIntervened: true, violation, FallbackUsed: true);
+        }
+
+        return new AnswerComposerResult(
+            RegenerateOnce.DowngradeToAbstain(metadata, pack, violation), GuardIntervened: true, violation);
+    }
+
+    /// <summary><see cref="GroundedFallbackAnswer.Compose"/>, kept only when it passes the very same
+    /// guard pipeline a model answer must pass — never trusted just because it was built in code.</summary>
+    private static AiAnswerResult? ComposeGrounded(string question, IReadOnlyList<PackItem> pack, AiCallMetadata metadata)
+    {
+        var grounded = GroundedFallbackAnswer.Compose(question, pack, metadata);
+        return grounded is not null && Validate(grounded, pack).Passed ? grounded : null;
+    }
+
+    /// <summary>A model's action keys, repaired before any guard sees them — see
+    /// <see cref="ActionKeyNormalizer"/>: a <c>raffa:renewals</c> becomes <c>renewals</c>, and a key
+    /// that is no capability at all loses its button instead of failing the whole answer.</summary>
+    private static AiAnswerResult NormalizeActionKeys(AiAnswerResult result) =>
+        result with { ActionKeys = ActionKeyNormalizer.Normalize(result.ActionKeys) };
 
     private Task<Result<AiAnswerResult>> CallGatewayAsync(
         string question, string packJson, string systemPrompt, CancellationToken cancellationToken) =>

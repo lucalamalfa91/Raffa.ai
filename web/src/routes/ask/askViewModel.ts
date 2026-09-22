@@ -169,7 +169,14 @@ function buildReply(turn: NormalizedTurnBody): Reply {
       // E25/F05/US02/T01) -- `ReplyBody.tsx` is the layer that forces the result to render
       // secondary-only (ADR-024), never primary, the same defensive posture it already applies to
       // redirect/refusal's own action slice below.
-      return { kind: "abstain", reason: turn.text, actions: turn.actions.map(mapConversationAction) };
+      // Next-step questions ride along only when the server sent some, so an abstain without
+      // any keeps exactly its old shape.
+      return {
+        kind: "abstain",
+        reason: turn.text,
+        actions: turn.actions.map(mapConversationAction),
+        ...(turn.followUps.length > 0 ? { followUps: turn.followUps } : {}),
+      };
     default: {
       // Exhaustiveness guard: a future wire `kind` value fails this file's own build instead of
       // silently rendering nothing for it (same convention `./reply/ReplyBody.tsx` already uses).

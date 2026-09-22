@@ -1,3 +1,4 @@
+using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Guards;
 using Raffa.Chat.Application.Pack;
 
@@ -10,8 +11,9 @@ namespace Raffa.Chat.Tests.Guards;
 /// currency-aware — otherwise <see cref="NumericGuard.Validate"/> fails so the caller
 /// (<c>Answering.AnswerComposer</c>) can hand the violation to <see cref="RegenerateOnce"/>.
 /// Includes this task's own Definition of Done scenario: a fake "P50 CHF 140" against a pack whose
-/// real value is CHF 132 fails the guard and, chained through <see cref="RegenerateOnce.DowngradeToAbstain"/>,
-/// downgrades to an honest abstain naming the pack's own real figure rather than the fabricated one.
+/// real value is CHF 132 fails the guard; the reply then quotes the pack's own real figure
+/// (<see cref="GroundedFallbackAnswer"/>), and even the last-resort
+/// <see cref="RegenerateOnce.DowngradeToAbstain"/> never repeats the fabricated one.
 /// </summary>
 public sealed class NumericGuardTests
 {
@@ -35,7 +37,7 @@ public sealed class NumericGuardTests
             Values: values);
 
     [Fact]
-    public void A_fake_p50_amount_fails_against_the_packs_real_value_and_downgrades_to_an_honest_abstain()
+    public void A_fake_p50_amount_fails_against_the_packs_real_value_and_the_reply_quotes_the_real_one()
     {
         // This task's own Definition of Done: "numeric guard downgrades a fake 'P50 CHF 140' vs
         // pack 132".
@@ -53,12 +55,23 @@ public sealed class NumericGuardTests
         Assert.NotNull(verdict.Violation);
         Assert.Contains("140", verdict.Violation);
 
+        // The reply after two such failures: the pack's own facts, the real CHF 132, never 140.
+        var grounded = GroundedFallbackAnswer.Compose("What is the market P50 for this category?", pack, Metadata);
+
+        Assert.NotNull(grounded);
+        Assert.True(grounded!.CanDetermine);
+        Assert.Contains("CHF 132", grounded.AnswerMarkdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("140", grounded.AnswerMarkdown, StringComparison.Ordinal);
+        Assert.True(NumericGuard.Validate(grounded.AnswerMarkdown, pack).Passed);
+
+        // The last resort, when nothing can be composed: an honest abstain that never repeats the
+        // fabricated figure.
         var downgraded = RegenerateOnce.DowngradeToAbstain(Metadata, pack, verdict.Violation!);
 
         Assert.False(downgraded.CanDetermine);
         Assert.Null(downgraded.AnswerMarkdown);
-        Assert.Contains("140", downgraded.AbstainReason);
-        Assert.Contains("132", downgraded.AbstainReason);
+        Assert.DoesNotContain("140", downgraded.AbstainReason, StringComparison.Ordinal);
+        Assert.Equal("Nothing in your validated contracts supports a reliable answer.", downgraded.AbstainReason);
         Assert.Equal(Metadata, downgraded.Metadata);
     }
 
