@@ -203,7 +203,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
         var declining = new DecliningGateway(Fixture(), declines: 0);
 
         using var reply = await AskSeededAsync(
-            new RecordingAiGateway(declining), "mi aiuti a creare una mail per il rinnovo del contratto Oracle?", withAnnualSpend: false);
+            new RecordingAiGateway(declining), "come posso negoziare il rinnovo del contratto Oracle?", withAnnualSpend: false);
 
         var packJson = Assert.Single(declining.PackJsons);
         Assert.Contains("calc:contract-gaps[", packJson, StringComparison.Ordinal);
@@ -232,20 +232,20 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
     }
 
     // Both attempts decline: the deterministic reply still opens with the honest gap and the
-    // market estimate, then the ready-to-send email draft that was asked for.
+    // market estimate, then the way forward for a renewal.
     [Fact]
     public async Task With_no_model_answer_the_proposal_still_leads_with_the_gap_and_the_market_estimate()
     {
         using var reply = await AskSeededAsync(
             new RecordingAiGateway(new DecliningGateway(Fixture(), declines: 2)),
-            "mi aiuti a creare una mail per il rinnovo del contratto Oracle?",
+            "come posso negoziare il rinnovo del contratto Oracle?",
             withAnnualSpend: false);
 
         var markdown = reply.RootElement.GetProperty("answerMarkdown").GetString()!;
         Assert.StartsWith("Sul contratto Oracle mancano gli importi annuali.", markdown, StringComparison.Ordinal);
         Assert.Contains("il valore annuo tipico è tra EUR 250,000 e EUR 500,000", markdown, StringComparison.Ordinal);
         Assert.Contains("è una stima, non un dato del tuo contratto", markdown, StringComparison.Ordinal);
-        Assert.Contains("**Oggetto:**", markdown, StringComparison.Ordinal);
+        Assert.Contains("Ecco come preparare il rinnovo", markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("I don't have data I trust", markdown, StringComparison.Ordinal);
     }
 

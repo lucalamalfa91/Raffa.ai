@@ -24,6 +24,11 @@ namespace Raffa.Chat.Application.Conversations;
 /// `answer`-role model call produced this turn.</param>
 /// <param name="PromptVersion">Same nullability contract as <paramref name="ModelId"/>.</param>
 /// <param name="InputHash">Same nullability contract as <paramref name="ModelId"/>.</param>
+/// <param name="PayloadJson">The reply's structured half, already serialized
+/// (<c>Reply.ReplyPayloadJson.Serialize</c>), or <see langword="null"/> when the turn has none
+/// (ADR-030 D2).</param>
+/// <param name="InterviewJson">ADR-030 interview metadata: the questions/options on an interview
+/// turn, or the user's answer linkage on the matching You turn; <see langword="null"/> elsewhere.</param>
 public sealed record AppendConversationMessageRequest(
     ConversationRole Role,
     ConversationMessageKind Kind,
@@ -33,4 +38,5 @@ public sealed record AppendConversationMessageRequest(
     string? ModelId = null,
     string? PromptVersion = null,
     string? InputHash = null,
+    string? PayloadJson = null,
     string? InterviewJson = null);

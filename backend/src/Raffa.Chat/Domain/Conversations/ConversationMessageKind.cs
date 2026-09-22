@@ -1,11 +1,10 @@
 namespace Raffa.Chat.Domain.Conversations;
 
 /// <summary>
-/// The reply shape of one <see cref="ConversationMessage"/> — ADR-024's engine section / R-ASK-07
-/// ("Reply contract... Kinds: `answer`, `abstain`, `redirect` (greeting / off-domain /
-/// needs_document), `refusal` (legal)"). Stored as a string (see <see cref="ConversationRole"/>'s
-/// own doc comment for the naming-convention rationale); the Ask engine (a later task) is what
-/// actually decides which kind a turn gets — this module only persists it.
+/// The reply shape of one <see cref="ConversationMessage"/> — ADR-024's engine section / R-ASK-07.
+/// Stored as a string (see <see cref="ConversationRole"/>'s own doc comment for the
+/// naming-convention rationale); the Ask engine is what actually decides which kind a turn gets —
+/// this module only persists it.
 /// </summary>
 public enum ConversationMessageKind
 {
@@ -24,6 +23,10 @@ public enum ConversationMessageKind
     /// "legal" label).</summary>
     Refusal,
 
-    /// <summary>A clarifying question with options (ADR-030); its `interview_json` carries them.</summary>
+    /// <summary>A drafted negotiation email (ADR-030 D2) — the preface in <c>Markdown</c>, the
+    /// email in <c>ConversationMessage.PayloadJson</c>.</summary>
+    Draft,
+
+    /// <summary>A clarifying question with options (ADR-030); its <c>interview_json</c> carries them.</summary>
     Interview,
 }

@@ -66,6 +66,13 @@ Citations show the document quote; a spanned clause offers **Open contract** and
 caller's chats. The global Ask bar is hidden on `/ask` itself (that screen has
 its own composer).
 
+When Ask is asked for an operation it cannot perform yet (send an email, set
+a reminder, export a file, raise a PO) it says so in one sentence, offers the
+nearest alternative — a drafted negotiation email written from the contract's
+own facts, or the screen that already has the answer — and can file the gap
+as a GitHub issue for the team from a three-question card in the chat
+(ADR-030).
+
 Quote check is only for a **new** supplier proposal. "Which of *my* contracts
 are off-market?" stays in Ask (today that intent routes correctly, then
 abstains — pack not built yet).

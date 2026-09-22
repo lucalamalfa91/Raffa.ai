@@ -8,6 +8,7 @@ using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Council;
+using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Pack;
@@ -198,6 +199,7 @@ internal sealed partial class AskCopilotService(
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
     IMarketDealLookup marketDealLookup,
     AskAgentFlow askAgentFlow,
+    NegotiationDraftingWorkflow negotiationDraftingWorkflow,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
     WebResearchOptions webResearchOptions,
@@ -206,7 +208,8 @@ internal sealed partial class AskCopilotService(
     IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
-    IClock clock)
+    IClock clock,
+    LineItemMarketPriceService? lineItemMarketPriceService = null)
 {
     private const int ClauseTopK = 5;
 
@@ -349,11 +352,13 @@ internal sealed partial class AskCopilotService(
                 ? resolvedScopedSupplierName
                 : null;
 
-        if (scopedSupplierName is not null && gate.Label is GateLabel.NeedsDocument or GateLabel.InDomain)
+        // ADR-030: a capability-gap turn keeps its own label but takes the scoped supplier the same
+        // way, so a chat opened from Contract 360 drafts for that contract.
+        if (scopedSupplierName is not null && gate.Label is GateLabel.NeedsDocument or GateLabel.InDomain or GateLabel.CapabilityGap)
         {
             gate = gate with
             {
-                Label = GateLabel.InDomain,
+                Label = gate.Label == GateLabel.CapabilityGap ? GateLabel.CapabilityGap : GateLabel.InDomain,
                 Reason = $"scoped entry resolved to known supplier '{scopedSupplierName}' before the " +
                     "gate's own free-text extraction decided (ADR-024, task E25/F03/US01/T01).",
                 NamedSupplier = scopedSupplierName,
@@ -371,6 +376,9 @@ internal sealed partial class AskCopilotService(
             GateLabel.Legal => (BuildLegalReply(portfolio, supplierNames, gate.NamedSupplier), false, false),
             GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false, false),
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
+            GateLabel.CapabilityGap => await BuildCapabilityGapReplyAsync(
+                tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor, cancellationToken)
+                .ConfigureAwait(false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
                 tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
                 scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken)
@@ -550,7 +558,7 @@ internal sealed partial class AskCopilotService(
         // is built (nothing of the tenant's data is in scope of that call, by construction); an
         // explicit or forced WebResearch intent gets the consent question, or a redirect naming
         // the closed gate. There is no path from here to the search without a consumed consent.
-        if (hints.AuthorizedWebResearch is { } authorizedWebResearch)
+        if (hints.AuthorizedWebResearch is { } authorizedWebResearch && plan.Intent == AskIntent.WebResearch)
         {
             var reply = await RunWebResearchAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, cancellationToken)
                 .ConfigureAwait(false);
@@ -2022,8 +2030,7 @@ internal sealed partial class AskCopilotService(
         var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
             .ConfigureAwait(false);
 
-        var pricedLines = await InsightsEndpointExtensions
-            .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+        var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
 
         var items = new List<PackItem>
@@ -2131,8 +2138,7 @@ internal sealed partial class AskCopilotService(
         var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
             .ConfigureAwait(false);
 
-        var pricedLines = await InsightsEndpointExtensions
-            .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+        var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
 
         var criticalFacts = InsightsEndpointExtensions.ToCriticalFacts(contract360);
@@ -2358,8 +2364,7 @@ internal sealed partial class AskCopilotService(
         // never disagree with /strategy or the market-compare pack about the same line's band.
         var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
             .ConfigureAwait(false);
-        var pricedLines = await InsightsEndpointExtensions
-            .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+        var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
 
         var rankerInputs = new NegotiationPointInputs(
@@ -2819,6 +2824,31 @@ internal sealed partial class AskCopilotService(
     }
 
     /// <summary>
+    /// The priced lines every Ask pack reads: the same <c>InsightsEndpointExtensions.ToPricedLines</c>
+    /// call <c>GET /api/contracts/{id}/strategy</c> makes, including each line's stored market
+    /// comparison (<see cref="LineItemMarketPriceService"/>, the figure Contract 360's market column
+    /// shows) — so Ask, the strategy endpoint and the product table never state two different
+    /// bands for one line (ADR-024 w17 clause 7).
+    /// </summary>
+    private async Task<IReadOnlyList<PricedLine>> ResolvePricedLinesAsync(
+        Contract360Result contract360,
+        string? benchmarkSupplierName,
+        string? geography,
+        DateOnly asOfDate,
+        CancellationToken cancellationToken)
+    {
+        var storedMarketPrices = lineItemMarketPriceService is null
+            ? null
+            : await lineItemMarketPriceService
+                .GetCurrentAsync(CurrentTenantId, contract360.ContractId, cancellationToken)
+                .ConfigureAwait(false);
+
+        return await InsightsEndpointExtensions
+            .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken, storedMarketPrices)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Resolves the (supplier name, geography) key <see cref="BuildRenewalStrategyPackAsync"/>/
     /// <see cref="BuildMarketComparePackAsync"/> need for the async
     /// <c>InsightsEndpointExtensions.ToPricedLines</c> overload — the same
@@ -2896,6 +2926,7 @@ internal sealed partial class AskCopilotService(
             ReplyKind.Abstain => AuditAbstainedAction,
             ReplyKind.Redirect => AuditRedirectedAction,
             ReplyKind.Refusal => AuditRefusedAction,
+            ReplyKind.Draft => AuditDraftedAction,
             ReplyKind.Interview => AuditInterviewedAction,
             _ => AuditAnsweredAction,
         };

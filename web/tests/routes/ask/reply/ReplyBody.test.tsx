@@ -3,18 +3,60 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import ReplyBody from "../../../../src/routes/ask/reply/ReplyBody";
-import type { Reply } from "../../../../src/routes/ask/reply/replyTypes";
+import type { FeedbackAnswers, Reply } from "../../../../src/routes/ask/reply/replyTypes";
 
-function renderReply(reply: Reply) {
+type SubmitFeedback = (messageId: string, answers: FeedbackAnswers) => Promise<{ ok: boolean }>;
+
+function renderReply(reply: Reply, extra: { messageId?: string | null; feedbackDone?: boolean; onSubmitFeedback?: SubmitFeedback } = {}) {
   const onOpenCitation = vi.fn();
   const onFollowUp = vi.fn();
   const { container } = render(
     <MemoryRouter>
-      <ReplyBody reply={reply} onOpenCitation={onOpenCitation} onFollowUp={onFollowUp} />
+      <ReplyBody
+        reply={reply}
+        onOpenCitation={onOpenCitation}
+        onFollowUp={onFollowUp}
+        messageId={extra.messageId}
+        onSubmitFeedback={extra.onSubmitFeedback}
+        feedbackDone={extra.feedbackDone}
+      />
     </MemoryRouter>,
   );
   return { container, onOpenCitation, onFollowUp };
 }
+
+// ADR-030: a server-localised feedback offer, as `payload.feedbackOffer` carries it.
+const FEEDBACK_OFFER = {
+  prompt: "Want to report this to the Raffa.ai team so they can build it?",
+  yesLabel: "Yes",
+  noLabel: "No",
+  nextLabel: "Next",
+  backLabel: "Back",
+  submitLabel: "Send",
+  sendingLabel: "Sending…",
+  thanksLabel: "Thanks!",
+  errorLabel: "I couldn't send the report. Please try again.",
+  publicNotice: "Your answers will be public on GitHub.",
+  questions: [
+    { key: "what" as const, kind: "text" as const, label: "What exactly should Raffa do?", prefill: "Send the email", choices: null },
+    { key: "frequency" as const, kind: "choice" as const, label: "How often?", prefill: null, choices: [{ key: "weekly", label: "every week" }] },
+    { key: "importance" as const, kind: "choice" as const, label: "How important?", prefill: null, choices: [{ key: "blocking", label: "blocking" }] },
+  ],
+};
+
+const DRAFT_REPLY: Reply = {
+  kind: "draft",
+  answerMarkdown: "I can't create or send emails from Raffa.ai yet, but I can help you write the renewal email. Here is a draft.",
+  draft: { subject: "Salesforce renewal – request to revise the commercial terms", body: "Dear Salesforce team,\n\nWe are writing about the renewal.\n\nKind regards" },
+  gap: { key: "email-draft", title: "Draft and send negotiation emails", language: "en" },
+  feedbackOffer: FEEDBACK_OFFER,
+  citations: [{ n: 1, corpus: "tenant", title: "Salesforce · MSA 2024", subtitle: "p.12 §8.4", snippet: "auto-renews", href: "/contracts/contract-1" }],
+  actions: [
+    { label: "Open Renewals →", href: "/renewals?select=contract-1", kind: "primary" },
+    { label: "Open Contract 360", href: "/contracts/contract-1", kind: "secondary" },
+  ],
+  followUps: ["What levers do I have on the Salesforce renewal?"],
+};
 
 // requirements.md §6's own JSON example, adapted onto this module's `Reply` type.
 const ANSWER_REPLY: Reply = {
@@ -277,6 +319,80 @@ describe("ReplyBody abstain recovery action (task E25/F05/US02/T01)", () => {
     expect(body).not.toBeNull();
     expect(body?.textContent).toContain("Let's start from your first contract: upload it in Documents.");
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+// ADR-030 D2/D5/D6: the fifth kind, the capability-gap redirect and the external action.
+describe("ReplyBody (ADR-030)", () => {
+  it("draft: renders preface, subject, verbatim body, copy button, cards, actions, follow-ups and the feedback card", () => {
+    const { container } = renderReply(DRAFT_REPLY, { messageId: "msg-1", onSubmitFeedback: vi.fn() });
+
+    expect(container.querySelector('[data-reply-kind="draft"]')).not.toBeNull();
+    expect(screen.getByText(/I can't create or send emails from Raffa.ai yet/)).toBeInTheDocument();
+    expect(container.querySelector("pre.reply-draft-body")!.textContent).toBe(DRAFT_REPLY.kind === "draft" ? DRAFT_REPLY.draft.body : "");
+    expect(screen.getByRole("button", { name: "Copy email" })).toBeInTheDocument();
+    expect(screen.getByText("Your contracts")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Renewals →" })).toHaveAttribute("href", "/renewals?select=contract-1");
+    expect(screen.getByRole("button", { name: /What levers do I have/ })).toBeInTheDocument();
+    expect(screen.getByText(FEEDBACK_OFFER.prompt)).toBeInTheDocument();
+    expect(container.querySelector(".abstain-block")).toBeNull();
+  });
+
+  it("draft: hides the feedback card once the offer was answered, or without a server message id", () => {
+    const done = renderReply(DRAFT_REPLY, { messageId: "msg-1", onSubmitFeedback: vi.fn(), feedbackDone: true });
+    expect(done.container.querySelector(".reply-feedback")).toBeNull();
+
+    const noId = renderReply(DRAFT_REPLY, { messageId: null, onSubmitFeedback: vi.fn() });
+    expect(noId.container.querySelector(".reply-feedback")).toBeNull();
+  });
+
+  it("draft: the feedback card submits against this turn's message id", async () => {
+    const onSubmitFeedback = vi.fn().mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    renderReply(DRAFT_REPLY, { messageId: "msg-1", onSubmitFeedback });
+
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "every week" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "blocking" }));
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(onSubmitFeedback).toHaveBeenCalledWith("msg-1", { what: "Send the email", frequency: "weekly", importance: "blocking" });
+  });
+
+  it("redirect with a feedback offer renders follow-up chips and the card, still one CTA", () => {
+    renderReply(
+      {
+        kind: "redirect",
+        answerMarkdown: "I can't create or send emails from Raffa.ai yet, but I can help you write the renewal email. Tell me which contract it is for.",
+        actions: [{ label: "Open Portfolio →", href: "/contracts", kind: "primary" }],
+        followUps: ["Write the renewal email for Salesforce", "Write the renewal email for DocuSign"],
+        gap: { key: "email-draft", title: "Draft and send negotiation emails", language: "en" },
+        feedbackOffer: FEEDBACK_OFFER,
+      },
+      { messageId: "msg-2", onSubmitFeedback: vi.fn() },
+    );
+
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /Write the renewal email for DocuSign/ })).toBeInTheDocument();
+    expect(screen.getByText(FEEDBACK_OFFER.prompt)).toBeInTheDocument();
+  });
+
+  it("answer with an external action renders a new-tab anchor with rel noopener, never a router link", () => {
+    renderReply({
+      kind: "answer",
+      answerMarkdown: "Thanks, I opened issue #42 for the Raffa.ai team.",
+      citations: [],
+      actions: [{ label: "Open issue #42 →", href: "https://github.com/lucalamalfa91/Raffa.ai/issues/42", kind: "primary", external: true }],
+      followUps: [],
+      feedbackResult: { forMessageId: "msg-1", status: "issue_opened", issueNumber: 42, issueUrl: "https://github.com/lucalamalfa91/Raffa.ai/issues/42" },
+    });
+
+    const anchor = screen.getByRole("link", { name: "Open issue #42 →" });
+    expect(anchor).toHaveAttribute("href", "https://github.com/lucalamalfa91/Raffa.ai/issues/42");
+    expect(anchor).toHaveAttribute("target", "_blank");
+    expect(anchor).toHaveAttribute("rel", "noopener noreferrer");
   });
 });
 

@@ -91,8 +91,8 @@ module "identity" {
   location            = var.location
   resource_group_name = azurerm_resource_group.this.name
   web_redirect_uri    = "https://${module.staticwebapp.default_host_name}/"
-  # Task E16/F01/US01/T01 (NW-67): demo stays false until its own
-  # post-promotion acceptance (ADR-016 w15 footer clause 14).
+  # Task E16/F01/US01/T01 (NW-67): true since the owner's ruling of
+  # 2026-09-22 (ADR-016 w20 footer) -- the w15 clause-14 flip, done.
   guest_provisioning_enabled = var.guest_provisioning_enabled
   # Fix 2026-09-14: same as dev -- the grant is out-of-band, Terraform
   # never owns it, so demo's later flip cannot repeat the dev failure.
@@ -188,6 +188,10 @@ module "containerapps" {
   acs_connection_secret_id = module.keyvault.acs_connection_secret_versionless_id
   acs_sender_address       = module.communication.sender_address
   invitation_mail_enabled  = var.invitation_mail_enabled
+  # ADR-030 D5 (Ask Raffa feedback loop): this root's OWN module.keyvault
+  # instance only -- never the other environment's.
+  github_feedback_token_secret_id = module.keyvault.github_feedback_token_secret_versionless_id
+  feedback_github_enabled         = var.feedback_github_enabled
   # Task E16/F01/US01/T01 (NW-05, NW-67): this root's OWN module.identity
   # instance only -- never dev's.
   azuread_authority          = module.identity.issuer
@@ -290,6 +294,9 @@ module "keyvault" {
   # Task E16/F01/US01/T01 (NW-68, ADR-011 w15 footer §1): this root's OWN
   # module.communication instance only -- never dev's.
   acs_connection_string = module.communication.primary_connection_string
+  # ADR-030 D5 (Ask Raffa feedback loop): this root's own HCP workspace
+  # variable; empty keeps the secret uncreated.
+  github_feedback_token = var.github_feedback_token
 }
 
 # ADR-005: Container Registry Basic tier, one per environment (isolation

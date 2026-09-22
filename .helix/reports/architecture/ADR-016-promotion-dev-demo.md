@@ -1236,3 +1236,54 @@ acceptance doc states that as a fact, so no reader infers the console works on
 console's loop semantics and its audit actor are **ADR-011 / ADR-022** —
 security-architect's — and clause 44 cites clause 26 as a **premise**, never
 restating or amending it.
+
+## Amendment (2026-09-22, wave w20 — the w15 clause-14 flip on `demo` is done, and the feedback switch never waited)
+
+**Provenance**: the owner's ruling of 2026-09-22 in the w20 session that produced
+ADR-030 (Ask Raffa capability gaps and the feedback loop). Two rulings, both on
+`infra/environments/demo/variables.tf`, both on **product switches** (ADR-005 w15
+footer §5 rule 3 / this ADR's w15 footer clause 15), neither on a provisioning
+gate. Nothing above is rewritten; clause 14's table is read with this footer.
+
+**1. `invitation_mail_enabled` and `guest_provisioning_enabled` are `true` on
+`demo` from this merge.** Clause 14 reserved them `false` "at the infra merge",
+to be flipped "by the one-line PR before the `demo-v*` tag" after `demo`'s own
+post-promotion acceptance. The owner has ruled that PR is this one, ahead of
+that acceptance: `demo` runs the same two product switches as `dev`. The
+premise clause 14 rested on — an apply moving `demo`'s infrastructure while it
+serves an older image — is no longer the risk it was at w15, because both
+switches are read by every image `demo` has run since `demo-v3` and an ACS
+sender with no reader is harmless (clause 15). What the flip does **not** do
+is write in Entra: `guest_role_assignment_managed` stays `false` on both roots
+(w15 re-entry footer, fix of 2026-09-14), and `modules/identity` count-gates the
+`User.Invite.All` assignment on **both** variables, so the apply publishes two
+strings to the API app and creates nothing in the directory. The grant for
+`demo`'s workload identity is written out-of-band by a Global Administrator,
+exactly as `dev`'s was (`docs/waves/w15-acceptance.md` §0.3 step 2); until it
+is, invitations on `demo` run in the `NotConfigured` (link-only) shape the w15
+runbook already names as a legitimate state. The invitation walk w17's
+acceptance left owed on `demo` (`docs/waves/w17-acceptance.md`, known gap 5)
+is now runnable and is scheduled in `docs/waves/w20-acceptance.md`'s promotion
+sequence, step 5.
+
+**2. `feedback_github_enabled` is `true` on both roots from ADR-030's first
+merge**, never flag-gated the way clause 14 gated mail. The reason is the shape
+of the gate, not a relaxation of the rule: `modules/containerapps` publishes
+`Feedback__GitHub__Enabled = tostring(var.feedback_github_enabled &&
+var.github_feedback_token_secret_id != null)`, and `modules/keyvault`
+count-gates the secret on the token's presence, so the **HCP sensitive
+variable** `github_feedback_token` is the real per-environment gate and the
+Terraform switch alone can never turn the publisher on. A workspace without the
+token boots the API with the null publisher and stores every request; setting
+the token and confirming the apply is the whole promotion of that feature to
+`demo`. This is clause 14's own principle — the control is per-environment and
+lives in the root — with the control moved from a `.tf` literal to the secret
+that the feature cannot work without.
+
+**Consequences for the reader.** Clause 14's table now reads `true` / `true` /
+"flipped 2026-09-22" for its first two rows on `demo`. `infra/README.md`'s
+"Per-environment flags" paragraph, `modules/identity` and `modules/containerapps`
+variable descriptions, and the `demo` root comments say the same thing in the
+same words. No other clause of this ADR moves: promotion is still tag-driven,
+`demo` still applies from `main`, and `guest_role_assignment_managed` still
+tracks who holds the directory right, not which environment wants the feature.

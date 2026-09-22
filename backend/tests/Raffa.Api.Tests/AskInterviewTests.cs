@@ -218,4 +218,25 @@ public sealed class AskInterviewTests : IClassFixture<RaffaApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, unknownOption.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, unknownMessage.StatusCode);
     }
+
+    [Fact]
+    public async Task An_interview_answer_without_option_or_explicit_free_text_is_a_400()
+    {
+        var factory = _factory.WithInMemoryAskEngine(NewGateway());
+        var tenantId = await SeedValidatedContractAsync(factory);
+        var client = factory.CreateClient();
+        var conversationId = await CreateConversationAsync(client, tenantId);
+
+        var interviewResponse = await PostAsync(client, tenantId, conversationId, new { question = AmbiguousQuestion });
+        using var interviewBody = JsonDocument.Parse(await interviewResponse.Content.ReadAsStringAsync());
+        var messageId = interviewBody.RootElement.GetProperty("messageId").GetGuid();
+
+        var response = await PostAsync(client, tenantId, conversationId, new
+        {
+            question = "Which contracts renew in the next 120 days?",
+            interviewAnswer = new { messageId = messageId.ToString(), questionKey = "interpretation" },
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }

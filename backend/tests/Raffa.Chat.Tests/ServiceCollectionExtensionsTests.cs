@@ -1,6 +1,8 @@
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application;
+using Raffa.Chat.Application.Drafting;
+using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Infrastructure;
 using Raffa.SharedKernel;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,8 +48,10 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AbstainGuard>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<RagAnswerService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IClock>());
-        // ADR-030: the research composer resolves without a database; its options default to the
-        // kill switch being off.
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<NegotiationDraftingWorkflow>());
+        Assert.IsType<NullFeatureRequestPublisher>(scope.ServiceProvider.GetRequiredService<IFeatureRequestPublisher>());
+        Assert.Equal("local", scope.ServiceProvider.GetRequiredService<FeedbackOptions>().Environment);
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchComposer>());
         Assert.False(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchOptions>().Enabled);
     }

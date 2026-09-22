@@ -18,6 +18,6 @@ public static class InterviewReplyBuilder
             actions ?? [],
             ReplyProvenance.NoModelCall([]),
             [],
-            turn);
+            Interview: turn);
     }
 }

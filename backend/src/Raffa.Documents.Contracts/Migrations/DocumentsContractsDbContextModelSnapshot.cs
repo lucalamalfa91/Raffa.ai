@@ -322,6 +322,99 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.ToTable("contract_line_item", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractLineItemMarketPrice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("checked_at");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Geography")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("geography");
+
+                    b.Property<Guid>("LineItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("line_item_id");
+
+                    b.Property<DateTimeOffset?>("MarketUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("market_updated_at");
+
+                    b.Property<string>("Product")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("product");
+
+                    b.Property<string>("Provenance")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("provenance");
+
+                    b.Property<string>("RecordId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("record_id");
+
+                    b.Property<int?>("SampleSize")
+                        .HasColumnType("integer")
+                        .HasColumnName("sample_size");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<int?>("TermMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("term_months");
+
+                    b.Property<decimal?>("UnitPriceP25")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("unit_price_p25");
+
+                    b.Property<decimal?>("UnitPriceP50")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("unit_price_p50");
+
+                    b.Property<decimal?>("UnitPriceP75")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("unit_price_p75");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_line_item_market_price");
+
+                    b.HasIndex("ContractId")
+                        .HasDatabaseName("ix_contract_line_item_market_price_contract_id");
+
+                    b.HasIndex("LineItemId")
+                        .HasDatabaseName("ix_contract_line_item_market_price_line_item_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_contract_line_item_market_price_tenant_id");
+
+                    b.HasIndex("TenantId", "LineItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contract_line_item_market_price_tenant_id_line_item_id");
+
+                    b.ToTable("contract_line_item_market_price", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractNegotiationStep", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1075,6 +1168,16 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasForeignKey("SourceDocumentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_contract_line_item_document_source_document_id");
+                });
+
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractLineItemMarketPrice", b =>
+                {
+                    b.HasOne("Raffa.Documents.Contracts.Domain.ContractLineItem", null)
+                        .WithMany()
+                        .HasForeignKey("LineItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_line_item_market_price_contract_line_item_line_ite");
                 });
 
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractVersion", b =>

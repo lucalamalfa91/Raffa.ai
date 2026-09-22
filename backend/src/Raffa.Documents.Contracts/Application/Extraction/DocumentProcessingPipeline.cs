@@ -87,6 +87,10 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// composed in, and unit tests that construct this type directly need not know about it at all): a
 /// host without that module keeps extracting exactly as before, contracts simply carry no supplier
 /// link.
+///
+/// <b>Market pricing</b>: right after the supplier link, <see cref="LineItemMarketPriceService"/>
+/// compares every line item with the shared market corpus and stores the result per line
+/// (optional for the same reason as <paramref name="supplierResolver"/>).
 /// </summary>
 public sealed class DocumentProcessingPipeline(
     DocumentsContractsDbContext dbContext,
@@ -97,7 +101,8 @@ public sealed class DocumentProcessingPipeline(
     ITenantContext tenantContext,
     IClock clock,
     DocumentPreviewService? previewService = null,
-    ISupplierResolver? supplierResolver = null)
+    ISupplierResolver? supplierResolver = null,
+    LineItemMarketPriceService? marketPriceService = null)
 {
     /// <summary>Discriminator this pipeline indexes every chunk under (<see cref="Domain.Embedding.SourceType"/>),
     /// matching <c>Raffa.Api.ChatEndpointExtensions.ToEvidenceSnippet</c>'s own
@@ -270,6 +275,17 @@ public sealed class DocumentProcessingPipeline(
         }
 
         await LinkSupplierAsync(tenantId, extractionResult.Value, cancellationToken).ConfigureAwait(false);
+
+        // Compare every line item with the market corpus now that the supplier is linked, so the
+        // contract's market column is filled from the first time it is opened (see
+        // LineItemMarketPriceService for how it stays current afterwards). Never fails the
+        // upload: a matcher failure keeps whatever comparison is stored.
+        if (marketPriceService is not null)
+        {
+            await marketPriceService
+                .PriceContractAsync(tenantId, extractionResult.Value.ContractId, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         var chunksIndexed = await IndexForRetrievalAsync(tenantId, document.Id, pages, cancellationToken)
             .ConfigureAwait(false);

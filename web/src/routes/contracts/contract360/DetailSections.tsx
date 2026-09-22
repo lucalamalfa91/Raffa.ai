@@ -7,13 +7,13 @@ import { formatCompactAmount } from "../portfolioViewModel";
 import {
   AUTO_ACCEPT_THRESHOLD,
   LEVERS_NOT_YET_AVAILABLE,
-  PRODUCT_NOTE,
   SECTION_COPY,
   STANDARD_TERMS_HINT,
   buildClauseGroups,
   buildDocumentRows,
   buildKeyTerms,
-  buildLeverGroups,
+  buildLeverCards,
+  buildProductNote,
   buildObligationColumns,
   buildProductLines,
   buildRiskItems,
@@ -59,22 +59,22 @@ function SectionFrame({ copy, label, children }: { copy: SectionCopy; label: str
 // ---- 01 Leverage ------------------------------------------------------------------------------
 
 export function LeverageSection({ strategy, lineDescriptions }: { strategy: ContractStrategyBody | null; lineDescriptions: readonly string[] }) {
-  const groups = buildLeverGroups(strategy, lineDescriptions);
+  const cards = buildLeverCards(strategy, lineDescriptions);
   return (
     <SectionFrame copy={SECTION_COPY.leverage} label="Leverage">
-      {groups.length === 0 ? (
+      {cards.length === 0 ? (
         <p className="contract360-section-empty">{LEVERS_NOT_YET_AVAILABLE}</p>
       ) : (
-        <div className="contract360-lever-groups">
-          {groups.map((group) => (
-            <div key={group.line ?? "all"} className="contract360-lever-group">
-              {group.line !== null && <div className="contract360-lever-line">{group.line}</div>}
-              <div className="contract360-levers">
-                {group.cards.map((lever) => (
-                  <div key={lever.key} className={`contract360-lever${lever.strong ? " is-strong" : ""}`}>
-                    <div className="contract360-lever-kicker">{lever.kicker}</div>
-                    <div className="contract360-lever-headline">{lever.headline}</div>
-                    <div className="contract360-lever-body">{lever.body}</div>
+        <div className="contract360-levers">
+          {cards.map((lever) => (
+            <div key={lever.key} className={`contract360-lever${lever.strong ? " is-strong" : ""}`}>
+              <div className="contract360-lever-kicker">{lever.kicker}</div>
+              <div className="contract360-lever-headline">{lever.headline}</div>
+              <div className="contract360-lever-entries">
+                {lever.entries.map((entry) => (
+                  <div key={entry.body}>
+                    {entry.lines.length > 0 && <div className="contract360-lever-entry-line">{entry.lines.join(" · ")}</div>}
+                    <div className="contract360-lever-body">{entry.body}</div>
                   </div>
                 ))}
               </div>
@@ -115,7 +115,10 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
                 </div>
                 <div className="is-right">{line.qty}</div>
                 <div className="is-right contract360-product-price">{line.price}</div>
-                <div className="is-right contract360-product-market">{line.market}</div>
+                <div className="is-right contract360-product-market" title={line.marketTitle ?? undefined}>
+                  <div>{line.market}</div>
+                  {line.marketMeta !== "" && <div className="contract360-product-market-meta">{line.marketMeta}</div>}
+                </div>
                 <div className="contract360-product-delta">
                   <div className="contract360-product-bar" aria-hidden="true">
                     <div className="contract360-product-bar-market" style={{ width: line.marketWidth }} />
@@ -127,7 +130,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
               </div>
             ))}
             <div className="contract360-products-foot">
-              <span className="contract360-products-note">{PRODUCT_NOTE}</span>
+              <span className="contract360-products-note">{buildProductNote(contract.tabs.products)}</span>
               <span className="contract360-products-total">{total}</span>
             </div>
           </div>
@@ -155,7 +158,7 @@ function ClauseRow({
         <span className="contract360-clause-normalized">{item.normalized}</span>
       </button>
       <span className={`contract360-clause-ask${item.ask === null ? " is-standard" : ""}`}>{item.ask ?? "—"}</span>
-      <span className="contract360-clause-src">
+      <span className="contract360-clause-src" title={item.source ?? undefined}>
         {item.viewerHref !== null && item.source !== null ? (
           <DocumentViewerLink to={item.viewerHref} className="contract360-clause-viewer">
             {item.source}

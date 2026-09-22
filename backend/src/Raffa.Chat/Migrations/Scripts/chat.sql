@@ -165,3 +165,71 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922171713_AddDraftPayloadAndFeatureRequest') THEN
+    ALTER TABLE conversation_message ADD payload_json jsonb;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922171713_AddDraftPayloadAndFeatureRequest') THEN
+    CREATE TABLE feature_request (
+        id uuid NOT NULL,
+        conversation_id uuid NOT NULL,
+        message_id uuid NOT NULL,
+        user_id character varying(200) NOT NULL,
+        gap_key character varying(40) NOT NULL,
+        gap_title character varying(120) NOT NULL,
+        language character varying(5) NOT NULL,
+        answers_json jsonb NOT NULL,
+        environment character varying(20) NOT NULL,
+        workspace_hash character varying(16) NOT NULL,
+        status character varying(20) NOT NULL,
+        issue_number integer,
+        issue_url character varying(300),
+        publish_error character varying(500),
+        created_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_feature_request PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922171713_AddDraftPayloadAndFeatureRequest') THEN
+    CREATE INDEX ix_feature_request_tenant_id ON feature_request (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922171713_AddDraftPayloadAndFeatureRequest') THEN
+    CREATE UNIQUE INDEX ix_feature_request_tenant_id_message_id ON feature_request (tenant_id, message_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922171713_AddDraftPayloadAndFeatureRequest') THEN
+    ALTER TABLE "feature_request" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "feature_request" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "feature_request"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922171713_AddDraftPayloadAndFeatureRequest') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260922171713_AddDraftPayloadAndFeatureRequest', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;

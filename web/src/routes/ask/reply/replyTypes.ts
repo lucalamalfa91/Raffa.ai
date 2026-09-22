@@ -94,17 +94,87 @@ export type ReplyActionKind = "primary" | "secondary";
 
 /** One entry of `actions[]` (requirements.md §6): `{ label, href, kind }`, rendered as a real
  * in-app link styled `.btn` -- there is no `onClick` field on the wire, these are plain
- * navigations, never a callback-driven side effect like a citation open. */
+ * navigations, never a callback-driven side effect like a citation open. `external` (ADR-030 D6):
+ * the wire's own `kind: "external"` -- an absolute https URL (today only the GitHub issue a
+ * feedback submission opened) that `ActionRow` renders as a plain `<a target="_blank">`, never a
+ * router `<Link>`. */
 export interface ReplyAction {
   label: string;
   href: string;
   kind: ReplyActionKind;
+  external?: boolean;
+}
+
+// ---------------------------------------------------------------------------------------------
+// ADR-030: the reply's structured half (`payload`) -- capability gap, drafted email, feedback
+// ---------------------------------------------------------------------------------------------
+
+/** `payload.gap`: which catalog entry fired (`Raffa.Chat.Application.Gaps.CapabilityGapCatalog`)
+ * and the language the server wrote the deterministic copy in. */
+export interface ReplyGap {
+  key: string;
+  title: string;
+  language: string;
+}
+
+/** `payload.draft`: the drafted negotiation email, plain text, rendered verbatim by `DraftCard`
+ * (never through `ReplyMarkdown`/`humanizeReplyText`) so "Copy email" copies exactly what the
+ * server wrote. */
+export interface ReplyDraft {
+  subject: string;
+  body: string;
+}
+
+export interface FeedbackChoice {
+  key: string;
+  label: string;
+}
+
+/** One of the three interview questions of the feedback card (`payload.feedbackOffer.questions`). */
+export interface FeedbackQuestion {
+  key: string;
+  kind: "text" | "choice";
+  label: string;
+  prefill?: string | null;
+  choices?: readonly FeedbackChoice[] | null;
+}
+
+/** `payload.feedbackOffer`: everything the in-chat feedback card renders, already localised by
+ * the server (ADR-030 D4/D5) -- this client owns no copy of its own for it. */
+export interface FeedbackOffer {
+  prompt: string;
+  yesLabel: string;
+  noLabel: string;
+  nextLabel: string;
+  backLabel: string;
+  submitLabel: string;
+  sendingLabel: string;
+  thanksLabel: string;
+  errorLabel: string;
+  publicNotice: string;
+  questions: readonly FeedbackQuestion[];
+}
+
+/** `payload.feedbackResult`: carried by the confirmation turn `POST …/feedback` appends -- tells
+ * a resumed conversation which offer was already answered. */
+export interface FeedbackResult {
+  forMessageId: string;
+  status: "recorded" | "issue_opened";
+  issueNumber: number | null;
+  issueUrl: string | null;
+}
+
+/** The three answers `FeedbackCard` submits (`FeedbackQuestion.key` -> value). */
+export interface FeedbackAnswers {
+  what: string;
+  frequency: string;
+  importance: string;
 }
 
 /** `reply.kind` (requirements.md §6) plus the client-only `"error"` a transport/network failure
  * produces (never conflated with an honest `"abstain"` -- the same rule `../askViewModel.ts
  * #ChatMessageKind` already documents for V1). */
-export type ReplyKind = "answer" | "redirect" | "refusal" | "abstain" | "interview" | "error";
+export type ReplyKind = "answer" | "redirect" | "refusal" | "abstain" | "draft" | "interview" | "error";
 
 /** `answer` = markdown body + citation cards + action buttons + follow-ups (task text) -- the only
  * kind with citations. */
@@ -114,10 +184,26 @@ export interface AnswerReply {
   citations: readonly ReplyCitation[];
   actions: readonly ReplyAction[];
   followUps: readonly string[];
+  /** ADR-030 D5: set only on the feedback confirmation turn. */
+  feedbackResult?: FeedbackResult | null;
   /** ADR-030: this answer came from the public web after the user's consent -- nothing in it was
    * checked against the tenant's contracts. `ReplyBody` renders the "unverified" banner and the
    * evidence card files every `web` citation under its own labelled section. */
   unverifiedWeb?: boolean;
+}
+
+/** `draft` (ADR-030 D2): the honest preface as markdown, the drafted email as a verbatim card
+ * with "Copy email", the pack items the email was written from as citation cards, the actions,
+ * two follow-ups, and the feedback offer. Never the abstain block: the draft path cannot abstain. */
+export interface DraftReply {
+  kind: "draft";
+  answerMarkdown: string;
+  draft: ReplyDraft;
+  gap: ReplyGap;
+  feedbackOffer: FeedbackOffer | null;
+  citations: readonly ReplyCitation[];
+  actions: readonly ReplyAction[];
+  followUps: readonly string[];
 }
 
 /** `redirect` (greeting / off-domain / needs_document) and `refusal` (legal) share one layout:
@@ -129,6 +215,11 @@ export interface RedirectReply {
   kind: "redirect" | "refusal";
   answerMarkdown: string;
   actions: readonly ReplyAction[];
+  /** ADR-030: a capability-gap redirect ("which contract?") offers one validated supplier per
+   * follow-up chip; every other redirect/refusal carries none. */
+  followUps?: readonly string[];
+  gap?: ReplyGap | null;
+  feedbackOffer?: FeedbackOffer | null;
 }
 
 /** `abstain` — Raffa's own way forward when no grounded answer exists (persona v2.4: Ask never
@@ -187,7 +278,7 @@ export interface ErrorReply {
   reason: string;
 }
 
-export type Reply = AnswerReply | RedirectReply | AbstainReply | InterviewReply | ErrorReply;
+export type Reply = AnswerReply | DraftReply | RedirectReply | AbstainReply | InterviewReply | ErrorReply;
 
 /** `CitationCard`'s corpus badge (task text: "*validated contract* / *market · representative* /
  * *Raffa*"), reusing the app-wide `{ variant, label }` shape `../../../styles/semantics.ts`
@@ -215,4 +306,3 @@ export function getCorpusBadge(corpus: CitationCorpus): CorpusBadge {
       return { variant: "outline", label: "Web · unverified" };
   }
 }
-

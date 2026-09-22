@@ -1,5 +1,5 @@
-using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Domain.Conversations;
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
@@ -230,6 +230,7 @@ public sealed class ConversationService(
             ModelId = request.ModelId,
             PromptVersion = request.PromptVersion,
             InputHash = request.InputHash,
+            PayloadJson = request.PayloadJson,
             InterviewJson = request.InterviewJson,
             CreatedAt = now,
         };
@@ -265,9 +266,6 @@ public sealed class ConversationService(
         return ToMessageResult(message);
     }
 
-    /// <summary>Deletes the caller's own conversation and its messages. Returns
-    /// <see langword="false"/> under the identical "not this user's conversation in this tenant"
-    /// rule <see cref="GetAsync"/> documents — the endpoint turns that into 404, never 403.</summary>
     /// <summary>
     /// One message of the caller's own conversation (ADR-030: the interview turn an answer refers
     /// to). Null when the conversation is not this user's, or the message is not in it — the
@@ -357,6 +355,9 @@ public sealed class ConversationService(
         return InterviewConsumeOutcome.Consumed;
     }
 
+    /// <summary>Deletes the caller's own conversation and its messages. Returns
+    /// <see langword="false"/> under the identical "not this user's conversation in this tenant"
+    /// rule <see cref="GetAsync"/> documents — the endpoint turns that into 404, never 403.</summary>
     public async Task<bool> DeleteAsync(
         TenantId tenantId,
         string userId,
@@ -512,6 +513,7 @@ public sealed class ConversationService(
             message.PromptVersion,
             message.InputHash,
             message.CreatedAt,
+            message.PayloadJson,
             message.InterviewJson);
 }
 

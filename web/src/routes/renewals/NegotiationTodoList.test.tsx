@@ -53,7 +53,8 @@ describe("NegotiationTodoList (NW-85)", () => {
     render(<NegotiationTodoList apiClient={apiClient} tenantId={TENANT_ID} contractId={CONTRACT_ID} />);
 
     expect(await screen.findByText("Above-band price")).toBeInTheDocument();
-    expect(screen.getByText(/CHF 120\/unit, no cap → CHF 100\/unit, capped at 5%/)).toBeInTheDocument();
+    expect(screen.getByText("CHF 120/unit, no cap")).toBeInTheDocument();
+    expect(screen.getByText("CHF 100/unit, capped at 5%")).toBeInTheDocument();
     expect(screen.getByText(/Priced 20% above the market band/)).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
     expect(apiClient.getRenewalNegotiationTodos).toHaveBeenCalledWith(TENANT_ID, CONTRACT_ID);

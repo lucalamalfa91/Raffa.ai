@@ -214,6 +214,7 @@ internal static class GoldenCaseEvaluator
                 "abstain" => "chat.abstained",
                 "redirect" => "chat.redirected",
                 "refusal" => "chat.refused",
+                "draft" => "chat.drafted",
                 _ => null,
             };
 

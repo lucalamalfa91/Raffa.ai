@@ -109,6 +109,7 @@ function answerReply(overrides: Partial<ConversationReplyBody> = {}): Conversati
     actions: [{ label: "Open Contract 360 →", href: "/contracts/contract-1", kind: "navigate" }],
     provenance: { sources: ["tenant"], modelId: "fixture", promptVersion: "answer-v2.1", inputHash: "abc" },
     followUps: ["Where can I push on the renewal?"],
+    payload: null,
     ...overrides,
   };
 }
@@ -182,6 +183,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue(emptyCatalog()),
     getMarketRecord: vi.fn(),
@@ -707,6 +709,77 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       renderAsk(mockApiClient({ getConversation }), `/ask/${CONVERSATION_ID}`);
 
       expect(await screen.findByText(/conversation not found/i)).toBeInTheDocument();
+    });
+  });
+
+  // ADR-030 D5: the feedback card's one call, and the confirmation turn it appends.
+  describe("ADR-030: feedback card", () => {
+    const offer = {
+      prompt: "Want to report this to the Raffa.ai team so they can build it?",
+      yesLabel: "Yes", noLabel: "No", nextLabel: "Next", backLabel: "Back", submitLabel: "Send",
+      sendingLabel: "Sending…", thanksLabel: "Thanks!", errorLabel: "Try again.", publicNotice: "Public on GitHub.",
+      questions: [
+        { key: "what" as const, kind: "text" as const, label: "What exactly should Raffa do?", prefill: "Export to Excel", choices: null },
+        { key: "frequency" as const, kind: "choice" as const, label: "How often?", prefill: null, choices: [{ key: "weekly", label: "every week" }] },
+        { key: "importance" as const, kind: "choice" as const, label: "How important?", prefill: null, choices: [{ key: "blocking", label: "blocking" }] },
+      ],
+    };
+
+    it("submitting feedback posts to the feedback endpoint and appends the confirmation turn", async () => {
+      const gapReply = answerReply({
+        messageId: "msg-gap",
+        kind: "redirect",
+        answerMarkdown: "I can't export files from Raffa.ai yet, but Portfolio shows the same data.",
+        citations: [],
+        actions: [{ label: "Open Portfolio →", href: "/contracts", kind: "navigate" }],
+        followUps: [],
+        payload: { gap: { key: "export-file", title: "Export to Excel or Word", language: "en" }, draft: null, feedbackOffer: offer, feedbackResult: null },
+      });
+      const postConversationFeedback = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 201,
+        result: {
+          feedbackId: "fb-1",
+          status: "issue_opened",
+          issueNumber: 42,
+          issueUrl: "https://github.com/lucalamalfa91/Raffa.ai/issues/42",
+          message: {
+            id: "msg-confirm", role: "raffa", kind: "answer", markdown: "Thanks, I opened issue #42 for the Raffa.ai team.",
+            citations: [], actions: [{ label: "Open issue #42 →", href: "https://github.com/lucalamalfa91/Raffa.ai/issues/42", kind: "external" }],
+            modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-22T00:00:10Z",
+            payload: { gap: null, draft: null, feedbackOffer: null, feedbackResult: { forMessageId: "msg-gap", status: "issue_opened", issueNumber: 42, issueUrl: "https://github.com/lucalamalfa91/Raffa.ai/issues/42" } },
+          },
+        },
+        error: null,
+      });
+      const user = userEvent.setup();
+      renderAsk(
+        mockApiClient({
+          createConversation: vi.fn().mockResolvedValue(createdConversation()),
+          postMessage: vi.fn().mockResolvedValue(postedReply(gapReply)),
+          postConversationFeedback,
+        }),
+      );
+
+      await user.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "Export my contracts to Excel{Enter}");
+
+      await user.click(await screen.findByRole("button", { name: "Yes" }));
+      await user.click(screen.getByRole("button", { name: "Next" }));
+      await user.click(screen.getByRole("button", { name: "every week" }));
+      await user.click(screen.getByRole("button", { name: "Next" }));
+      await user.click(screen.getByRole("button", { name: "blocking" }));
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() =>
+        expect(postConversationFeedback).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+          messageId: "msg-gap",
+          answers: { what: "Export to Excel", frequency: "weekly", importance: "blocking" },
+        }),
+      );
+      expect(await screen.findByText("Thanks, I opened issue #42 for the Raffa.ai team.")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Open issue #42 →" })).toHaveAttribute("target", "_blank");
+      // The answered offer never re-opens.
+      await waitFor(() => expect(screen.queryByText(offer.prompt)).not.toBeInTheDocument());
     });
   });
 

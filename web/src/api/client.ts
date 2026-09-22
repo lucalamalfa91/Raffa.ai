@@ -1218,6 +1218,10 @@ export type ConversationTurnKind = ConversationMessageBody["kind"];
 export type ConversationCitationBody = ConversationMessageBody["citations"][number];
 export type ConversationActionBody = ConversationMessageBody["actions"][number];
 export type ConversationActionKindValue = ConversationActionBody["kind"];
+/** ADR-030 D2: the reply's structured half (`payload`), identical on a live reply and a stored
+ * message -- the drafted email, the capability gap, the feedback offer or the feedback result;
+ * `null` for every turn that carries none. */
+export type ConversationPayloadBody = ConversationMessageBody["payload"];
 
 export interface GetConversationResult {
   /** True only on `200 OK`. */
@@ -1268,6 +1272,32 @@ export interface PostMessageResult {
   statusCode: number | null;
   /** The routed reply, present only when `ok` is true. */
   reply: ConversationReplyBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+type PostConversationFeedbackResponses = paths["/api/conversations/{id}/feedback"]["post"]["responses"];
+/** `POST /api/conversations/{id}/feedback` 201/409 body (ADR-030 D5): the stored request's facts
+ * plus, on 201, the confirmation turn just appended (same shape as a stored message). */
+export type ConversationFeedbackBody = PostConversationFeedbackResponses[201]["content"]["application/json"];
+
+/** `POST /api/conversations/{id}/feedback` request body. Hand-written -- see this file's header
+ * comment for why (the generator does not parse `requestBody`). `messageId` is the Raffa turn
+ * whose `payload.feedbackOffer` was answered; the three answers use the offer's own question and
+ * choice keys (`what` is free text, at most 500 characters). */
+export interface PostConversationFeedbackRequest {
+  messageId: string;
+  answers: { what: string; frequency: string; importance: string };
+}
+
+export interface PostConversationFeedbackResult {
+  /** True on `201 Created` and on `409 Conflict` (this offer was already answered -- the card
+   * treats it as done; `result.message` is `null` on 409). */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The stored request's facts and, on 201, the confirmation turn; present only when `ok` is true. */
+  result: ConversationFeedbackBody | null;
   /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
   error: string | null;
 }
@@ -1741,6 +1771,18 @@ export interface ApiClient {
    * (unknown conversation) is `ok: false`.
    */
   postMessage(tenantId: string, conversationId: string, request: PostMessageRequest): Promise<PostMessageResult>;
+  /**
+   * Calls `POST /api/conversations/{id}/feedback` (operationId `postConversationFeedback`, ADR-030
+   * D5) -- submits the in-chat feedback card's three answers for one capability-gap turn. The
+   * server stores a feature request, opens a GitHub issue when configured, and appends the
+   * confirmation turn (`result.message`) the screen adds to the thread. Same never-throws shape;
+   * a `409` (already answered) is `ok: true` with `result.message === null`.
+   */
+  postConversationFeedback(
+    tenantId: string,
+    conversationId: string,
+    request: PostConversationFeedbackRequest,
+  ): Promise<PostConversationFeedbackResult>;
   /**
    * Calls `DELETE /api/conversations/{id}` -- removes the caller's own conversation. Same
    * never-throws shape; a `404` (unknown / other user / other tenant) is a normal, expected
@@ -3600,6 +3642,47 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, reply: null, error: postError };
+    },
+
+    async postConversationFeedback(tenantId, conversationId, request) {
+      let response: Response;
+      try {
+        response = await fetch(
+          new URL(`/api/conversations/${encodeURIComponent(conversationId)}/feedback`, baseUrl),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+            body: JSON.stringify(request),
+            cache: "no-store",
+          },
+        );
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          result: null,
+          error: `Unable to reach ${baseUrl}/api/conversations/${conversationId}/feedback. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201 || response.status === 409) {
+        const result = (await response.json()) as ConversationFeedbackBody;
+        return { ok: true, statusCode: response.status, result, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, result: null, error: `No conversation found for id ${conversationId}.` };
+      }
+
+      let feedbackError: string;
+      try {
+        const errorBody: unknown = await response.json();
+        feedbackError = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        feedbackError = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, result: null, error: feedbackError };
     },
 
     async deleteConversation(tenantId, conversationId) {

@@ -536,3 +536,27 @@ Consequences: `backend/README.md`'s pipeline-rules paragraph, the
 `StagedExtractionServiceTests` case for a text with no cues (now: every
 stage completes, document completes), `DocumentListItem.ErrorDetail`'s
 contract. The admission gate (w15/w17) is untouched.
+
+## Amendment (2026-09-22, wave w20 — a fifth reply kind, `draft`, and a capability-gap gate)
+
+ADR-030 records the decision; this footer records what changes in the engine
+this ADR owns. **Clause 1.** `DomainGate.Classify` gains a seventh label,
+`CapabilityGap`, checked after the legal lexicon and before the capability
+lexicon: a request for an operation Raffa cannot perform (send an email, set a
+reminder, export a file, raise a purchase order) never reaches the planner and
+never becomes a retrieval-then-abstain. **Clause 2.** The reply contract gains
+a fifth kind, `draft`, and a required, nullable `payload` on every reply and
+every stored message (`conversation_message.payload_json`); "cites or
+abstains" reads "cites, drafts from cited facts, or abstains". A `draft`
+carries the honest preface in `answerMarkdown`, the email in `payload.draft`,
+the pack items it was written from as `citations`, and never an inline `[n]`.
+**Clause 3.** The draft is guarded by `DraftGuard` (the `[n]` rule inverted,
+`NumericGuard` unchanged, keys in the pack), retried once, and falls back to a
+deterministic template — the draft path cannot abstain; a fallback is audited
+as a guard intervention under a new audit action, `chat.drafted`. **Clause
+4.** A capability-gap `redirect` may carry `followUps` (one validated supplier
+per chip) and `payload.feedbackOffer`; `actions[].kind` gains `external`,
+server-authored only. **Clause 5.** The feedback loop (`POST
+/api/conversations/{id}/feedback`, `feature_request`, the GitHub publisher) is
+ADR-030 D5's; this ADR's conversation store only gains the column and the
+table. The body above and every earlier footer are untouched.

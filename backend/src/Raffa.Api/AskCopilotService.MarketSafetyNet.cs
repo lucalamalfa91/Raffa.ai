@@ -1,7 +1,6 @@
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Pack;
 using Raffa.Documents.Contracts.Application;
-using Raffa.Insights.Application;
 using Raffa.SharedKernel;
 
 namespace Raffa.Api;
@@ -95,8 +94,8 @@ internal sealed partial class AskCopilotService
 
         var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
             .ConfigureAwait(false);
-        var pricedLines = await InsightsEndpointExtensions
-            .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+        // The same priced lines (stored market comparison included) every other Ask pack reads.
+        var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
         var allDeals = await marketDealLookup
             .GetBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
