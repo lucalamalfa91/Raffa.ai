@@ -639,9 +639,14 @@ the clauses behind it", then a "Details ▾" drawer. The Day-1 ten-tab strip is 
 tabs held is still on the page, inside the drawer.
 
 - **Fetch order** (`index.tsx`): `GET /api/contracts/{id}` first (a `404` is the named "not found"
-  state), then `GET /api/renewals` (this contract's recommendation) and `GET /api/renewals/{id}/
-  priority` together, both independently optional -- either failing degrades its own answer to an
-  honest "not yet", never the screen.
+  state; a contract whose `readiness` is not `ready` stops here, since the "still being prepared"
+  / "no validated facts yet" state shows nothing else -- so each 2 s re-read of a processing
+  contract costs one GET, not six, and a re-read is skipped while the previous one is still in
+  flight), then, once the contract is ready, `GET /api/renewals` (this contract's recommendation),
+  `GET /api/renewals/{id}/priority`, `GET /api/contracts/{id}/negotiation-steps`,
+  `GET /api/contracts/{id}/strategy` and `GET /api/contracts/{id}/evidence` together, each
+  independently optional -- one failing degrades its own answer to an honest "not yet", never the
+  screen.
 - **Header** (`Contract360Header.tsx`) -- the origin back link (`resolveBackLink`: Ask Raffa /
   Documents / Portfolio / Renewals / Savings from `state.from`, else a plain "← Back" that walks
   history), the supplier kicker (`resolveSupplierLabel`: the wire's `supplierName`, else the id

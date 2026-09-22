@@ -148,7 +148,11 @@ pushes `raffa-api:<sha>` / `raffa-worker:<sha>` and updates the apps.
 `lifecycle.ignore_changes` on the container image keeps a later apply from
 reverting a live revision to that placeholder. Ingress target port is `8080`.
 The API ingress CORS origin is this environment's Static Web App
-(`https://<swa-host>`).
+(`https://<swa-host>`). Preflight answers carry an `Access-Control-Max-Age`
+of one hour (`max_age_in_seconds`): every SPA call is cross-origin and sends
+`Authorization` + `x-tenant-id`, and without it the browser repeats the
+OPTIONS round-trip in front of each polled GET (Chromium keeps an un-aged
+preflight for 5 s).
 
 Connection strings (Postgres `raffa_<env>`, Storage) are written to this
 environment's Key Vault and referenced from the Container Apps as
