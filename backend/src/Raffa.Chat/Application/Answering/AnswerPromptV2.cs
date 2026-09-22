@@ -13,7 +13,8 @@ namespace Raffa.Chat.Application.Answering;
 /// negotiation question gets a fixed structure (diagnosis, levers ordered by value, plan and
 /// timing, what to ask the supplier verbatim, risks and what is missing); a quantified goal is
 /// answered explicitly; a follow-up advances instead of restating; only bold and lists (the web
-/// renderer supports nothing else). The eight grounding laws of v2.1 are unchanged.
+/// renderer supports nothing else). Inline citations must be rendered as `[n]` markers only, never
+/// as internal citation keys.
 /// </para>
 /// </summary>
 public static class AnswerPromptV2
@@ -50,6 +51,11 @@ public static class AnswerPromptV2
            by you.
         8. Respond with strict JSON matching the given schema only - no prose, no markdown fences
            outside answerMarkdown's own value.
+        9. Cite inline with [n] markers only, where n is the 1-based position of the item in the
+           citationKeys array you return (the first key is [1], the second [2], ...). Never write
+           a citation key itself (fact:..., calc:..., tenant:..., market:..., raffa:...), a
+           contract, document or clause id, or any other pack identifier inside answerMarkdown or
+           abstainReason - the reader sees only your words and the [n] markers.
 
         How to answer a savings or negotiation question (a pack that carries calc items such as
         savings-target, lever[...], council:play[...], negotiation-point[...], candidate[...]):

@@ -1179,11 +1179,15 @@ itself (querying `PortfolioQueryService`/`Contract360QueryService`,
    notes, calculator output — every item citable, tagged `tenant`/
    `market`/`raffa`/`calc`).
 3. **Answer** (`Application.Answering.AnswerComposer`, persona prompt
-   `Prompts/answer/v2.1.md`) calls `IAiGateway.AnswerAsync` with the pack +
+   `Prompts/answer/v2.2.md`) calls `IAiGateway.AnswerAsync` with the pack +
    last N turns; `Fixtures.FixtureAiGateway.AnswerAsync` gives a
    deterministic v2 behaviour when a pack is supplied (cites the first N
    pack keys, copies their values verbatim — no chunk concatenation), so
    every test below runs without Foundry.
+   Rule 9 of the prompt makes inline citations `[n]` markers only; if a key
+   still leaks into the prose, `Application.Reply.InlineCitationNormalizer`
+   turns it into the matching marker (appending a citable pack item to the
+   citation list when the model forgot to list it) or drops it.
 4. **Guards** — `Application.Guards.GroundingGuard` (every citationKey /
    inline `[n]` marker / actionKey must resolve), `Guards.NumericGuard`
    (every currency amount, percentage and date in the answer must equal a

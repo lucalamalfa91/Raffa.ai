@@ -667,18 +667,19 @@ tabs held is still on the page, inside the drawer.
   The recorded action is the same `savedAction` on `GET /api/renewals` that the Renewals list, its
   pane and Contract 360 read, so all three agree. `NotStarted` renders as no action taken.
 - **Six numbered sections** (`DetailSections.tsx`, `Raffa.ai V2.dc.html` CONTRACT 360; none of them
-  collapses): **01 Leverage** (`buildLeverCards`, the strategy pack's `whereYouCanPush`, strongest
-  first; an honest one-liner while the pack has no lever), **02 Products & pricing**
+  collapses; Key terms leads): **01 Key terms** (see below), **02 Leverage** (`buildLeverGroups`, the
+  strategy pack's `whereYouCanPush` grouped per priced line with the line's own prefix lifted into
+  the group heading, strongest first; an honest one-liner while the pack has no lever), **03 Products & pricing**
   (`buildProductLines`: Product · Qty · You pay · Market · vs market · Annual; market and delta stay
-  an em dash until the Benchmark Service covers the line), **03 Clauses that matter**
+  an em dash until the Benchmark Service covers the line), **04 Clauses that matter**
   (`buildClauseGroups`: "Push to change" for High/Critical, "Worth raising" for Medium, the rest
   behind "Show N standard clauses ▾"; each row type · accepted value · the at-the-table note ·
   `p.N · §span` as a document-viewer link; clicking a row opens `ClauseHighlight.tsx`'s evidence
   card, the citation landing `?clause=<clauseId>` / `?page=<n>` (`resolveHighlightedClauseId`,
-  R-EVD-02) pre-selects it with no click), **04 Obligations** (`buildObligationColumns`: "You must" /
-  "{supplier} must", dated items first, the dot by criticality), **05 Risk factors**
-  (`buildScoreParts` over the explainable priority score, `buildRiskItems` tagged by severity) and
-  **06 Key terms** (`buildKeyTerms` as a cell grid, every term kept, unofficialized values as "—";
+  R-EVD-02) pre-selects it with no click), **05 Obligations** (`buildObligationColumns`: "You must" /
+  "{supplier} must", dated items first, the dot by criticality), **06 Risk factors**
+  (`buildScoreParts` over the explainable priority score, `buildRiskItems` tagged by severity) and,
+  first on the page, **01 Key terms** (`buildKeyTerms` as a cell grid, every term kept, unofficialized values as "—";
   the document family with each document's own status tag; a trailing **"N facts still need you —
   Review all →"** when `computeNeedsAttention` counts `review_required` decisions). Extracted list
   rows whose confidence is below the threshold but which point at a real page/span still show their

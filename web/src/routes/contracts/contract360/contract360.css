@@ -431,26 +431,46 @@
   text-wrap: pretty;
 }
 
-/* ---- 01 Leverage ----------------------------------------------------------------------------
-   cards: flex:1 1 240px;padding:20px 24px 20px 0;margin-right:24px;border-right:1px divider inside
-   2px text rules · kicker 11px .08em uppercase (accent-700 when strong) · headline heading 800
-   clamp(26px,2.4vw,34px) lh 1.05 -.02em margin:8px 0 6px (accent when strong) · body 13px. */
+/* ---- 02 Leverage ----------------------------------------------------------------------------
+   The mock's flex-wrapped cards (flex:1 1 240px; 1px dividers inside 2px text rules) produce ragged
+   rows once the pack emits every lever type per priced line; a 1px-gap grid on the divider colour
+   keeps every cell the same size with a full rule around it at any width. One group per priced
+   line, the line's own name as the group heading. Kicker 11px .08em uppercase (accent-700 when
+   strong) · headline heading 800 clamp(22px,1.8vw,28px) lh 1.05 -.02em margin:8px 0 6px (accent
+   when strong) · body 13px neutral-700. */
+
+.contract360-lever-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.contract360-lever-line {
+  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
 
 .contract360-levers {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  overflow: hidden;
   border-top: 2px solid var(--color-text);
   border-bottom: 2px solid var(--color-text);
 }
 
+/* Each cell rules its own right and bottom edge (the mock's card border-right), so an incomplete
+   last row leaves the empty tracks empty; the bottom row's 1px sits under the container's 2px. */
 .contract360-lever {
   display: flex;
   flex-direction: column;
-  flex: 1 1 240px;
   min-width: 0;
-  padding: 20px 24px 20px 0;
-  margin-right: 24px;
+  margin-bottom: -1px;
+  padding: 18px 20px 20px;
   border-right: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .contract360-lever-kicker {
@@ -468,7 +488,7 @@
   margin: 8px 0 6px;
   font-family: var(--font-heading);
   font-weight: var(--weight-heading);
-  font-size: clamp(26px, 2.4vw, 34px);
+  font-size: clamp(22px, 1.8vw, 28px);
   line-height: 1.05;
   letter-spacing: -0.02em;
   text-wrap: balance;
@@ -484,7 +504,7 @@
   text-wrap: pretty;
 }
 
-/* ---- 02 Products & pricing ------------------------------------------------------------------
+/* ---- 03 Products & pricing ------------------------------------------------------------------
    min-width:650px grid minmax(150px,2.2fr) minmax(44px,.6fr) minmax(84px,1fr) minmax(84px,1fr)
    minmax(96px,1.2fr) minmax(112px,1fr);gap:0 14px · head 11px uppercase under a 2px text rule ·
    rows padding:14px 0, 1px divider, 13px tabular · 6px bar track (neutral-200) with a neutral-500
@@ -610,7 +630,7 @@
   font-size: 16px;
 }
 
-/* ---- 03 Clauses that matter -----------------------------------------------------------------
+/* ---- 04 Clauses that matter -----------------------------------------------------------------
    groups gap:26px · group head: 10px tag + 12px hint over a 2px text rule, padding-bottom:8px ·
    rows flex wrap gap:6px 20px padding:13px 0 1px divider 13px: type 600 flex:0 1 150px · value
    flex:1 1 260px · ask 12px accent-700 flex:1 1 220px · src 11px neutral-600 margin-left:auto ·
@@ -761,7 +781,7 @@
   color: inherit;
 }
 
-/* ---- 04 Obligations -------------------------------------------------------------------------
+/* ---- 05 Obligations -------------------------------------------------------------------------
    grid repeat(auto-fit,minmax(280px,1fr));gap:0 40px · column head 11px uppercase over a 2px text
    rule · rows grid 10px minmax(0,1fr) auto;gap:12px;padding:12px 0;1px divider;13px · 10px dot
    (accent / text / neutral-400 by criticality) · when 11px neutral-600 margin-top:2px · rec 11px. */
@@ -824,7 +844,7 @@
   white-space: nowrap;
 }
 
-/* ---- 05 Risk factors ------------------------------------------------------------------------
+/* ---- 06 Risk factors ------------------------------------------------------------------------
    grid repeat(auto-fit,minmax(300px,1fr));gap:24px 40px · priority: grid auto minmax(0,1fr) gap:24px ·
    score heading 800 56px lh 1 -.03em · parts 12px rows + 6px bars (accent at >= .8) gap:10px ·
    risks: grid auto minmax(0,1fr) gap:14px padding:11px 0 1px divider 13px, 10px tag min-width:58px. */
@@ -925,19 +945,21 @@
   text-wrap: pretty;
 }
 
-/* ---- 06 Key terms ---------------------------------------------------------------------------
-   grid repeat(auto-fill,minmax(170px,1fr)) with 1px divider top/left, cells on --color-bg padding:
-   14px 16px with 1px divider right/bottom · label 11px uppercase · value heading 700 15px lh 1.25
-   margin-top:6px · documents line: flex wrap gap:8px 24px margin-top:18px 12px neutral-700. */
+/* ---- 01 Key terms ---------------------------------------------------------------------------
+   The mock's auto-fill grid (minmax(170px,1fr)) leaves a ragged last row with ten terms; a fixed
+   column count per width keeps the rows full (5 wide, 4, 3, then 2 on a phone). Cells on
+   --color-bg with a 1px divider grid, padding:14px 16px · label 11px uppercase · value heading
+   700 15px lh 1.25 margin-top:6px · documents line: flex wrap gap:8px 24px margin-top:18px 12px. */
 
 .contract360-terms {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-top: 1px solid var(--color-divider);
   border-left: 1px solid var(--color-divider);
 }
 
 .contract360-term {
+  min-width: 0;
   padding: 14px 16px;
   background: var(--color-bg);
   border-right: 1px solid var(--color-divider);
@@ -1007,7 +1029,17 @@
   height: 32px;
 }
 
+@media (max-width: 1280px) {
+  .contract360-terms {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1100px) {
+  .contract360-terms {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .contract360-answers {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
@@ -1033,6 +1065,23 @@
 }
 
 @media (max-width: 720px) {
+  .contract360-terms {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .contract360-section {
+    padding-top: 24px;
+    padding-bottom: 28px;
+  }
+
+  .contract360-section-intro {
+    flex-basis: 100%;
+  }
+
+  .contract360-section-description {
+    max-width: none;
+  }
+
   .contract360-answers {
     grid-template-columns: minmax(0, 1fr);
     padding-inline: var(--c360-gutter);

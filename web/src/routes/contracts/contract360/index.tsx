@@ -45,9 +45,10 @@ type FetchState =
  * "CONTRACT 360 — three answers, then proof, then details"). One page: header (origin back link ·
  * supplier · title · meta), the answers band (Where you can save · When you must move · What to do,
  * with the recommended action / Assign to me, the tracker once acted, and "Close the cycle"), then
- * six numbered sections that never collapse: 01 Leverage · 02 Products & pricing · 03 Clauses that
- * matter (with the selected clause's original wording) · 04 Obligations · 05 Risk factors · 06 Key
- * terms (with the document family and a review-count line when facts still need a decision).
+ * six numbered sections that never collapse: 01 Key terms (with the document family and a
+ * review-count line when facts still need a decision) · 02 Leverage · 03 Products & pricing ·
+ * 04 Clauses that matter (with the selected clause's original wording) · 05 Obligations · 06 Risk
+ * factors.
  *
  * **Fetch order**: `getContract360` first -- a `404` is this screen's own "not found" state and
  * short-circuits the rest. Then `getRenewals` (for this contract's recommendation),
@@ -351,7 +352,8 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
         onReopen={handleReopen}
       />
 
-      <LeverageSection strategy={strategy} />
+      <KeyTermsSection contract={contract} evidence={evidence} />
+      <LeverageSection strategy={strategy} lineDescriptions={tabs.products.map((product) => product.description)} />
       <ProductsSection contract={contract} autoAcceptThreshold={autoAcceptThreshold} />
       <ClausesSection
         contractId={contractId}
@@ -363,7 +365,6 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
       />
       <ObligationsSection contract={contract} supplierLabel={resolveSupplierLabel(header).label} autoAcceptThreshold={autoAcceptThreshold} />
       <RiskSection contract={contract} priority={priority} autoAcceptThreshold={autoAcceptThreshold} />
-      <KeyTermsSection contract={contract} evidence={evidence} />
     </div>
   );
 }

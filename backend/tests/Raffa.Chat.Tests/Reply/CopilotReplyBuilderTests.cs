@@ -186,6 +186,28 @@ public sealed class CopilotReplyBuilderTests
     }
 
     [Fact]
+    public void A_citation_key_left_in_the_prose_is_rendered_as_the_markers_the_reader_can_click()
+    {
+        var guarded = new AiAnswerResult(
+            CanDetermine: true,
+            Answer: null,
+            Citations: [],
+            Metadata,
+            AnswerMarkdown: "Liability is capped at CHF 1,000,000.[tenant:contract-1] The market agrees [market:deal-1].",
+            CitationKeys: ["tenant:contract-1"],
+            ActionKeys: [],
+            AbstainReason: null,
+            FollowUps: []);
+
+        var reply = CopilotReplyBuilder.FromGuardedResult(guarded, [TenantItem, MarketItem], [], []);
+
+        Assert.Equal("Liability is capped at CHF 1,000,000. [1] The market agrees [2].", reply.AnswerMarkdown);
+        Assert.Equal(2, reply.Citations.Count);
+        Assert.Equal(PackCorpus.Market, reply.Citations[1].Corpus);
+        Assert.Equal(2, reply.Citations[1].N);
+    }
+
+    [Fact]
     public void BuildCitations_silently_skips_a_key_the_pack_does_not_contain()
     {
         // Defensive only (GroundingGuard is what actually enforces this upstream) — one bad key
