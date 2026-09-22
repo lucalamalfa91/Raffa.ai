@@ -1,5 +1,5 @@
 import ActionRow from "./ActionRow";
-import CitationCard from "./CitationCard";
+import EvidenceCard from "./EvidenceCard";
 import ReplyMarkdown from "./ReplyMarkdown";
 import type { Reply, ReplyCitation } from "./replyTypes";
 import "./reply.css";
@@ -9,11 +9,11 @@ export const ABSTAIN_TITLE = "I don't have data I trust enough to answer.";
 
 export interface ReplyBodyProps {
   reply: Reply;
-  /** Shared by every inline `[n]` marker (`ReplyMarkdown`) and every `CitationCard`'s own button --
-   * "linking to the matching card" (task text) means both surfaces call this exact same callback
-   * with the exact same citation object, not a DOM anchor jump. See `ReplyMarkdown.tsx`'s own
-   * header comment for why: an `href="#id"` anchor cannot stay unique once more than one reply is
-   * on screen at once, which every real conversation is. */
+  /** Shared by every inline `[n]` marker (`ReplyMarkdown`) and every row of the `EvidenceCard` --
+   * both surfaces call this exact same callback with the exact same citation object, not a DOM
+   * anchor jump. See `ReplyMarkdown.tsx`'s own header comment for why: an `href="#id"` anchor
+   * cannot stay unique once more than one reply is on screen at once, which every real
+   * conversation is. */
   onOpenCitation: (citation: ReplyCitation) => void;
   /** `answer`-only (task text: "markdown + cards + actions + follow-ups"); never called for any
    * other kind, since only `AnswerReply` carries `followUps`. */
@@ -21,15 +21,16 @@ export interface ReplyBodyProps {
 }
 
 /**
- * Composes `kind` -> layout (task text; R-WEB-04; requirements.md §6; ADR-024). One `Reply` in,
- * one layout out: `answer` gets the full markdown/cards/actions/follow-ups treatment; `redirect`
- * and `refusal` share warm prose + one CTA; `abstain` is only ever the accent-left block; `error`
- * is the existing `.error-state`. This is the one place any of those five layouts is chosen --
- * every other component in this folder only renders what it is told to.
+ * Composes `kind` -> layout (R-WEB-04; requirements.md §6; ADR-024). One `Reply` in, one layout
+ * out: `answer` gets the markdown, **one** evidence card (every citation grouped by supplier, the
+ * reply's actions folded into that card's single action row -- `EvidenceCard.tsx`) and the
+ * follow-ups; `redirect` and `refusal` share warm prose + one CTA; `abstain` is only ever the
+ * accent-left block; `error` is the existing `.error-state`. This is the one place any of those
+ * five layouts is chosen -- every other component in this folder only renders what it is told to.
  *
- * Never renders an engineer route line or a guid (task text; R-ASK-08): `Reply` (`replyTypes.ts`)
- * has no `route`/raw-id field for any variant to leak in the first place -- there is nothing here
- * to accidentally print.
+ * Never renders an engineer route line or a guid (R-ASK-08): `Reply` (`replyTypes.ts`) has no
+ * `route`/raw-id field for any variant to leak in the first place -- there is nothing here to
+ * accidentally print.
  */
 export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBodyProps) {
   switch (reply.kind) {
@@ -38,15 +39,13 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBo
         <div className="reply-body" data-reply-kind="answer">
           <ReplyMarkdown text={reply.answerMarkdown} citations={reply.citations} onOpenCitation={onOpenCitation} />
 
-          {reply.citations.length > 0 && (
+          {reply.citations.length > 0 ? (
             <div className="reply-cards">
-              {reply.citations.map((citation) => (
-                <CitationCard key={citation.n} {...citation} onOpen={() => onOpenCitation(citation)} />
-              ))}
+              <EvidenceCard citations={reply.citations} actions={reply.actions} onOpenCitation={onOpenCitation} />
             </div>
+          ) : (
+            reply.actions.length > 0 && <ActionRow actions={reply.actions} />
           )}
-
-          {reply.actions.length > 0 && <ActionRow actions={reply.actions} />}
 
           {reply.followUps.length > 0 && (
             <div className="reply-followups">

@@ -1269,14 +1269,16 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    the council, never the turn. `Chat:Council` (`Enabled`, `MinPackItems`,
    `MaxItemsPerAgent`, `MaxPlays`) is the kill switch; the `analyst` role runs
    on `AiGateway:Models:Analyst` when set, else on the `answer` deployment.
-4. **Persona `answer-v2.2`** (`Prompts/answer/v2.2.md`, drift-tested against
+4. **Persona `answer-v2.3`** (`Prompts/answer/v2.3.md`, drift-tested against
    `AnswerPromptV2.SystemPrompt`): a senior negotiation consultant; a savings
    question is answered with the verdict on the goal first, then Diagnosi →
    Leve in ordine di valore → Piano e timing → Cosa chiedere al fornitore →
    Rischi e cosa manca; a follow-up advances instead of restating; only bold
    and lists, which is all the web renderer supports. `NegotiationPlaybook`
    (`raffa:playbook:*`, digit-free by test) supplies tactics and wording,
-   never numbers.
+   never numbers. v2.3 adds two formatting rules: name the supplier on every
+   contract reference ("Salesforce · MSA", never "the MSA" or "contract [2]")
+   and write amounts with their currency code.
 
 Golden cases `seeded-savings-leve-20k-salesforce-it`,
 `seeded-savings-levers-20k-salesforce-en`,

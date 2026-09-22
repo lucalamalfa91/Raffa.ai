@@ -23,9 +23,11 @@
  */
 
 /** `citations[].corpus` (requirements.md §6): which of the three sources (ADR-024 §2) a citation
- * came from. Drives `CitationCard`'s badge (`getCorpusBadge` below) -- text, not colour alone,
- * still carries the meaning (ADR-019 accessibility baseline). */
-export type CitationCorpus = "tenant" | "market" | "raffa";
+ * came from, plus the backend's own fourth value `"calc"` (`PackCorpus.Calc`: a deterministic
+ * calculator's output -- a criticality score, a lever, an aggregate). Drives the evidence card's
+ * section and badge (`getCorpusBadge` below) -- text, not colour alone, still carries the meaning
+ * (ADR-019 accessibility baseline). */
+export type CitationCorpus = "tenant" | "market" | "raffa" | "calc";
 
 /**
  * One entry of `citations[]` (requirements.md §6 JSON example), narrowed to exactly the fields
@@ -169,13 +171,8 @@ export function getCorpusBadge(corpus: CitationCorpus): CorpusBadge {
       return { variant: "outline", label: "Market · representative" };
     case "raffa":
       return { variant: "accent", label: "Raffa" };
+    case "calc":
+      return { variant: "accent", label: "Raffa · calculated" };
   }
 }
 
-/** CTA on the Ask citation card: viewer deep-links say so; everything else is "View source". */
-export function citationOpenLabel(href: string | null | undefined): string {
-  if (typeof href === "string" && href.includes("/viewer")) {
-    return "Open in document viewer";
-  }
-  return "View source →";
-}

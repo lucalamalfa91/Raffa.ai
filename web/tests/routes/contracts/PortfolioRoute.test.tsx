@@ -123,6 +123,66 @@ function renderPortfolio(apiClient: ApiClient, initialPath = "/contracts") {
   );
 }
 
+// `?ids=` -- the Portfolio filtered to the contracts an Ask evidence card highlighted
+// (`routes/ask/reply/evidenceGrouping.ts#buildEvidenceActions`). A client-side narrowing of the
+// same page: one request, a notice saying how many of the highlighted contracts are shown, and
+// "Show all contracts" one link away.
+describe("PortfolioRoute ?ids= highlight filter", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(
+      "raffa.signin.currentWorkspace",
+      JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }),
+    );
+  });
+
+  const three = [
+    item({ contractId: "c-1", supplierName: "Salesforce" }),
+    item({ contractId: "c-2", supplierName: "Microsoft" }),
+    item({ contractId: "c-3", supplierName: "Google Cloud" }),
+  ];
+
+  it("shows only the highlighted contracts, says so, and offers Show all", async () => {
+    const getPortfolio = vi.fn().mockResolvedValue(ok(three));
+    renderPortfolio(mockApiClient(getPortfolio), "/contracts?ids=c-1,c-3");
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(table).getByText("Google Cloud")).toBeInTheDocument();
+    expect(within(table).queryByText("Microsoft")).not.toBeInTheDocument();
+    // One request for the whole page -- the narrowing never becomes a second filter parameter.
+    expect(getPortfolio).toHaveBeenCalledWith(WORKSPACE_ID, { pageSize: 100 });
+
+    const notice = screen.getByTestId("portfolio-highlight-notice");
+    expect(notice).toHaveTextContent("Showing 2 of 3 contracts — the ones highlighted in Ask.");
+    expect(within(notice).getByRole("link", { name: "Show all contracts →" })).toHaveAttribute("href", "/contracts");
+  });
+
+  it("keeps the category filter on the Show all link", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok(three))), "/contracts?category=SaaS&ids=c-2");
+
+    await screen.findByRole("table");
+    expect(screen.getByRole("link", { name: "Show all contracts →" })).toHaveAttribute("href", "/contracts?category=SaaS");
+  });
+
+  it("explains an empty highlight instead of rendering an empty table or the zero state", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok(three))), "/contracts?ids=gone");
+
+    expect(await screen.findByTestId("portfolio-highlight-notice")).toHaveTextContent(
+      "None of the contracts highlighted in Ask is in the portfolio any more.",
+    );
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nothing to triage yet")).not.toBeInTheDocument();
+  });
+
+  it("renders no notice at all without ?ids=", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok(three))));
+
+    await screen.findByRole("table");
+    expect(screen.queryByTestId("portfolio-highlight-notice")).not.toBeInTheDocument();
+  });
+});
+
 describe("PortfolioRoute (V2, screens-v2.md #6 / markup.html PORTFOLIO block)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();

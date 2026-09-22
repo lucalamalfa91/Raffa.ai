@@ -36,23 +36,15 @@ import { formatSupplier, getContractTypeLabel } from "../contracts/portfolioTabl
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `citations[].corpus` is usually `"tenant" | "market" | "raffa"` (requirements.md §6 / R-WEB-04's
- * three-corpus citation-badge vocabulary; `./reply/replyTypes.ts#CitationCorpus`, closed to exactly
- * those three). The real backend admits a fourth internal value, `"calc"`
- * (`Raffa.Chat.Application.Pack.PackCorpus.Calc` -- a deterministic-calculator-derived fact: a
- * renewal date, a negotiation lever, a criticality score), with no remapping step anywhere before
- * the wire (`ReplyCitation.Corpus`'s own doc comment: "Echoes `PackItem.Corpus`"); confirmed by
- * reading `backend/src/Raffa.Api/AskCopilotService.cs`'s own `PackItem` constructions for
- * `when-you-must-move`/lever/target/criticality items, which set a real `/contracts/{id}` `Href`
- * despite `PackItem.Href`'s own doc comment claiming `Href` is null for `PackCorpus.Calc`. A
- * calculator fact is always about *this tenant's own contract*, never a market/feature fact, so an
- * unrecognised value folds into `"tenant"` -- the closer honest bucket -- rather than the more
- * surprising `"raffa"` (a static feature card) or a thrown exception. Named here as a real
- * backend/frontend contract gap, not a guess (see `web/openapi/raffa-api.v1.json`'s
- * `postConversationMessage` operation description for the same note).
+ * `citations[].corpus` on the wire is `"tenant" | "market" | "raffa" | "calc"` -- the three ADR-024
+ * §2 sources plus `PackCorpus.Calc`, a deterministic calculator's own output (a criticality score,
+ * a lever, an aggregate such as "Annual spend total"; `AskCopilotService`'s `PackItem`
+ * constructions). Every value is kept as-is so `EvidenceCard` can file it in the right section; an
+ * unknown value folds into `"tenant"` -- a citation is about this tenant's own data unless it says
+ * otherwise -- rather than throwing on a future backend addition.
  */
 export function toCitationCorpus(wireCorpus: string): CitationCorpus {
-  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "raffa") {
+  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "raffa" || wireCorpus === "calc") {
     return wireCorpus;
   }
   return "tenant";

@@ -95,8 +95,8 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker, server-driven (skeleton, error + Retry, list, create) | E06/F03/US01/T01; server-backed by E14/F03/US02/T01 |
 | `/invite/accept` | Public, reachable signed out and with no workspace, rendered outside `AppShell`. Ten states (no token / checking / offer with Join or the Entra CTA / joining / wrong account / expired-or-revoked sharing one first sentence / already joined / lookup unavailable + Retry); reads the token from the URL fragment on mount, holds it in memory for that one mount, clears the address bar before first paint, sends it only in `X-Invitation-Token`. See "Invitation accept" below. | E14/F03/US02/T01 |
 | `/` | Redirects to `/ask` (R-WEB-01) -- there is no standalone Home screen in V2. | E13/F09/US01/T01 |
-| `/ask` | Ask Raffa, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, numbered citation cards, actions, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Raffa" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
-| `/ask/:conversationId` | Same `AskRoute` as `/ask`, resuming: `useConversation` loads the conversation (`GET /api/conversations/{id}`) and renders every past turn, oldest first, with citation cards and actions still clickable; a named "not found" state for an unknown/foreign/another-user's id. | E13/F09/US01/T01 (route only); resume wired by E13/F09/US01/T04 |
+| `/ask` | Ask Raffa, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, one evidence card grouping every citation by supplier with the actions folded into its single action row, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Raffa" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
+| `/ask/:conversationId` | Same `AskRoute` as `/ask`, resuming: `useConversation` loads the conversation (`GET /api/conversations/{id}`) and renders every past turn, oldest first, with the evidence card's rows and actions still clickable; a named "not found" state for an unknown/foreign/another-user's id. | E13/F09/US01/T01 (route only); resume wired by E13/F09/US01/T04 |
 | `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention · N** (default) / **All documents · N** / **Not added · K** (only while K > 0) filter whose numbers are the server's own tenant-wide `counts` (never the fetched page), multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked, a 120 s client-owned deadline per request), a stored row reading **Queued…** until the Worker picks it up and then its real stage text polled every 2 s — a poll that stops after five minutes without a change and offers **Check again** — a **Not added** *row* for a refused file (the server's `Rejected` row with the requirements' own reason sentence; a local row for an oversized/413/415 file), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess` (202), `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03; truthful surfaces E16/F03/US01/T01 (wave w15) |
 | `/contracts` | Portfolio, V2: header ("Portfolio" + "N validated contracts · CHF 4.2M annual · K notice deadlines within 45 days", or "Lights up from validated contracts"), one table sorted by notice deadline (Supplier · Contract · Annual spend · Ends · Give notice by · Status; **More columns** adds Start · Auto · Risk; rows inside the 45-day window tinted + accent bar; rows open Contract 360), and the reroute state ("Nothing to triage yet" → Upload a contract) while nothing is validated. Calls the real `GET /api/contracts` (now carrying `currency`). See "Portfolio" below. | E07/F01/US01/T01; V2 design alignment (Sept 2026) |
 | `/contracts/:id` | Contract 360, V2 **no tabs**: origin back link ("← Ask Raffa / Documents / Portfolio / Renewals / Savings", else "← Back"), supplier · title · "{type} · {spend} / year · N documents · {status}", **Ask about it** → `/ask?scope=<id>`; the **answers band** (Where you can save · When you must move · What to do, with Start negotiation / Assign to me or the negotiation tracker once acted); **Why — the clauses behind it** (clause rows with leverage tags; click → the original wording highlighted; **Open in document viewer**; `?clause=<id>`/`?page=<n>` pre-select it); **Details ▾** (key terms, documents, "N facts still need you — Review all →" when any `review_required` decision remains, priority score, Products/Obligations/Risks). Calls the real `GET /api/contracts/{id}`, `GET /api/renewals`, `GET /api/renewals/{contractId}/priority`, `GET /api/contracts/{id}/evidence`, `POST /api/renewals/{id}/action`. See "Contract 360" below. | E07/F02/US01/T01; citation landing E13/F10/US01/T01; V2 layout (Sept 2026); details and Why E22/F04/US01/T01 |
@@ -805,8 +805,12 @@ per-user conversations.
   whitespace, hard-truncated at 48 chars, no ellipsis) + "+ New chat"; every turn renders through the
   phase-2 `ReplyBody` (task E13/F09/US01/T02, `routes/ask/reply/*`, this task maps the wire reply
   onto it -- `askViewModel.ts#mapConversationReplyToReply`/`mapConversationMessageToReply` -- but
-  does not modify that renderer itself): `answer` gets markdown + numbered citation cards + actions +
-  follow-up chips, `redirect`/`refusal` share warm prose + one CTA, `abstain` is the accent-left
+  does not modify that renderer itself): `answer` gets markdown + **one** evidence card (`EvidenceCard.tsx`: every
+  citation grouped under its supplier -- `evidenceGrouping.ts` reads "Supplier · Type" off the
+  backend's own titles, never invents a name -- market records and Raffa items in their own
+  sections, and the reply's actions folded into the card's single action row: Portfolio filtered to
+  exactly the cited contracts (`/contracts?ids=`) or the one contract's Contract 360 first, then the
+  backend's own actions, three at most) + follow-up chips, `redirect`/`refusal` share warm prose + one CTA, `abstain` is the accent-left
   block plus, when the server selected one, a **secondary** recovery-action `ActionRow` -- never
   primary (ADR-024 "every abstain has a clickable next step", task E25/F05/US02/T01; an abstain
   with no action still renders just the block, never an empty screen), `error` is a transport/400
@@ -816,16 +820,15 @@ per-user conversations.
   resolved a source page now carries a real `previewUrl` (`/api/documents/{id}/preview?page=<n>`)
   and an `href` of `/documents/<documentId>/viewer?page=<n>&clause=<clauseId>` --
   `AskCopilotService.cs`'s own `ResolveTenantClauseLinks` sets both (superseding the older
-  `/contracts/<contractId>?page=<n>`-only, "never sends `?clause=`" behaviour); `CitationCard.tsx`
-  renders that `previewUrl` as a real `<img>` first-page thumbnail and a click opens the document
-  viewer straight on the cited page. A tenant fact with no resolved source page still falls back to
+  `/contracts/<contractId>?page=<n>`-only, "never sends `?clause=`" behaviour); the evidence row
+  offers "Open at this span", which opens the document viewer straight on the cited page (the
+  page thumbnail the old per-citation card fetched is no longer rendered, so `useCitationPreviews`
+  is gone with it). A tenant fact with no resolved source page still falls back to
   the bare `/contracts/<contractId>` href with `previewUrl: null`. A **market** citation opens
   `MarketRecordPanel.tsx` (`GET /api/market/records/{id}`: title, category, geography, P25/P50/P75
   band, provenance label, updated date) via its own `recordId`, not `href`; a **raffa** feature
-  citation still navigates to its own `href`. Neither `market` nor `raffa` ever carries a
-  `previewUrl` (`PackItem.PreviewUrl` stays `null` for both by rule) -- `CitationCard.tsx` renders
-  both as a `.btn.btn-secondary` "View source ->" CTA card instead of a preview, replacing the old,
-  always-present "No page preview available" placeholder. Follow-up chips post as a new message in
+  citation still navigates to its own `href`. A `calc` citation with no contract (an aggregate such as
+  "Annual spend total") sits under Raffa as a plain row -- no dead "View source" control. Follow-up chips post as a new message in
   the same conversation, the same `ask()` path a typed question uses.
 - **Resume** (`/ask/:conversationId`, R-CONV-02 AC-1) -- `useConversation.ts` loads the conversation
   (`GET /api/conversations/{id}`) and turns every stored message, oldest first, into the same turn
@@ -1366,7 +1369,7 @@ web/
         MarketRecordPanel.tsx  # side panel for a market citation: GET /api/market/records/{id}
         useConversation.ts     # resume: GET /api/conversations/{id} -> turns, oldest first
         useRecentConversations.ts # rail's last-5 list: GET /api/conversations, refetches on navigation (see "App shell" above)
-        reply/                  # phase-2 (task E13/F09/US01/T02) rich reply renderer -- ReplyBody/CitationCard/ActionRow/ReplyMarkdown/replyTypes
+        reply/                  # phase-2 (task E13/F09/US01/T02) rich reply renderer -- ReplyBody/EvidenceCard/evidenceGrouping/ActionRow/ReplyMarkdown/replyTypes
         askViewModel.ts        # pure(ish) helpers: wire reply -> presentational Reply, turn construction, off-copy/scope-line/suggestion-chip text, citation-click resolution
         ask.css                # this screen's styles
       renewals/                 # Renewals, V2 (see "Renewals" above)

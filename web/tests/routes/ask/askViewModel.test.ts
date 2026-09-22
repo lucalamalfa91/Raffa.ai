@@ -44,14 +44,16 @@ function citation(overrides: Partial<ConversationCitationBody> = {}): Conversati
 }
 
 describe("toCitationCorpus", () => {
-  it("passes tenant/market/raffa through unchanged", () => {
+  it("passes tenant/market/raffa/calc through unchanged", () => {
     expect(toCitationCorpus("tenant")).toBe("tenant");
     expect(toCitationCorpus("market")).toBe("market");
     expect(toCitationCorpus("raffa")).toBe("raffa");
+    // `PackCorpus.Calc` -- a calculator's own output -- keeps its provenance so the evidence card
+    // can file it under Raffa instead of passing it off as a validated contract.
+    expect(toCitationCorpus("calc")).toBe("calc");
   });
 
-  it("folds an unrecognised value (e.g. the real backend's internal 'calc') into 'tenant'", () => {
-    expect(toCitationCorpus("calc")).toBe("tenant");
+  it("folds an unrecognised value into 'tenant'", () => {
     expect(toCitationCorpus("anything-else")).toBe("tenant");
   });
 });

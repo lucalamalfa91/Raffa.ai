@@ -65,6 +65,49 @@ export function withCategoryFilter(searchParams: URLSearchParams, category: stri
   return next;
 }
 
+/**
+ * `?ids=<id>,<id>` -- the contracts an Ask answer highlighted (`routes/ask/reply/evidenceGrouping.ts
+ * #buildEvidenceActions` builds the link from the citations' own `contractId`s, never from the
+ * model). Read from the URL on every render like `category`, so the link survives a reload and a
+ * share. Unknown or deleted ids simply match nothing; the notice on the screen says so.
+ */
+export const PORTFOLIO_IDS_PARAM = "ids";
+
+export function readContractIdsFilter(searchParams: URLSearchParams): readonly string[] {
+  const raw = searchParams.get(PORTFOLIO_IDS_PARAM);
+  if (raw === null) return [];
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const part of raw.split(",")) {
+    const id = part.trim();
+    if (id === "" || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+export function buildPortfolioHighlightHref(contractIds: readonly string[]): string {
+  const ids = readContractIdsFilter(new URLSearchParams({ [PORTFOLIO_IDS_PARAM]: contractIds.join(",") }));
+  if (ids.length === 0) return "/contracts";
+  return `/contracts?${PORTFOLIO_IDS_PARAM}=${ids.map(encodeURIComponent).join(",")}`;
+}
+
+export function filterRowsByContractIds(rows: readonly PortfolioRow[], contractIds: readonly string[]): PortfolioRow[] {
+  if (contractIds.length === 0) return [...rows];
+  const wanted = new Set(contractIds);
+  return rows.filter((row) => wanted.has(row.item.contractId));
+}
+
+/** The notice above a filtered table: how many of the highlighted contracts are still here. */
+export function formatHighlightNotice(shown: number, total: number): string {
+  if (shown === 0) {
+    return "None of the contracts highlighted in Ask is in the portfolio any more.";
+  }
+  const contracts = total === 1 ? "contract" : "contracts";
+  return `Showing ${shown} of ${total} ${contracts} — the ones highlighted in Ask.`;
+}
+
 export interface PortfolioRow {
   item: PortfolioListItem;
   /** Days until the cancellation deadline (negative once past), `null` without a deadline. */

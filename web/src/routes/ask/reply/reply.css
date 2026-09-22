@@ -9,7 +9,7 @@
  *   content column: display:flex;flex-direction:column;gap:14px;min-width:0
  *   text:           font-size:14px;white-space:pre-line;text-wrap:pretty;max-width:72ch
  *   abstain:        border-left:2px solid accent;padding:10px 14px;font-size:13px;background:accent-100;max-width:72ch
- *   quote block:    see CitationCard.tsx's own header comment
+ *   evidence card:  see EvidenceCard.tsx's own header comment
  *   actions:        display:flex;flex-wrap:wrap;gap:8px; .btn font-size:12px;padding:7px 12px
  *   next:           display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;border-top:1px solid divider;padding-top:10px
  *                   "Next" 11px uppercase .08em neutral-600 · items 12px neutral-700, accent on hover
@@ -68,7 +68,7 @@
   max-width: 72ch;
 }
 
-/* ---- Quote blocks (`b.isQuote`) -------------------------------------------- */
+/* ---- The evidence card (one per answer; `EvidenceCard.tsx`) ---------------- */
 
 .reply-cards {
   display: flex;
@@ -76,30 +76,24 @@
   gap: 14px;
 }
 
+/* Same frame as the prototype's quote block (`b.isQuote`): 1px divider border, paper-white ground,
+   kicker header, footer rule. One card now holds every source of the answer. */
 .citation-card {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   width: 100%;
-  max-width: 720px;
+  max-width: 760px;
   margin: 0;
   padding: 0;
   border: 1px solid var(--color-divider);
   border-radius: 0;
   /* `background:#fff` in the compiled block -- a literal, deliberately whiter than the page ground
-     (`--color-bg`) so the quoted passage reads as paper. */
+     (`--color-bg`) so the quoted passages read as paper. */
   background: #fff;
   font: inherit;
   color: inherit;
   text-align: left;
-}
-
-button.citation-card {
-  cursor: pointer;
-}
-
-button.citation-card:hover .citation-card-open {
-  text-decoration: underline;
 }
 
 .citation-card-header {
@@ -131,25 +125,164 @@ button.citation-card:hover .citation-card-open {
   white-space: nowrap;
 }
 
-.citation-card-snippet {
+.citation-card-title {
+  color: var(--color-text);
+  font-weight: var(--weight-body-strong);
+}
+
+.evidence-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px 14px;
+}
+
+.evidence-section + .evidence-section {
+  border-top: 1px solid var(--color-divider);
+}
+
+.evidence-section-title {
   margin: 0;
-  padding: 16px 18px;
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.evidence-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.evidence-group + .evidence-group {
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-divider);
+}
+
+.evidence-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.evidence-group-title {
+  font-size: 14px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-text);
+}
+
+.evidence-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.evidence-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+
+.evidence-row-ref {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.55;
+  color: var(--color-accent);
+  text-align: left;
+  cursor: pointer;
+}
+
+.evidence-row-ref:hover {
+  text-decoration: underline;
+}
+
+.evidence-row-ref-static {
+  color: var(--color-neutral-600);
+  cursor: default;
+}
+
+.evidence-row-ref-static:hover {
+  text-decoration: none;
+}
+
+.evidence-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.evidence-row-meta {
+  font-size: 11px;
+  color: var(--color-neutral-600);
+}
+
+.evidence-row-label {
+  font-weight: var(--weight-body-strong);
+  color: var(--color-neutral-700);
+}
+
+.evidence-row-snippet {
+  margin: 0;
   font-family: Georgia, serif;
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.55;
   color: var(--color-text);
   white-space: pre-wrap;
 }
 
-.citation-card-preview {
-  display: block;
-  width: calc(100% - 36px);
-  margin: 0 18px 16px;
-  max-height: 28rem;
-  object-fit: contain;
-  object-position: left top;
-  background: var(--color-bg);
-  border: 1px solid var(--color-divider);
+.evidence-row-snippet[data-collapsed="true"] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.evidence-row-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 2px;
+}
+
+.evidence-link {
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.evidence-link:hover {
+  text-decoration: underline;
+}
+
+.evidence-row-toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-neutral-700);
+  cursor: pointer;
+}
+
+.evidence-row-toggle:hover {
+  color: var(--color-accent);
 }
 
 .citation-card-footer {
@@ -158,15 +291,6 @@ button.citation-card:hover .citation-card-open {
   gap: 16px;
   padding: 8px 16px 10px;
   border-top: 1px solid var(--color-divider);
-}
-
-/* `<button class="btn btn-ghost" style="padding:0;font-size:12px">Open in Contract 360 →</button>` --
-   inside the single-interaction card the whole block is the button, so its label is a plain span
-   painted the same way. */
-.citation-card-open {
-  font-size: 12px;
-  font-weight: var(--weight-body-strong);
-  color: var(--color-accent);
 }
 
 .citation-card-footer .reply-actions .btn {

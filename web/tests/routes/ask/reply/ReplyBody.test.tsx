@@ -47,24 +47,36 @@ const ANSWER_REPLY: Reply = {
 
 // Task E13/F09/US01/T02's own "Tests required" row: "unit | card variants, actions, layouts per kind".
 describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
-  it("answer: renders markdown, citation cards (per-corpus badge), actions and follow-ups", () => {
-    renderReply(ANSWER_REPLY);
+  it("answer: renders markdown, one evidence card (sections per source), its actions and follow-ups", () => {
+    const { container } = renderReply(ANSWER_REPLY);
 
-    expect(screen.getByText("Validated contract")).toBeInTheDocument();
+    // One card for the whole answer, never one per citation (EvidenceCard.tsx).
+    expect(container.querySelectorAll(".citation-card")).toHaveLength(1);
+    expect(screen.getByText("Your contracts")).toBeInTheDocument();
     expect(screen.getByText("Market · representative")).toBeInTheDocument();
+    expect(container.querySelector(".evidence-group-title")).toHaveTextContent("Salesforce");
+    // The reply's actions live in the card's single action row.
     expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Track it in Renewals" })).toBeInTheDocument();
+    expect(container.querySelectorAll(".reply-actions")).toHaveLength(1);
     expect(screen.getByRole("button", { name: /Where can I push on the Salesforce renewal\?/ })).toBeInTheDocument();
   });
 
-  it("answer: clicking a citation card calls onOpenCitation with that exact citation", async () => {
+  it("answer: clicking a citation row calls onOpenCitation with that exact citation", async () => {
     const user = userEvent.setup();
     const { onOpenCitation } = renderReply(ANSWER_REPLY);
 
-    await user.click(screen.getByRole("button", { name: /Sales Cloud Enterprise/ }));
+    await user.click(screen.getByRole("button", { name: "Open source 2" }));
 
     expect(onOpenCitation).toHaveBeenCalledTimes(1);
     expect(onOpenCitation).toHaveBeenCalledWith(ANSWER_REPLY.citations[1]);
+  });
+
+  it("answer: with no citations, the actions still render as a plain row", () => {
+    const { container } = renderReply({ ...ANSWER_REPLY, citations: [] });
+
+    expect(container.querySelector(".citation-card")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toBeInTheDocument();
   });
 
   it("answer: clicking a follow-up calls onFollowUp with its question", async () => {

@@ -39,7 +39,6 @@ import {
   type BoundContractChip,
 } from "./askViewModel";
 import { formatConversationTitle } from "./conversationTitle";
-import { applyCitationPreviews, useCitationPreviews } from "./useCitationPreviews";
 import { useValidatedSuppliers } from "./useValidatedSuppliers";
 import { getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 import "./ask.css";
@@ -389,8 +388,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     return () => window.removeEventListener("keydown", handleGlobalShortcut);
   }, []);
 
-  const previewUrls = useCitationPreviews(apiClient, workspace?.id, turns);
-
   if (!workspace) {
     return (
       <div className="empty-state" role="status">
@@ -532,7 +529,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                     <div className="ask-message-who">{ASK_RAFFA_KICKER}</div>
                     <div className="ask-message-content">
                       <ReplyBody
-                        reply={applyCitationPreviews(turn.reply, previewUrls)}
+                        reply={turn.reply}
                         onOpenCitation={(citation) => openCitation(turn, citation)}
                         onFollowUp={ask}
                       />

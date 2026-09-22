@@ -521,7 +521,7 @@ internal sealed partial class AskCopilotService(
 
         var packItems = plan.Intent switch
         {
-            AskIntent.StructuredFact => await BuildStructuredFactOrNoticePackAsync(question, namedContractItem, portfolio, cancellationToken)
+            AskIntent.StructuredFact => await BuildStructuredFactOrNoticePackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken)
                 .ConfigureAwait(false),
             AskIntent.Clause => await BuildClausePackAsync(tenantId, question, namedContractItem, cancellationToken)
                 .ConfigureAwait(false),
@@ -534,7 +534,7 @@ internal sealed partial class AskCopilotService(
             AskIntent.Savings => namedContractItem is not null
                 ? await BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, actor, cancellationToken).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
-            AskIntent.DocumentStatus => BuildDocumentStatusPack(portfolio),
+            AskIntent.DocumentStatus => BuildDocumentStatusPack(portfolio, supplierNames),
             _ => [],
         };
 
@@ -814,8 +814,19 @@ internal sealed partial class AskCopilotService(
 
     // ----- Per-intent pack composition -----
 
+    /// <summary>
+    /// <paramref name="supplierNames"/> is the per-turn name map <see cref="AskAsync"/> already
+    /// resolved for the whole portfolio, so every multi-contract item below can be titled
+    /// "Salesforce · MSA" rather than "MSA · MSA" (R-SUP-04; closes the golden set's
+    /// GAP-ASK-STRUCTURED-PACK-DROPS-SUPPLIER-NAME). The named-contract branch keeps its own
+    /// single lookup, which is the same source of truth.
+    /// </summary>
     private async Task<IReadOnlyList<PackItem>> BuildStructuredFactPackAsync(
-        string question, PortfolioListItem? namedContractItem, PortfolioPage portfolio, CancellationToken cancellationToken)
+        string question,
+        PortfolioListItem? namedContractItem,
+        PortfolioPage portfolio,
+        IReadOnlyDictionary<EntityId, string> supplierNames,
+        CancellationToken cancellationToken)
     {
         if (namedContractItem is not null)
         {
@@ -861,7 +872,7 @@ internal sealed partial class AskCopilotService(
                         continue;
                     }
 
-                    items.Add(BuildContractFactItem(item, item.Type.ToString()));
+                    items.Add(BuildContractFactItem(item, DisplayNameFor(item, supplierNames)));
                 }
 
                 var (aggregateTitle, aggregateSnippet) = DescribeStructuredResult(result);
@@ -891,7 +902,7 @@ internal sealed partial class AskCopilotService(
         return portfolio.Items
             .OrderBy(item => item.EndDate ?? DateOnly.MaxValue)
             .Take(5)
-            .Select(item => BuildContractFactItem(item, item.Type.ToString()))
+            .Select(item => BuildContractFactItem(item, DisplayNameFor(item, supplierNames)))
             .ToList();
     }
 
@@ -974,10 +985,14 @@ internal sealed partial class AskCopilotService(
     /// behaviour unchanged.
     /// </summary>
     private async Task<IReadOnlyList<PackItem>> BuildStructuredFactOrNoticePackAsync(
-        string question, PortfolioListItem? namedContractItem, PortfolioPage portfolio, CancellationToken cancellationToken) =>
+        string question,
+        PortfolioListItem? namedContractItem,
+        PortfolioPage portfolio,
+        IReadOnlyDictionary<EntityId, string> supplierNames,
+        CancellationToken cancellationToken) =>
         namedContractItem is not null && NoticeQuestionPattern.IsMatch(question)
             ? await BuildNoticePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
-            : await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, cancellationToken).ConfigureAwait(false);
+            : await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// Task E30/F01/US01/T01 (NW-91/NW-92, parent story us-01-notice-pack AC-1/AC-2/AC-3): the
@@ -2186,7 +2201,8 @@ internal sealed partial class AskCopilotService(
         return items;
     }
 
-    private static IReadOnlyList<PackItem> BuildDocumentStatusPack(PortfolioPage portfolio)
+    private static IReadOnlyList<PackItem> BuildDocumentStatusPack(
+        PortfolioPage portfolio, IReadOnlyDictionary<EntityId, string> supplierNames)
     {
         var pending = portfolio.Items
             .Where(item => !string.Equals(item.Status, "completed", StringComparison.OrdinalIgnoreCase))
@@ -2203,17 +2219,43 @@ internal sealed partial class AskCopilotService(
             ];
         }
 
+        // Named by supplier (R-SUP-04) and linked to the review queue, so the reply can say whose
+        // document is still pending and route straight to it -- never "Msa — not yet askable".
+        var reviewHref = CapabilityCatalog.Find(CapabilityCatalog.DocumentsAttentionKey)?.RoutePattern;
+
         return pending.Select((item, index) => new PackItem(
             InsightsCitationKeys.Calc($"document-status[{index}]"),
             PackCorpus.Calc,
-            $"{item.Type} — not yet askable",
+            $"{ContractTitle(item, DisplayNameFor(item, supplierNames))} — not yet askable",
             null, null, null,
-            $"Status: {item.Status}.",
-            null, null, null,
-            "deterministic calculator", [])).ToList();
+            $"{ContractTitle(item, DisplayNameFor(item, supplierNames))} is not validated yet (status: {item.Status}).",
+            reviewHref, null, null,
+            "deterministic calculator", [],
+            item.ContractId.ToString())).ToList();
     }
 
     // ----- Shared helpers -----
+
+    /// <summary>
+    /// The name a contract is shown under everywhere in a pack (R-SUP-04): the resolved supplier
+    /// name from the per-turn map <see cref="AskAsync"/> builds, else the contract type -- never a
+    /// guid. Synchronous twin of <see cref="ResolveDisplayNameAsync(PortfolioListItem, CancellationToken)"/>
+    /// for the multi-contract paths that already hold the whole map.
+    /// </summary>
+    private static string DisplayNameFor(PortfolioListItem item, IReadOnlyDictionary<EntityId, string> supplierNames) =>
+        item.SupplierId is { } supplierId && supplierNames.TryGetValue(new EntityId(supplierId), out var name)
+            ? name
+            : item.Type.ToString();
+
+    /// <summary>
+    /// "Salesforce · MSA" -- the one title shape every contract-level pack item uses, so a reply
+    /// can always say which supplier it means. When no supplier name resolved (the display name fell
+    /// back to the type), the title says so instead of the misleading "MSA · MSA".
+    /// </summary>
+    private static string ContractTitle(PortfolioListItem item, string displayName) =>
+        string.Equals(displayName, item.Type.ToString(), StringComparison.Ordinal)
+            ? $"Unnamed supplier · {item.Type}"
+            : $"{displayName} · {item.Type}";
 
     /// <summary>
     /// Task E25/F02/US01/T01 (NW-55): still the pre-existing <c>/contracts/{id}</c> CTA and a
@@ -2240,21 +2282,30 @@ internal sealed partial class AskCopilotService(
             values.Add(new PackValue("cancellationDeadline", deadline.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), PackValueKind.Date));
         }
 
+        // The real contract currency, never "n/a": NumericGuard matches an amount only against a
+        // pack value of the same currency, so "n/a" forced the model into bare "667000.00" figures
+        // (closes the golden set's GAP-ASK-SPEND-CURRENCY-NA).
+        var currency = string.IsNullOrWhiteSpace(item.Currency) ? "n/a" : item.Currency.Trim();
         if (item.AnnualSpend is { } spend)
         {
-            values.Add(new PackValue("annualSpend", spend.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, "n/a"));
+            values.Add(new PackValue("annualSpend", spend.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, currency));
         }
 
+        var title = ContractTitle(item, displayName);
+        var spendSentence = item.AnnualSpend is { } annualSpend && currency != "n/a"
+            ? $" Annual spend {currency} {annualSpend.ToString("0.##", CultureInfo.InvariantCulture)}."
+            : string.Empty;
+
         var snippet = item.EndDate is { } end
-            ? $"{displayName} ends on {end:yyyy-MM-dd}" +
+            ? $"{title} ends on {end:yyyy-MM-dd}" +
               (item.AutoRenewal ? ", auto-renews unless notice is given" : ", does not auto-renew") +
-              (item.CancellationDeadline is { } cd ? $" (notice by {cd:yyyy-MM-dd})" : string.Empty) + "."
-            : $"{displayName} has no validated end date yet.";
+              (item.CancellationDeadline is { } cd ? $" (notice by {cd:yyyy-MM-dd})" : string.Empty) + "." + spendSentence
+            : $"{title} has no validated end date yet.{spendSentence}";
 
         return new PackItem(
             $"fact:{item.ContractId}:renewal",
             PackCorpus.Tenant,
-            $"{displayName} · {item.Type}",
+            title,
             null,
             null,
             null,

@@ -410,7 +410,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
   });
 
   describe("AC-3: a mocked answer reply renders markdown + citation cards + actions", () => {
-    it("renders bold markdown, a numbered citation card (validated contract badge), and an action button", async () => {
+    it("renders bold markdown, one evidence card (the supplier named, the row labelled), and an action button", async () => {
       renderAsk(
         mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply()) }),
       );
@@ -418,9 +418,11 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
 
       expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
-      expect(screen.getByText("Validated contract")).toBeInTheDocument();
-      expect(screen.getByText("Salesforce · MSA 2024")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
+      expect(screen.getByText("Your contracts")).toBeInTheDocument();
+      // The card names the supplier as the group and keeps only what the row adds ("MSA 2024").
+      expect(document.querySelector(".evidence-group-title")).toHaveTextContent("Salesforce");
+      expect(screen.getByText("MSA 2024")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Salesforce · Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
       expect(screen.getByRole("button", { name: /Where can I push on the renewal\?/ })).toBeInTheDocument();
       expect(screen.queryByText(/cannot determine reliably/i)).not.toBeInTheDocument();
     });
@@ -431,7 +433,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       );
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-      await screen.findByText("Salesforce · MSA 2024");
+      await screen.findByText("MSA 2024");
 
       // Scoped to the chat log itself: `PathProbe` (this suite's own routing harness) legitimately
       // renders the conversation id as part of `/ask/<id>` once navigation lands, which is not the
@@ -490,7 +492,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-      await screen.findByText("Salesforce · MSA 2024");
+      await screen.findByText("MSA 2024");
 
       await userEvent.click(screen.getByRole("button", { name: /Where can I push on the renewal\?/ }));
 
@@ -507,8 +509,8 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       );
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-      const card = await screen.findByText("Salesforce · MSA 2024");
-      await userEvent.click(card.closest("button")!);
+      await screen.findByText("MSA 2024");
+      await userEvent.click(screen.getByRole("button", { name: "Open source 1" }));
 
       expect(await screen.findByText(/CONTRACT_360/)).toHaveTextContent("contractId=contract-1");
       expect(screen.getByText(/CONTRACT_360/)).toHaveTextContent("search=?page=12");
@@ -557,8 +559,8 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       );
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-      const card = await screen.findByText("Sales Cloud Enterprise · CH");
-      await userEvent.click(card.closest("button")!);
+      await screen.findByText("Sales Cloud Enterprise · CH");
+      await userEvent.click(screen.getByRole("button", { name: "Open source 1" }));
 
       expect(getMarketRecord).toHaveBeenCalledWith("rec-1");
       const panel = await screen.findByLabelText("Market record");
@@ -621,7 +623,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       const log = await screen.findByRole("log");
       expect(await within(log).findByText("When does Salesforce expire?")).toBeInTheDocument();
       expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
+      expect(screen.getByRole("link", { name: "Salesforce · Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
       expect(getConversation).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID);
       expect(screen.queryByRole("link", { name: "+ New chat" })).not.toBeInTheDocument();
       // `convTitle`: the resumed conversation's own server-side title in the header.
@@ -788,7 +790,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
     );
 
     await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-    await screen.findByText("Northwind · MSA");
+    await screen.findAllByText("Northwind");
     await userEvent.click(screen.getByRole("link", { name: "Open at this span" }));
 
     expect(await screen.findByRole("dialog", { name: "Document viewer" })).toBeInTheDocument();

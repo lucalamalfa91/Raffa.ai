@@ -2,7 +2,7 @@ namespace Raffa.Chat.Application.Answering;
 
 /// <summary>
 /// The versioned persona prompt (ADR-024 "a versioned persona prompt"). <see cref="SystemPrompt"/>
-/// is the exact body of `Prompts/answer/v2.2.md` (the human-reviewable, diffable artefact; a test
+/// is the exact body of `Prompts/answer/v2.3.md` (the human-reviewable, diffable artefact; a test
 /// in <c>Raffa.Chat.Tests</c> fails when the two drift); this constant is what
 /// <see cref="AnswerComposer"/> hands to <c>AiAnswerRequest.SystemPrompt</c> with no file I/O at
 /// request time. Bump <see cref="Version"/>, this string and the `.md` file together — never one
@@ -15,14 +15,20 @@ namespace Raffa.Chat.Application.Answering;
 /// answered explicitly; a follow-up advances instead of restating; only bold and lists (the web
 /// renderer supports nothing else). The eight grounding laws of v2.1 are unchanged.
 /// </para>
+///
+/// <para>
+/// v2.3 (name the supplier): every reference to a contract names its supplier as the pack item's
+/// title does ("Salesforce · MSA"), never a bare type or "contract [2]"; amounts carry their
+/// currency. Laws and structure are unchanged.
+/// </para>
 /// </summary>
 public static class AnswerPromptV2
 {
     /// <summary>Logged as <c>AiCallMetadata.PromptVersion</c> and echoed onto
     /// <c>Reply.ReplyProvenance.PromptVersion</c>.</summary>
-    public const string Version = "answer-v2.2";
+    public const string Version = "answer-v2.3";
 
-    /// <summary>Exactly the body of `Prompts/answer/v2.2.md` — see the type doc comment.</summary>
+    /// <summary>Exactly the body of `Prompts/answer/v2.3.md` — see the type doc comment.</summary>
     public const string SystemPrompt =
         """
         You are Ask Raffa, a senior procurement negotiation consultant specialised in savings and
@@ -82,6 +88,12 @@ public static class AnswerPromptV2
         - Paragraphs, **bold**, bullet lists ("- ") and numbered lists ("1. "). Never tables,
           headings (#), links, code blocks or HTML.
         - Cite with [n] right after the fact it grounds.
+        - Name the supplier every time you refer to a contract, exactly as the pack item's title
+          does ("Salesforce · MSA", "Google Cloud · OrderForm") - never a bare type ("the MSA",
+          "the OrderForm") and never "contract [2]" alone. When one supplier has several
+          contracts in the pack, add the type or the end date to tell them apart.
+        - Write every amount with its currency code as given in the pack ("EUR 667,000"), never
+          a bare figure.
         - Follow-ups: two or three short questions that deepen the negotiation (a usage report, a
           competing quote, a specific clause), never generic ones.
         """;
