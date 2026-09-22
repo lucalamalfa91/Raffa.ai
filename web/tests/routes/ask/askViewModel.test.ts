@@ -2,13 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { ApiClient, ConversationCitationBody, ConversationMessageBody, ConversationReplyBody } from "../../../src/api/client";
 import {
   ASK_HELLO,
-  buildRaffaTurnFromReply,
   buildErrorTurn,
   buildInterviewAnswerRequest,
   buildOffCopy,
-  resolveAskOffReason,
-  buildScopedBrief,
+  buildRaffaTurnFromReply,
   buildScopeLine,
+  buildScopedBrief,
   buildScopedSuggestions,
   buildTenantCitationHref,
   buildTurnsFromConversation,
@@ -21,8 +20,10 @@ import {
   mapConversationReplyToReply,
   markInterviewAnswered,
   nextTurnId,
-  pendingInterview,
   parseScopeContractId,
+  pendingConsent,
+  pendingInterview,
+  resolveAskOffReason,
   resolveCitationOpenAction,
   suggestionsFor,
   toCitationCorpus,
@@ -590,6 +591,8 @@ describe("createConversationAndAsk", () => {
       inviteWorkspaceMember: vi.fn(),
       listWorkspaces: vi.fn(),
       getWorkspaceMembers: vi.fn(),
+      getWorkspaceSettings: vi.fn(),
+      updateWorkspaceSettings: vi.fn(),
       revokeInvitation: vi.fn(),
       removeMember: vi.fn(),
       getInvitation: vi.fn(),
@@ -730,5 +733,95 @@ describe("createConversationAndAsk", () => {
 describe("ASK_HELLO", () => {
   it("is the prototype's own verbatim string", () => {
     expect(ASK_HELLO).toBe("What do you want to know?");
+  });
+});
+
+describe("web research (ADR-030)", () => {
+  function webReply(overrides: Partial<ConversationReplyBody> = {}): ConversationReplyBody {
+    return {
+      conversationId: "conv-1",
+      messageId: "msg-web",
+      kind: "answer",
+      answerMarkdown: "Public, unverified: a 5-10% uplift cap is common [1].",
+      citations: [
+        { n: 1, corpus: "web", title: "example.com · SaaS renewals", subtitle: null, snippet: "5-10% uplift cap", documentId: null, contractId: null, page: null, section: null, previewUrl: null, href: "https://example.com/a", recordId: null },
+      ],
+      actions: [],
+      provenance: { sources: ["web"], modelId: "gpt-research", promptVersion: "research-v1", inputHash: "h", unverified: true },
+      followUps: [],
+      ...overrides,
+    };
+  }
+
+  it("keeps the web corpus as-is", () => {
+    expect(toCitationCorpus("web")).toBe("web");
+  });
+
+  it("maps a web answer as unverified, from provenance or from a web citation", () => {
+    const fromProvenance = mapConversationReplyToReply(webReply());
+    expect(fromProvenance.kind).toBe("answer");
+    if (fromProvenance.kind === "answer") {
+      expect(fromProvenance.unverifiedWeb).toBe(true);
+      expect(fromProvenance.citations[0].corpus).toBe("web");
+      expect(fromProvenance.citations[0].href).toBe("https://example.com/a");
+    }
+
+    const fromCitation = mapConversationReplyToReply(
+      webReply({ provenance: { sources: ["web"], modelId: null, promptVersion: null, inputHash: null } }),
+    );
+    if (fromCitation.kind === "answer") expect(fromCitation.unverifiedWeb).toBe(true);
+
+    const ordinary = mapConversationReplyToReply(
+      webReply({ citations: [], provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null } }),
+    );
+    if (ordinary.kind === "answer") expect(ordinary.unverifiedWeb).toBeUndefined();
+  });
+
+  it("opens a web citation externally, and only over https", () => {
+    const turn = buildRaffaTurnFromReply("t1", webReply());
+    if (turn.role !== "raffa" || turn.reply.kind !== "answer") throw new Error("expected an answer turn");
+
+    expect(resolveCitationOpenAction(turn.reply.citations[0], turn.wireCitations)).toEqual({ kind: "external", url: "https://example.com/a" });
+    expect(resolveCitationOpenAction({ ...turn.reply.citations[0], href: "http://example.com/a" }, turn.wireCitations)).toEqual({ kind: "none" });
+  });
+
+  it("pendingConsent finds an unanswered consent question and nothing else", () => {
+    const consent = buildRaffaTurnFromReply(
+      "t2",
+      webReply({
+        kind: "interview",
+        citations: [],
+        interview: {
+          prompt: "Allow?",
+          answered: false,
+          questions: [
+            {
+              key: "web-consent",
+              prompt: "Allow?",
+              presentation: "consent",
+              allowFreeText: false,
+              options: [
+                { key: "allow", label: "Yes", hint: null },
+                { key: "decline", label: "No", hint: null },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const found = pendingConsent([consent]);
+    expect(found?.question.key).toBe("web-consent");
+    expect(found?.reply.messageId).toBe("msg-web");
+
+    const choice = buildRaffaTurnFromReply(
+      "t3",
+      webReply({
+        kind: "interview",
+        citations: [],
+        interview: { prompt: "Which?", answered: false, questions: [{ key: "interpretation", prompt: "Which?", presentation: "choice", allowFreeText: true, options: [] }] },
+      }),
+    );
+    expect(pendingConsent([choice])).toBeNull();
+    expect(pendingConsent([consent, choice])).toBeNull();
   });
 });

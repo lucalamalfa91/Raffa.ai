@@ -222,11 +222,24 @@ flipping it to `true` by pull request publishes, on both Container Apps:
 | `AiGateway__Models__{Classify,Extract,Embed,Answer,Ocr}__ModelId` | `AiGateway:Models:<Role>:ModelId` | the deployment names above (`prebuilt-read` for ocr); one `dynamic "env"` block over `var.ai_gateway_model_env`, absent while unwired |
 | `AiGateway__Models__<Role>__ModelVersion` | `AiGateway:Models:<Role>:ModelVersion` | the pinned model version (`2024-11-30` for ocr) |
 | `ai_gateway_extra_env` entries | any `AiGateway:*` knob | per-role settings settled by the live probe (e.g. `AiGateway__Models__Extract__ReasoningEffort`) |
+| `AiGateway__Models__Research__{ModelId,ModelVersion}` | `AiGateway:Models:Research:*` | **optional** (ADR-030): published only when the root binds the `research` key of `model_roles` -- the Responses API + `web_search` deployment Ask Raffa's opt-in web research runs on, never the `answer` deployment. Absent, the research role does not exist and the backend refuses it (no fallback). |
+| `Chat__WebResearch__Enabled` (via `ai_gateway_extra_env`) | `Chat:WebResearch:Enabled` | the web-research **kill switch** (ADR-030, default `false` when absent). Siblings: `Chat__WebResearch__DailyCallsPerTenant` (20), `__MaxSources` (5), `__MaxQueryChars` (300), `__RequireWorkspaceOptIn` (true). Even when `true`, nothing is searched until the workspace Admin opts in and the user consents on each question. |
 
 None are Key Vault secrets (ADR-011). `scripts/foundry_connection_verify.py`
 holds the module and both roots to this shape (single owner, gated
 outputs, per-env deployment names, allowed SKUs, both roles, no hub) and
 `scripts/bootstrap_hcp_org.py` records the names it compares against.
+
+**Binding the `research` role (ADR-030).** `model_roles` accepts an optional
+fifth key, `research`, next to the four required ones. Bind it only after
+`scripts/foundry_research_probe.py --endpoint <account endpoint> --deployment
+<name>` passes in the region (HTTP 200 on `openai/v1/responses`, at least one
+`url_citation`): the probe sends exactly the request the backend's
+`FoundryResearchClient` sends. `dev` binds it first; `demo` stays unbound
+(and `Chat__WebResearch__Enabled` unset) until the promotion decision
+(ADR-016). If the probe fails in `northeurope`, the fallback is Foundry Agent
+Service + Grounding with Bing Search behind the same `AiResearchResult`, a
+separate client and its own infra -- not a change to this module.
 
 **Live probe (after the `dev` apply, before wiring).** Wait a few minutes
 for RBAC propagation, then, as an operator listed in

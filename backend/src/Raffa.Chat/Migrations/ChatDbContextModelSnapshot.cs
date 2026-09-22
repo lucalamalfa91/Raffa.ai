@@ -144,6 +144,26 @@ namespace Raffa.Chat.Migrations
                     b.ToTable("conversation_message", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Chat.Domain.WebResearch.WebResearchUsage", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<int>("Calls")
+                        .HasColumnType("integer")
+                        .HasColumnName("calls");
+
+                    b.HasKey("TenantId", "Day")
+                        .HasName("pk_chat_web_research_usage");
+
+                    b.ToTable("chat_web_research_usage", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Chat.Domain.Conversations.ConversationMessage", b =>
                 {
                     b.HasOne("Raffa.Chat.Domain.Conversations.Conversation", null)

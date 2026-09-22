@@ -8,6 +8,7 @@ import {
   describeEvidence,
   evidenceRowLabel,
   groupCitations,
+  webSourceHost,
   type ContractEvidenceGroup,
 } from "./evidenceGrouping";
 import type { ReplyAction, ReplyCitation } from "./replyTypes";
@@ -61,6 +62,11 @@ export default function EvidenceCard({ citations, actions, onOpenCitation }: Evi
     const isLong = citation.snippet.length > SNIPPET_COLLAPSE_LENGTH;
     const isExpanded = expanded.has(citation.n);
     const viewerHref = citation.href && isDocumentViewerHref(citation.href) ? citation.href : null;
+    // ADR-030: a web source opens in a new tab through a real anchor (noopener, noreferrer) --
+    // the app never navigates itself to a public URL, and the visible text is the host, not the
+    // URL.
+    const webHref = citation.corpus === "web" && citation.href ? citation.href : null;
+    const webHost = webSourceHost(webHref);
 
     return (
       <li key={citation.n} className="evidence-row" data-n={citation.n}>
@@ -87,12 +93,17 @@ export default function EvidenceCard({ citations, actions, onOpenCitation }: Evi
           <p className="evidence-row-snippet" data-collapsed={isLong && !isExpanded ? "true" : "false"}>
             {citation.snippet}
           </p>
-          {(isLong || viewerHref) && (
+          {(isLong || viewerHref || webHref) && (
             <div className="evidence-row-links">
               {viewerHref && (
                 <DocumentViewerLink to={viewerHref} className="evidence-link">
                   Open at this span
                 </DocumentViewerLink>
+              )}
+              {webHref && webHost && (
+                <a href={webHref} className="evidence-link evidence-row-external" target="_blank" rel="noopener noreferrer">
+                  {webHost} ↗
+                </a>
               )}
               {isLong && (
                 <button type="button" className="evidence-row-toggle" onClick={() => toggle(citation.n)}>
@@ -158,6 +169,16 @@ export default function EvidenceCard({ citations, actions, onOpenCitation }: Evi
           <h4 className="evidence-section-title">Raffa</h4>
           <ul className="evidence-rows">
             {groups.raffa.map((citation) => renderRow(citation, citation.title, Boolean(citation.href)))}
+          </ul>
+        </section>
+      )}
+
+      {groups.web.length > 0 && (
+        <section className="evidence-section" data-section="web">
+          <h4 className="evidence-section-title">Web · unverified</h4>
+          <p className="evidence-section-note micro-meta">Public sources Raffa read with your permission. Not checked against your contracts.</p>
+          <ul className="evidence-rows">
+            {groups.web.map((citation) => renderRow(citation, citation.title, Boolean(citation.href)))}
           </ul>
         </section>
       )}

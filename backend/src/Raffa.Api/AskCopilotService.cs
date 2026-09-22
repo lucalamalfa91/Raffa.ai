@@ -13,6 +13,7 @@ using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Reply;
+using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
@@ -199,6 +200,10 @@ internal sealed partial class AskCopilotService(
     NegotiationCouncil negotiationCouncil,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
+    WebResearchOptions webResearchOptions,
+    WebResearchComposer webResearchComposer,
+    IWebResearchBudget webResearchBudget,
+    IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock)
@@ -375,6 +380,14 @@ internal sealed partial class AskCopilotService(
 
         await WriteAuditAsync(tenantId, reply, guardIntervened, actor, cancellationToken).ConfigureAwait(false);
 
+        // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
+        // answer above), so "asked, said no" is visible without the query ever being logged.
+        if (turnHints.DeclinedWebResearch)
+        {
+            await WriteWebResearchAuditAsync(tenantId, AuditWebResearchDeclinedAction, actor, "outcome=declined", cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         return reply;
     }
 
@@ -533,6 +546,24 @@ internal sealed partial class AskCopilotService(
         var contractIdForActions = namedContractItem is not null ? new EntityId(namedContractItem.ContractId) : (EntityId?)null;
         var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard, contractIdForActions);
 
+        // ADR-030 -- web research. A consumed consent runs the research role here, before any pack
+        // is built (nothing of the tenant's data is in scope of that call, by construction); an
+        // explicit or forced WebResearch intent gets the consent question, or a redirect naming
+        // the closed gate. There is no path from here to the search without a consumed consent.
+        if (hints.AuthorizedWebResearch is { } authorizedWebResearch)
+        {
+            return await RunWebResearchAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (plan.Intent == AskIntent.WebResearch)
+        {
+            return (
+                await BuildWebResearchEntryReplyAsync(tenantId, question, portfolio, routingContext, actor, cancellationToken)
+                    .ConfigureAwait(false),
+                false);
+        }
+
         if (plan.Intent is AskIntent.Navigate or AskIntent.QuoteRoute)
         {
             return (BuildRoutingOnlyReply(plan, routingContext), false);
@@ -553,8 +584,12 @@ internal sealed partial class AskCopilotService(
             var signals = AmbiguityDetector.Detect(question, plan, interviewContext, interviewOptions);
             if (signals.Verdict == AmbiguityVerdict.Ambiguous)
             {
+                // The web option rides the interpretation menu only when every ADR-030 gate is
+                // open and the question is a procurement topic; picking it asks consent, never
+                // searches.
+                var webOffer = await BuildWebOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
                 var interview = interviewPlanner.Plan(
-                    question, plan, signals, BuildInterviewInputs(supplierMatches, portfolio, supplierNames));
+                    question, plan, signals, BuildInterviewInputs(supplierMatches, portfolio, supplierNames), webOffer);
                 if (interview is not null)
                 {
                     return (InterviewReplyBuilder.Interview(interview), false);
@@ -669,7 +704,8 @@ internal sealed partial class AskCopilotService(
             && !previousRaffaTurnWasInterview
             && AmbiguousAbstainDetector.IsAmbiguous(composed.Value.Result.AbstainReason))
         {
-            var interview = interviewPlanner.PlanInterpretationMenu(question, plan);
+            var webOffer = await BuildWebOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
+            var interview = interviewPlanner.PlanInterpretationMenu(question, plan, webOffer);
             if (interview is not null)
             {
                 return (InterviewReplyBuilder.Interview(interview), false);
@@ -2701,7 +2737,9 @@ internal sealed partial class AskCopilotService(
                 clock.UtcNow,
                 $"kind={reply.Kind} citationCount={reply.Citations.Count} actionCount={reply.Actions.Count} " +
                 $"packHash={packHash} abstainGuardIntervened={guardIntervened} " +
-                $"interviewQuestions={reply.Interview?.Questions.Count ?? 0}"),
+                $"interviewQuestions={reply.Interview?.Questions.Count ?? 0} " +
+                $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
+                $"unverified={reply.Provenance.Unverified}"),
             cancellationToken).ConfigureAwait(false);
     }
 

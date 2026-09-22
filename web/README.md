@@ -849,6 +849,22 @@ per-user conversations.
   ADR-012 w15 footer clause 1) -- see "API client" below for the full header provenance; the interim
   `X-User-Id` header this bullet used to name is deleted, not conditional.
 
+- **Interview and web-research consent (ADR-030)** -- a reply of `kind: "interview"` renders the
+  lead-in plus `InterviewBlock` (one `<fieldset>` per question, one real `<button>` chip per
+  option, disabled once answered, "Or just type your answer below" when free text is allowed).
+  A chip posts `{ question: <label>, interviewAnswer: { messageId, questionKey, optionKey } }`;
+  typing while an interview is pending posts `freeText: true` (`askViewModel.ts#pendingInterview`).
+  A question with `presentation: "consent"` additionally mounts `ConsentDialog.tsx` --
+  `role="alertdialog"`, `aria-modal`, the exact query the server will search, focus on
+  "No, stay in Raffa", Tab cycles inside, Escape declines -- and either button posts its option
+  key like any chip (`pendingConsent`). A `409` from `postMessage` ("This permission was already
+  used -- ask again") is a consent replay. A web answer (`provenance.unverified` or a `web`
+  citation) renders the "Public web · not verified" banner (`data-unverified="true"`) and the
+  evidence card files every `web` citation under **Web · unverified** as a real
+  `<a target="_blank" rel="noopener noreferrer">` showing the host only; `openCitation` opens a
+  `web` row with `window.open(url, "_blank", "noopener,noreferrer")` and never routes to it.
+  `buildEvidenceActions` never derives an action from a web source.
+
 ### Renewals (ADR-024 V2, `raffa-v2/screens-v2.md` #7; originally ADR-020 screen 8, task E08/F01/US01/T01)
 
 `src/routes/renewals/` is the V2 Renewals screen: a header with the prototype's `rnSummary`, one list
@@ -1024,6 +1040,14 @@ apparent conflict between the export (hides the table for non-admins) and ADR-01
 `memberViewModel.ts`-adjacent per-browser echo module used to seed the current Admin locally and
 remember each invite in this browser's own storage for the running tab -- a discovery gap masquerading
 as a roster; every row on screen is now a fact the server actually holds.
+
+**Workspace settings (ADR-030 gate 2).** Below the roster, an **Ask Raffa** block with one
+checkbox -- "Allow Ask Raffa to search the public web" -- read from `getWorkspaceSettings(tenantId)`
+(`GET /api/workspaces/{tenantId}/settings`) and written with `updateWorkspaceSettings` (`PATCH`,
+Admin only; the server's `canEdit` decides whether the box is enabled, never a client-side role
+guess). Off by default; the block does not render at all when the settings cannot be read (an older
+backend, a non-member). Even when on, Raffa asks the person for permission on every single question
+before it searches, nothing from the contracts leaves Raffa, and results are labelled unverified.
 
 ## API client (ADR-012 "one generated TypeScript client, no hand-written divergent DTOs")
 

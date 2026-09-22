@@ -257,3 +257,27 @@ describe("ReplyBody abstain recovery action (task E25/F05/US02/T01)", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });
+
+describe("ReplyBody web research answer (ADR-030)", () => {
+  it("shows the unverified banner and the web section for a web answer", () => {
+    const { container } = renderReply({
+      kind: "answer",
+      answerMarkdown: "Public, unverified: a 5-10% uplift cap is common [1].",
+      citations: [{ n: 1, corpus: "web", title: "example.com · SaaS renewals", subtitle: null, snippet: "5-10% uplift cap", href: "https://example.com/a" }],
+      actions: [],
+      followUps: [],
+      unverifiedWeb: true,
+    });
+
+    expect(container.querySelector('[data-reply-kind="answer"][data-unverified="true"]')).not.toBeNull();
+    expect(screen.getByRole("note")).toHaveTextContent("Public web · not verified.");
+    expect(container.querySelector('[data-section="web"]')).not.toBeNull();
+  });
+
+  it("shows no banner on an ordinary answer", () => {
+    const { container } = renderReply(ANSWER_REPLY);
+
+    expect(container.querySelector(".reply-unverified-banner")).toBeNull();
+    expect(container.querySelector("[data-unverified]")).toBeNull();
+  });
+});

@@ -146,3 +146,46 @@ describe("EvidenceCard", () => {
     expect(container.querySelector(".citation-card")).toBeNull();
   });
 });
+
+describe("EvidenceCard web sources (ADR-030)", () => {
+  const WEB: ReplyCitation[] = [
+    citation({ n: 1, title: "example.com · SaaS renewal benchmarks", corpus: "web", subtitle: null, snippet: "Typical renewals close with a 5-10% uplift cap.", href: "https://example.com/procurement/saas-renewals" }),
+    citation({ n: 2, title: "example.org · Negotiation levers", corpus: "web", subtitle: "2026-09-01", snippet: "Multi-year commitments are the lever buyers cite most.", href: "https://example.org/negotiation/levers" }),
+  ];
+
+  it("files web sources under their own unverified section with a new-tab link per row", () => {
+    const { container } = renderCard(WEB, []);
+
+    const web = container.querySelector('[data-section="web"]');
+    expect(web).not.toBeNull();
+    expect(within(web as HTMLElement).getByText("Web · unverified")).toBeInTheDocument();
+    expect(container.querySelector('[data-section="contracts"]')).toBeNull();
+    expect(container.querySelector(".citation-card-title")).toHaveTextContent("Public web");
+    expect(container.querySelector(".citation-card-subtitle")).toHaveTextContent("2 web sources");
+
+    const links = within(web as HTMLElement).getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual(["example.com ↗", "example.org ↗"]);
+    for (const link of links) {
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(link.getAttribute("href")).toMatch(/^https:\/\//);
+    }
+    // The full URL is never printed as prose -- only the host.
+    expect(container.textContent).not.toContain("/procurement/saas-renewals");
+  });
+
+  it("never derives a footer action from a web source", () => {
+    const { container } = renderCard(WEB, []);
+
+    expect(container.querySelector(".citation-card-footer")).toBeNull();
+  });
+
+  it("opens a web row through the same callback as every other row", async () => {
+    const user = userEvent.setup();
+    const { onOpen } = renderCard(WEB, []);
+
+    await user.click(screen.getByRole("button", { name: "Open source 2" }));
+
+    expect(onOpen.mock.calls[0][0]).toMatchObject({ n: 2, corpus: "web" });
+  });
+});

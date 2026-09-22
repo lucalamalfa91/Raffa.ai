@@ -399,3 +399,80 @@
 .reply-followup:hover {
   color: var(--color-accent);
 }
+
+/* ---- ADR-030: web research ------------------------------------------------- */
+
+.reply-unverified-banner {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--color-warning, var(--color-accent));
+  background: var(--color-surface-muted, var(--color-surface));
+  font-size: 12px;
+  color: var(--color-neutral-700);
+}
+
+.evidence-section-note {
+  margin: -4px 0 0;
+}
+
+.evidence-row-external {
+  word-break: break-all;
+}
+
+.consent-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.consent-dialog {
+  width: min(520px, 100%);
+  padding: 20px 20px 16px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg, var(--radius-md));
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 0.18));
+}
+
+.consent-dialog-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.consent-dialog-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-text);
+}
+
+.consent-dialog-body {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-neutral-700);
+}
+
+.consent-dialog-query {
+  display: block;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface-muted, var(--color-surface));
+  font-style: italic;
+  color: var(--color-text);
+}
+
+.consent-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

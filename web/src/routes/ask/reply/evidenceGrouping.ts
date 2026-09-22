@@ -52,6 +52,9 @@ export interface EvidenceGroups {
   contracts: readonly ContractEvidenceGroup[];
   market: readonly ReplyCitation[];
   raffa: readonly ReplyCitation[];
+  /** ADR-030: public web sources (the research role's citations) -- their own section, labelled
+   * unverified, opened in a new tab; never an input to `buildEvidenceActions`. */
+  web: readonly ReplyCitation[];
   total: number;
 }
 
@@ -59,10 +62,16 @@ export function groupCitations(citations: readonly ReplyCitation[]): EvidenceGro
   const contractsByKey = new Map<string, { contractId: string | null; title: string; rows: ReplyCitation[] }>();
   const market: ReplyCitation[] = [];
   const raffa: ReplyCitation[] = [];
+  const web: ReplyCitation[] = [];
 
   for (const citation of citations) {
     if (citation.corpus === "market") {
       market.push(citation);
+      continue;
+    }
+
+    if (citation.corpus === "web") {
+      web.push(citation);
       continue;
     }
 
@@ -94,7 +103,7 @@ export function groupCitations(citations: readonly ReplyCitation[]): EvidenceGro
     });
   }
 
-  return { contracts, market, raffa, total: citations.length };
+  return { contracts, market, raffa, web, total: citations.length };
 }
 
 /** What a row adds beyond its group's supplier: "MSA", "criticality 72/100", "Liability clause".
@@ -131,6 +140,8 @@ export function describeEvidence(groups: EvidenceGroups): EvidenceSummary {
     title = hiddenCount > 0 ? `${shownNames.join(", ")} +${hiddenCount}` : shownNames.join(", ");
   } else if (groups.market.length > 0) {
     title = "Market";
+  } else if (groups.web.length > 0) {
+    title = "Public web";
   } else {
     title = "Raffa";
   }
@@ -139,11 +150,23 @@ export function describeEvidence(groups: EvidenceGroups): EvidenceSummary {
   if (groups.contracts.length > 0) parts.push(plural(groups.contracts.length, "contract", "contracts"));
   if (groups.market.length > 0) parts.push(plural(groups.market.length, "market record", "market records"));
   if (groups.raffa.length > 0) parts.push(plural(groups.raffa.length, "Raffa item", "Raffa items"));
+  if (groups.web.length > 0) parts.push(plural(groups.web.length, "web source", "web sources"));
 
   return { title, subtitle: parts.join(" · ") || plural(groups.total, "source", "sources") };
 }
 
 export const MAX_EVIDENCE_ACTIONS = 3;
+
+/** The host of a web source, for the row's visible link text ("example.com ↗") -- never the
+ * whole URL as prose. Falls back to the raw href when it does not parse. */
+export function webSourceHost(href: string | null | undefined): string | null {
+  if (!href) return null;
+  try {
+    return new URL(href).host;
+  } catch {
+    return href;
+  }
+}
 
 const PORTFOLIO_ROUTE = "/contracts";
 

@@ -419,6 +419,8 @@ public static class ConversationsEndpointExtensions
                 modelId = reply.Provenance.ModelId,
                 promptVersion = reply.Provenance.PromptVersion,
                 inputHash = reply.Provenance.InputHash,
+                // ADR-030: true only for a web-research answer -- the client labels it.
+                unverified = reply.Provenance.Unverified,
             },
             followUps = reply.FollowUps,
             interview = reply.Interview is null ? null : ToInterviewJson(reply.Interview, answered: false),
@@ -498,9 +500,16 @@ public static class ConversationsEndpointExtensions
                 }
             }
 
+            var hints = AskTurnHints.From(option.ResolvesTo);
+            if (question.Presentation == InterviewPresentation.Consent && option.ResolvesTo.WebResearch is null)
+            {
+                // The consent's "no": the turn runs contracts-only and is audited as a decline.
+                hints = hints with { DeclinedWebResearch = true };
+            }
+
             return new InterviewAnswerResolution(
                 null,
-                AskTurnHints.From(option.ResolvesTo),
+                hints,
                 option.ResolvesTo.RewrittenQuestion,
                 InterviewJsonCodec.SerializeAnswer(messageId, question.Key, option.Key, freeText: false));
         }

@@ -171,7 +171,7 @@ public sealed class InterviewPlannerTests
     }
 
     [Fact]
-    public void A_web_offer_is_the_last_option_and_carries_the_server_authored_query()
+    public void A_web_offer_is_the_last_option_and_only_forces_the_intent_never_an_authorization()
     {
         var (plan, signals) = Analyse("Did you over all my contract?");
         var offer = new WebResearchRequest("saas renewal market practice", "MarketPractice");
@@ -181,8 +181,12 @@ public sealed class InterviewPlannerTests
         Assert.NotNull(turn);
         var web = turn.Questions[0].Options.Last();
         Assert.Equal(InterviewPlanner.WebResearchOptionKey, web.Key);
-        Assert.Equal(offer, web.ResolvesTo.WebResearch);
-        Assert.Null(web.ResolvesTo.Intent);
+        // ADR-030: the menu option is not a consent. It re-plans the original question as an
+        // explicit web-research request, whose own consent question is the only authorisation.
+        Assert.Equal(AskIntent.WebResearch, web.ResolvesTo.Intent);
+        Assert.Null(web.ResolvesTo.WebResearch);
+        Assert.Equal("Did you over all my contract?", web.ResolvesTo.RewrittenQuestion);
+        Assert.Null(AskTurnHints.From(web.ResolvesTo).AuthorizedWebResearch);
         Assert.NotNull(web.Hint);
     }
 

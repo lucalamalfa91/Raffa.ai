@@ -40,7 +40,13 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp, onIntervi
   switch (reply.kind) {
     case "answer":
       return (
-        <div className="reply-body" data-reply-kind="answer">
+        <div className="reply-body" data-reply-kind="answer" data-unverified={reply.unverifiedWeb ? "true" : undefined}>
+          {reply.unverifiedWeb && (
+            <p className="reply-unverified-banner" role="note">
+              <strong>Public web · not verified.</strong> These findings come from public sources and were not checked
+              against your contracts.
+            </p>
+          )}
           <ReplyMarkdown text={reply.answerMarkdown} citations={reply.citations} onOpenCitation={onOpenCitation} />
 
           {reply.citations.length > 0 ? (

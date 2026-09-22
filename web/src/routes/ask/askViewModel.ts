@@ -12,7 +12,14 @@ import type {
   DocumentListPageBody,
   PostMessageRequest,
 } from "../../api/client";
-import type { CitationCorpus, InterviewQuestion, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
+import type {
+  CitationCorpus,
+  InterviewQuestion,
+  InterviewReply,
+  Reply,
+  ReplyAction,
+  ReplyCitation,
+} from "./reply/replyTypes";
 import type { WorkspaceRole } from "../../components/shell/navItems";
 import { formatSupplier, getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 
@@ -46,7 +53,7 @@ import { formatSupplier, getContractTypeLabel } from "../contracts/portfolioTabl
  * otherwise -- rather than throwing on a future backend addition.
  */
 export function toCitationCorpus(wireCorpus: string): CitationCorpus {
-  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "raffa" || wireCorpus === "calc") {
+  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "raffa" || wireCorpus === "calc" || wireCorpus === "web") {
     return wireCorpus;
   }
   return "tenant";
@@ -137,6 +144,9 @@ interface NormalizedTurnBody {
   /** ADR-030: the interview payload (kind "interview" only) and the server id of this turn. */
   interview: ConversationInterviewBody | null;
   messageId: string | null;
+  /** ADR-030: the wire's `provenance.unverified` (a live reply) -- a stored message has no
+   * provenance, so `buildReply` also infers it from a `web` citation. */
+  unverified: boolean;
 }
 
 function mapInterviewQuestion(question: ConversationInterviewBody["questions"][number]): InterviewQuestion {
@@ -151,14 +161,18 @@ function mapInterviewQuestion(question: ConversationInterviewBody["questions"][n
 
 function buildReply(turn: NormalizedTurnBody): Reply {
   switch (turn.kind) {
-    case "answer":
+    case "answer": {
+      const citations = turn.citations.map(mapConversationCitation);
+      const unverifiedWeb = turn.unverified || citations.some((citation) => citation.corpus === "web");
       return {
         kind: "answer",
         answerMarkdown: turn.text,
-        citations: turn.citations.map(mapConversationCitation),
+        citations,
         actions: turn.actions.map(mapConversationAction),
         followUps: turn.followUps,
+        ...(unverifiedWeb ? { unverifiedWeb: true } : {}),
       };
+    }
     case "redirect":
     case "refusal":
       return {
@@ -204,6 +218,7 @@ export function mapConversationReplyToReply(body: ConversationReplyBody): Reply 
     followUps: body.followUps,
     interview: body.interview ?? null,
     messageId: body.messageId,
+    unverified: body.provenance.unverified === true,
   });
 }
 
@@ -221,6 +236,7 @@ export function mapConversationMessageToReply(message: ConversationMessageBody):
     followUps: [],
     interview: message.interview ?? null,
     messageId: message.id,
+    unverified: false,
   });
 }
 
@@ -238,6 +254,20 @@ export function pendingInterview(turns: readonly AskTurnView[]): { messageId: st
   if (reply.answered || reply.messageId === null) return null;
   const question = reply.questions.find((q) => q.allowFreeText);
   return question ? { messageId: reply.messageId, questionKey: question.key } : null;
+}
+
+/** ADR-030: the consent the screen must put in front of the user -- the last Raffa turn is an
+ * interview still waiting whose question carries `presentation: "consent"`. Null otherwise. The
+ * dialog renders only for this shape; a plain choice interview stays inline. */
+export function pendingConsent(
+  turns: readonly AskTurnView[],
+): { reply: InterviewReply; question: InterviewQuestion } | null {
+  const last = turns[turns.length - 1];
+  if (!last || last.role !== "raffa" || last.reply.kind !== "interview") return null;
+  const { reply } = last;
+  if (reply.answered || reply.messageId === null) return null;
+  const question = reply.questions.find((q) => q.presentation === "consent");
+  return question ? { reply, question } : null;
 }
 
 /** The wire request for an interview answer: the label (or typed text) as the transcript line,
@@ -654,6 +684,9 @@ export function suggestionsFor(
 export type CitationOpenAction =
   | { kind: "navigate"; href: string }
   | { kind: "market-panel"; recordId: string }
+  /** ADR-030: a web source -- opened in a new tab (`noopener,noreferrer`), never an in-app
+   * navigation to a public URL. */
+  | { kind: "external"; url: string }
   | { kind: "none" };
 
 /**
@@ -672,6 +705,9 @@ export function resolveCitationOpenAction(
   if (citation.corpus === "market") {
     const wire = wireCitations.find((c) => c.n === citation.n);
     return wire?.recordId ? { kind: "market-panel", recordId: wire.recordId } : { kind: "none" };
+  }
+  if (citation.corpus === "web") {
+    return citation.href && /^https:\/\//i.test(citation.href) ? { kind: "external", url: citation.href } : { kind: "none" };
   }
   return citation.href ? { kind: "navigate", href: citation.href } : { kind: "none" };
 }

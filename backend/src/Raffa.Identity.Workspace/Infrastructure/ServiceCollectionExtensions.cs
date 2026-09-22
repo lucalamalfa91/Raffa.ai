@@ -52,6 +52,9 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<WorkspaceMembershipService>();
         services.TryAddScoped<WorkspaceProvisioningService>();
         services.TryAddScoped<WorkspaceDirectoryService>();
+        // ADR-030 gate 2: the workspace Admin's web-research opt-in, read by the host's policy
+        // adapter and written by the settings endpoint.
+        services.TryAddScoped<WorkspaceSettingsService>();
 
         // Task E15/F01/US01/T01 (wave w14, ADR-025 §C/§D, ADR-026 §D6): the invitation token
         // lifecycle and its mailer seam. Task E17/F01/US01/T01 (wave w15, NW-67/NW-68; ADR-026 w15

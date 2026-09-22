@@ -1,4 +1,5 @@
 using Raffa.Chat.Domain.Conversations;
+using Raffa.Chat.Domain.WebResearch;
 using Raffa.Chat.Infrastructure.Configurations;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,10 +19,14 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
 
+    /// <summary>ADR-030 gate 3: the per-tenant, per-day web-research counter.</summary>
+    public DbSet<WebResearchUsage> WebResearchUsage => Set<WebResearchUsage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new ConversationConfiguration());
         modelBuilder.ApplyConfiguration(new ConversationMessageConfiguration());
+        modelBuilder.ApplyConfiguration(new WebResearchUsageConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

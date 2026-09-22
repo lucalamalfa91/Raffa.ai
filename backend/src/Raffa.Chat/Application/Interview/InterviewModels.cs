@@ -52,14 +52,17 @@ public sealed record InterviewAnswer(EntityId MessageId, string QuestionKey, str
 /// stops an interview from ever answering an interview; <see cref="ForcedIntent"/> bypasses the
 /// planner's lexicons; <see cref="ForcedContractId"/> narrows the turn to one contract exactly as
 /// a scoped conversation would (an id this tenant cannot see refuses, never silently widens).
-/// <see cref="AuthorizedWebResearch"/> is set only by a consumed consent option (ADR-030).
+/// <see cref="AuthorizedWebResearch"/> is set only by a consumed consent option (ADR-030);
+/// <see cref="DeclinedWebResearch"/> only by the consent's "no" option, so the turn is audited as
+/// a decline while it runs the normal, contracts-only pipeline.
 /// </summary>
 public sealed record AskTurnHints(
     AskIntent? ForcedIntent,
     EntityId? ForcedContractId,
     string? ForcedSupplierName,
     bool SuppressInterview,
-    WebResearchRequest? AuthorizedWebResearch = null)
+    WebResearchRequest? AuthorizedWebResearch = null,
+    bool DeclinedWebResearch = false)
 {
     public static AskTurnHints None { get; } = new(null, null, null, false);
 

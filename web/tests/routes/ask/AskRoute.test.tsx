@@ -138,6 +138,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace()),
     getWorkspaceMembers: vi.fn(),
+    getWorkspaceSettings: vi.fn(),
+    updateWorkspaceSettings: vi.fn(),
     revokeInvitation: vi.fn(),
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
@@ -866,5 +868,91 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
     expect(await screen.findByRole("dialog", { name: "Document viewer" })).toBeInTheDocument();
     expect(screen.getByTestId("path").textContent).toMatch(/^\/ask/);
     expect(screen.queryByText(/CONTRACT_360/)).not.toBeInTheDocument();
+  });
+});
+
+describe("AskRoute web research consent (ADR-030)", () => {
+  const consentReply = () =>
+    answerReply({
+      kind: "interview",
+      messageId: "msg-consent",
+      answerMarkdown: "Raffa will search the public web for: “typical uplift caps on saas renewals”. Allow?",
+      citations: [],
+      actions: [],
+      followUps: [],
+      interview: {
+        prompt: "Raffa will search the public web for: “typical uplift caps on saas renewals”. Allow?",
+        answered: false,
+        questions: [
+          {
+            key: "web-consent",
+            prompt: "Raffa will search the public web for: “typical uplift caps on saas renewals”. Nothing from your contracts leaves Raffa. The results are not verified. Allow?",
+            presentation: "consent",
+            allowFreeText: false,
+            options: [
+              { key: "allow", label: "Yes, search the web", hint: "One search, for this question only." },
+              { key: "decline", label: "No, stay in Raffa", hint: "I answer from your contracts only." },
+            ],
+          },
+        ],
+      },
+    });
+
+  const webAnswer = () =>
+    answerReply({
+      messageId: "msg-web-answer",
+      answerMarkdown: "Public, unverified: a 5-10% uplift cap is common [1].",
+      citations: [
+        { n: 1, corpus: "web", title: "example.com · SaaS renewals", subtitle: null, snippet: "5-10% uplift cap", documentId: null, contractId: null, page: null, section: null, previewUrl: null, href: "https://example.com/a", recordId: null },
+      ],
+      actions: [{ label: "Quote check →", href: "/quotes", kind: "navigate" }],
+      provenance: { sources: ["web"], modelId: "gpt-research", promptVersion: "research-v1", inputHash: "h", unverified: true },
+      followUps: [],
+    });
+
+  it("shows the alert dialog for a consent question and Allow posts the allow option by key", async () => {
+    const postMessage = vi.fn().mockResolvedValueOnce(postedReply(consentReply())).mockResolvedValueOnce(postedReply(webAnswer()));
+    renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+    await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "search the web for typical uplift caps on saas renewals{Enter}");
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Search the public web?" });
+    expect(dialog).toHaveAccessibleDescription(/typical uplift caps on saas renewals/);
+    expect(screen.getByRole("button", { name: "No, stay in Raffa" })).toHaveFocus();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Yes, search the web" }));
+
+    await waitFor(() =>
+      expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+        question: "Yes, search the web",
+        interviewAnswer: { messageId: "msg-consent", questionKey: "web-consent", optionKey: "allow" },
+      }),
+    );
+    // The dialog is gone, the answer is labelled unverified and its source opens in a new tab.
+    await screen.findByText("Public web · not verified.");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    const link = screen.getByRole("link", { name: "example.com ↗" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("Decline posts the decline option and never the allow one", async () => {
+    const postMessage = vi.fn().mockResolvedValueOnce(postedReply(consentReply())).mockResolvedValueOnce(postedReply());
+    renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+    await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "search the web for typical uplift caps on saas renewals{Enter}");
+    const dialog = await screen.findByRole("alertdialog", { name: "Search the public web?" });
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "No, stay in Raffa" }));
+
+    await waitFor(() =>
+      expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+        question: "No, stay in Raffa",
+        interviewAnswer: { messageId: "msg-consent", questionKey: "web-consent", optionKey: "decline" },
+      }),
+    );
+    expect(postMessage).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

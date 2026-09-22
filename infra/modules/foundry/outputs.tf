@@ -16,7 +16,7 @@ output "ai_services_endpoint" {
 }
 
 output "model_env" {
-  description = "AiGateway__Models__{Classify,Extract,Embed,Answer,Ocr}__{ModelId,ModelVersion} (plus extra_gateway_env) for both Container Apps; {} unless published (same gate as ai_services_endpoint)."
+  description = "AiGateway__Models__{Classify,Extract,Embed,Answer,Ocr}__{ModelId,ModelVersion} -- plus Research when model_roles binds it (ADR-030) -- and extra_gateway_env, for both Container Apps; {} unless published (same gate as ai_services_endpoint)."
   value       = local.model_env
 }
 

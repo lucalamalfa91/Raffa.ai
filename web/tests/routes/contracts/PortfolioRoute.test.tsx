@@ -13,6 +13,8 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn(),
     getWorkspaceMembers: vi.fn(),
+    getWorkspaceSettings: vi.fn(),
+    updateWorkspaceSettings: vi.fn(),
     revokeInvitation: vi.fn(),
     removeMember: vi.fn(),
     getInvitation: vi.fn(),

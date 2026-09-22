@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain;
 
 namespace Raffa.Chat.Application.Planning;
@@ -208,6 +209,11 @@ public sealed class IntentPlanner
             }
         }
 
+        if (WebResearchTopicLexicon.IsExplicitRequest(trimmed))
+        {
+            Add(AskIntent.WebResearch);
+        }
+
         if (PortfolioMarketPositionPattern.IsMatch(trimmed) && PortfolioQuestionPattern.IsMatch(trimmed))
         {
             Add(AskIntent.PortfolioMarketPosition);
@@ -272,6 +278,19 @@ public sealed class IntentPlanner
         }
 
         var goal = SavingsGoalParser.Parse(trimmed);
+
+        // ADR-030: an explicit "search the web / cerca sul web" request is its own intent, checked
+        // before every other lexicon so "cerca sul web le pratiche di mercato sui rinnovi" is never
+        // stolen by the benchmark or renewal-strategy patterns it also matches. The composition
+        // root still asks consent and checks the three gates before anything leaves Raffa.
+        if (WebResearchTopicLexicon.IsExplicitRequest(trimmed))
+        {
+            return new IntentPlanResult(
+                AskIntent.WebResearch,
+                "matched the explicit web-research lexicon ('cerca sul web'/'search the web'/'look it " +
+                "up online') — consent and the ADR-030 gates decide whether anything is searched.",
+                namedSupplier, goal);
+        }
 
         if (PortfolioMarketPositionPattern.IsMatch(trimmed) && PortfolioQuestionPattern.IsMatch(trimmed))
         {

@@ -92,6 +92,48 @@ export interface operations {
       };
     };
   };
+  getWorkspaceSettings: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { webResearchEnabled: boolean; canEdit: boolean };
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  updateWorkspaceSettings: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { webResearchEnabled: boolean; canEdit: boolean };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
   inviteWorkspaceMember: {
     responses: {
       201: {
@@ -711,7 +753,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { conversationId: string; messageId: string; kind: "answer" | "abstain" | "redirect" | "refusal" | "interview"; answerMarkdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; provenance: { sources: (string)[]; modelId: string | null; promptVersion: string | null; inputHash: string | null }; followUps: (string)[]; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null };
+          "application/json": { conversationId: string; messageId: string; kind: "answer" | "abstain" | "redirect" | "refusal" | "interview"; answerMarkdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; provenance: { sources: (string)[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; unverified?: boolean }; followUps: (string)[]; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null };
         };
       };
       400: {
@@ -879,6 +921,10 @@ export interface paths {
   };
   "/api/workspaces/{tenantId}/members/{membershipId}": {
     delete: operations["removeMember"];
+  };
+  "/api/workspaces/{tenantId}/settings": {
+    get: operations["getWorkspaceSettings"];
+    patch: operations["updateWorkspaceSettings"];
   };
   "/api/workspaces/{tenantId}/invites": {
     post: operations["inviteWorkspaceMember"];

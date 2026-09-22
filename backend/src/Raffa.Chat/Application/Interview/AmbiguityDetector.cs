@@ -109,8 +109,10 @@ public static class AmbiguityDetector
         var unscopedNotice = options.AskOnUnscopedNotice && context.IsNoticeQuestion && noSupplier && unscoped;
 
         AmbiguityVerdict verdict;
-        if (context.PreviousRaffaTurnWasInterview || context.PortfolioIsEmpty)
+        if (context.PreviousRaffaTurnWasInterview || context.PortfolioIsEmpty || plan.Intent == AskIntent.WebResearch)
         {
+            // An explicit "search the web" request is never ambiguous: its own consent question
+            // (ADR-030) is the only interview it ever gets.
             verdict = AmbiguityVerdict.Clear;
         }
         else if (supplierSeveral >= 2 || unscopedNotice)

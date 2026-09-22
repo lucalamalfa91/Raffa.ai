@@ -102,7 +102,7 @@ public sealed class InterviewPlanner(InterviewOptions options)
 
         if (webOffer is not null)
         {
-            choices.Add(WebResearchOption(webOffer, italian));
+            choices.Add(WebResearchOption(question, italian));
         }
 
         var bounded = choices.Take(Math.Max(2, options.MaxOptionsPerQuestion)).ToList();
@@ -265,11 +265,15 @@ public sealed class InterviewPlanner(InterviewOptions options)
         ? "Quali contratti si rinnovano nei prossimi 120 giorni? (renew in the next 120 days)"
         : "Which contracts renew in the next 120 days?";
 
-    private static InterviewOption WebResearchOption(WebResearchRequest offer, bool italian) => new(
+    // Picking this option never authorises anything: it forces AskIntent.WebResearch on the
+    // original question, and that intent's own consent question (presentation "consent") is the
+    // only place an authorisation can come from (ADR-030). The offer itself (query + purpose) is
+    // recomputed by the composition root when the consent is built, from the same words.
+    private static InterviewOption WebResearchOption(string question, bool italian) => new(
         WebResearchOptionKey,
         italian ? "Cerca sul web pubblico le pratiche di mercato (chiede conferma)" : "Search the public web for market practice (asks first)",
         italian ? "Nulla dei tuoi contratti esce da Raffa." : "Nothing from your contracts leaves Raffa.",
-        new InterviewResolution(null, null, null, offer.Query, offer));
+        new InterviewResolution(AskIntent.WebResearch, null, null, question.Trim()));
 }
 
 /// <summary>A tiny IT/EN hint: two or more Italian markers make a question Italian. Mirrors how the

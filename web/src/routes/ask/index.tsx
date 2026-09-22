@@ -5,6 +5,7 @@ import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { useValidatedContractCount } from "../../components/shell/useValidatedContractCount";
 import { usePollBudget } from "../../components/shell/usePollBudget";
 import ReplyBody from "./reply/ReplyBody";
+import ConsentDialog from "./reply/ConsentDialog";
 import type { ReplyCitation } from "./reply/replyTypes";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
@@ -30,6 +31,7 @@ import {
   buildYouTurn,
   createConversationAndAsk,
   markInterviewAnswered,
+  pendingConsent,
   pendingInterview,
   deriveConversationTitle,
   fetchBoundContractChip,
@@ -384,6 +386,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         setMarketPanelRecordId(action.recordId);
         return;
       }
+      if (action.kind === "external") {
+        // ADR-030: a public web source leaves the app in a new tab, never through the router.
+        window.open(action.url, "_blank", "noopener,noreferrer");
+        return;
+      }
       setCitationNotice({ turnId: turn.id, n: citation.n, text: "This citation can't be opened right now." });
     },
     [navigate, overlay],
@@ -564,6 +571,21 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                   </div>
                 ),
               )}
+
+              {(() => {
+                // ADR-030: the consent alert -- rendered only while the last Raffa turn is an
+                // unanswered consent question; answering it (either way) posts the option by key.
+                const consent = pendingConsent(turns);
+                return consent !== null && !asking ? (
+                  <ConsentDialog
+                    reply={consent.reply}
+                    question={consent.question}
+                    onDecide={(reply, question, option) => {
+                      if (reply.messageId !== null) ask(option.label, { messageId: reply.messageId, questionKey: question.key, optionKey: option.key });
+                    }}
+                  />
+                ) : null;
+              })()}
 
               {asking && (
                 <div className="ask-thinking" role="status" aria-live="polite">

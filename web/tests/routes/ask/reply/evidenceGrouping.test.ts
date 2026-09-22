@@ -178,3 +178,23 @@ describe("buildEvidenceActions", () => {
     expect(buildEvidenceActions(groupCitations([citation({ n: 1, title: "Annual spend total", corpus: "calc" })]), [])).toEqual([]);
   });
 });
+
+describe("web sources (ADR-030)", () => {
+  const web = citation({ n: 3, title: "example.com · SaaS renewals", corpus: "web", href: "https://example.com/a" });
+
+  it("groups a web citation into its own section, never a contract or Raffa group", () => {
+    const groups = groupCitations([citation({ n: 1, title: "Salesforce · MSA", contractId: SALESFORCE, href: `/contracts/${SALESFORCE}` }), web]);
+
+    expect(groups.web).toEqual([web]);
+    expect(groups.raffa).toEqual([]);
+    expect(groups.contracts).toHaveLength(1);
+    expect(describeEvidence(groups).subtitle).toBe("1 contract · 1 web source");
+  });
+
+  it("titles a web-only reply 'Public web' and derives no action from it", () => {
+    const groups = groupCitations([web]);
+
+    expect(describeEvidence(groups)).toEqual({ title: "Public web", subtitle: "1 web source" });
+    expect(buildEvidenceActions(groups, [])).toEqual([]);
+  });
+});

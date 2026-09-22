@@ -7,6 +7,7 @@ using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
+using Raffa.Chat.Application.WebResearch;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -102,6 +103,13 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new InterviewOptions());
         services.AddScoped<InterviewPlanner>();
 
+        // ADR-030: web research. The options default to Enabled=false (the kill switch), so a host
+        // that never binds Chat:WebResearch has no web path at all; the composer is registered
+        // regardless because it is the only IAiGateway.ResearchAsync caller and resolving it costs
+        // nothing until a consented turn actually calls it.
+        services.TryAddSingleton(new WebResearchOptions());
+        services.AddScoped<WebResearchComposer>();
+
         // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
         // dependency at all — this project has no PackageReference for
         // Microsoft.Extensions.Configuration.Binder (unlike Raffa.Api/Program.cs, a full
@@ -130,6 +138,10 @@ public static class ServiceCollectionExtensions
             // AddDbContext above) rather than a second, independently-tracked context — same
             // reason every DbContext-backed service in this codebase is Scoped, not Singleton.
             services.AddScoped<ConversationService>();
+
+            // ADR-030 gate 3: the daily budget lives in this module's own database.
+            services.AddScoped<WebResearchBudget>();
+            services.AddScoped<IWebResearchBudget>(sp => sp.GetRequiredService<WebResearchBudget>());
         }
 
         return services;

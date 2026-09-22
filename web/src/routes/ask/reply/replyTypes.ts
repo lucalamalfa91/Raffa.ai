@@ -27,7 +27,7 @@
  * calculator's output -- a criticality score, a lever, an aggregate). Drives the evidence card's
  * section and badge (`getCorpusBadge` below) -- text, not colour alone, still carries the meaning
  * (ADR-019 accessibility baseline). */
-export type CitationCorpus = "tenant" | "market" | "raffa" | "calc";
+export type CitationCorpus = "tenant" | "market" | "raffa" | "calc" | "web";
 
 /**
  * One entry of `citations[]` (requirements.md §6 JSON example), narrowed to exactly the fields
@@ -114,6 +114,10 @@ export interface AnswerReply {
   citations: readonly ReplyCitation[];
   actions: readonly ReplyAction[];
   followUps: readonly string[];
+  /** ADR-030: this answer came from the public web after the user's consent -- nothing in it was
+   * checked against the tenant's contracts. `ReplyBody` renders the "unverified" banner and the
+   * evidence card files every `web` citation under its own labelled section. */
+  unverifiedWeb?: boolean;
 }
 
 /** `redirect` (greeting / off-domain / needs_document) and `refusal` (legal) share one layout:
@@ -202,6 +206,8 @@ export function getCorpusBadge(corpus: CitationCorpus): CorpusBadge {
       return { variant: "accent", label: "Raffa" };
     case "calc":
       return { variant: "accent", label: "Raffa · calculated" };
+    case "web":
+      return { variant: "outline", label: "Web · unverified" };
   }
 }
 

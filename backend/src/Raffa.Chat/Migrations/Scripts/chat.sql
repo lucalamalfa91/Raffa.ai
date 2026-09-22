@@ -112,6 +112,9 @@ BEGIN
     VALUES ('20260908205121_AddTenantRowLevelSecurity', '10.0.4');
     END IF;
 END $EF$;
+COMMIT;
+
+START TRANSACTION;
 
 DO $EF$
 BEGIN
@@ -125,6 +128,40 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922150000_AddInterviewJson') THEN
     INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
     VALUES ('20260922150000_AddInterviewJson', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922160000_AddWebResearchUsage') THEN
+    CREATE TABLE chat_web_research_usage (
+        tenant_id uuid NOT NULL,
+        day date NOT NULL,
+        calls integer NOT NULL,
+        CONSTRAINT pk_chat_web_research_usage PRIMARY KEY (tenant_id, day)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922160000_AddWebResearchUsage') THEN
+    ALTER TABLE "chat_web_research_usage" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "chat_web_research_usage" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "chat_web_research_usage"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922160000_AddWebResearchUsage') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260922160000_AddWebResearchUsage', '10.0.4');
     END IF;
 END $EF$;
 COMMIT;

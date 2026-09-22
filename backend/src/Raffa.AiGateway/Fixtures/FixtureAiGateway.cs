@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.SharedKernel;
@@ -431,6 +432,49 @@ public sealed class FixtureAiGateway(
     private const int MaxFixtureFindings = 3;
 
     private sealed record FixtureAnalysisInput(IReadOnlyList<FixturePackItem>? Items);
+
+    private static readonly Regex ProcurementWordPattern = new(
+        @"\b(contract\w*|contratt\w*|renewal\w*|rinnov\w*|supplier\w*|fornitor\w*|procurement|negotiat\w*|negozia\w*|" +
+        @"licen[cs]\w*|saas|cloud|pricing|prezz\w*|price\w*|discount\w*|scont\w*|uplift|notice|preavviso|vendor\w*|" +
+        @"benchmark\w*|market|mercato|tender|gara|sla|subscription|insurance|assicura\w*)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>ADR-030: the CI double of the research role. Two fixed public sources with snippets
+    /// that carry every figure the summary quotes (so <c>NumericGuard</c> grounds them), an
+    /// off-topic refusal when the query has no procurement word, never a real HTTP call.</summary>
+    public Task<Result<AiResearchResult>> ResearchAsync(
+        AiResearchRequest request, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Query))
+        {
+            return Task.FromResult(Result<AiResearchResult>.Failure("Research requires a non-empty query."));
+        }
+
+        var model = modelOptions.Research ?? new AiModelSelection("fixture-research", "fixture");
+        var offTopic = !ProcurementWordPattern.IsMatch(request.Query);
+
+        IReadOnlyList<AiWebSource> sources = offTopic
+            ? []
+            :
+            [
+                new AiWebSource(
+                    "https://example.com/procurement/saas-renewals",
+                    "SaaS renewal benchmarks — example.com",
+                    "Typical enterprise SaaS renewals close with a 5-10% uplift cap and 60 to 90 days of notice."),
+                new AiWebSource(
+                    "https://example.org/negotiation/levers",
+                    "Negotiation levers buyers cite most — example.org",
+                    "Multi-year commitments and volume tiers are the levers buyers cite most often."),
+            ];
+
+        var summary = offTopic
+            ? string.Empty
+            : "Public sources describe a 5-10% uplift cap on enterprise SaaS renewals [1] and multi-year " +
+              "commitments as the lever buyers cite most often [2]. Nothing here is verified against your contracts.";
+
+        return Task.FromResult(Result<AiResearchResult>.Success(
+            new AiResearchResult(summary, sources, offTopic, BuildMetadata(model, request.Query))));
+    }
 
     public Task<Result<AiOcrResult>> OcrAsync(
         AiOcrRequest request, CancellationToken cancellationToken = default)
