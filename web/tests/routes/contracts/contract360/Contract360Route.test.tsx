@@ -885,7 +885,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
     });
   });
 
-  describe("01 · 02 · 04 · 05 · 06 -- the sections never collapse", () => {
+  describe("01 · 02 · 03 · 05 · 06 -- the sections never collapse", () => {
     it("renders leverage, products, obligations, the priority score with its parts, the risks and the key terms without any toggle", async () => {
       renderContract360(
         populatedClient({
@@ -898,7 +898,11 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(screen.queryByRole("button", { name: "Hide details" })).toBeNull();
 
       const leverage = screen.getByRole("region", { name: "Leverage" });
-      expect(within(leverage).getByText("01")).toBeInTheDocument();
+      expect(within(leverage).getByText("02")).toBeInTheDocument();
+      // Key terms lead the page as 01.
+      const regions = screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"));
+      expect(regions.indexOf("Key terms")).toBeLessThan(regions.indexOf("Leverage"));
+      expect(within(screen.getByRole("region", { name: "Key terms" })).getByText("01")).toBeInTheDocument();
       expect(within(leverage).getByText("Order size lever")).toBeInTheDocument();
       expect(within(leverage).getByText("This line orders 120,000 — cite the order size.")).toBeInTheDocument();
 
