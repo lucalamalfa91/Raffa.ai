@@ -172,3 +172,42 @@ guarding; `demo` is not a production root, and `dev` keeps its
 DataZoneStandard gpt-5.4-nano. Revisit (flip the two `sku_name` values in
 `infra/environments/demo/main.tf`, one apply) once Azure lists
 DataZoneStandard for GPT-5.6 in `northeurope`.
+
+## Amendment (2026-09-22, GPT-5.6 rolled back: not deployable in northeurope)
+
+The 2026-09-21 amendment and its SKU correction are withdrawn. The second
+`demo` apply, with both chat deployments on `GlobalStandard`, was rejected
+by ARM exactly as the first one: `InvalidResourceProperties: The specified
+SKU 'GlobalStandard' for model 'gpt-5.6-terra 2026-07-09' is not supported
+in this region 'northeurope'` (identically for `gpt-5.6-luna`). Both SKUs
+`modules/foundry` accepts (ADR-005 rejects provisioned SKUs) are therefore
+refused for the GPT-5.6 family from `aisvc-raffa`'s region, so the failure
+is the model's regional availability on this account, not a SKU choice, and
+no value of `sku_name` fixes it. The account is shared and owned by the
+`dev` root (ADR-008), so `demo` cannot move it to a region that serves the
+family.
+
+`demo` returns to the configuration that the 2026-09-09 apply proved in
+`northeurope` and that the table under "Amendment (2026-09-09)" already
+records:
+
+| Role | demo deployment (model, version, SKU) |
+| --- | --- |
+| classify | `gpt-5.4-nano-demo` (gpt-5.4-nano 2026-03-17, DataZoneStandard, 200K TPM) |
+| extract, answer | `gpt-5.4-demo` (gpt-5.4 2026-03-05, DataZoneStandard, 200K TPM) |
+
+`embed` (`text-embedding-3-large-demo`, accepted by the failed applies and
+untouched) and `ocr` are unchanged; `dev` is unchanged. The two failed
+applies had already destroyed `gpt-5.4-demo` / `gpt-5.4-nano-demo` (a
+changed `for_each` key destroys the old deployment in the same run that
+fails to create the new one), so the rollback apply recreates them and
+republishes their ids to both Container Apps; a request in flight may fail
+once, acceptable on `demo`. The EU-residency posture of the DataZone rule is
+restored as a side effect.
+
+Revisit rule: a GPT-5.6 (or any newer) deployment is put back into
+`infra/environments/demo/main.tf` only after one has been created by hand on
+`aisvc-raffa` in `northeurope` (Portal or `az cognitiveservices account
+deployment create`) and the SKU that ARM accepted is recorded here -- the
+model catalogue's regional table proved wrong twice for this account and is
+not evidence on its own.
