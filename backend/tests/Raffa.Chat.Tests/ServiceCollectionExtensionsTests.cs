@@ -46,6 +46,10 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AbstainGuard>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<RagAnswerService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IClock>());
+        // ADR-030: the research composer resolves without a database; its options default to the
+        // kill switch being off.
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchComposer>());
+        Assert.False(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchOptions>().Enabled);
     }
 
     [Fact]
@@ -93,6 +97,7 @@ public sealed class ServiceCollectionExtensionsTests
 
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Infrastructure.ChatDbContext>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Conversations.ConversationService>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchBudget>());
         // The zero-argument surface from the other test above still resolves too -- the overload
         // is additive, never a replacement.
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AskRaffaQueryRouter>());

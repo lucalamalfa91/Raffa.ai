@@ -192,6 +192,12 @@ namespace Raffa.Identity.Workspace.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
+                    b.Property<bool>("WebResearchEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("web_research_enabled");
+
                     b.HasKey("Id")
                         .HasName("pk_workspace");
 

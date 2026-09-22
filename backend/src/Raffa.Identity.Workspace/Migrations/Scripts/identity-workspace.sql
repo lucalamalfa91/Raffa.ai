@@ -319,3 +319,20 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922170000_AddWorkspaceWebResearchEnabled') THEN
+    ALTER TABLE workspace ADD web_research_enabled boolean NOT NULL DEFAULT FALSE;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260922170000_AddWorkspaceWebResearchEnabled') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260922170000_AddWorkspaceWebResearchEnabled', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;

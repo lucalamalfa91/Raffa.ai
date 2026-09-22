@@ -25,7 +25,8 @@ public sealed class FoundryAiGateway(
     FoundryEmbedClient embedClient,
     FoundryAnswerClient answerClient,
     FoundryOcrClient ocrClient,
-    FoundryAnalyzeClient analyzeClient) : IAiGateway
+    FoundryAnalyzeClient analyzeClient,
+    FoundryResearchClient researchClient) : IAiGateway
 {
     /// <inheritdoc/>
     public Task<Result<AiClassificationResult>> ClassifyAsync(
@@ -55,4 +56,8 @@ public sealed class FoundryAiGateway(
     public Task<Result<AiAnalysisResult>> AnalyzeAsync(
         AiAnalysisRequest request, CancellationToken cancellationToken = default) =>
         analyzeClient.AnalyzeAsync(request, cancellationToken);
+
+    public Task<Result<AiResearchResult>> ResearchAsync(
+        AiResearchRequest request, CancellationToken cancellationToken = default) =>
+        researchClient.ResearchAsync(request, cancellationToken);
 }

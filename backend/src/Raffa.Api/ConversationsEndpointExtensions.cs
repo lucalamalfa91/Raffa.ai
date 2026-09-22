@@ -4,6 +4,7 @@ using System.Text.Json;
 using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.SharedKernel;
@@ -295,8 +296,28 @@ public static class ConversationsEndpointExtensions
             return Results.NotFound();
         }
 
+        var hints = AskTurnHints.None;
+        var effectiveQuestion = request.Question;
+        string? youInterviewJson = null;
+
+        if (request.InterviewAnswer is { } interviewAnswer)
+        {
+            var resolution = await ResolveInterviewAnswerAsync(
+                    conversationService, tenantId, userId, conversationId, interviewAnswer, request.Question, cancellationToken)
+                .ConfigureAwait(false);
+            if (resolution.Failure is not null)
+            {
+                return resolution.Failure;
+            }
+
+            hints = resolution.Hints;
+            effectiveQuestion = resolution.EffectiveQuestion;
+            youInterviewJson = resolution.YouInterviewJson;
+        }
+
         var reply = await AskAndAppendAsync(
-                askCopilotService, conversationService, tenantId, userId, conversationId, conversation, request.Question, cancellationToken)
+                askCopilotService, conversationService, tenantId, userId, conversationId, conversation,
+                request.Question, effectiveQuestion, hints, youInterviewJson, cancellationToken)
             .ConfigureAwait(false);
 
         return Results.Ok(reply);
@@ -337,6 +358,9 @@ public static class ConversationsEndpointExtensions
         EntityId conversationId,
         ConversationDetailResult conversation,
         string question,
+        string effectiveQuestion,
+        AskTurnHints hints,
+        string? youInterviewJson,
         CancellationToken cancellationToken)
     {
         var recentTurns = conversation.Messages
@@ -344,13 +368,23 @@ public static class ConversationsEndpointExtensions
             .Select(m => (Role: ToWireRole(m.Role), Markdown: m.Markdown))
             .ToList();
 
+        // ADR-030: never two interviews in a row -- the engine reads this flag, the endpoint owns
+        // the history it comes from.
+        var previousRaffaTurnWasInterview =
+            conversation.Messages.LastOrDefault(m => m.Role == ConversationRole.Raffa)?.Kind == ConversationMessageKind.Interview;
+
         var reply = await askCopilotService
-            .AskAsync(tenantId, question, recentTurns, userId, conversation.ScopeContractId, cancellationToken)
+            .AskAsync(tenantId, effectiveQuestion, recentTurns, userId, conversation.ScopeContractId, hints, previousRaffaTurnWasInterview, cancellationToken)
             .ConfigureAwait(false);
 
+        // The You row keeps what the user actually clicked or typed (the transcript reads
+        // naturally); the rewritten question the engine ran on is recoverable from the
+        // interview turn's own persisted resolution.
         await conversationService.AppendMessageAsync(
                 tenantId, userId, conversationId,
-                new AppendConversationMessageRequest(ConversationRole.You, ConversationMessageKind.Answer, question, "[]", "[]"),
+                new AppendConversationMessageRequest(
+                    ConversationRole.You, ConversationMessageKind.Answer, question, "[]", "[]",
+                    InterviewJson: youInterviewJson),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -364,7 +398,8 @@ public static class ConversationsEndpointExtensions
                     JsonSerializer.Serialize(reply.Actions.Select(ToActionJson)),
                     reply.Provenance.ModelId,
                     reply.Provenance.PromptVersion,
-                    reply.Provenance.InputHash),
+                    reply.Provenance.InputHash,
+                    reply.Interview is null ? null : InterviewJsonCodec.SerializeTurn(reply.Interview)),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -384,10 +419,134 @@ public static class ConversationsEndpointExtensions
                 modelId = reply.Provenance.ModelId,
                 promptVersion = reply.Provenance.PromptVersion,
                 inputHash = reply.Provenance.InputHash,
+                // ADR-030: true only for a web-research answer -- the client labels it.
+                unverified = reply.Provenance.Unverified,
             },
             followUps = reply.FollowUps,
+            interview = reply.Interview is null ? null : ToInterviewJson(reply.Interview, answered: false),
         };
     }
+
+    /// <summary>
+    /// ADR-030: resolves the client's answer to an interview (<c>interviewAnswer</c>) into the
+    /// hints and the effective question the engine runs on. Everything is looked up by key on the
+    /// persisted turn -- the label the client sends as <c>question</c> is only ever what the
+    /// transcript shows. 400 for anything that does not name a question/option of an interview
+    /// turn of this conversation; 409 for a single-use (consent) option already taken.
+    /// </summary>
+    private static async Task<InterviewAnswerResolution> ResolveInterviewAnswerAsync(
+        ConversationService conversationService,
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        InterviewAnswerRequest answer,
+        string typedQuestion,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(answer.MessageId, out var messageGuid))
+        {
+            return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.messageId' must be a GUID."));
+        }
+
+        if (string.IsNullOrWhiteSpace(answer.QuestionKey))
+        {
+            return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.questionKey' is required."));
+        }
+
+        var messageId = new EntityId(messageGuid);
+        var message = await conversationService
+            .GetMessageAsync(tenantId, userId, conversationId, messageId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var record = message is { Role: ConversationRole.Raffa, Kind: ConversationMessageKind.Interview }
+            ? InterviewJsonCodec.TryDecodeTurn(message.InterviewJson)
+            : null;
+
+        if (record is null)
+        {
+            return InterviewAnswerResolution.Fail(
+                Results.BadRequest("'interviewAnswer.messageId' does not name an interview turn of this conversation."));
+        }
+
+        var question = record.FindQuestion(answer.QuestionKey);
+        if (question is null)
+        {
+            return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.questionKey' is not a question of that interview."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(answer.OptionKey))
+        {
+            var option = question.Options.FirstOrDefault(o => string.Equals(o.Key, answer.OptionKey, StringComparison.Ordinal));
+            if (option is null)
+            {
+                return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.optionKey' is not an option of that question."));
+            }
+
+            // A consent (web research) is single-use: stamp it now, refuse a replay.
+            if (question.Presentation == InterviewPresentation.Consent || option.ResolvesTo.WebResearch is not null)
+            {
+                var outcome = await conversationService
+                    .MarkInterviewConsumedAsync(tenantId, userId, conversationId, messageId, option.Key, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (outcome == InterviewConsumeOutcome.AlreadyConsumed)
+                {
+                    return InterviewAnswerResolution.Fail(Results.Conflict("This authorization was already used — ask again."));
+                }
+
+                if (outcome == InterviewConsumeOutcome.NotFound)
+                {
+                    return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.messageId' does not name an interview turn of this conversation."));
+                }
+            }
+
+            var hints = AskTurnHints.From(option.ResolvesTo);
+            if (question.Presentation == InterviewPresentation.Consent && option.ResolvesTo.WebResearch is null)
+            {
+                // The consent's "no": the turn runs contracts-only and is audited as a decline.
+                hints = hints with { DeclinedWebResearch = true };
+            }
+
+            return new InterviewAnswerResolution(
+                null,
+                hints,
+                option.ResolvesTo.RewrittenQuestion,
+                InterviewJsonCodec.SerializeAnswer(messageId, question.Key, option.Key, freeText: false));
+        }
+
+        if (!question.AllowFreeText)
+        {
+            return InterviewAnswerResolution.Fail(Results.BadRequest("That interview question takes one of its options, not free text."));
+        }
+
+        return new InterviewAnswerResolution(
+            null,
+            AskTurnHints.FreeText,
+            typedQuestion,
+            InterviewJsonCodec.SerializeAnswer(messageId, question.Key, null, freeText: true));
+    }
+
+    private sealed record InterviewAnswerResolution(
+        IResult? Failure, AskTurnHints Hints, string EffectiveQuestion, string? YouInterviewJson)
+    {
+        public static InterviewAnswerResolution Fail(IResult failure) => new(failure, AskTurnHints.None, string.Empty, null);
+    }
+
+    /// <summary>The wire shape of an interview: keys, labels and hints only -- never an option's
+    /// resolution (ADR-030: the client cannot learn or alter the rewrite).</summary>
+    private static object ToInterviewJson(InterviewTurn turn, bool answered) => new
+    {
+        prompt = turn.Prompt,
+        questions = turn.Questions.Select(q => new
+        {
+            key = q.Key,
+            prompt = q.Prompt,
+            presentation = q.Presentation == InterviewPresentation.Consent ? "consent" : "choice",
+            allowFreeText = q.AllowFreeText,
+            options = q.Options.Select(o => new { key = o.Key, label = o.Label, hint = o.Hint }),
+        }),
+        answered,
+    };
 
     private static object ToCitationJson(ReplyCitation citation) => new
     {
@@ -428,6 +587,7 @@ public static class ConversationsEndpointExtensions
         ReplyKind.Abstain => ConversationMessageKind.Abstain,
         ReplyKind.Redirect => ConversationMessageKind.Redirect,
         ReplyKind.Refusal => ConversationMessageKind.Refusal,
+        ReplyKind.Interview => ConversationMessageKind.Interview,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ReplyKind."),
     };
     /// <summary>Same "reject, don't clamp" convention as
@@ -467,10 +627,12 @@ public static class ConversationsEndpointExtensions
         scopeContractId = detail.ScopeContractId?.Value,
         createdAt = detail.CreatedAt,
         updatedAt = detail.UpdatedAt,
-        messages = detail.Messages.Select(ToMessageResponse),
+        // ADR-030: an interview turn counts as answered once any later turn exists (the user
+        // moved on, by option or by typing) or its single-use option was consumed.
+        messages = detail.Messages.Select((message, index) => ToMessageResponse(message, index < detail.Messages.Count - 1)),
     };
 
-    private static object ToMessageResponse(ConversationMessageResult message) => new
+    private static object ToMessageResponse(ConversationMessageResult message, bool hasLaterTurn) => new
     {
         id = message.MessageId.Value,
         role = ToWireRole(message.Role),
@@ -482,7 +644,19 @@ public static class ConversationsEndpointExtensions
         promptVersion = message.PromptVersion,
         inputHash = message.InputHash,
         createdAt = message.CreatedAt,
+        interview = ToPersistedInterviewJson(message, hasLaterTurn),
     };
+
+    private static object? ToPersistedInterviewJson(ConversationMessageResult message, bool hasLaterTurn)
+    {
+        if (message.Role != ConversationRole.Raffa || message.Kind != ConversationMessageKind.Interview)
+        {
+            return null;
+        }
+
+        var record = InterviewJsonCodec.TryDecodeTurn(message.InterviewJson);
+        return record is null ? null : ToInterviewJson(record.ToTurn(), hasLaterTurn || record.ConsumedAt is not null);
+    }
 
     /// <summary>ADR-024 §6's wire literals — see <see cref="ConversationRole"/>'s own doc comment
     /// ("task E13/F05/US01/T02... owns mapping these PascalCase members onto the wire-format
@@ -502,6 +676,7 @@ public static class ConversationsEndpointExtensions
         ConversationMessageKind.Abstain => "abstain",
         ConversationMessageKind.Redirect => "redirect",
         ConversationMessageKind.Refusal => "refusal",
+        ConversationMessageKind.Interview => "interview",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ConversationMessageKind."),
     };
 
@@ -533,5 +708,10 @@ public static class ConversationsEndpointExtensions
     /// nested type for the identical reason <see cref="CreateConversationRequest"/>'s own doc
     /// comment gives.
     /// </summary>
-    public sealed record PostConversationMessageRequest(string? Question);
+    public sealed record PostConversationMessageRequest(string? Question, InterviewAnswerRequest? InterviewAnswer = null);
+
+    /// <summary>ADR-030: the client's answer to an interview turn -- by key, never by label. Either
+    /// <c>optionKey</c> (one of the persisted options) or <c>freeText: true</c> (the typed
+    /// <c>question</c> itself answers the interview).</summary>
+    public sealed record InterviewAnswerRequest(string? MessageId, string? QuestionKey, string? OptionKey = null, bool? FreeText = null);
 }

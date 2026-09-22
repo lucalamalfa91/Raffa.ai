@@ -57,6 +57,7 @@ public sealed class ChatMigrationScriptTests : IAsyncLifetime
         var script = await ReadScriptAsync();
         Assert.Contains("CREATE TABLE conversation ", script, StringComparison.Ordinal);
         Assert.Contains("CREATE TABLE conversation_message ", script, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE chat_web_research_usage ", script, StringComparison.Ordinal);
         Assert.Contains("FORCE ROW LEVEL SECURITY", script, StringComparison.Ordinal);
 
         await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
@@ -93,6 +94,7 @@ public sealed class ChatMigrationScriptTests : IAsyncLifetime
     [Theory]
     [InlineData("conversation")]
     [InlineData("conversation_message")]
+    [InlineData("chat_web_research_usage")]
     public async Task Deployable_script_enables_forced_row_level_security_and_a_policy(string table)
     {
         var script = await ReadScriptAsync();

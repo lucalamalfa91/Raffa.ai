@@ -45,6 +45,14 @@ public sealed class DatabaseSaturationExceptionHandlerTests
     }
 
     [Fact]
+    public void An_unrelated_npgsql_timeout_is_not_saturation()
+    {
+        var timedOut = new NpgsqlException("Timed out while executing the command.", new TimeoutException());
+
+        Assert.False(DatabaseSaturationExceptionHandler.IsDatabaseSaturation(timedOut));
+    }
+
+    [Fact]
     public void Ef_retry_exhaustion_is_saturation()
     {
         var exhausted = new InvalidOperationException(

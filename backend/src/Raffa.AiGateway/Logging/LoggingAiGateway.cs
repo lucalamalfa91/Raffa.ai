@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.SharedKernel;
@@ -167,6 +169,27 @@ public sealed class LoggingAiGateway : IAiGateway
         if (result.IsSuccess)
         {
             await LogBestEffortAsync("analyzed", result.Value.Metadata, cancellationToken, $"agent={request.AgentName}")
+                .ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    /// <summary>ADR-030: one <c>ai_call</c> row per web research, carrying the query's hash and the
+    /// source count -- never the query text.</summary>
+    public async Task<Result<AiResearchResult>> ResearchAsync(
+        AiResearchRequest request, CancellationToken cancellationToken = default)
+    {
+        var result = await _inner.ResearchAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (result.IsSuccess)
+        {
+            var queryHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Query)));
+            await LogBestEffortAsync(
+                    "researched",
+                    result.Value.Metadata,
+                    cancellationToken,
+                    $"sourceCount={result.Value.Sources.Count} offTopic={result.Value.OffTopic} queryHash={queryHash}")
                 .ConfigureAwait(false);
         }
 

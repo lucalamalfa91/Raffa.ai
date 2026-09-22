@@ -26,6 +26,10 @@ public enum ReplyKind
     /// <c>scopeContractId</c> that does not resolve to a contract this caller can currently see
     /// (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12).</summary>
     Refusal,
+
+    /// <summary>ADR-030: Raffa asks one clarifying question (with options) before it retrieves
+    /// anything. Rendered as chips; answered by option key.</summary>
+    Interview,
 }
 
 /// <summary>`GET`/`POST` reply wire-format for <see cref="ReplyKind"/> — lower-case, matching
@@ -41,6 +45,7 @@ public static class ReplyKindWireFormat
         ReplyKind.Abstain => "abstain",
         ReplyKind.Redirect => "redirect",
         ReplyKind.Refusal => "refusal",
+        ReplyKind.Interview => "interview",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ReplyKind."),
     };
 }

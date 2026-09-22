@@ -16,6 +16,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn(),
     getWorkspaceMembers: vi.fn(),
+    getWorkspaceSettings: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, settings: null, error: "No workspace settings." }),
+    updateWorkspaceSettings: vi.fn(),
     revokeInvitation: vi.fn(),
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
@@ -495,5 +497,55 @@ describe("MembersRoute (V2, ADR-020/ADR-025/ADR-026 w14 footers; screens-v2.md #
 
     const requestAccess = screen.getByRole("link", { name: "Request access" });
     expect(requestAccess.getAttribute("href")).toContain("mailto:boss@acme.example");
+  });
+});
+
+describe("MembersRoute workspace settings (ADR-030 gate 2)", () => {
+  function settingsOk(webResearchEnabled: boolean, canEdit: boolean) {
+    return { ok: true, statusCode: 200, settings: { webResearchEnabled, canEdit }, error: null };
+  }
+
+  it("shows the web-research switch off by default and an Admin can turn it on", async () => {
+    const getWorkspaceSettings = vi.fn().mockResolvedValue(settingsOk(false, true));
+    const updateWorkspaceSettings = vi.fn().mockResolvedValue(settingsOk(true, true));
+    renderMembers(mockApiClient({ getWorkspaceMembers: vi.fn().mockResolvedValue(membersOk([activeMember()])), getWorkspaceSettings, updateWorkspaceSettings }), { workspaceId: WORKSPACE_ID });
+
+    const toggle = await screen.findByRole("checkbox", { name: /Allow Ask Raffa to search the public web/ });
+    expect(toggle).not.toBeChecked();
+    expect(toggle).not.toBeDisabled();
+    expect(getWorkspaceSettings).toHaveBeenCalledWith(WORKSPACE_ID);
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(updateWorkspaceSettings).toHaveBeenCalledWith(WORKSPACE_ID, { webResearchEnabled: true }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /Allow Ask Raffa/ })).toBeChecked());
+  });
+
+  it("renders the switch read-only for a member who cannot edit", async () => {
+    const getWorkspaceSettings = vi.fn().mockResolvedValue(settingsOk(true, false));
+    renderMembers(mockApiClient({ getWorkspaceMembers: vi.fn().mockResolvedValue(membersOk([activeMember()])), getWorkspaceSettings }), { workspaceId: WORKSPACE_ID, role: "procurement" });
+
+    const toggle = await screen.findByRole("checkbox", { name: /Allow Ask Raffa to search the public web/ });
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText("Only a Workspace Admin can change this.")).toBeInTheDocument();
+  });
+
+  it("keeps the previous value and shows the server's reason when the save fails", async () => {
+    const getWorkspaceSettings = vi.fn().mockResolvedValue(settingsOk(false, true));
+    const updateWorkspaceSettings = vi.fn().mockResolvedValue({ ok: false, statusCode: 403, settings: null, error: "Only a Workspace Admin can change this setting." });
+    renderMembers(mockApiClient({ getWorkspaceMembers: vi.fn().mockResolvedValue(membersOk([activeMember()])), getWorkspaceSettings, updateWorkspaceSettings }), { workspaceId: WORKSPACE_ID });
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Allow Ask Raffa to search the public web/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Only a Workspace Admin can change this setting.");
+    expect(screen.getByRole("checkbox", { name: /Allow Ask Raffa/ })).not.toBeChecked();
+  });
+
+  it("renders no settings block when the settings cannot be read", async () => {
+    renderMembers(mockApiClient({ getWorkspaceMembers: vi.fn().mockResolvedValue(membersOk([activeMember()])) }), { workspaceId: WORKSPACE_ID });
+
+    await screen.findByText(USER_LABEL);
+    expect(screen.queryByRole("checkbox", { name: /Allow Ask Raffa/ })).toBeNull();
   });
 });

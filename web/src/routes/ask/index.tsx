@@ -5,6 +5,7 @@ import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { useValidatedContractCount } from "../../components/shell/useValidatedContractCount";
 import { usePollBudget } from "../../components/shell/usePollBudget";
 import ReplyBody from "./reply/ReplyBody";
+import ConsentDialog from "./reply/ConsentDialog";
 import type { ReplyCitation } from "./reply/replyTypes";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
@@ -20,6 +21,7 @@ import {
   NEW_CHAT_INTRO,
   THINKING_COPY,
   TRANSPORT_ERROR_REASON,
+  buildInterviewAnswerRequest,
   buildRaffaTurnFromReply,
   buildErrorTurn,
   buildOffCopy,
@@ -28,6 +30,9 @@ import {
   buildStarterGroups,
   buildYouTurn,
   createConversationAndAsk,
+  markInterviewAnswered,
+  pendingConsent,
+  pendingInterview,
   deriveConversationTitle,
   fetchBoundContractChip,
   nextTurnId,
@@ -39,7 +44,6 @@ import {
   type BoundContractChip,
 } from "./askViewModel";
 import { formatConversationTitle } from "./conversationTitle";
-import { applyCitationPreviews, useCitationPreviews } from "./useCitationPreviews";
 import { useValidatedSuppliers } from "./useValidatedSuppliers";
 import { getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 import "./ask.css";
@@ -280,10 +284,24 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     }
   }, [routeConversationId]);
 
+  // ADR-030: the interview the next message answers is read off the turns on screen at the
+  // moment of asking (a ref, so `ask` itself never re-creates on every turn).
+  const turnsRef = useRef<readonly AskTurnView[]>(turns);
+  turnsRef.current = turns;
+
   const ask = useCallback(
-    (rawText: string) => {
+    (rawText: string, interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null }) => {
       const text = rawText.trim();
       if (text === "" || !workspace) return;
+
+      // An explicit option click, else the pending interview a typed answer implicitly replies to.
+      const pending = interviewAnswer ?? (() => {
+        const found = pendingInterview(turnsRef.current);
+        return found ? { ...found, optionKey: null } : null;
+      })();
+      if (pending !== null) {
+        setTurns((previous) => markInterviewAnswered(previous, pending.messageId));
+      }
 
       setTurns((previous) => [...previous, buildYouTurn(nextTurnId(), text)]);
       setConversationTitle((current) => current ?? deriveConversationTitle(text));
@@ -314,7 +332,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         return;
       }
 
-      void apiClient.postMessage(workspace.id, openConversationId, { question: text }).then((result) => {
+      const request = pending === null ? { question: text } : buildInterviewAnswerRequest(text, pending.messageId, pending.questionKey, pending.optionKey);
+
+      void apiClient.postMessage(workspace.id, openConversationId, request).then((result) => {
         setAsking(false);
         const turn =
           result.ok && result.reply
@@ -366,6 +386,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         setMarketPanelRecordId(action.recordId);
         return;
       }
+      if (action.kind === "external") {
+        // ADR-030: a public web source leaves the app in a new tab, never through the router.
+        window.open(action.url, "_blank", "noopener,noreferrer");
+        return;
+      }
       setCitationNotice({ turnId: turn.id, n: citation.n, text: "This citation can't be opened right now." });
     },
     [navigate, overlay],
@@ -388,8 +413,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     window.addEventListener("keydown", handleGlobalShortcut);
     return () => window.removeEventListener("keydown", handleGlobalShortcut);
   }, []);
-
-  const previewUrls = useCitationPreviews(apiClient, workspace?.id, turns);
 
   if (!workspace) {
     return (
@@ -532,9 +555,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                     <div className="ask-message-who">{ASK_RAFFA_KICKER}</div>
                     <div className="ask-message-content">
                       <ReplyBody
-                        reply={applyCitationPreviews(turn.reply, previewUrls)}
+                        reply={turn.reply}
                         onOpenCitation={(citation) => openCitation(turn, citation)}
                         onFollowUp={ask}
+                        onInterviewOption={(reply, questionKey, option) => {
+                          if (reply.messageId !== null) ask(option.label, { messageId: reply.messageId, questionKey, optionKey: option.key });
+                        }}
                       />
                       {citationNotice !== null && citationNotice.turnId === turn.id && (
                         <p className="hint" role="status">
@@ -545,6 +571,21 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                   </div>
                 ),
               )}
+
+              {(() => {
+                // ADR-030: the consent alert -- rendered only while the last Raffa turn is an
+                // unanswered consent question; answering it (either way) posts the option by key.
+                const consent = pendingConsent(turns);
+                return consent !== null && !asking ? (
+                  <ConsentDialog
+                    reply={consent.reply}
+                    question={consent.question}
+                    onDecide={(reply, question, option) => {
+                      if (reply.messageId !== null) ask(option.label, { messageId: reply.messageId, questionKey: question.key, optionKey: option.key });
+                    }}
+                  />
+                ) : null;
+              })()}
 
               {asking && (
                 <div className="ask-thinking" role="status" aria-live="polite">

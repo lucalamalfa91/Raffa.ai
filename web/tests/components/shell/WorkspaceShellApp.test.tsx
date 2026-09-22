@@ -38,6 +38,8 @@ function mockApiClient(): ApiClient {
     // "resolved default required" reasoning as listWorkspaces/listDocuments above, or the effect's
     // own .then() throws on the unconfigured vi.fn()'s undefined return.
     getWorkspaceMembers: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, members: [], error: null }),
+    getWorkspaceSettings: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, settings: null, error: "No workspace settings." }),
+    updateWorkspaceSettings: vi.fn(),
     revokeInvitation: vi.fn(),
     removeMember: vi.fn(),
     getInvitation: vi.fn(),

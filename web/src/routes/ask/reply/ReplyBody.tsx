@@ -1,7 +1,8 @@
 import ActionRow from "./ActionRow";
-import CitationCard from "./CitationCard";
+import EvidenceCard from "./EvidenceCard";
+import InterviewBlock from "./InterviewBlock";
 import ReplyMarkdown from "./ReplyMarkdown";
-import type { Reply, ReplyCitation } from "./replyTypes";
+import type { InterviewOption, InterviewReply, Reply, ReplyCitation } from "./replyTypes";
 import "./reply.css";
 
 /** The abstain block's lead-in (`abstainTitle` in `Raffa.ai V2.dc.html`, quoted). */
@@ -9,15 +10,18 @@ export const ABSTAIN_TITLE = "I don't have data I trust enough to answer.";
 
 export interface ReplyBodyProps {
   reply: Reply;
-  /** Shared by every inline `[n]` marker (`ReplyMarkdown`) and every `CitationCard`'s own button --
-   * "linking to the matching card" (task text) means both surfaces call this exact same callback
-   * with the exact same citation object, not a DOM anchor jump. See `ReplyMarkdown.tsx`'s own
-   * header comment for why: an `href="#id"` anchor cannot stay unique once more than one reply is
-   * on screen at once, which every real conversation is. */
+  /** Shared by every inline `[n]` marker (`ReplyMarkdown`) and every row of the `EvidenceCard` --
+   * both surfaces call this exact same callback with the exact same citation object, not a DOM
+   * anchor jump. See `ReplyMarkdown.tsx`'s own header comment for why: an `href="#id"` anchor
+   * cannot stay unique once more than one reply is on screen at once, which every real
+   * conversation is. */
   onOpenCitation: (citation: ReplyCitation) => void;
   /** A follow-up chip was clicked -- on an `answer`, or on an `abstain` that carries next-step
    * questions (`AbstainReply.followUps`); never called for any other kind. */
   onFollowUp: (question: string) => void;
+  /** `interview`-only (ADR-030): the user picked an option. Optional so the pure component still
+   * renders an interview read-only (a resumed, already-answered one) without a handler. */
+  onInterviewOption?: (reply: InterviewReply, questionKey: string, option: InterviewOption) => void;
 }
 
 /** The "Next" row of follow-up question chips, shared by `answer` and `abstain`. */
@@ -39,32 +43,37 @@ function FollowUps({ questions, onFollowUp }: { questions: readonly string[]; on
 }
 
 /**
- * Composes `kind` -> layout (task text; R-WEB-04; requirements.md §6; ADR-024). One `Reply` in,
- * one layout out: `answer` gets the full markdown/cards/actions/follow-ups treatment; `redirect`
- * and `refusal` share warm prose + one CTA; `abstain` is only ever the accent-left block; `error`
- * is the existing `.error-state`. This is the one place any of those five layouts is chosen --
- * every other component in this folder only renders what it is told to.
+ * Composes `kind` -> layout (R-WEB-04; requirements.md §6; ADR-024). One `Reply` in, one layout
+ * out: `answer` gets the markdown, **one** evidence card (every citation grouped by supplier, the
+ * reply's actions folded into that card's single action row -- `EvidenceCard.tsx`) and the
+ * follow-ups; `redirect` and `refusal` share warm prose + one CTA; `abstain` is only ever the
+ * accent-left block; `error` is the existing `.error-state`. This is the one place any of those
+ * five layouts is chosen -- every other component in this folder only renders what it is told to.
  *
- * Never renders an engineer route line or a guid (task text; R-ASK-08): `Reply` (`replyTypes.ts`)
- * has no `route`/raw-id field for any variant to leak in the first place -- there is nothing here
- * to accidentally print.
+ * Never renders an engineer route line or a guid (R-ASK-08): `Reply` (`replyTypes.ts`) has no
+ * `route`/raw-id field for any variant to leak in the first place -- there is nothing here to
+ * accidentally print.
  */
-export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBodyProps) {
+export default function ReplyBody({ reply, onOpenCitation, onFollowUp, onInterviewOption }: ReplyBodyProps) {
   switch (reply.kind) {
     case "answer":
       return (
-        <div className="reply-body" data-reply-kind="answer">
+        <div className="reply-body" data-reply-kind="answer" data-unverified={reply.unverifiedWeb ? "true" : undefined}>
+          {reply.unverifiedWeb && (
+            <p className="reply-unverified-banner" role="note">
+              <strong>Public web · not verified.</strong> These findings come from public sources and were not checked
+              against your contracts.
+            </p>
+          )}
           <ReplyMarkdown text={reply.answerMarkdown} citations={reply.citations} onOpenCitation={onOpenCitation} />
 
-          {reply.citations.length > 0 && (
+          {reply.citations.length > 0 ? (
             <div className="reply-cards">
-              {reply.citations.map((citation) => (
-                <CitationCard key={citation.n} {...citation} onOpen={() => onOpenCitation(citation)} />
-              ))}
+              <EvidenceCard citations={reply.citations} actions={reply.actions} onOpenCitation={onOpenCitation} />
             </div>
+          ) : (
+            reply.actions.length > 0 && <ActionRow actions={reply.actions} />
           )}
-
-          {reply.actions.length > 0 && <ActionRow actions={reply.actions} />}
 
           <FollowUps questions={reply.followUps} onFollowUp={onFollowUp} />
         </div>
@@ -78,6 +87,14 @@ export default function ReplyBody({ reply, onOpenCitation, onFollowUp }: ReplyBo
           {/* R-ASK-07 / parent AC-3 "one CTA": rendered defensively -- only ever the first action --
               even if the reply somehow carried more than one; see replyTypes.ts#RedirectReply. */}
           {reply.actions.length > 0 && <ActionRow actions={reply.actions.slice(0, 1)} />}
+        </div>
+      );
+
+    case "interview":
+      return (
+        <div className="reply-body" data-reply-kind="interview">
+          <ReplyMarkdown text={reply.prompt} citations={[]} onOpenCitation={onOpenCitation} />
+          <InterviewBlock reply={reply} onOption={(questionKey, option) => onInterviewOption?.(reply, questionKey, option)} />
         </div>
       );
 

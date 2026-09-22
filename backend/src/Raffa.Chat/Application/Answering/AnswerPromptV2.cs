@@ -24,6 +24,12 @@ namespace Raffa.Chat.Application.Answering;
 /// <c>Capabilities.ActionKeyNormalizer</c> repairs the same slip code-side. Rule 6 adds that the
 /// abstain reason is shown to the user verbatim, so it must be plain language.
 /// </para>
+///
+/// <para>
+/// v2.3 (name the supplier): every reference to a contract names its supplier as the pack item's
+/// title does ("Salesforce · MSA"), never a bare type or "contract [2]"; amounts carry their
+/// currency. Laws and structure are unchanged.
+/// </para>
 /// </summary>
 public static class AnswerPromptV2
 {
@@ -99,6 +105,12 @@ public static class AnswerPromptV2
         - Paragraphs, **bold**, bullet lists ("- ") and numbered lists ("1. "). Never tables,
           headings (#), links, code blocks or HTML.
         - Cite with [n] right after the fact it grounds.
+        - Name the supplier every time you refer to a contract, exactly as the pack item's title
+          does ("Salesforce · MSA", "Google Cloud · OrderForm") - never a bare type ("the MSA",
+          "the OrderForm") and never "contract [2]" alone. When one supplier has several
+          contracts in the pack, add the type or the end date to tell them apart.
+        - Write every amount with its currency code as given in the pack ("EUR 667,000"), never
+          a bare figure.
         - Follow-ups: two or three short questions that deepen the negotiation (a usage report, a
           competing quote, a specific clause), never generic ones.
         """;

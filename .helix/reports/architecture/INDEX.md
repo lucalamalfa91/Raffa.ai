@@ -2030,3 +2030,15 @@ three delivery consequences. **ADR-014 clause 8** adds W17-A1 (h) and corrects
 clause 4(g) from "two applies" to **three runs across two workspaces, not
 interchangeable**; **clause 9** records that the **phase graph is unchanged** by
 round 3, checked item by item, with `FactTable.tsx` still unowned.
+
+## Post-w19 product feedback (2026-09-22) — Ask Raffa interview and web research
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-030 | Ask Raffa: the interview on ambiguous questions, and web research as an isolated, consented exception | software-architect (+ security-architect on isolation/consent/audit, client-architect on the wire and the alert, product-owner on the ask) | `interview` becomes the fifth reply kind: an ambiguous turn asks **one server-authored question with options resolved by key** before any retrieval or model call, never two in a row, with NW-94 case 5 narrowed and NW-80's soonest pick as the fallback. Web research is **not** a relaxation of ADR-024/R-AI-03 but a separate `research` role, client and route (Responses API, one `web_search` tool, a request type with **no pack slot**), behind **three gates** (kill switch default off, workspace Admin opt-in, daily budget), a **single-use consent per question** rendered as an alert dialog (409 on replay, never stored as a preference), the same guards on the way back plus `WebGuard`, an always-**unverified** label, and hash-only audit. |
+
+ADR-030 amends ADR-024 §Engine (fifth kind; forced plans; interview turns
+retrieve nothing) and records the one exception to R-AI-03 together with the
+tests that keep it an exception (`FoundryAnswerClientTests` unchanged,
+`FoundryResearchClientTests` proving the inverse, `WebResearchIsolationTests`
+proving the single caller and the single producer of the `web` corpus).

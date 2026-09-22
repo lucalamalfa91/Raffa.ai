@@ -58,5 +58,11 @@ public sealed class ConversationMessage : TenantScopedEntity
     /// input itself.</summary>
     public string? InputHash { get; set; }
 
+    /// <summary>ADR-030. On a Raffa <see cref="ConversationMessageKind.Interview"/> row: the
+    /// questions, their options and each option's server-side resolution, plus the consumed-at
+    /// stamp once a single-use (consent) option was taken. On the You row that answered an
+    /// interview: which message/question/option it answered. Null everywhere else.</summary>
+    public string? InterviewJson { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 }

@@ -154,6 +154,6 @@ public sealed class AskQ3RenewalsDeepLinkActionTests : IClassFixture<RaffaApiFac
 
         using var tenantScope = tenantContext.BeginScope(tenantId);
         return await askCopilotService.AskAsync(
-            tenantId, Question, recentTurns: [], Actor, scopeContractId: null, CancellationToken.None);
+            tenantId, Question, recentTurns: [], Actor, scopeContractId: null, cancellationToken: CancellationToken.None);
     }
 }

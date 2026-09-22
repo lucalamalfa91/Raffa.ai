@@ -18,11 +18,16 @@ namespace Raffa.Chat.Application.Reply;
 /// versioned persona prompt tag (<c>Answering.AnswerPromptV2.Version</c>, e.g. <c>"answer-v2.3"</c>).</param>
 /// <param name="InputHash">Echoes <c>AiCallMetadata.InputHash</c> — a content hash of the pack/prompt,
 /// never the confidential input itself (ADR-011).</param>
+/// <param name="Unverified">ADR-030: <see langword="true"/> only for a reply the research role
+/// produced from the public web — nothing in it was checked against the tenant's validated
+/// contracts, and the client must label it so. Always <see langword="false"/> for every
+/// <c>answer</c>-role and deterministic reply.</param>
 public sealed record ReplyProvenance(
     IReadOnlyList<string> Sources,
     string? ModelId,
     string? PromptVersion,
-    string? InputHash)
+    string? InputHash,
+    bool Unverified = false)
 {
     /// <summary>No model call was made for this reply (redirect/refusal/deterministic capability
     /// answer) — <see cref="Sources"/> may still be non-empty (a capability answer cites a real

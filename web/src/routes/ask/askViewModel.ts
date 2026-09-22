@@ -5,12 +5,21 @@ import type {
   ConversationActionBody,
   ConversationCitationBody,
   ConversationDetailBody,
+  ConversationInterviewBody,
   ConversationMessageBody,
   ConversationReplyBody,
   ConversationReplyKind,
   DocumentListPageBody,
+  PostMessageRequest,
 } from "../../api/client";
-import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
+import type {
+  CitationCorpus,
+  InterviewQuestion,
+  InterviewReply,
+  Reply,
+  ReplyAction,
+  ReplyCitation,
+} from "./reply/replyTypes";
 import type { WorkspaceRole } from "../../components/shell/navItems";
 import { formatSupplier, getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 
@@ -36,23 +45,15 @@ import { formatSupplier, getContractTypeLabel } from "../contracts/portfolioTabl
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `citations[].corpus` is usually `"tenant" | "market" | "raffa"` (requirements.md §6 / R-WEB-04's
- * three-corpus citation-badge vocabulary; `./reply/replyTypes.ts#CitationCorpus`, closed to exactly
- * those three). The real backend admits a fourth internal value, `"calc"`
- * (`Raffa.Chat.Application.Pack.PackCorpus.Calc` -- a deterministic-calculator-derived fact: a
- * renewal date, a negotiation lever, a criticality score), with no remapping step anywhere before
- * the wire (`ReplyCitation.Corpus`'s own doc comment: "Echoes `PackItem.Corpus`"); confirmed by
- * reading `backend/src/Raffa.Api/AskCopilotService.cs`'s own `PackItem` constructions for
- * `when-you-must-move`/lever/target/criticality items, which set a real `/contracts/{id}` `Href`
- * despite `PackItem.Href`'s own doc comment claiming `Href` is null for `PackCorpus.Calc`. A
- * calculator fact is always about *this tenant's own contract*, never a market/feature fact, so an
- * unrecognised value folds into `"tenant"` -- the closer honest bucket -- rather than the more
- * surprising `"raffa"` (a static feature card) or a thrown exception. Named here as a real
- * backend/frontend contract gap, not a guess (see `web/openapi/raffa-api.v1.json`'s
- * `postConversationMessage` operation description for the same note).
+ * `citations[].corpus` on the wire is `"tenant" | "market" | "raffa" | "calc"` -- the three ADR-024
+ * §2 sources plus `PackCorpus.Calc`, a deterministic calculator's own output (a criticality score,
+ * a lever, an aggregate such as "Annual spend total"; `AskCopilotService`'s `PackItem`
+ * constructions). Every value is kept as-is so `EvidenceCard` can file it in the right section; an
+ * unknown value folds into `"tenant"` -- a citation is about this tenant's own data unless it says
+ * otherwise -- rather than throwing on a future backend addition.
  */
 export function toCitationCorpus(wireCorpus: string): CitationCorpus {
-  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "raffa") {
+  if (wireCorpus === "tenant" || wireCorpus === "market" || wireCorpus === "raffa" || wireCorpus === "calc" || wireCorpus === "web") {
     return wireCorpus;
   }
   return "tenant";
@@ -140,24 +141,52 @@ interface NormalizedTurnBody {
   citations: readonly ConversationCitationBody[];
   actions: readonly ConversationActionBody[];
   followUps: readonly string[];
+  /** ADR-030: the interview payload (kind "interview" only) and the server id of this turn. */
+  interview: ConversationInterviewBody | null;
+  messageId: string | null;
+  /** ADR-030: the wire's `provenance.unverified` (a live reply) -- a stored message has no
+   * provenance, so `buildReply` also infers it from a `web` citation. */
+  unverified: boolean;
+}
+
+function mapInterviewQuestion(question: ConversationInterviewBody["questions"][number]): InterviewQuestion {
+  return {
+    key: question.key,
+    prompt: question.prompt,
+    presentation: question.presentation === "consent" ? "consent" : "choice",
+    allowFreeText: question.allowFreeText,
+    options: question.options.map((option) => ({ key: option.key, label: option.label, hint: option.hint ?? null })),
+  };
 }
 
 function buildReply(turn: NormalizedTurnBody): Reply {
   switch (turn.kind) {
-    case "answer":
+    case "answer": {
+      const citations = turn.citations.map(mapConversationCitation);
+      const unverifiedWeb = turn.unverified || citations.some((citation) => citation.corpus === "web");
       return {
         kind: "answer",
         answerMarkdown: turn.text,
-        citations: turn.citations.map(mapConversationCitation),
+        citations,
         actions: turn.actions.map(mapConversationAction),
         followUps: turn.followUps,
+        ...(unverifiedWeb ? { unverifiedWeb: true } : {}),
       };
+    }
     case "redirect":
     case "refusal":
       return {
         kind: turn.kind,
         answerMarkdown: turn.text,
         actions: turn.actions.map(mapConversationAction),
+      };
+    case "interview":
+      return {
+        kind: "interview",
+        prompt: turn.text,
+        questions: (turn.interview?.questions ?? []).map(mapInterviewQuestion),
+        answered: turn.interview?.answered ?? false,
+        messageId: turn.messageId,
       };
     case "abstain":
       // The backend's own abstain branch stores the reason *as* answerMarkdown/markdown
@@ -194,6 +223,9 @@ export function mapConversationReplyToReply(body: ConversationReplyBody): Reply 
     citations: body.citations,
     actions: body.actions,
     followUps: body.followUps,
+    interview: body.interview ?? null,
+    messageId: body.messageId,
+    unverified: body.provenance.unverified === true,
   });
 }
 
@@ -209,7 +241,64 @@ export function mapConversationMessageToReply(message: ConversationMessageBody):
     citations: message.citations,
     actions: message.actions,
     followUps: [],
+    interview: message.interview ?? null,
+    messageId: message.id,
+    unverified: false,
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Interview (ADR-030): answering by option or by typing
+// ---------------------------------------------------------------------------------------------
+
+/** The interview the next typed message answers, if the last Raffa turn is one still waiting:
+ * its message id and the first question that accepts free text. Null otherwise -- a typed
+ * question then posts as a plain question, exactly as before the interview existed. */
+export function pendingInterview(turns: readonly AskTurnView[]): { messageId: string; questionKey: string } | null {
+  const last = turns[turns.length - 1];
+  if (!last || last.role !== "raffa" || last.reply.kind !== "interview") return null;
+  const { reply } = last;
+  if (reply.answered || reply.messageId === null) return null;
+  const question = reply.questions.find((q) => q.allowFreeText);
+  return question ? { messageId: reply.messageId, questionKey: question.key } : null;
+}
+
+/** ADR-030: the consent the screen must put in front of the user -- the last Raffa turn is an
+ * interview still waiting whose question carries `presentation: "consent"`. Null otherwise. The
+ * dialog renders only for this shape; a plain choice interview stays inline. */
+export function pendingConsent(
+  turns: readonly AskTurnView[],
+): { reply: InterviewReply; question: InterviewQuestion } | null {
+  const last = turns[turns.length - 1];
+  if (!last || last.role !== "raffa" || last.reply.kind !== "interview") return null;
+  const { reply } = last;
+  if (reply.answered || reply.messageId === null) return null;
+  const question = reply.questions.find((q) => q.presentation === "consent");
+  return question ? { reply, question } : null;
+}
+
+/** The wire request for an interview answer: the label (or typed text) as the transcript line,
+ * the keys as what the server acts on. */
+export function buildInterviewAnswerRequest(
+  question: string,
+  messageId: string,
+  questionKey: string,
+  optionKey: string | null,
+): PostMessageRequest {
+  return {
+    question,
+    interviewAnswer: optionKey === null ? { messageId, questionKey, freeText: true } : { messageId, questionKey, optionKey },
+  };
+}
+
+/** Marks the interview turn with that message id as answered (chips disabled) the moment the
+ * user answers it, without waiting for the server's own `answered` on a later resume. */
+export function markInterviewAnswered(turns: readonly AskTurnView[], messageId: string): readonly AskTurnView[] {
+  return turns.map((turn) =>
+    turn.role === "raffa" && turn.reply.kind === "interview" && turn.reply.messageId === messageId && !turn.reply.answered
+      ? { ...turn, reply: { ...turn.reply, answered: true } }
+      : turn,
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -602,6 +691,9 @@ export function suggestionsFor(
 export type CitationOpenAction =
   | { kind: "navigate"; href: string }
   | { kind: "market-panel"; recordId: string }
+  /** ADR-030: a web source -- opened in a new tab (`noopener,noreferrer`), never an in-app
+   * navigation to a public URL. */
+  | { kind: "external"; url: string }
   | { kind: "none" };
 
 /**
@@ -620,6 +712,9 @@ export function resolveCitationOpenAction(
   if (citation.corpus === "market") {
     const wire = wireCitations.find((c) => c.n === citation.n);
     return wire?.recordId ? { kind: "market-panel", recordId: wire.recordId } : { kind: "none" };
+  }
+  if (citation.corpus === "web") {
+    return citation.href && /^https:\/\//i.test(citation.href) ? { kind: "external", url: citation.href } : { kind: "none" };
   }
   return citation.href ? { kind: "navigate", href: citation.href } : { kind: "none" };
 }

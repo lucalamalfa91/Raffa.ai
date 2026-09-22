@@ -399,6 +399,122 @@
         }
       }
     },
+    "/api/workspaces/{tenantId}/settings": {
+      "get": {
+        "operationId": "getWorkspaceSettings",
+        "summary": "The workspace settings Ask Raffa's web research hangs off (ADR-030 gate 2).",
+        "description": "Maps to GetSettingsAsync in backend/src/Raffa.Api/WorkspaceSettingsEndpointExtensions.cs. Same ladder as GET /api/workspaces/{tenantId}/members: no identity -> 401; the tenant is the route value, never a header; a non-member -> 404 (never 403); any live member reads. canEdit is the caller's own membership role (Admin), never a header. webResearchEnabled is the Admin opt-in that, together with the server's kill switch and daily budget, decides whether Ask Raffa may ever offer to search the public web -- and even then only after the user's consent on each question.",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Any live member of the tenant may read the settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "webResearchEnabled",
+                    "canEdit"
+                  ],
+                  "properties": {
+                    "webResearchEnabled": {
+                      "type": "boolean"
+                    },
+                    "canEdit": {
+                      "type": "boolean",
+                      "description": "True when the caller's own membership in this workspace is Admin -- the only role PATCH accepts."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity presented."
+          },
+          "404": {
+            "description": "The caller is not a live member of this workspace (never 403 -- a tenant-existence oracle), or the tenant id is unknown."
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateWorkspaceSettings",
+        "summary": "Flip the workspace's web-research opt-in (Admin only).",
+        "description": "Maps to PatchSettingsAsync in backend/src/Raffa.Api/WorkspaceSettingsEndpointExtensions.cs. 401 -> 404 (non-member) -> 403 (a live member who is not Admin) -> 400 (a body naming no setting) -> 200 with the settings as stored. A change writes one audit row (workspace.settings.web_research_enabled) naming the actor and the new value; setting the same value again writes none. The request body is hand-written in web/src/api/client.ts (UpdateWorkspaceSettingsRequest): { webResearchEnabled: boolean }.",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "webResearchEnabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The settings as stored after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "webResearchEnabled",
+                    "canEdit"
+                  ],
+                  "properties": {
+                    "webResearchEnabled": {
+                      "type": "boolean"
+                    },
+                    "canEdit": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body names no setting."
+          },
+          "401": {
+            "description": "No identity presented."
+          },
+          "403": {
+            "description": "A live member who is not an Admin of this workspace."
+          },
+          "404": {
+            "description": "The caller is not a live member of this workspace."
+          }
+        }
+      }
+    },
     "/api/workspaces/{tenantId}/invites": {
       "post": {
         "operationId": "inviteWorkspaceMember",
@@ -6028,7 +6144,8 @@
                               "answer",
                               "abstain",
                               "redirect",
-                              "refusal"
+                              "refusal",
+                              "interview"
                             ]
                           },
                           "markdown": {
@@ -6059,7 +6176,7 @@
                                 },
                                 "corpus": {
                                   "type": "string",
-                                  "description": "Usually 'tenant' | 'market' | 'raffa' (requirements.md §6 / R-WEB-04's three-corpus citation-badge vocabulary). Backend truth (Raffa.Chat.Application.Reply.ReplyCitation.Corpus's own doc comment: 'Echoes PackItem.Corpus') admits a fourth internal value, 'calc' (a deterministic-calculator-derived fact -- a renewal date, a negotiation lever, a criticality score -- Raffa.Chat.Application.Pack.PackCorpus.Calc), with no remapping step anywhere before the wire; confirmed by reading backend/src/Raffa.Api/AskCopilotService.cs's own PackItem constructions for 'when-you-must-move'/lever/target/criticality items, which set a real /contracts/{id} Href despite PackItem.Href's own doc comment claiming Href is null for PackCorpus.Calc. Left a plain string (not `enum`) to stay honest about this observed gap rather than declare a fourth badge variant replyTypes.ts does not have; web/src/routes/ask/askViewModel.ts#toCitationCorpus folds an unrecognised value into 'tenant' (the closer honest bucket -- a calculator fact is always about this tenant's own contract, never a market/feature fact)."
+                                  "description": "Usually 'tenant' | 'market' | 'raffa' (requirements.md §6 / R-WEB-04's three-corpus citation-badge vocabulary). Backend truth (Raffa.Chat.Application.Reply.ReplyCitation.Corpus's own doc comment: 'Echoes PackItem.Corpus') admits a fourth internal value, 'calc' (a deterministic-calculator-derived fact -- a renewal date, a negotiation lever, a criticality score -- Raffa.Chat.Application.Pack.PackCorpus.Calc), with no remapping step anywhere before the wire; confirmed by reading backend/src/Raffa.Api/AskCopilotService.cs's own PackItem constructions for 'when-you-must-move'/lever/target/criticality items, which set a real /contracts/{id} Href despite PackItem.Href's own doc comment claiming Href is null for PackCorpus.Calc. Left a plain string (not `enum`) to stay honest about this observed gap rather than declare a fourth badge variant replyTypes.ts does not have; web/src/routes/ask/askViewModel.ts#toCitationCorpus folds an unrecognised value into 'tenant' (the closer honest bucket -- a calculator fact is always about this tenant's own contract, never a market/feature fact). ADR-030 adds a fifth value, 'web': a public web source the research role read after the user's per-question consent (Raffa.Chat.Application.Pack.PackCorpus.Web) -- href is the source URL (https only), the card renders it as an external link labelled unverified, and it never carries documentId/contractId/recordId."
                                 },
                                 "title": {
                                   "type": "string"
@@ -6166,6 +6283,82 @@
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "interview": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "description": "ADR-030. Present when kind is 'interview': Raffa's clarifying question(s) with clickable options. Keys, labels and hints only -- an option's server-side resolution (the rewritten question, forced intent/contract, or the web-research query) never reaches the wire, so the client can neither learn nor alter it. Answer with POST .../messages { question: <label or free text>, interviewAnswer: { messageId, questionKey, optionKey? | freeText: true } }. 'answered' is true once a later turn exists or a single-use (consent) option was taken.",
+                            "required": [
+                              "prompt",
+                              "questions",
+                              "answered"
+                            ],
+                            "properties": {
+                              "prompt": {
+                                "type": "string"
+                              },
+                              "questions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "prompt",
+                                    "presentation",
+                                    "allowFreeText",
+                                    "options"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "prompt": {
+                                      "type": "string"
+                                    },
+                                    "presentation": {
+                                      "type": "string",
+                                      "enum": [
+                                        "choice",
+                                        "consent"
+                                      ]
+                                    },
+                                    "allowFreeText": {
+                                      "type": "boolean"
+                                    },
+                                    "options": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "key",
+                                          "label",
+                                          "hint"
+                                        ],
+                                        "properties": {
+                                          "key": {
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "hint": {
+                                            "type": [
+                                              "string",
+                                              "null"
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "answered": {
+                                "type": "boolean"
+                              }
+                            }
                           }
                         }
                       }
@@ -6195,7 +6388,7 @@
       "post": {
         "operationId": "postConversationMessage",
         "summary": "Asks a question in an existing conversation; runs the Ask engine and returns the reply.",
-        "description": "Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA). `actions[].kind` is 'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind) -- inputs/requirements.md §6's own JSON example shows 'primary'/'secondary' instead, an illustrative visual-priority label the real backend never emits; web/src/routes/ask/askViewModel.ts maps the real navigate/upload/index-ordered actions onto ReplyAction's presentational primary/secondary at the UI boundary (replyTypes.ts, task E13/F09/US01/T02, is out of this task's file scope to change). See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "description": "ADR-030: the request body is { question, interviewAnswer?: { messageId, questionKey, optionKey?, freeText? } } -- an answer to an interview turn by key, never by label (400 for an unknown message/question/option, 409 for a single-use consent option already taken). Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA). `actions[].kind` is 'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind) -- inputs/requirements.md §6's own JSON example shows 'primary'/'secondary' instead, an illustrative visual-priority label the real backend never emits; web/src/routes/ask/askViewModel.ts maps the real navigate/upload/index-ordered actions onto ReplyAction's presentational primary/secondary at the UI boundary (replyTypes.ts, task E13/F09/US01/T02, is out of this task's file scope to change). See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -6258,7 +6451,8 @@
                         "answer",
                         "abstain",
                         "redirect",
-                        "refusal"
+                        "refusal",
+                        "interview"
                       ]
                     },
                     "answerMarkdown": {
@@ -6389,7 +6583,8 @@
                           "type": "array",
                           "items": {
                             "type": "string"
-                          }
+                          },
+                          "description": "Which corpora contributed a citation: a subset of tenant/market/raffa/calc, plus 'web' (ADR-030) for a web-research answer."
                         },
                         "modelId": {
                           "type": [
@@ -6408,6 +6603,10 @@
                             "string",
                             "null"
                           ]
+                        },
+                        "unverified": {
+                          "type": "boolean",
+                          "description": "ADR-030: true only for an answer the web research role produced -- nothing in it was checked against the tenant's validated contracts; the client labels it. Absent or false for every other reply."
                         }
                       }
                     },
@@ -6415,6 +6614,82 @@
                       "type": "array",
                       "items": {
                         "type": "string"
+                      }
+                    },
+                    "interview": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "ADR-030. Present when kind is 'interview': Raffa's clarifying question(s) with clickable options. Keys, labels and hints only -- an option's server-side resolution (the rewritten question, forced intent/contract, or the web-research query) never reaches the wire, so the client can neither learn nor alter it. Answer with POST .../messages { question: <label or free text>, interviewAnswer: { messageId, questionKey, optionKey? | freeText: true } }. 'answered' is true once a later turn exists or a single-use (consent) option was taken.",
+                      "required": [
+                        "prompt",
+                        "questions",
+                        "answered"
+                      ],
+                      "properties": {
+                        "prompt": {
+                          "type": "string"
+                        },
+                        "questions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "key",
+                              "prompt",
+                              "presentation",
+                              "allowFreeText",
+                              "options"
+                            ],
+                            "properties": {
+                              "key": {
+                                "type": "string"
+                              },
+                              "prompt": {
+                                "type": "string"
+                              },
+                              "presentation": {
+                                "type": "string",
+                                "enum": [
+                                  "choice",
+                                  "consent"
+                                ]
+                              },
+                              "allowFreeText": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "label",
+                                    "hint"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "hint": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "answered": {
+                          "type": "boolean"
+                        }
                       }
                     }
                   }

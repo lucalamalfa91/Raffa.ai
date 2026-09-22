@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { PortfolioListItem } from "../../../src/api/client";
 import {
+  buildPortfolioHighlightHref,
   buildPortfolioRows,
   buildPortfolioSummary,
+  filterRowsByContractIds,
   formatCompactAmount,
+  formatHighlightNotice,
   formatPortfolioSummary,
   moreColumnsLabel,
   PORTFOLIO_CATEGORY_PARAM,
   PORTFOLIO_SUMMARY_OFF,
   readCategoryFilter,
+  readContractIdsFilter,
   withCategoryFilter,
+  type PortfolioRow,
 } from "../../../src/routes/contracts/portfolioViewModel";
 
 const NOW = new Date(Date.UTC(2026, 8, 9)); // 2026-09-09
@@ -206,5 +211,68 @@ describe("withCategoryFilter", () => {
     expect(next.get("status")).toBe("Active");
     expect(next.get("page")).toBe("2");
     expect(next.get(PORTFOLIO_CATEGORY_PARAM)).toBe("Software");
+  });
+});
+
+// ---- `?ids=` highlight filter (the contracts an Ask evidence card links to) ----
+
+const A = "11111111-1111-1111-1111-111111111111";
+const B = "22222222-2222-2222-2222-222222222222";
+const C = "33333333-3333-3333-3333-333333333333";
+
+function highlightRow(contractId: string): PortfolioRow {
+  return { item: { contractId } as PortfolioListItem, cancelDays: null, isUrgent: false };
+}
+
+describe("readContractIdsFilter", () => {
+  it("reads a comma-separated `ids` list, trimming, de-duplicating and dropping blanks", () => {
+    expect(readContractIdsFilter(new URLSearchParams(`ids=${A}, ${B},,${A}`))).toEqual([A, B]);
+  });
+
+  it("is empty when the parameter is absent", () => {
+    expect(readContractIdsFilter(new URLSearchParams("category=SaaS"))).toEqual([]);
+  });
+});
+
+describe("buildPortfolioHighlightHref", () => {
+  it("builds the Portfolio route filtered to exactly those ids", () => {
+    expect(buildPortfolioHighlightHref([A, B])).toBe(`/contracts?ids=${A},${B}`);
+  });
+
+  it("falls back to the bare route when no id is given", () => {
+    expect(buildPortfolioHighlightHref([])).toBe("/contracts");
+    expect(buildPortfolioHighlightHref([" ", ""])).toBe("/contracts");
+  });
+
+  it("round-trips through readContractIdsFilter", () => {
+    const href = buildPortfolioHighlightHref([A, B]);
+    expect(readContractIdsFilter(new URLSearchParams(href.slice(href.indexOf("?") + 1)))).toEqual([A, B]);
+  });
+});
+
+describe("filterRowsByContractIds", () => {
+  const rows = [highlightRow(A), highlightRow(B), highlightRow(C)];
+
+  it("keeps only the highlighted rows, in table order", () => {
+    expect(filterRowsByContractIds(rows, [C, A]).map((r) => r.item.contractId)).toEqual([A, C]);
+  });
+
+  it("returns every row when nothing is highlighted", () => {
+    expect(filterRowsByContractIds(rows, []).map((r) => r.item.contractId)).toEqual([A, B, C]);
+  });
+
+  it("matches nothing for ids no longer in the portfolio", () => {
+    expect(filterRowsByContractIds(rows, ["gone"])).toEqual([]);
+  });
+});
+
+describe("formatHighlightNotice", () => {
+  it("says how many of the highlighted contracts are shown", () => {
+    expect(formatHighlightNotice(2, 7)).toBe("Showing 2 of 7 contracts — the ones highlighted in Ask.");
+    expect(formatHighlightNotice(1, 1)).toBe("Showing 1 of 1 contract — the ones highlighted in Ask.");
+  });
+
+  it("explains an empty result instead of showing an empty table", () => {
+    expect(formatHighlightNotice(0, 7)).toBe("None of the contracts highlighted in Ask is in the portfolio any more.");
   });
 });

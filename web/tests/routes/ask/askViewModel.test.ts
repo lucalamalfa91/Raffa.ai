@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { ApiClient, ConversationCitationBody, ConversationMessageBody, ConversationReplyBody } from "../../../src/api/client";
 import {
   ASK_HELLO,
-  buildRaffaTurnFromReply,
   buildErrorTurn,
+  buildInterviewAnswerRequest,
   buildOffCopy,
-  resolveAskOffReason,
-  buildScopedBrief,
+  buildRaffaTurnFromReply,
   buildScopeLine,
+  buildScopedBrief,
   buildScopedSuggestions,
   buildTenantCitationHref,
   buildTurnsFromConversation,
@@ -18,8 +18,12 @@ import {
   mapConversationCitation,
   mapConversationMessageToReply,
   mapConversationReplyToReply,
+  markInterviewAnswered,
   nextTurnId,
   parseScopeContractId,
+  pendingConsent,
+  pendingInterview,
+  resolveAskOffReason,
   resolveCitationOpenAction,
   suggestionsFor,
   toCitationCorpus,
@@ -44,14 +48,16 @@ function citation(overrides: Partial<ConversationCitationBody> = {}): Conversati
 }
 
 describe("toCitationCorpus", () => {
-  it("passes tenant/market/raffa through unchanged", () => {
+  it("passes tenant/market/raffa/calc through unchanged", () => {
     expect(toCitationCorpus("tenant")).toBe("tenant");
     expect(toCitationCorpus("market")).toBe("market");
     expect(toCitationCorpus("raffa")).toBe("raffa");
+    // `PackCorpus.Calc` -- a calculator's own output -- keeps its provenance so the evidence card
+    // can file it under Raffa instead of passing it off as a validated contract.
+    expect(toCitationCorpus("calc")).toBe("calc");
   });
 
-  it("folds an unrecognised value (e.g. the real backend's internal 'calc') into 'tenant'", () => {
-    expect(toCitationCorpus("calc")).toBe("tenant");
+  it("folds an unrecognised value into 'tenant'", () => {
     expect(toCitationCorpus("anything-else")).toBe("tenant");
   });
 });
@@ -241,6 +247,102 @@ describe("mapConversationReplyToReply / mapConversationMessageToReply", () => {
     expect(mapped.kind).toBe("answer");
     if (mapped.kind !== "answer") throw new Error("expected answer");
     expect(mapped.followUps).toEqual([]);
+  });
+});
+
+describe("interview mapping and answering (ADR-030)", () => {
+  function replyBody(overrides: Partial<ConversationReplyBody> = {}): ConversationReplyBody {
+    return {
+      conversationId: "conv-1",
+      messageId: "msg-1",
+      kind: "answer",
+      answerMarkdown: "…",
+      citations: [],
+      actions: [],
+      provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
+      followUps: [],
+      ...overrides,
+    };
+  }
+
+  function storedMessage(overrides: Partial<ConversationMessageBody> = {}): ConversationMessageBody {
+    return {
+      id: "m-1",
+      role: "raffa",
+      kind: "answer",
+      markdown: "…",
+      citations: [],
+      actions: [],
+      modelId: null,
+      promptVersion: null,
+      inputHash: null,
+      createdAt: "2026-09-08T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  const INTERVIEW_WIRE = {
+    prompt: "Before I answer, one quick check.",
+    questions: [
+      {
+        key: "interpretation",
+        prompt: "Which of these do you mean?",
+        presentation: "choice" as const,
+        allowFreeText: true,
+        options: [
+          { key: "portfolio-overview", label: "The most critical contracts and where we can save", hint: null },
+          { key: "total-spend", label: "Our total annual spend across contracts", hint: null },
+        ],
+      },
+    ],
+    answered: false,
+  };
+
+  it("maps an interview reply with its questions, options and the server message id", () => {
+    const reply = mapConversationReplyToReply(
+      replyBody({ kind: "interview", answerMarkdown: "Before I answer, one quick check.", citations: [], actions: [], followUps: [], interview: INTERVIEW_WIRE }),
+    );
+
+    expect(reply.kind).toBe("interview");
+    if (reply.kind !== "interview") throw new Error("unreachable");
+    expect(reply.prompt).toBe("Before I answer, one quick check.");
+    expect(reply.messageId).toBe("msg-1");
+    expect(reply.answered).toBe(false);
+    expect(reply.questions[0].options.map((o) => o.key)).toEqual(["portfolio-overview", "total-spend"]);
+    expect(reply.questions[0].options[0].hint).toBeNull();
+  });
+
+  it("maps a stored interview message with the server's answered flag and its own id", () => {
+    const reply = mapConversationMessageToReply({
+      ...storedMessage({ kind: "interview", markdown: "Before I answer, one quick check.", citations: [], actions: [] }),
+      id: "m-9",
+      interview: { ...INTERVIEW_WIRE, answered: true },
+    });
+
+    expect(reply).toMatchObject({ kind: "interview", answered: true, messageId: "m-9" });
+  });
+
+  it("pendingInterview names the interview the next typed message answers, and nothing once answered", () => {
+    const interviewTurn = buildRaffaTurnFromReply(
+      "t-2",
+      replyBody({ kind: "interview", answerMarkdown: "…", citations: [], actions: [], followUps: [], interview: INTERVIEW_WIRE }),
+    );
+
+    expect(pendingInterview([buildYouTurn("t-1", "Did you over all my contract?"), interviewTurn])).toEqual({ messageId: "msg-1", questionKey: "interpretation" });
+    expect(pendingInterview(markInterviewAnswered([interviewTurn], "msg-1"))).toBeNull();
+    expect(pendingInterview([buildYouTurn("t-1", "hi")])).toBeNull();
+    expect(pendingInterview([interviewTurn, buildYouTurn("t-3", "typed")])).toBeNull();
+  });
+
+  it("buildInterviewAnswerRequest sends the label as the transcript line and the keys as the answer", () => {
+    expect(buildInterviewAnswerRequest("Our total annual spend across contracts", "msg-1", "interpretation", "total-spend")).toEqual({
+      question: "Our total annual spend across contracts",
+      interviewAnswer: { messageId: "msg-1", questionKey: "interpretation", optionKey: "total-spend" },
+    });
+    expect(buildInterviewAnswerRequest("the first one", "msg-1", "interpretation", null)).toEqual({
+      question: "the first one",
+      interviewAnswer: { messageId: "msg-1", questionKey: "interpretation", freeText: true },
+    });
   });
 });
 
@@ -510,6 +612,8 @@ describe("createConversationAndAsk", () => {
       inviteWorkspaceMember: vi.fn(),
       listWorkspaces: vi.fn(),
       getWorkspaceMembers: vi.fn(),
+      getWorkspaceSettings: vi.fn(),
+      updateWorkspaceSettings: vi.fn(),
       revokeInvitation: vi.fn(),
       removeMember: vi.fn(),
       getInvitation: vi.fn(),
@@ -650,5 +754,95 @@ describe("createConversationAndAsk", () => {
 describe("ASK_HELLO", () => {
   it("is the prototype's own verbatim string", () => {
     expect(ASK_HELLO).toBe("What do you want to know?");
+  });
+});
+
+describe("web research (ADR-030)", () => {
+  function webReply(overrides: Partial<ConversationReplyBody> = {}): ConversationReplyBody {
+    return {
+      conversationId: "conv-1",
+      messageId: "msg-web",
+      kind: "answer",
+      answerMarkdown: "Public, unverified: a 5-10% uplift cap is common [1].",
+      citations: [
+        { n: 1, corpus: "web", title: "example.com · SaaS renewals", subtitle: null, snippet: "5-10% uplift cap", documentId: null, contractId: null, page: null, section: null, previewUrl: null, href: "https://example.com/a", recordId: null },
+      ],
+      actions: [],
+      provenance: { sources: ["web"], modelId: "gpt-research", promptVersion: "research-v1", inputHash: "h", unverified: true },
+      followUps: [],
+      ...overrides,
+    };
+  }
+
+  it("keeps the web corpus as-is", () => {
+    expect(toCitationCorpus("web")).toBe("web");
+  });
+
+  it("maps a web answer as unverified, from provenance or from a web citation", () => {
+    const fromProvenance = mapConversationReplyToReply(webReply());
+    expect(fromProvenance.kind).toBe("answer");
+    if (fromProvenance.kind === "answer") {
+      expect(fromProvenance.unverifiedWeb).toBe(true);
+      expect(fromProvenance.citations[0].corpus).toBe("web");
+      expect(fromProvenance.citations[0].href).toBe("https://example.com/a");
+    }
+
+    const fromCitation = mapConversationReplyToReply(
+      webReply({ provenance: { sources: ["web"], modelId: null, promptVersion: null, inputHash: null } }),
+    );
+    if (fromCitation.kind === "answer") expect(fromCitation.unverifiedWeb).toBe(true);
+
+    const ordinary = mapConversationReplyToReply(
+      webReply({ citations: [], provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null } }),
+    );
+    if (ordinary.kind === "answer") expect(ordinary.unverifiedWeb).toBeUndefined();
+  });
+
+  it("opens a web citation externally, and only over https", () => {
+    const turn = buildRaffaTurnFromReply("t1", webReply());
+    if (turn.role !== "raffa" || turn.reply.kind !== "answer") throw new Error("expected an answer turn");
+
+    expect(resolveCitationOpenAction(turn.reply.citations[0], turn.wireCitations)).toEqual({ kind: "external", url: "https://example.com/a" });
+    expect(resolveCitationOpenAction({ ...turn.reply.citations[0], href: "http://example.com/a" }, turn.wireCitations)).toEqual({ kind: "none" });
+  });
+
+  it("pendingConsent finds an unanswered consent question and nothing else", () => {
+    const consent = buildRaffaTurnFromReply(
+      "t2",
+      webReply({
+        kind: "interview",
+        citations: [],
+        interview: {
+          prompt: "Allow?",
+          answered: false,
+          questions: [
+            {
+              key: "web-consent",
+              prompt: "Allow?",
+              presentation: "consent",
+              allowFreeText: false,
+              options: [
+                { key: "allow", label: "Yes", hint: null },
+                { key: "decline", label: "No", hint: null },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const found = pendingConsent([consent]);
+    expect(found?.question.key).toBe("web-consent");
+    expect(found?.reply.messageId).toBe("msg-web");
+
+    const choice = buildRaffaTurnFromReply(
+      "t3",
+      webReply({
+        kind: "interview",
+        citations: [],
+        interview: { prompt: "Which?", answered: false, questions: [{ key: "interpretation", prompt: "Which?", presentation: "choice", allowFreeText: true, options: [] }] },
+      }),
+    );
+    expect(pendingConsent([choice])).toBeNull();
+    expect(pendingConsent([consent, choice])).toBeNull();
   });
 });

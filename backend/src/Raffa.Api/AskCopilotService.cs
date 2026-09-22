@@ -9,9 +9,11 @@ using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Gate;
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Reply;
+using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
@@ -196,6 +198,12 @@ internal sealed partial class AskCopilotService(
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
     IMarketDealLookup marketDealLookup,
     NegotiationCouncil negotiationCouncil,
+    InterviewPlanner interviewPlanner,
+    InterviewOptions interviewOptions,
+    WebResearchOptions webResearchOptions,
+    WebResearchComposer webResearchComposer,
+    IWebResearchBudget webResearchBudget,
+    IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock)
@@ -223,6 +231,7 @@ internal sealed partial class AskCopilotService(
     private const string AuditRedirectedAction = "chat.redirected";
     private const string AuditRefusedAction = "chat.refused";
     private const string AuditAbstainedAction = "chat.abstained";
+    private const string AuditInterviewedAction = "chat.interviewed";
     private const string AuditResourceType = "ask_raffa_v2";
 
     /// <summary>The tenant scope <see cref="AskAsync"/> already opened for this call
@@ -262,10 +271,14 @@ internal sealed partial class AskCopilotService(
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
         string actor,
         EntityId? scopeContractId = null,
+        AskTurnHints? hints = null,
+        bool previousRaffaTurnWasInterview = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
         ArgumentNullException.ThrowIfNull(recentTurns);
+
+        var turnHints = hints ?? AskTurnHints.None;
 
         using var scope = tenantContext.BeginScope(tenantId);
 
@@ -293,6 +306,20 @@ internal sealed partial class AskCopilotService(
             .ToList();
 
         var gate = domainGate.Classify(question, knownSuppliers);
+
+        // ADR-030: an interview option that named a supplier is a known supplier by construction
+        // (the planner built it from this tenant's own portfolio), so it wins over the gate's own
+        // free-text extraction exactly as a scoped entry does below. Greeting/OffDomain/Legal/
+        // Capability still win outright.
+        if (turnHints.ForcedSupplierName is { } forcedSupplierName && gate.Label is GateLabel.NeedsDocument or GateLabel.InDomain)
+        {
+            gate = gate with
+            {
+                Label = GateLabel.InDomain,
+                Reason = $"interview resolution named known supplier '{forcedSupplierName}' (ADR-030).",
+                NamedSupplier = forcedSupplierName,
+            };
+        }
 
         // AC-1/AC-2 (ADR-024 "the gate resolves the scope id before the R-ASK-10 check"; task
         // E25/F03/US01/T01, NW-56): a conversation opened from Contract 360's "Ask about it"
@@ -346,12 +373,20 @@ internal sealed partial class AskCopilotService(
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
                 tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
-                scopeContractId, scopedContractItem, actor, cancellationToken)
+                scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken)
                 .ConfigureAwait(false),
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
 
         await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, actor, cancellationToken).ConfigureAwait(false);
+
+        // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
+        // answer above), so "asked, said no" is visible without the query ever being logged.
+        if (turnHints.DeclinedWebResearch)
+        {
+            await WriteWebResearchAuditAsync(tenantId, AuditWebResearchDeclinedAction, actor, "outcome=declined", cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         return reply;
     }
@@ -455,6 +490,8 @@ internal sealed partial class AskCopilotService(
         EntityId? scopeContractId,
         PortfolioListItem? scopedContractItem,
         string actor,
+        AskTurnHints hints,
+        bool previousRaffaTurnWasInterview,
         CancellationToken cancellationToken)
     {
         // A bare follow-up ("non mi hai risposto", "e quindi?") is planned on the previous user
@@ -465,7 +502,22 @@ internal sealed partial class AskCopilotService(
                                    string.Equals(turn.Role, "user", StringComparison.OrdinalIgnoreCase))
             .Markdown;
 
-        var plan = intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
+        var plan = hints.ForcedIntent is { } forcedIntent
+            ? intentPlanner.Plan(question, namedSupplier, previousUserQuestion, forcedIntent)
+            : intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
+
+        // ADR-030: an interview option that named one contract narrows this turn to it exactly as
+        // a scoped conversation would; an id this tenant cannot see refuses (the NW-76 posture),
+        // never silently widens into a portfolio-wide answer.
+        PortfolioListItem? forcedContractItem = null;
+        if (hints.ForcedContractId is { } forcedContractId)
+        {
+            forcedContractItem = portfolio.Items.FirstOrDefault(item => item.ContractId == forcedContractId.Value);
+            if (forcedContractItem is null && plan.Intent != AskIntent.PortfolioMarketPosition)
+            {
+                return (BuildUnseenScopeRefusal(portfolio), false, false);
+            }
+        }
 
         // AC-3, lock 4 (task E27/F02/US01/T01, NW-76): a scope id present on this conversation but
         // absent from this turn's own freshly-fetched portfolio refuses outright, before a single
@@ -485,8 +537,8 @@ internal sealed partial class AskCopilotService(
         // so it alone passes null through here and falls back to ResolveNamedContractItem's own
         // name-based, soonest-cancellation-deadline lookup below (which still applies for every
         // other, unscoped turn, and for every turn once no scope resolved at all).
-        var (namedContractItem, disambiguationItem) = ResolveNamedContractItem(
-            plan.Intent == AskIntent.PortfolioMarketPosition ? null : scopedContractItem,
+        var (namedContractItem, disambiguationItem, supplierMatches) = ResolveNamedContractItem(
+            plan.Intent == AskIntent.PortfolioMarketPosition ? null : (scopedContractItem ?? forcedContractItem),
             plan.NamedSupplier, portfolio, supplierNames);
 
         // AC-2: follows namedContractItem above, so a scoped turn's follow-up actions (e.g. "open
@@ -494,9 +546,57 @@ internal sealed partial class AskCopilotService(
         var contractIdForActions = namedContractItem is not null ? new EntityId(namedContractItem.ContractId) : (EntityId?)null;
         var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard, contractIdForActions);
 
+        // ADR-030 -- web research. A consumed consent runs the research role here, before any pack
+        // is built (nothing of the tenant's data is in scope of that call, by construction); an
+        // explicit or forced WebResearch intent gets the consent question, or a redirect naming
+        // the closed gate. There is no path from here to the search without a consumed consent.
+        if (hints.AuthorizedWebResearch is { } authorizedWebResearch)
+        {
+            var reply = await RunWebResearchAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, cancellationToken)
+                .ConfigureAwait(false);
+            return (reply.Reply, reply.GuardIntervened, false);
+        }
+
+        if (plan.Intent == AskIntent.WebResearch)
+        {
+            return (
+                await BuildWebResearchEntryReplyAsync(tenantId, question, portfolio, routingContext, actor, cancellationToken)
+                    .ConfigureAwait(false),
+                false,
+                false);
+        }
+
         if (plan.Intent is AskIntent.Navigate or AskIntent.QuoteRoute)
         {
             return (BuildRoutingOnlyReply(plan, routingContext), false, false);
+        }
+
+        // ADR-030 — the interview. Decided here, after scope and supplier resolution and before
+        // any pack is built, so an ambiguous turn retrieves nothing and calls no model. An answer
+        // to an interview (hints.SuppressInterview) never triggers a second one, and neither does
+        // a turn that directly follows one.
+        if (interviewOptions.Enabled && !hints.SuppressInterview)
+        {
+            var interviewContext = new InterviewContext(
+                HasScope: scopeContractId is not null || forcedContractItem is not null,
+                NamedSupplierContractCount: supplierMatches.Count,
+                PortfolioIsEmpty: portfolio.Items.Count == 0,
+                PreviousRaffaTurnWasInterview: previousRaffaTurnWasInterview,
+                IsNoticeQuestion: NoticeQuestionPattern.IsMatch(question));
+            var signals = AmbiguityDetector.Detect(question, plan, interviewContext, interviewOptions);
+            if (signals.Verdict == AmbiguityVerdict.Ambiguous)
+            {
+                // The web option rides the interpretation menu only when every ADR-030 gate is
+                // open and the question is a procurement topic; picking it asks consent, never
+                // searches.
+                var webOffer = await BuildWebOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
+                var interview = interviewPlanner.Plan(
+                    question, plan, signals, BuildInterviewInputs(supplierMatches, portfolio, supplierNames), webOffer);
+                if (interview is not null)
+                {
+                    return (InterviewReplyBuilder.Interview(interview), false, false);
+                }
+            }
         }
 
         // Task E30/F02/US01/T01 (NW-94): the five notice fallbacks are fully server-decided, so a
@@ -522,7 +622,7 @@ internal sealed partial class AskCopilotService(
 
         var packItems = plan.Intent switch
         {
-            AskIntent.StructuredFact => await BuildStructuredFactOrNoticePackAsync(question, namedContractItem, portfolio, cancellationToken)
+            AskIntent.StructuredFact => await BuildStructuredFactOrNoticePackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken)
                 .ConfigureAwait(false),
             AskIntent.Clause => await BuildClausePackAsync(tenantId, question, namedContractItem, cancellationToken)
                 .ConfigureAwait(false),
@@ -535,7 +635,7 @@ internal sealed partial class AskCopilotService(
             AskIntent.Savings => namedContractItem is not null
                 ? await BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, actor, cancellationToken).ConfigureAwait(false)
                 : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
-            AskIntent.DocumentStatus => BuildDocumentStatusPack(portfolio),
+            AskIntent.DocumentStatus => BuildDocumentStatusPack(portfolio, supplierNames),
             _ => [],
         };
 
@@ -604,6 +704,25 @@ internal sealed partial class AskCopilotService(
 
         var result = composed.Value.Result;
 
+        // ADR-030 stage 3: the model itself says the question was ambiguous -- offer the
+        // interpretation menu (deterministic options, never the model's) instead of the abstain
+        // block with its dead "Open Ask Raffa" button.
+        if (!result.CanDetermine
+            && !composed.Value.GuardIntervened
+            && interviewOptions.Enabled
+            && interviewOptions.ConvertAmbiguousAbstain
+            && !hints.SuppressInterview
+            && !previousRaffaTurnWasInterview
+            && AmbiguousAbstainDetector.IsAmbiguous(result.AbstainReason))
+        {
+            var webOffer = await BuildWebOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
+            var interview = interviewPlanner.PlanInterpretationMenu(question, plan, webOffer);
+            if (interview is not null)
+            {
+                return (InterviewReplyBuilder.Interview(interview), false, false);
+            }
+        }
+
         // The composed-from-the-pack answer is only as relevant as the pack. A structured question
         // the deterministic planner could not handle gets a stand-in snapshot of the soonest-ending
         // contracts (no calc:structured-query item) -- quoting that back would answer a question
@@ -623,7 +742,6 @@ internal sealed partial class AskCopilotService(
                 true,
                 false);
         }
-
         // Model action keys were already normalized to catalog keys by AnswerComposer
         // (ActionKeyNormalizer); a key whose route needs an id this turn does not carry (Contract 360
         // on a portfolio-wide turn) is dropped here rather than failing CapabilityRouting.ForKey.
@@ -726,7 +844,7 @@ internal sealed partial class AskCopilotService(
     /// already handled the latter upstream so this is not expected in practice), and a
     /// <see cref="PackCorpus.Calc"/> pack item naming the choice, only when the choice was actually
     /// ambiguous.</returns>
-    private static (PortfolioListItem? Item, PackItem? DisambiguationItem) ResolveNamedContractItem(
+    private static (PortfolioListItem? Item, PackItem? DisambiguationItem, IReadOnlyList<PortfolioListItem> Matches) ResolveNamedContractItem(
         PortfolioListItem? scopedContractItem,
         string? namedSupplier,
         PortfolioPage portfolio,
@@ -734,12 +852,12 @@ internal sealed partial class AskCopilotService(
     {
         if (scopedContractItem is not null)
         {
-            return (scopedContractItem, null);
+            return (scopedContractItem, null, []);
         }
 
         if (namedSupplier is null)
         {
-            return (null, null);
+            return (null, null, []);
         }
 
         var matches = portfolio.Items
@@ -753,17 +871,17 @@ internal sealed partial class AskCopilotService(
 
         if (matches.Count == 0)
         {
-            return (null, null);
+            return (null, null, []);
         }
 
         var chosen = matches[0];
 
         if (matches.Count == 1)
         {
-            return (chosen, null);
+            return (chosen, null, matches);
         }
 
-        return (chosen, BuildMultiContractDisambiguationItem(chosen, matches.Count, namedSupplier));
+        return (chosen, BuildMultiContractDisambiguationItem(chosen, matches.Count, namedSupplier), matches);
     }
 
     /// <summary>
@@ -904,8 +1022,19 @@ internal sealed partial class AskCopilotService(
 
     // ----- Per-intent pack composition -----
 
+    /// <summary>
+    /// <paramref name="supplierNames"/> is the per-turn name map <see cref="AskAsync"/> already
+    /// resolved for the whole portfolio, so every multi-contract item below can be titled
+    /// "Salesforce · MSA" rather than "MSA · MSA" (R-SUP-04; closes the golden set's
+    /// GAP-ASK-STRUCTURED-PACK-DROPS-SUPPLIER-NAME). The named-contract branch keeps its own
+    /// single lookup, which is the same source of truth.
+    /// </summary>
     private async Task<IReadOnlyList<PackItem>> BuildStructuredFactPackAsync(
-        string question, PortfolioListItem? namedContractItem, PortfolioPage portfolio, CancellationToken cancellationToken)
+        string question,
+        PortfolioListItem? namedContractItem,
+        PortfolioPage portfolio,
+        IReadOnlyDictionary<EntityId, string> supplierNames,
+        CancellationToken cancellationToken)
     {
         if (namedContractItem is not null)
         {
@@ -951,7 +1080,7 @@ internal sealed partial class AskCopilotService(
                         continue;
                     }
 
-                    items.Add(BuildContractFactItem(item, item.Type.ToString()));
+                    items.Add(BuildContractFactItem(item, DisplayNameFor(item, supplierNames)));
                 }
 
                 var (aggregateTitle, aggregateSnippet) = DescribeStructuredResult(result);
@@ -981,7 +1110,7 @@ internal sealed partial class AskCopilotService(
         return portfolio.Items
             .OrderBy(item => item.EndDate ?? DateOnly.MaxValue)
             .Take(5)
-            .Select(item => BuildContractFactItem(item, item.Type.ToString()))
+            .Select(item => BuildContractFactItem(item, DisplayNameFor(item, supplierNames)))
             .ToList();
     }
 
@@ -1064,10 +1193,14 @@ internal sealed partial class AskCopilotService(
     /// behaviour unchanged.
     /// </summary>
     private async Task<IReadOnlyList<PackItem>> BuildStructuredFactOrNoticePackAsync(
-        string question, PortfolioListItem? namedContractItem, PortfolioPage portfolio, CancellationToken cancellationToken) =>
+        string question,
+        PortfolioListItem? namedContractItem,
+        PortfolioPage portfolio,
+        IReadOnlyDictionary<EntityId, string> supplierNames,
+        CancellationToken cancellationToken) =>
         namedContractItem is not null && NoticeQuestionPattern.IsMatch(question)
             ? await BuildNoticePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
-            : await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, cancellationToken).ConfigureAwait(false);
+            : await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// Task E30/F01/US01/T01 (NW-91/NW-92, parent story us-01-notice-pack AC-1/AC-2/AC-3): the
@@ -2276,7 +2409,8 @@ internal sealed partial class AskCopilotService(
         return items;
     }
 
-    private static IReadOnlyList<PackItem> BuildDocumentStatusPack(PortfolioPage portfolio)
+    private static IReadOnlyList<PackItem> BuildDocumentStatusPack(
+        PortfolioPage portfolio, IReadOnlyDictionary<EntityId, string> supplierNames)
     {
         var pending = portfolio.Items
             .Where(item => !string.Equals(item.Status, "completed", StringComparison.OrdinalIgnoreCase))
@@ -2293,17 +2427,72 @@ internal sealed partial class AskCopilotService(
             ];
         }
 
+        // Named by supplier (R-SUP-04) and linked to the review queue, so the reply can say whose
+        // document is still pending and route straight to it -- never "Msa — not yet askable".
+        var reviewHref = CapabilityCatalog.Find(CapabilityCatalog.DocumentsAttentionKey)?.RoutePattern;
+
         return pending.Select((item, index) => new PackItem(
             InsightsCitationKeys.Calc($"document-status[{index}]"),
             PackCorpus.Calc,
-            $"{item.Type} — not yet askable",
+            $"{ContractTitle(item, DisplayNameFor(item, supplierNames))} — not yet askable",
             null, null, null,
-            $"Status: {item.Status}.",
-            null, null, null,
-            "deterministic calculator", [])).ToList();
+            $"{ContractTitle(item, DisplayNameFor(item, supplierNames))} is not validated yet (status: {item.Status}).",
+            reviewHref, null, null,
+            "deterministic calculator", [],
+            item.ContractId.ToString())).ToList();
     }
 
     // ----- Shared helpers -----
+
+    /// <summary>ADR-030: the display facts the interview planner phrases a "which contract?"
+    /// question from -- supplier names, never guids in a label (R-ASK-08); the id rides in the
+    /// option's resolution.</summary>
+    private static InterviewInputs BuildInterviewInputs(
+        IReadOnlyList<PortfolioListItem> supplierMatches,
+        PortfolioPage portfolio,
+        IReadOnlyDictionary<EntityId, string> supplierNames)
+    {
+        var supplierContracts = supplierMatches.Select(item => ToInterviewChoice(item, supplierNames)).ToList();
+        var noticeCandidates = portfolio.Items
+            .Where(item => item.CancellationDeadline is not null)
+            .OrderBy(item => item.CancellationDeadline)
+            .ThenBy(item => item.ContractId)
+            .Select(item => ToInterviewChoice(item, supplierNames))
+            .ToList();
+
+        return new InterviewInputs(supplierContracts, noticeCandidates);
+    }
+
+    private static InterviewContractChoice ToInterviewChoice(
+        PortfolioListItem item, IReadOnlyDictionary<EntityId, string> supplierNames) =>
+        new(
+            item.ContractId.ToString(),
+            DisplayNameFor(item, supplierNames),
+            item.Type.ToString(),
+            item.RenewalDate,
+            item.CancellationDeadline,
+            item.EndDate);
+
+    /// <summary>
+    /// The name a contract is shown under everywhere in a pack (R-SUP-04): the resolved supplier
+    /// name from the per-turn map <see cref="AskAsync"/> builds, else the contract type -- never a
+    /// guid. Synchronous twin of <see cref="ResolveDisplayNameAsync(PortfolioListItem, CancellationToken)"/>
+    /// for the multi-contract paths that already hold the whole map.
+    /// </summary>
+    private static string DisplayNameFor(PortfolioListItem item, IReadOnlyDictionary<EntityId, string> supplierNames) =>
+        item.SupplierId is { } supplierId && supplierNames.TryGetValue(new EntityId(supplierId), out var name)
+            ? name
+            : item.Type.ToString();
+
+    /// <summary>
+    /// "Salesforce · MSA" -- the one title shape every contract-level pack item uses, so a reply
+    /// can always say which supplier it means. When no supplier name resolved (the display name fell
+    /// back to the type), the title says so instead of the misleading "MSA · MSA".
+    /// </summary>
+    private static string ContractTitle(PortfolioListItem item, string displayName) =>
+        string.Equals(displayName, item.Type.ToString(), StringComparison.Ordinal)
+            ? $"Unnamed supplier · {item.Type}"
+            : $"{displayName} · {item.Type}";
 
     /// <summary>
     /// Task E25/F02/US01/T01 (NW-55): still the pre-existing <c>/contracts/{id}</c> CTA and a
@@ -2330,21 +2519,30 @@ internal sealed partial class AskCopilotService(
             values.Add(new PackValue("cancellationDeadline", deadline.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), PackValueKind.Date));
         }
 
+        // The real contract currency, never "n/a": NumericGuard matches an amount only against a
+        // pack value of the same currency, so "n/a" forced the model into bare "667000.00" figures
+        // (closes the golden set's GAP-ASK-SPEND-CURRENCY-NA).
+        var currency = string.IsNullOrWhiteSpace(item.Currency) ? "n/a" : item.Currency.Trim();
         if (item.AnnualSpend is { } spend)
         {
-            values.Add(new PackValue("annualSpend", spend.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, "n/a"));
+            values.Add(new PackValue("annualSpend", spend.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, currency));
         }
 
+        var title = ContractTitle(item, displayName);
+        var spendSentence = item.AnnualSpend is { } annualSpend && currency != "n/a"
+            ? $" Annual spend {currency} {annualSpend.ToString("0.##", CultureInfo.InvariantCulture)}."
+            : string.Empty;
+
         var snippet = item.EndDate is { } end
-            ? $"{displayName} ends on {end:yyyy-MM-dd}" +
+            ? $"{title} ends on {end:yyyy-MM-dd}" +
               (item.AutoRenewal ? ", auto-renews unless notice is given" : ", does not auto-renew") +
-              (item.CancellationDeadline is { } cd ? $" (notice by {cd:yyyy-MM-dd})" : string.Empty) + "."
-            : $"{displayName} has no validated end date yet.";
+              (item.CancellationDeadline is { } cd ? $" (notice by {cd:yyyy-MM-dd})" : string.Empty) + "." + spendSentence
+            : $"{title} has no validated end date yet.{spendSentence}";
 
         return new PackItem(
             $"fact:{item.ContractId}:renewal",
             PackCorpus.Tenant,
-            $"{displayName} · {item.Type}",
+            title,
             null,
             null,
             null,
@@ -2609,6 +2807,7 @@ internal sealed partial class AskCopilotService(
             ReplyKind.Abstain => AuditAbstainedAction,
             ReplyKind.Redirect => AuditRedirectedAction,
             ReplyKind.Refusal => AuditRefusedAction,
+            ReplyKind.Interview => AuditInterviewedAction,
             _ => AuditAnsweredAction,
         };
 
@@ -2628,7 +2827,11 @@ internal sealed partial class AskCopilotService(
                 packHash,
                 clock.UtcNow,
                 $"kind={reply.Kind} citationCount={reply.Citations.Count} actionCount={reply.Actions.Count} " +
-                $"packHash={packHash} abstainGuardIntervened={guardIntervened} fallbackUsed={fallbackUsed}"),
+                $"packHash={packHash} abstainGuardIntervened={guardIntervened} " +
+                $"fallbackUsed={fallbackUsed} " +
+                $"interviewQuestions={reply.Interview?.Questions.Count ?? 0} " +
+                $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
+                $"unverified={reply.Provenance.Unverified}"),
             cancellationToken).ConfigureAwait(false);
     }
 

@@ -46,6 +46,8 @@ public static class WorkspaceEndpointExtensions
         endpoints.MapPost("/api/workspaces", CreateWorkspaceAsync);
         endpoints.MapWorkspaceMemberEndpoints();
         endpoints.MapWorkspaceInviteEndpoints();
+        // ADR-030 gate 2: the workspace settings (web-research opt-in).
+        endpoints.MapWorkspaceSettingsEndpoints();
         return endpoints;
     }
 

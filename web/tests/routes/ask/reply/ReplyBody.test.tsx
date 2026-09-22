@@ -47,24 +47,36 @@ const ANSWER_REPLY: Reply = {
 
 // Task E13/F09/US01/T02's own "Tests required" row: "unit | card variants, actions, layouts per kind".
 describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
-  it("answer: renders markdown, citation cards (per-corpus badge), actions and follow-ups", () => {
-    renderReply(ANSWER_REPLY);
+  it("answer: renders markdown, one evidence card (sections per source), its actions and follow-ups", () => {
+    const { container } = renderReply(ANSWER_REPLY);
 
-    expect(screen.getByText("Validated contract")).toBeInTheDocument();
+    // One card for the whole answer, never one per citation (EvidenceCard.tsx).
+    expect(container.querySelectorAll(".citation-card")).toHaveLength(1);
+    expect(screen.getByText("Your contracts")).toBeInTheDocument();
     expect(screen.getByText("Market · representative")).toBeInTheDocument();
+    expect(container.querySelector(".evidence-group-title")).toHaveTextContent("Salesforce");
+    // The reply's actions live in the card's single action row.
     expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Track it in Renewals" })).toBeInTheDocument();
+    expect(container.querySelectorAll(".reply-actions")).toHaveLength(1);
     expect(screen.getByRole("button", { name: /Where can I push on the Salesforce renewal\?/ })).toBeInTheDocument();
   });
 
-  it("answer: clicking a citation card calls onOpenCitation with that exact citation", async () => {
+  it("answer: clicking a citation row calls onOpenCitation with that exact citation", async () => {
     const user = userEvent.setup();
     const { onOpenCitation } = renderReply(ANSWER_REPLY);
 
-    await user.click(screen.getByRole("button", { name: /Sales Cloud Enterprise/ }));
+    await user.click(screen.getByRole("button", { name: "Open source 2" }));
 
     expect(onOpenCitation).toHaveBeenCalledTimes(1);
     expect(onOpenCitation).toHaveBeenCalledWith(ANSWER_REPLY.citations[1]);
+  });
+
+  it("answer: with no citations, the actions still render as a plain row", () => {
+    const { container } = renderReply({ ...ANSWER_REPLY, citations: [] });
+
+    expect(container.querySelector(".citation-card")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toBeInTheDocument();
   });
 
   it("answer: clicking a follow-up calls onFollowUp with its question", async () => {
@@ -163,6 +175,68 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
   });
 });
 
+// ADR-030: the interview -- one clarifying question with chips, answered by key.
+describe("ReplyBody interview (ADR-030)", () => {
+  const INTERVIEW: Reply = {
+    kind: "interview",
+    prompt: "Before I answer, one quick check.",
+    answered: false,
+    messageId: "msg-7",
+    questions: [
+      {
+        key: "interpretation",
+        prompt: "Which of these do you mean?",
+        presentation: "choice",
+        allowFreeText: true,
+        options: [
+          { key: "portfolio-overview", label: "The most critical contracts and where we can save", hint: null },
+          { key: "total-spend", label: "Our total annual spend across contracts", hint: null },
+          { key: "web-research", label: "Search the public web for market practice (asks first)", hint: "Nothing from your contracts leaves Raffa." },
+        ],
+      },
+    ],
+  };
+
+  it("renders the lead-in, the question and one chip per option, plus the free-text hint", () => {
+    const { container } = renderReply(INTERVIEW);
+
+    expect(container.querySelector('[data-reply-kind="interview"]')).not.toBeNull();
+    expect(screen.getByText("Before I answer, one quick check.")).toBeInTheDocument();
+    expect(screen.getByText("Which of these do you mean?")).toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: /Search the public web/ })).toHaveAttribute("title", "Nothing from your contracts leaves Raffa.");
+    expect(screen.getByText("Or just type your answer below.")).toBeInTheDocument();
+    expect(container.querySelector(".abstain-block")).toBeNull();
+    expect(container.querySelector(".citation-card")).toBeNull();
+  });
+
+  it("clicking a chip reports the question key and the option -- never a label lookup", async () => {
+    const user = userEvent.setup();
+    const onInterviewOption = vi.fn();
+    render(
+      <MemoryRouter>
+        <ReplyBody reply={INTERVIEW} onOpenCitation={vi.fn()} onFollowUp={vi.fn()} onInterviewOption={onInterviewOption} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /total annual spend/ }));
+
+    expect(onInterviewOption).toHaveBeenCalledTimes(1);
+    const [reply, questionKey, option] = onInterviewOption.mock.calls[0];
+    expect(reply).toBe(INTERVIEW);
+    expect(questionKey).toBe("interpretation");
+    expect(option.key).toBe("total-spend");
+  });
+
+  it("an answered interview keeps its chips visible but disabled, and drops the free-text hint", () => {
+    const { container } = renderReply({ ...INTERVIEW, answered: true });
+
+    expect(container.querySelector('.reply-interview[data-answered="true"]')).not.toBeNull();
+    expect(screen.getAllByRole("button").every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.queryByText("Or just type your answer below.")).toBeNull();
+  });
+});
+
 // Task E25/F05/US02/T01 (abstain-recovery-web; parent story us-02-abstain-recovery-web
 // AC-1/AC-2/AC-3; ADR-024 "every abstain has a clickable next step", ADR-019 native link). The
 // abstain test above (AC-3, "the only place that block appears") predates the recovery action and
@@ -198,5 +272,29 @@ describe("ReplyBody abstain recovery action (task E25/F05/US02/T01)", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].textContent).toContain("Nothing in the 0 validated contract(s) supports a reliable answer.");
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+describe("ReplyBody web research answer (ADR-030)", () => {
+  it("shows the unverified banner and the web section for a web answer", () => {
+    const { container } = renderReply({
+      kind: "answer",
+      answerMarkdown: "Public, unverified: a 5-10% uplift cap is common [1].",
+      citations: [{ n: 1, corpus: "web", title: "example.com · SaaS renewals", subtitle: null, snippet: "5-10% uplift cap", href: "https://example.com/a" }],
+      actions: [],
+      followUps: [],
+      unverifiedWeb: true,
+    });
+
+    expect(container.querySelector('[data-reply-kind="answer"][data-unverified="true"]')).not.toBeNull();
+    expect(screen.getByRole("note")).toHaveTextContent("Public web · not verified.");
+    expect(container.querySelector('[data-section="web"]')).not.toBeNull();
+  });
+
+  it("shows no banner on an ordinary answer", () => {
+    const { container } = renderReply(ANSWER_REPLY);
+
+    expect(container.querySelector(".reply-unverified-banner")).toBeNull();
+    expect(container.querySelector("[data-unverified]")).toBeNull();
   });
 });

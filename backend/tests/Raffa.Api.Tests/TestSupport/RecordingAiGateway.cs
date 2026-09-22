@@ -55,6 +55,13 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
         return inner.EmbedAsync(request, cancellationToken);
     }
 
+    public Task<Result<AiResearchResult>> ResearchAsync(
+        AiResearchRequest request, CancellationToken cancellationToken = default)
+    {
+        _calls.Add(nameof(ResearchAsync));
+        return inner.ResearchAsync(request, cancellationToken);
+    }
+
     public Task<Result<AiAnswerResult>> AnswerAsync(
         AiAnswerRequest request, CancellationToken cancellationToken = default)
     {
