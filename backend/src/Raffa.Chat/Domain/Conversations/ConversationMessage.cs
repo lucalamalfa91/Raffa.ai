@@ -58,5 +58,14 @@ public sealed class ConversationMessage : TenantScopedEntity
     /// input itself.</summary>
     public string? InputHash { get; set; }
 
+    /// <summary>
+    /// The reply's structured half (ADR-030 D2; <c>Application.Reply.ReplyPayload</c> serialized
+    /// by <c>ReplyPayloadJson</c>): the drafted email, the capability gap, the feedback offer or
+    /// the feedback result. <see langword="null"/> for every turn that carries none — which is
+    /// every turn written before ADR-030, and every plain answer since. Same "already-rendered
+    /// content, never the pack" rule as <see cref="Markdown"/> (ADR-011).
+    /// </summary>
+    public string? PayloadJson { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 }

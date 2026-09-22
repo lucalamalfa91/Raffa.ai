@@ -4,6 +4,7 @@ using System.Text.Json;
 using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.SharedKernel;
@@ -77,6 +78,7 @@ public static class ConversationsEndpointExtensions
         endpoints.MapGet("/api/conversations/{id}", GetConversationAsync);
         endpoints.MapDelete("/api/conversations/{id}", DeleteConversationAsync);
         endpoints.MapPost("/api/conversations/{id}/messages", PostConversationMessageAsync);
+        endpoints.MapPost("/api/conversations/{id}/feedback", PostConversationFeedbackAsync);
         return endpoints;
     }
 
@@ -355,17 +357,7 @@ public static class ConversationsEndpointExtensions
             .ConfigureAwait(false);
 
         var raffaMessage = await conversationService.AppendMessageAsync(
-                tenantId, userId, conversationId,
-                new AppendConversationMessageRequest(
-                    ConversationRole.Raffa,
-                    ToMessageKind(reply.Kind),
-                    reply.AnswerMarkdown,
-                    JsonSerializer.Serialize(reply.Citations.Select(ToCitationJson)),
-                    JsonSerializer.Serialize(reply.Actions.Select(ToActionJson)),
-                    reply.Provenance.ModelId,
-                    reply.Provenance.PromptVersion,
-                    reply.Provenance.InputHash),
-                cancellationToken)
+                tenantId, userId, conversationId, ToAppendRequest(reply), cancellationToken)
             .ConfigureAwait(false);
 
         var messageId = raffaMessage?.MessageId ?? conversationId;
@@ -386,8 +378,104 @@ public static class ConversationsEndpointExtensions
                 inputHash = reply.Provenance.InputHash,
             },
             followUps = reply.FollowUps,
+            // ADR-030 D2: the structured half (drafted email / gap / feedback offer or result), or null.
+            payload = reply.Payload is null ? (JsonElement?)null : ReplyPayloadJson.ToJsonElement(reply.Payload),
         };
     }
+
+    /// <summary>The one mapping from a <see cref="CopilotReply"/> onto the persisted Raffa turn —
+    /// shared by <see cref="AskAndAppendAsync"/> and the feedback confirmation
+    /// (<see cref="PostConversationFeedbackAsync"/>), so the two never drift on how citations,
+    /// actions and the ADR-030 payload are serialized.</summary>
+    private static AppendConversationMessageRequest ToAppendRequest(CopilotReply reply) =>
+        new(
+            ConversationRole.Raffa,
+            ToMessageKind(reply.Kind),
+            reply.AnswerMarkdown,
+            JsonSerializer.Serialize(reply.Citations.Select(ToCitationJson)),
+            JsonSerializer.Serialize(reply.Actions.Select(ToActionJson)),
+            reply.Provenance.ModelId,
+            reply.Provenance.PromptVersion,
+            reply.Provenance.InputHash,
+            reply.Payload is null ? null : ReplyPayloadJson.Serialize(reply.Payload));
+
+    /// <summary>
+    /// `POST /api/conversations/{id}/feedback` (ADR-030 D5): the in-chat feedback card's one call.
+    /// Same 401/400/404 ladder as <see cref="PostConversationMessageAsync"/>; then the body is
+    /// validated against the fixed interview vocabulary (<see cref="FeedbackAnswers.Validate"/>),
+    /// <see cref="FeedbackService.SubmitAsync"/> stores the request, publishes it best-effort and
+    /// builds the confirmation turn, which this handler persists exactly like a reply and returns
+    /// as `message` — so the client appends it to the thread and a resumed conversation shows the
+    /// same turn. 409 when the same offer was already answered (the existing row's facts, no new
+    /// turn).
+    /// </summary>
+    private static async Task<IResult> PostConversationFeedbackAsync(
+        string id,
+        PostConversationFeedbackRequest? request,
+        HttpRequest httpRequest,
+        ConversationService conversationService,
+        FeedbackService feedbackService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+        var userId = caller.Identity!;
+
+        if (!Guid.TryParse(id, out var conversationGuid))
+        {
+            return Results.BadRequest("The conversation id in the route must be a GUID.");
+        }
+
+        if (request is null || !Guid.TryParse(request.MessageId, out var messageGuid))
+        {
+            return Results.BadRequest("A 'messageId' (GUID of the Raffa turn carrying the feedback offer) is required.");
+        }
+
+        var (answers, error) = FeedbackAnswers.Validate(request.Answers?.What, request.Answers?.Frequency, request.Answers?.Importance);
+        if (answers is null)
+        {
+            return Results.BadRequest(error);
+        }
+
+        var conversationId = new EntityId(conversationGuid);
+        var submitted = await feedbackService
+            .SubmitAsync(tenantId, userId, conversationId, new EntityId(messageGuid), answers, cancellationToken)
+            .ConfigureAwait(false);
+
+        switch (submitted.Status)
+        {
+            case FeedbackSubmitStatus.NotFound:
+                return Results.NotFound();
+            case FeedbackSubmitStatus.InvalidMessage:
+                return Results.BadRequest("'messageId' must name a Raffa turn of this conversation that carries a feedback offer.");
+            case FeedbackSubmitStatus.AlreadySubmitted:
+                return Results.Conflict(ToFeedbackResponse(submitted.Request!, message: null));
+        }
+
+        var confirmation = await conversationService.AppendMessageAsync(
+                tenantId, userId, conversationId, ToAppendRequest(submitted.Confirmation!), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Results.Created(
+            $"/api/conversations/{conversationId.Value}/feedback",
+            ToFeedbackResponse(submitted.Request!, confirmation is null ? null : ToMessageResponse(confirmation)));
+    }
+
+    private static object ToFeedbackResponse(FeatureRequestResult request, object? message) => new
+    {
+        feedbackId = request.FeedbackId.Value,
+        status = request.Status,
+        issueNumber = request.IssueNumber,
+        issueUrl = request.IssueUrl,
+        message,
+    };
 
     private static object ToCitationJson(ReplyCitation citation) => new
     {
@@ -413,6 +501,7 @@ public static class ConversationsEndpointExtensions
         {
             CopilotActionKind.Navigate => "navigate",
             CopilotActionKind.Upload => "upload",
+            CopilotActionKind.External => "external",
             _ => throw new ArgumentOutOfRangeException(nameof(action), action.Kind, "Unknown CopilotActionKind."),
         },
     };
@@ -428,6 +517,7 @@ public static class ConversationsEndpointExtensions
         ReplyKind.Abstain => ConversationMessageKind.Abstain,
         ReplyKind.Redirect => ConversationMessageKind.Redirect,
         ReplyKind.Refusal => ConversationMessageKind.Refusal,
+        ReplyKind.Draft => ConversationMessageKind.Draft,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ReplyKind."),
     };
     /// <summary>Same "reject, don't clamp" convention as
@@ -482,6 +572,8 @@ public static class ConversationsEndpointExtensions
         promptVersion = message.PromptVersion,
         inputHash = message.InputHash,
         createdAt = message.CreatedAt,
+        // ADR-030 D2: the stored structured half, re-parsed so the wire carries real JSON, or null.
+        payload = string.IsNullOrWhiteSpace(message.PayloadJson) ? (JsonElement?)null : ParseJsonObject(message.PayloadJson),
     };
 
     /// <summary>ADR-024 §6's wire literals — see <see cref="ConversationRole"/>'s own doc comment
@@ -502,6 +594,7 @@ public static class ConversationsEndpointExtensions
         ConversationMessageKind.Abstain => "abstain",
         ConversationMessageKind.Redirect => "redirect",
         ConversationMessageKind.Refusal => "refusal",
+        ConversationMessageKind.Draft => "draft",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ConversationMessageKind."),
     };
 
@@ -518,6 +611,14 @@ public static class ConversationsEndpointExtensions
         return document.RootElement.Clone();
     }
 
+    /// <summary>Same detach-from-the-document convention as <see cref="ParseJsonArray"/>, for the
+    /// ADR-030 payload object.</summary>
+    private static JsonElement ParseJsonObject(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
     /// <summary>
     /// `POST /api/conversations` request body (AC-2: `{ scopeContractId? }`). A nested type so
     /// `Raffa.ArchitectureTests.DependencyDirectionTests.Host_must_not_contain_domain_types`
@@ -527,6 +628,13 @@ public static class ConversationsEndpointExtensions
     /// failure for an un-parseable route/body <see cref="Guid"/>.
     /// </summary>
     public sealed record CreateConversationRequest(string? ScopeContractId = null);
+
+    /// <summary>`POST /api/conversations/{id}/feedback` request body (ADR-030 D5):
+    /// `{ messageId, answers: { what, frequency, importance } }`. Strings, not typed keys, for the
+    /// same "this file's own 400 message" reason as <see cref="CreateConversationRequest"/>.</summary>
+    public sealed record PostConversationFeedbackRequest(string? MessageId = null, FeedbackAnswersRequest? Answers = null);
+
+    public sealed record FeedbackAnswersRequest(string? What = null, string? Frequency = null, string? Importance = null);
 
     /// <summary>
     /// `POST /api/conversations/{id}/messages` request body (ADR-024 §6: <c>{ question }</c>) — a

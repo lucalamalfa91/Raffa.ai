@@ -2,7 +2,7 @@ namespace Raffa.Chat.Domain;
 
 /// <summary>
 /// The fixed domain-gate label set (task E13/F06/US01/T01, ask-engine; ADR-024 "engine pipeline";
-/// `inputs/requirements.md` R-ASK-02). Every turn is classified into exactly one of these six
+/// `inputs/requirements.md` R-ASK-02). Every turn is classified into exactly one of these seven
 /// labels before a planner, a pack, or a model ever runs — <see cref="OffDomain"/> and
 /// <see cref="Greeting"/> read identically downstream (R-ASK-02's own table: "warm decline +
 /// portfolio hook... no retrieval") but are kept as distinct labels because they are detected by
@@ -34,4 +34,12 @@ public enum GateLabel
     /// <summary>Everything else: a real procurement/contract question that must go through the
     /// planner, the context pack and the guarded answer role.</summary>
     InDomain,
+
+    /// <summary>Asks Raffa to perform an operation it cannot do yet — send an email, set a
+    /// reminder, export a file, raise a purchase order (ADR-030 D1;
+    /// <c>Application.Gaps.CapabilityGapCatalog</c>). Answered with an honest preface in the
+    /// question's language plus the nearest real alternative (a drafted negotiation email, or a
+    /// deep link) and an offer to report the gap — never retrieval-then-abstain, never the
+    /// feature tour. Checked after <see cref="Legal"/> and before <see cref="Capability"/>.</summary>
+    CapabilityGap,
 }

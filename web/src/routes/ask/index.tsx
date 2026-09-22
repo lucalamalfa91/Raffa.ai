@@ -5,6 +5,7 @@ import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { useValidatedContractCount } from "../../components/shell/useValidatedContractCount";
 import { usePollBudget } from "../../components/shell/usePollBudget";
 import ReplyBody from "./reply/ReplyBody";
+import type { FeedbackAnswers } from "./reply/replyTypes";
 import type { ReplyCitation } from "./reply/replyTypes";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
@@ -20,7 +21,9 @@ import {
   NEW_CHAT_INTRO,
   THINKING_COPY,
   TRANSPORT_ERROR_REASON,
+  buildRaffaTurnFromMessage,
   buildRaffaTurnFromReply,
+  feedbackSubmittedMessageIds,
   buildErrorTurn,
   buildOffCopy,
   buildScopedBrief,
@@ -143,6 +146,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
+  // ADR-030 D5: the offers answered in this session (the resumed ones come from the thread itself,
+  // `feedbackSubmittedMessageIds`), so a card never re-opens after "Send".
+  const [feedbackDone, setFeedbackDone] = useState<ReadonlySet<string>>(() => new Set());
   const [citationNotice, setCitationNotice] = useState<CitationNoticeState | null>(null);
   const [marketPanelRecordId, setMarketPanelRecordId] = useState<string | null>(null);
   const askedInitialQuery = useRef(false);
@@ -328,6 +334,32 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     // establishes for this app.
     [apiClient, workspace?.id, routeConversationId, scopeContractId, navigate],
   );
+
+  /**
+   * ADR-030 D5: the feedback card's one call. On success the server has stored the request,
+   * opened the issue when configured, and appended the confirmation turn -- appended here too so
+   * the live thread matches what a resume would show. A 409 (already answered) is also `ok`, with
+   * no new turn.
+   */
+  const submitFeedback = useCallback(
+    async (messageId: string, answers: FeedbackAnswers): Promise<{ ok: boolean }> => {
+      const openConversationId = routeConversationId ?? createdConversationId.current;
+      if (!workspace || openConversationId === null) return { ok: false };
+
+      const result = await apiClient.postConversationFeedback(workspace.id, openConversationId, { messageId, answers });
+      if (!result.ok) return { ok: false };
+
+      setFeedbackDone((previous) => new Set(previous).add(messageId));
+      const message = result.result?.message ?? null;
+      if (message) {
+        setTurns((previous) => [...previous, buildRaffaTurnFromMessage(message)]);
+      }
+      return { ok: true };
+    },
+    [apiClient, workspace?.id, routeConversationId],
+  );
+
+  const submittedFromThread = feedbackSubmittedMessageIds(turns);
 
   // AC-1 / GlobalAskBar's own contract: a query typed into the global Ask bar arrives here as
   // router state and is asked automatically, exactly once, and only while this is genuinely a new
@@ -535,6 +567,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                         reply={applyCitationPreviews(turn.reply, previewUrls)}
                         onOpenCitation={(citation) => openCitation(turn, citation)}
                         onFollowUp={ask}
+                        messageId={turn.messageId}
+                        onSubmitFeedback={submitFeedback}
+                        feedbackDone={turn.messageId !== null && (feedbackDone.has(turn.messageId) || submittedFromThread.has(turn.messageId))}
                       />
                       {citationNotice !== null && citationNotice.turnId === turn.id && (
                         <p className="hint" role="status">

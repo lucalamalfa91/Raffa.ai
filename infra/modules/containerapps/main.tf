@@ -62,6 +62,18 @@ resource "azurerm_container_app" "api" {
     identity            = var.workload_identity_id
   }
 
+  # ADR-030 D5 (Ask Raffa feedback loop): present only when this environment
+  # has a token (modules/keyvault count-gates the secret) -- API app only.
+  dynamic "secret" {
+    for_each = var.github_feedback_token_secret_id == null ? [] : [1]
+
+    content {
+      name                = "gh-feedback"
+      key_vault_secret_id = var.github_feedback_token_secret_id
+      identity            = var.workload_identity_id
+    }
+  }
+
   template {
     min_replicas = 0
     # ADR-005 w15 footer §2: default 3, up from 1 -- not cosmetic. A15-1
@@ -246,6 +258,38 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "Invitations__GuestProvisioning__TenantId"
         value = var.azuread_tenant_id
+      }
+
+      # ADR-030 D5 (Ask Raffa feedback loop): the environment name every
+      # published issue carries, the product switch (ANDed with the token's
+      # presence so an environment without a PAT never fails closed at
+      # startup), the repository, and -- only when a token exists -- the
+      # token itself from the gh-feedback secret. Same "product switch,
+      # not provisioning gate" posture as Invitations__Mail__Enabled above.
+      env {
+        name  = "Feedback__Environment"
+        value = var.environment
+      }
+
+      env {
+        name  = "Feedback__GitHub__Enabled"
+        value = tostring(var.feedback_github_enabled && var.github_feedback_token_secret_id != null)
+      }
+
+      env {
+        name  = "Feedback__GitHub__Repository"
+        value = var.feedback_github_repository
+      }
+
+      # One static env block, never a second `dynamic "env"` (scripts/
+      # foundry_connection_verify.py pins exactly one per app, the model map):
+      # with a token secret the value comes from the gh-feedback handle;
+      # without one it is an empty literal the API never reads, because
+      # Feedback__GitHub__Enabled above is false in that same case.
+      env {
+        name        = "Feedback__GitHub__Token"
+        secret_name = var.github_feedback_token_secret_id == null ? null : "gh-feedback"
+        value       = var.github_feedback_token_secret_id == null ? "" : null
       }
 
       # Task E16/F01/US01/T01 (NW-05, ADR-016 w15 footer clause 15):

@@ -21,7 +21,19 @@ export default function ActionRow({ actions }: ActionRowProps) {
   return (
     <div className="reply-actions">
       {actions.map((action) =>
-        isDocumentViewerHref(action.href) ? (
+        action.external ? (
+          // ADR-030 D6: an absolute https URL (the GitHub issue a feedback submission opened) --
+          // a plain outbound anchor in a new tab, never a router <Link> to an off-app URL.
+          <a
+            key={`${action.kind}-${action.label}`}
+            href={action.href}
+            className={`btn btn-${action.kind}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {action.label}
+          </a>
+        ) : isDocumentViewerHref(action.href) ? (
           <DocumentViewerLink key={`${action.kind}-${action.label}`} to={action.href} className={`btn btn-${action.kind}`}>
             {action.label}
           </DocumentViewerLink>

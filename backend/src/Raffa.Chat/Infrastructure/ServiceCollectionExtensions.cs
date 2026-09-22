@@ -3,6 +3,8 @@ using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Council;
+using Raffa.Chat.Application.Drafting;
+using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
@@ -96,6 +98,18 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new CouncilOptions());
         services.AddScoped<NegotiationCouncil>();
 
+        // The drafting workflow (Application.Drafting, ADR-030 D3): the offer planner and the
+        // negotiation writer behind a `draft` reply. Same TryAdd-options / Scoped-service shape as
+        // the council above; the host binds Chat:Drafting before calling this.
+        services.TryAddSingleton(new DraftingOptions());
+        services.AddScoped<NegotiationDraftingWorkflow>();
+
+        // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
+        // GitHub publisher and binds Feedback:* before calling this when a token is configured;
+        // otherwise these defaults keep every submission "recorded" with no outbound call.
+        services.TryAddSingleton(new FeedbackOptions());
+        services.TryAddScoped<IFeatureRequestPublisher, NullFeatureRequestPublisher>();
+
         // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
         // dependency at all — this project has no PackageReference for
         // Microsoft.Extensions.Configuration.Binder (unlike Raffa.Api/Program.cs, a full
@@ -124,6 +138,9 @@ public static class ServiceCollectionExtensions
             // AddDbContext above) rather than a second, independently-tracked context — same
             // reason every DbContext-backed service in this codebase is Scoped, not Singleton.
             services.AddScoped<ConversationService>();
+
+            // ADR-030 D5: the feedback write path shares the request's own ChatDbContext.
+            services.AddScoped<FeedbackService>();
         }
 
         return services;

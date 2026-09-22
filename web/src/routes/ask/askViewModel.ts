@@ -6,11 +6,12 @@ import type {
   ConversationCitationBody,
   ConversationDetailBody,
   ConversationMessageBody,
+  ConversationPayloadBody,
   ConversationReplyBody,
   ConversationReplyKind,
   DocumentListPageBody,
 } from "../../api/client";
-import type { CitationCorpus, Reply, ReplyAction, ReplyCitation } from "./reply/replyTypes";
+import type { CitationCorpus, FeedbackOffer, FeedbackResult, Reply, ReplyAction, ReplyCitation, ReplyGap } from "./reply/replyTypes";
 import type { WorkspaceRole } from "../../components/shell/navItems";
 import { formatSupplier, getContractTypeLabel } from "../contracts/portfolioTableFormatters";
 
@@ -127,7 +128,11 @@ export function toReplyActionKind(index: number): ReplyAction["kind"] {
 }
 
 export function mapConversationAction(body: ConversationActionBody, index: number): ReplyAction {
-  return { label: body.label, href: body.href, kind: toReplyActionKind(index) };
+  // ADR-030 D6: an `external` action keeps its position-derived prominence but is flagged so
+  // `ActionRow` renders a real outbound anchor instead of a router `<Link>`.
+  return body.kind === "external"
+    ? { label: body.label, href: body.href, kind: toReplyActionKind(index), external: true }
+    : { label: body.label, href: body.href, kind: toReplyActionKind(index) };
 }
 
 /** The common shape every turn boils down to, whichever wire object it came from (a live
@@ -140,6 +145,24 @@ interface NormalizedTurnBody {
   citations: readonly ConversationCitationBody[];
   actions: readonly ConversationActionBody[];
   followUps: readonly string[];
+  /** ADR-030 D2: the wire's own `payload` (live reply and stored message alike), or `null`. */
+  payload: ConversationPayloadBody | null;
+}
+
+/** The wire's `payload.gap`, `payload.feedbackOffer` and `payload.feedbackResult` are already the
+ * presentational shapes `./reply/replyTypes.ts` declares (the server localises every string), so
+ * these pass through structurally -- kept as named readers so a future wire change has one place
+ * to land. */
+function payloadGap(payload: ConversationPayloadBody | null): ReplyGap | null {
+  return payload?.gap ?? null;
+}
+
+function payloadFeedbackOffer(payload: ConversationPayloadBody | null): FeedbackOffer | null {
+  return payload?.feedbackOffer ?? null;
+}
+
+function payloadFeedbackResult(payload: ConversationPayloadBody | null): FeedbackResult | null {
+  return payload?.feedbackResult ?? null;
 }
 
 function buildReply(turn: NormalizedTurnBody): Reply {
@@ -151,13 +174,42 @@ function buildReply(turn: NormalizedTurnBody): Reply {
         citations: turn.citations.map(mapConversationCitation),
         actions: turn.actions.map(mapConversationAction),
         followUps: turn.followUps,
+        feedbackResult: payloadFeedbackResult(turn.payload),
       };
+    case "draft": {
+      // ADR-030 D2. A stored row whose payload somehow lost its draft degrades to a plain answer
+      // carrying the preface -- a malformed turn never blanks the thread.
+      const draft = turn.payload?.draft ?? null;
+      const gap = payloadGap(turn.payload);
+      if (draft === null || gap === null) {
+        return {
+          kind: "answer",
+          answerMarkdown: turn.text,
+          citations: turn.citations.map(mapConversationCitation),
+          actions: turn.actions.map(mapConversationAction),
+          followUps: turn.followUps,
+        };
+      }
+      return {
+        kind: "draft",
+        answerMarkdown: turn.text,
+        draft: { subject: draft.subject, body: draft.body },
+        gap,
+        feedbackOffer: payloadFeedbackOffer(turn.payload),
+        citations: turn.citations.map(mapConversationCitation),
+        actions: turn.actions.map(mapConversationAction),
+        followUps: turn.followUps,
+      };
+    }
     case "redirect":
     case "refusal":
       return {
         kind: turn.kind,
         answerMarkdown: turn.text,
         actions: turn.actions.map(mapConversationAction),
+        followUps: turn.followUps,
+        gap: payloadGap(turn.payload),
+        feedbackOffer: payloadFeedbackOffer(turn.payload),
       };
     case "abstain":
       // The backend's own abstain branch stores the reason *as* answerMarkdown/markdown
@@ -187,6 +239,7 @@ export function mapConversationReplyToReply(body: ConversationReplyBody): Reply 
     citations: body.citations,
     actions: body.actions,
     followUps: body.followUps,
+    payload: body.payload,
   });
 }
 
@@ -202,6 +255,7 @@ export function mapConversationMessageToReply(message: ConversationMessageBody):
     citations: message.citations,
     actions: message.actions,
     followUps: [],
+    payload: message.payload,
   });
 }
 
@@ -218,7 +272,15 @@ export function mapConversationMessageToReply(message: ConversationMessageBody):
  * needs to act (a market citation's `recordId`) -- see that function's own doc comment. */
 export type AskTurnView =
   | { id: string; role: "you"; text: string }
-  | { id: string; role: "raffa"; reply: Reply; wireCitations: readonly ConversationCitationBody[] };
+  | {
+      id: string;
+      role: "raffa";
+      reply: Reply;
+      wireCitations: readonly ConversationCitationBody[];
+      /** ADR-030 D5: the server's own message id (`messageId` on a live reply, `id` on a stored
+       * message) -- what `POST …/feedback` names; `null` for a client-built error turn. */
+      messageId: string | null;
+    };
 
 let turnIdCounter = 0;
 
@@ -236,11 +298,30 @@ export function buildYouTurn(id: string, text: string): AskTurnView {
 }
 
 export function buildRaffaTurnFromReply(id: string, body: ConversationReplyBody): AskTurnView {
-  return { id, role: "raffa", reply: mapConversationReplyToReply(body), wireCitations: body.citations };
+  return { id, role: "raffa", reply: mapConversationReplyToReply(body), wireCitations: body.citations, messageId: body.messageId };
 }
 
 export function buildRaffaTurnFromMessage(message: ConversationMessageBody): AskTurnView {
-  return { id: message.id, role: "raffa", reply: mapConversationMessageToReply(message), wireCitations: message.citations };
+  return {
+    id: message.id,
+    role: "raffa",
+    reply: mapConversationMessageToReply(message),
+    wireCitations: message.citations,
+    messageId: message.id,
+  };
+}
+
+/** ADR-030 D5: the ids of every Raffa turn whose feedback offer was already answered -- read off
+ * the confirmation turns' own `feedbackResult.forMessageId`, so a resumed conversation hides the
+ * card the same way the live one did after submitting. */
+export function feedbackSubmittedMessageIds(turns: readonly AskTurnView[]): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const turn of turns) {
+    if (turn.role === "raffa" && turn.reply.kind === "answer" && turn.reply.feedbackResult) {
+      ids.add(turn.reply.feedbackResult.forMessageId);
+    }
+  }
+  return ids;
 }
 
 /** AC-5 "resume": every stored message, oldest first (the wire's own order, `GET
@@ -255,7 +336,7 @@ export function buildTurnsFromConversation(detail: ConversationDetailBody): read
 /** A transport/network failure or a genuine 400/404 -- distinct from an honest AI abstention, the
  * same rule the V1 `askViewModel.ts#ChatMessageKind` this file replaces already documented. */
 export function buildErrorTurn(id: string, reason: string): AskTurnView {
-  return { id, role: "raffa", reply: { kind: "error", reason }, wireCitations: [] };
+  return { id, role: "raffa", reply: { kind: "error", reason }, wireCitations: [], messageId: null };
 }
 
 export const TRANSPORT_ERROR_REASON =
@@ -471,6 +552,13 @@ export function buildStarterGroups(supplierName: string | null): readonly Starte
 }
 
 /** screens-v2.md #2 "Thinking": V1 copy retained verbatim until the reply streams. */
+/** ADR-030 D2: the draft card's English chrome (the email body itself arrives in the question's
+ * language from the server). */
+export const DRAFT_CARD_TITLE = "Draft email";
+export const DRAFT_SUBJECT_LABEL = "Subject";
+export const COPY_EMAIL_LABEL = "Copy email";
+export const COPIED_LABEL = "Copied";
+
 export const THINKING_COPY = "Authorising scope → detecting intent → retrieving evidence";
 
 // ---------------------------------------------------------------------------------------------

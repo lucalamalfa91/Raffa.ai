@@ -219,3 +219,136 @@ button.citation-card:hover .citation-card-open {
 .reply-followup:hover {
   color: var(--color-accent);
 }
+
+/* ---- Draft email (ADR-030 D2) ---------------------------------------------- */
+
+.reply-draft {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 720px;
+  border: 1px solid var(--color-divider);
+  background: #fff;
+}
+
+.reply-draft-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-divider);
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.reply-draft-copy {
+  font-size: 12px;
+  padding: 4px 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.reply-draft-subject {
+  margin: 0;
+  padding: 12px 18px 0;
+  font-size: 13px;
+  font-weight: var(--weight-body-strong);
+}
+
+.reply-draft-subject-label {
+  color: var(--color-neutral-600);
+  font-weight: normal;
+}
+
+.reply-draft-body {
+  margin: 0;
+  padding: 12px 18px 16px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Feedback card (ADR-030 D5) -------------------------------------------- */
+
+.reply-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 72ch;
+  padding: 12px 14px;
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-accent-100);
+  font-size: 13px;
+}
+
+.reply-feedback p {
+  margin: 0;
+}
+
+.reply-feedback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reply-feedback-actions .btn {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.reply-feedback-question {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reply-feedback-notice,
+.reply-feedback-step {
+  font-size: 11px;
+  color: var(--color-neutral-600);
+}
+
+.reply-feedback-label {
+  font-weight: var(--weight-body-strong);
+}
+
+.reply-feedback-text {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.reply-feedback-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reply-feedback-chip {
+  padding: 5px 10px;
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.reply-feedback-chip.is-selected {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.reply-feedback-error {
+  color: var(--color-accent);
+}
+
+.reply-feedback-status {
+  color: var(--color-neutral-700);
+}

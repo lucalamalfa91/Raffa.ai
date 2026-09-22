@@ -60,3 +60,17 @@ variable "acs_connection_string" {
   type        = string
   sensitive   = true
 }
+
+# ADR-030 D5 (Ask Raffa feedback loop): a fine-grained GitHub personal
+# access token with Issues: write on the one product repository, so the API
+# can open an issue for every feature request users file from the in-chat
+# feedback card. Set as a SENSITIVE workspace variable in each HCP
+# workspace, never in a .tf file (ADR-011). Empty (the default) means "no
+# token in this environment": the secret is not created at all (Key Vault
+# refuses an empty value) and the API keeps every request stored-only.
+variable "github_feedback_token" {
+  description = "Fine-grained GitHub PAT (Issues: write on the product repo) written to this vault as github-feedback-token. Empty = no secret, feedback stays stored-only (ADR-030 D5)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

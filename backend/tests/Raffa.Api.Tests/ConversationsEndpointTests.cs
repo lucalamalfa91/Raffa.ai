@@ -347,6 +347,9 @@ public sealed class ConversationsEndpointTests : IClassFixture<RaffaApiFactory>
         Assert.True(root.TryGetProperty("actions", out _));
         Assert.True(root.TryGetProperty("provenance", out _));
         Assert.True(root.TryGetProperty("followUps", out _));
+        // ADR-030 D2: the structured half, null for every turn that carries none.
+        Assert.True(root.TryGetProperty("payload", out var payload));
+        Assert.Equal(JsonValueKind.Null, payload.ValueKind);
         Assert.Equal(conversationId, root.GetProperty("conversationId").GetGuid());
         Assert.NotEqual(Guid.Empty, root.GetProperty("messageId").GetGuid());
 

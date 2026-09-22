@@ -244,10 +244,22 @@ sequenceDiagram
   SPA->>API: POST /api/conversations/:id/messages
   rect rgb(224, 242, 254)
     Note over API: Authorization first — tenant, user, role — then scope id wins over same-name lookup
-    API->>API: Domain gate — greeting · off-domain · legal · capability · needs-document · in-domain
+    API->>API: Domain gate — greeting · off-domain · legal · capability gap · capability · needs-document · in-domain
     opt ambiguous turn
       API->>F: classify with a fixed label set
       F-->>API: label + confidence
+    end
+    alt capability gap (ADR-030) — "send an email", "set a reminder", "export to Excel", "raise a PO"
+      Note over API: honest preface in the question's language + the nearest alternative + a feedback offer
+      alt email/letter gap with a resolved contract
+        API->>PG: the Q3 pack — contract facts, levers, clauses, playbook (RLS)
+        API->>F: council analysts + strategist · offer planner · negotiation writer (analyst role, strict JSON)
+        F-->>API: subject · body · usedCitationKeys — no inline [n]
+        API->>API: DraftGuard — no marker, no link, no id, every number in the pack · retry once · else template
+        API-->>SPA: kind draft · preface · payload.draft · citations · Renewals / Contract 360 actions · feedbackOffer
+      else reminder / export / PO, or no contract to draft for
+        API-->>SPA: kind redirect · preface · Renewals / Portfolio / Contract 360 · feedbackOffer (+ one supplier per follow-up)
+      end
     end
     API->>API: Planner — StructuredFact, Clause, MarketCompare, RenewalStrategy, PortfolioStrategy, PortfolioMarketPosition, …
     opt notice question
@@ -280,8 +292,15 @@ sequenceDiagram
   opt RenewalStrategy with a resolved contract
     API->>PG: upsert ranked negotiation TODOs on that renewal
   end
-  API-->>SPA: kind · answerMarkdown · citations · actions · provenance · followUps
+  API-->>SPA: kind · answerMarkdown · citations · actions · provenance · followUps · payload
   SPA-->>U: quote on the card · Open contract / Open at this span overlay · no guid in prose
+  opt feedback card answered (ADR-030 D5)
+    SPA->>API: POST /api/conversations/:id/feedback — messageId + three answers
+    API->>PG: feature_request row (RLS) — stored first
+    API-->>API: GitHub issue, best-effort — gap · answers · language · environment · workspace hash, never the question
+    API->>PG: append the confirmation turn — payload.feedbackResult, an external action
+    API-->>SPA: 201 · status · issue number · the confirmation turn
+  end
 ```
 
 ---
@@ -299,6 +318,7 @@ stateDiagram-v2
     Classify --> Greeting
     Classify --> OffDomain
     Classify --> Legal
+    Classify --> CapabilityGap
     Classify --> Capability
     Classify --> NeedsDocument
     Classify --> InDomain
@@ -308,6 +328,8 @@ stateDiagram-v2
   NeedsDocument --> Redirect
   Legal --> Refusal
   Capability --> Catalog
+  CapabilityGap --> Draft: email gap with a contract — planner + writer, DraftGuard, template fallback
+  CapabilityGap --> Redirect: reminder / export / PO, or no contract to draft for
   InDomain --> Planner
   Planner --> Pack: fixed intents
   Pack --> Answer: Foundry answer, no tools
@@ -321,11 +343,16 @@ stateDiagram-v2
   Catalog --> [*]: feature cards + deep links
   Reply --> [*]: markdown + citations + actions
   Abstain --> [*]: insufficient evidence, the pack's facts shown
+  Draft --> [*]: honest preface + the email verbatim + cited facts + feedback offer — never an abstain
 ```
 
-Four reply kinds, four layouts in the UI: `answer` (prose, cards,
-buttons), `redirect` and `refusal` (warm prose + one CTA), `abstain` (the
-accent-left block, only when there is truly nothing to stand on).
+Five reply kinds, five layouts in the UI: `answer` (prose, cards,
+buttons), `draft` (the preface, the email card with **Copy email**, cards,
+buttons, the feedback card — ADR-030), `redirect` and `refusal` (warm prose +
+one CTA; a capability-gap redirect adds one supplier per follow-up chip and
+the feedback card), `abstain` (the accent-left block, only when there is
+truly nothing to stand on). Every reply carries `payload` — the drafted
+email, the gap, the feedback offer or result — `null` when it carries none.
 
 A bound notice question never reaches Foundry. `PortfolioMarketPosition`
 is a planner destination (not Quote check) but has no pack yet — those
@@ -495,4 +522,7 @@ and no Foundry project (ADR-006, ADR-008, ADR-011).
 | "Companies of your size usually obtain…" | Market RAG `market_embedding` | Ingestion job (notes → embed role) | yes |
 | Opening / range / walk-away, criticality, strategy steps | Calculators — `Raffa.Insights`, `Raffa.Renewals`, `Raffa.Benchmark` | computed per turn from the rows above | yes |
 | "Open Renewals →", "Upload in Documents" | Capability catalog — `Raffa.Chat` | versioned in code | yes |
+| The drafted email's numbers, dates and asks (ADR-030) | The same pack — copied by the negotiation writer, or by the template | offer planner + writer (analyst role), guarded by `DraftGuard`/`NumericGuard`; template on failure | yes |
+| "I can't send an email from Raffa.ai yet, but…" and the feedback card | Capability-gap catalog — `Raffa.Chat` (IT/EN, versioned in code) | deterministic, in the question's language | yes |
+| "Open issue #123 →" | GitHub's own response to the feedback submission | server-authored `external` action, never the model | yes |
 | Anything else — the web, the model's memory | — | — | **never**: the guards abstain |

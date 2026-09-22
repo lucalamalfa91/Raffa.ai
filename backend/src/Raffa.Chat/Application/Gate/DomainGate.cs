@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Domain;
 
 namespace Raffa.Chat.Application.Gate;
@@ -183,6 +184,21 @@ public sealed class DomainGate
         if (LegalPattern.IsMatch(trimmed))
         {
             return new DomainGateResult(GateLabel.Legal, "matched the legal-advice lexicon.");
+        }
+
+        // ADR-030 D1: a request for an operation Raffa cannot perform (send an email, set a
+        // reminder, export a file, raise a PO) is recognised here, before the capability/how-to
+        // lexicon ("can you help me send an email" is not the feature tour) and before the planner
+        // ("an email based on the negotiation leverage" is not a savings turn). The named supplier
+        // is still extracted so the composition root can draft for that contract.
+        if (CapabilityGapCatalog.Match(trimmed) is { } gap)
+        {
+            var (gapCandidate, gapResolved) = ExtractSupplierCandidate(trimmed, knownSuppliers);
+            return new DomainGateResult(
+                GateLabel.CapabilityGap,
+                $"matched the capability-gap catalog ('{gap.Key}') before the capability/how-to lexicon (ADR-030).",
+                gapResolved ?? gapCandidate,
+                gap);
         }
 
         // "How do I cut costs by 40k this quarter?" / "come faccio a risparmiare 20k?" is a savings

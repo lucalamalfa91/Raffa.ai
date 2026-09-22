@@ -229,6 +229,7 @@ public sealed class ConversationService(
             ModelId = request.ModelId,
             PromptVersion = request.PromptVersion,
             InputHash = request.InputHash,
+            PayloadJson = request.PayloadJson,
             CreatedAt = now,
         };
 
@@ -420,5 +421,6 @@ public sealed class ConversationService(
             message.ModelId,
             message.PromptVersion,
             message.InputHash,
-            message.CreatedAt);
+            message.CreatedAt,
+            message.PayloadJson);
 }

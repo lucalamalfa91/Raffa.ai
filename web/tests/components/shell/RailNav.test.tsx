@@ -56,6 +56,7 @@ function mockApiClient(listConversations: ApiClient["listConversations"] = vi.fn
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null }),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),

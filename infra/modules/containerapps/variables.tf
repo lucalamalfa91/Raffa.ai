@@ -206,3 +206,26 @@ variable "guest_provisioning_enabled" {
   description = "Publishes Invitations__GuestProvisioning__Enabled = \"true\"|\"false\" on the API app. Mirrors modules/identity's own count-gated flag of the same name -- both must be wired from the same environment-root variable."
   type        = bool
 }
+
+# ADR-030 D5 (Ask Raffa feedback loop) -- API app only. The secret id is
+# null when the environment has no token (modules/keyvault count-gates the
+# secret), and the product switch below is ANDed with its presence, so a
+# workspace without a PAT boots with the publisher disabled and every
+# feature request stays stored-only.
+variable "github_feedback_token_secret_id" {
+  description = "Versionless Key Vault secret ID for github-feedback-token (modules/keyvault github_feedback_token_secret_versionless_id), or null when this environment has no token."
+  type        = string
+  default     = null
+}
+
+variable "feedback_github_enabled" {
+  description = "Publishes Feedback__GitHub__Enabled on the API app -- true only when this is true AND a token secret exists (dev: true; demo: false until its own post-promotion acceptance -- infra/environments/{dev,demo}/variables.tf)."
+  type        = bool
+  default     = false
+}
+
+variable "feedback_github_repository" {
+  description = "owner/repo the feedback issues are opened in (Feedback__GitHub__Repository)."
+  type        = string
+  default     = "lucalamalfa91/Raffa.ai"
+}

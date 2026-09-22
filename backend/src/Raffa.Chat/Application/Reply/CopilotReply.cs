@@ -22,13 +22,19 @@ namespace Raffa.Chat.Application.Reply;
 /// <param name="Actions">Always from <see cref="CapabilityRouting.ResolveActions"/> — real hrefs
 /// from the catalog only (R-SYS-02), never model-authored.</param>
 /// <param name="Provenance">See <see cref="ReplyProvenance"/>.</param>
-/// <param name="FollowUps">Suggested follow-up questions — only ever populated for
-/// <see cref="ReplyKind.Answer"/> (the `answer` role's own <c>followUps</c> field); empty for
-/// every other kind.</param>
+/// <param name="FollowUps">Suggested follow-up questions — populated for
+/// <see cref="ReplyKind.Answer"/> (the `answer` role's own <c>followUps</c> field), for
+/// <see cref="ReplyKind.Draft"/>, and for a capability-gap <see cref="ReplyKind.Redirect"/> that
+/// offers one validated supplier per follow-up (ADR-030); empty for every other kind.</param>
+/// <param name="Payload">Structured content beyond prose (ADR-030 D2): the drafted email, the
+/// capability gap, the feedback offer or the feedback result — <see langword="null"/> for every
+/// turn that carries none, which is every turn that existed before ADR-030. Persisted verbatim
+/// as <c>ConversationMessage.PayloadJson</c> and served as the wire's <c>payload</c>.</param>
 public sealed record CopilotReply(
     ReplyKind Kind,
     string AnswerMarkdown,
     IReadOnlyList<ReplyCitation> Citations,
     IReadOnlyList<CopilotAction> Actions,
     ReplyProvenance Provenance,
-    IReadOnlyList<string> FollowUps);
+    IReadOnlyList<string> FollowUps,
+    ReplyPayload? Payload = null);

@@ -2030,3 +2030,23 @@ three delivery consequences. **ADR-014 clause 8** adds W17-A1 (h) and corrects
 clause 4(g) from "two applies" to **three runs across two workspaces, not
 interchangeable**; **clause 9** records that the **phase graph is unchanged** by
 round 3, checked item by item, with `FactTable.tsx` still unowned.
+
+## Ask says what it cannot do, and does the next best thing (wave w20, appended 2026-09-22)
+
+Owner's ruling on the Amazon screenshot ("non devi rispondere a caso o non dare
+alternative all'utente"): a request for an operation Raffa cannot perform must
+be said honestly, followed by the nearest real alternative, and reportable to
+the team from the chat. **One new ADR at this table — ADR-030** (software-architect,
+owner; deciders also product-owner, security-architect, client-architect):
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-030 | Ask Raffa capability gaps: honest preface, drafted negotiation email, in-chat feedback loop → GitHub issue | software-architect | A capability gap is a **gate label** (after Legal, before Capability) from a five-entry IT/EN catalog, never a planner intent; a **fifth reply kind `draft`** carries the preface in `answerMarkdown`, the email verbatim in a new required nullable `payload` (`conversation_message.payload_json`), and the cited pack items; the email is written by a two-agent workflow (offer planner → negotiation writer) over the Q3 pack, guarded by `DraftGuard` (no inline `[n]`, numbers in the pack), retried once, and **falls back to a deterministic template — the draft path never abstains**; the other gaps redirect to Renewals / Portfolio / Contract 360; every gap turn offers an in-chat **three-question feedback card** whose one `POST /api/conversations/{id}/feedback` stores a `feature_request` row (RLS) **first**, then opens a GitHub issue best-effort with a fine-grained PAT from Key Vault (`github-feedback-token`, API app only, product switch), the issue body **allow-listed** for a public repository (gap, answers, language, environment, opaque workspace hash — never the question, a supplier or an identity); `external` is a server-authored action kind. |
+
+**ADR-024 gains a w20 amendment footer** (clauses 1–5: the seventh gate label,
+the fifth kind and `payload`, the draft guard and `chat.drafted`, the gap
+redirect's follow-ups and `external`, the store's column and table). **No ADR
+body is rewritten, none is superseded.** ADR-001 `none` (a human-approved draft
+shown in the UI is not autonomous supplier communication; the mail transport
+stays deferred). ADR-011 `none` (a PAT in Key Vault via the existing secret
+pattern; the audit row names the gap and the outcome, never the answers).

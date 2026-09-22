@@ -145,6 +145,7 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     createConversation: vi.fn(),
     getConversation: vi.fn(),
     postMessage: vi.fn(),
+    postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, catalog: { version: "test", capabilities: [] }, error: null }),
     getMarketRecord: vi.fn(),

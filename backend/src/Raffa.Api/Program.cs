@@ -212,6 +212,31 @@ var councilOptions = new Raffa.Chat.Application.Council.CouncilOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.Council.CouncilOptions.SectionName).Bind(councilOptions);
 builder.Services.AddSingleton(councilOptions);
 
+// Chat:Drafting (ADR-030 D3): the drafting workflow's kill switch and bounds, same shape.
+var draftingOptions = new Raffa.Chat.Application.Drafting.DraftingOptions();
+builder.Configuration.GetSection(Raffa.Chat.Application.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
+builder.Services.AddSingleton(draftingOptions);
+
+// Feedback:* (ADR-030 D5): the environment name every published issue carries, and the GitHub
+// publisher -- registered BEFORE AddChatModule because the module's own defaults
+// (FeedbackOptions "local", NullFeatureRequestPublisher) are TryAdd. Same "optional keys, fail
+// closed on the composed pair" posture as InvitationHostOptions above: enabled with no token
+// refuses to start; not enabled, every submission is stored and answered "recorded".
+var feedbackHostOptions = builder.Configuration.GetSection(FeedbackHostOptions.SectionName).Get<FeedbackHostOptions>()
+    ?? new FeedbackHostOptions();
+feedbackHostOptions.ValidateOrThrow();
+builder.Services.AddSingleton(feedbackHostOptions);
+builder.Services.AddSingleton(new Raffa.Chat.Application.Feedback.FeedbackOptions { Environment = feedbackHostOptions.Environment });
+
+if (feedbackHostOptions.GitHub.Enabled)
+{
+    builder.Services.AddHttpClient<Raffa.Chat.Application.Feedback.IFeatureRequestPublisher, GitHubIssueFeatureRequestPublisher>(client =>
+    {
+        client.BaseAddress = new Uri("https://api.github.com/");
+        client.Timeout = TimeSpan.FromSeconds(10);
+    });
+}
+
 builder.Services.AddChatModule(chatConnectionString);
 
 // Task E13/F06/US01/T01 (ask-engine): Chat:PackTokenBudget, registered *before* AddChatModule's

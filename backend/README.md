@@ -229,7 +229,8 @@ request.
 | GET | `/api/conversations` | Caller's last N conversations, most recently updated first (spec §7; R-CONV-02; story us-01-conversations AC-2, task E13/F05/US01/T02); `X-Tenant-Id` header + caller identity (see "Authentication" below); optional `take` (default 5, must be a positive integer); response is a bare array of `{ id, title, scopeContractId, updatedAt }`, never an `{ items, totalCount }` envelope — there is no paging concept for "my last N conversations" |
 | POST | `/api/conversations` | Creates a conversation (AC-2); `X-Tenant-Id` header + caller identity; body `{ scopeContractId? }` — a GUID naming the contract "Ask about it" (Contract 360) was opened from, or omitted for the global Ask bar (ADR-024: "The global Ask bar always opens a new chat"); 201 with the same `{ id, title, scopeContractId, updatedAt }` shape as the list row above; `title` starts as `ConversationService.DefaultTitle` ("New chat") until the first message lands |
 | GET | `/api/conversations/{id}` | The conversation plus its messages, oldest first (AC-2); `X-Tenant-Id` header + caller identity; 404 when `{id}` does not exist, belongs to another tenant, or belongs to another user of the same tenant — RLS backstops the tenant half (ADR-009), `Raffa.Chat.Application.Conversations.ConversationService` itself is the only thing enforcing the per-user half (RLS has no per-user predicate), and both read back as the identical 404, never a distinguishing 403; response `{ id, title, scopeContractId, createdAt, updatedAt, messages: [{ id, role, kind, markdown, citations, actions, modelId, promptVersion, inputHash, createdAt }] }` — `role` is `you`/`raffa`, `kind` is `answer`/`abstain`/`redirect`/`refusal` (ADR-024 §6 wire literals); `citations`/`actions` are real JSON arrays, never a JSON string nested inside JSON; never the raw retrieval pack (ADR-011) |
-| POST | `/api/conversations/{id}/messages` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine, AC-8); `{ question: string }` + `X-Tenant-Id` header + caller identity; 400 for a missing/invalid tenant or user header, an invalid `{id}`, or a blank `question` — all before any database call (see `Raffa.Api.Tests.ConversationsEndpointTests`). Runs the full engine (`AskCopilotService`: `Gate.DomainGate` →, for `in_domain` turns, `Planning.IntentPlanner` → per-intent context pack → guarded `answer` call → `Guards.GroundingGuard`/`NumericGuard`/`RegenerateOnce`), appends both the caller's question and Raffa's reply to the conversation via `ConversationService`, then returns the same ADR-024 §6 reply contract `GET /api/conversations/{id}` echoes back for one message: `{ kind, answerMarkdown, citations: [{ n, corpus, title, subtitle, snippet, documentId?, contractId?, page?, section?, previewUrl?, href?, recordId? }], actions: [{ label, href, kind }], provenance: { sources, modelId, promptVersion, inputHash }, followUps }` plus `conversationId`/`messageId` — never engineer chrome (a `Document:` guid, a "Structured query" line) in `answerMarkdown`. **Wave w18 additions:** an optional `scopeContractId` now threads from the conversation (`Conversation.ScopeContractId`, set at `POST /api/conversations` time) into `AskCopilotService.AskAsync`, resolved into the gate **before** the R-ASK-10 in-domain check so a scoped turn's own gate resolution never falls through to the generic `NeedsDocument` redirect and its pack/citations scope to that contract's own supplier (epic-25 feature-03, task E25/F03/US01/T01 + `ConversationsEndpointExtensions.AskAndAppendAsync`, closes NW-56). Every `abstain` reply this engine can produce — the guard-downgraded path (`CopilotReplyBuilder.FromGuardedResult`), the empty-pack path and the composer-failure path, `AskCopilotService.BuildInDomainReplyAsync` — now carries a non-empty `actions` array resolved from the real capability catalog, never model-authored (`ResolveAbstainRecoveryActions`, epic-25 feature-05, task E25/F05/US01/T01, closes NW-59): the Documents-upload action for a contract-free tenant, otherwise the Ask capability's own "ask about dates, spend, notice periods and clauses" hint action. **Known gap (found by task E23/F05/US01/T01, w18 final integration, not fixed there — out of that task's own file scope):** the contract-free branch resolves the upload action via `CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)`, which `CapabilityRouting.ResolveOne`'s generic `HowTo` case maps to `CopilotActionKind.Navigate` (label "Open Documents"), not `CopilotActionKind.Upload` — `backend/tests/Raffa.Api.Tests/AskAbstainRecoveryActionTests.Empty_pack_abstain_for_a_contract_free_tenant_offers_the_documents_upload_action` fails on this exact mismatch (`Expected: "upload", Actual: "navigate"`). The href still lands on `/documents` either way; only the action's `kind`/label are wrong. `CapabilityIntent.UnknownSupplier` (→ `UploadInDocuments()`, real `Upload` kind) is the fix, not yet applied. **Wave w19 additions (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12; lock 4):** the w18 gate-level override above only carried the scoped contract's *name* forward, so two portfolio rows sharing one supplier's display name could still let a plain name lookup answer about the wrong one. `AskCopilotService.BuildInDomainReplyAsync` now also receives the scoped *id* itself and lets it win outright over that name lookup (never `FirstOrDefault`-by-name when a scope is set), and folds it into the routing context's own contract id so a follow-up action targets the real scoped contract too. A `scopeContractId` that does not resolve to a row in that turn's own freshly-fetched portfolio — wrong tenant, no linked document, deleted since the conversation was opened — now returns `kind: "refusal"` before any pack is assembled, rather than silently falling back to an unscoped answer. **Lock 4 exception:** a `PortfolioMarketPosition` question (`AskIntent.PortfolioMarketPosition`, NW-79/NW-86) is exempt from both rules — it is always portfolio-wide by construction, so it never depends on the scoped contract resolving and is never narrowed to it |
+| POST | `/api/conversations/{id}/messages` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine, AC-8); `{ question: string }` + `X-Tenant-Id` header + caller identity; 400 for a missing/invalid tenant or user header, an invalid `{id}`, or a blank `question` — all before any database call (see `Raffa.Api.Tests.ConversationsEndpointTests`). Runs the full engine (`AskCopilotService`: `Gate.DomainGate` →, for `in_domain` turns, `Planning.IntentPlanner` → per-intent context pack → guarded `answer` call → `Guards.GroundingGuard`/`NumericGuard`/`RegenerateOnce`), appends both the caller's question and Raffa's reply to the conversation via `ConversationService`, then returns the same ADR-024 §6 reply contract `GET /api/conversations/{id}` echoes back for one message: `{ kind, answerMarkdown, citations: [{ n, corpus, title, subtitle, snippet, documentId?, contractId?, page?, section?, previewUrl?, href?, recordId? }], actions: [{ label, href, kind }], provenance: { sources, modelId, promptVersion, inputHash }, followUps }` plus `conversationId`/`messageId` — never engineer chrome (a `Document:` guid, a "Structured query" line) in `answerMarkdown`. **Wave w18 additions:** an optional `scopeContractId` now threads from the conversation (`Conversation.ScopeContractId`, set at `POST /api/conversations` time) into `AskCopilotService.AskAsync`, resolved into the gate **before** the R-ASK-10 in-domain check so a scoped turn's own gate resolution never falls through to the generic `NeedsDocument` redirect and its pack/citations scope to that contract's own supplier (epic-25 feature-03, task E25/F03/US01/T01 + `ConversationsEndpointExtensions.AskAndAppendAsync`, closes NW-56). Every `abstain` reply this engine can produce — the guard-downgraded path (`CopilotReplyBuilder.FromGuardedResult`), the empty-pack path and the composer-failure path, `AskCopilotService.BuildInDomainReplyAsync` — now carries a non-empty `actions` array resolved from the real capability catalog, never model-authored (`ResolveAbstainRecoveryActions`, epic-25 feature-05, task E25/F05/US01/T01, closes NW-59): the Documents-upload action for a contract-free tenant, otherwise the Ask capability's own "ask about dates, spend, notice periods and clauses" hint action. **Known gap (found by task E23/F05/US01/T01, w18 final integration, not fixed there — out of that task's own file scope):** the contract-free branch resolves the upload action via `CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)`, which `CapabilityRouting.ResolveOne`'s generic `HowTo` case maps to `CopilotActionKind.Navigate` (label "Open Documents"), not `CopilotActionKind.Upload` — `backend/tests/Raffa.Api.Tests/AskAbstainRecoveryActionTests.Empty_pack_abstain_for_a_contract_free_tenant_offers_the_documents_upload_action` fails on this exact mismatch (`Expected: "upload", Actual: "navigate"`). The href still lands on `/documents` either way; only the action's `kind`/label are wrong. `CapabilityIntent.UnknownSupplier` (→ `UploadInDocuments()`, real `Upload` kind) is the fix, not yet applied. **Wave w19 additions (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12; lock 4):** the w18 gate-level override above only carried the scoped contract's *name* forward, so two portfolio rows sharing one supplier's display name could still let a plain name lookup answer about the wrong one. `AskCopilotService.BuildInDomainReplyAsync` now also receives the scoped *id* itself and lets it win outright over that name lookup (never `FirstOrDefault`-by-name when a scope is set), and folds it into the routing context's own contract id so a follow-up action targets the real scoped contract too. A `scopeContractId` that does not resolve to a row in that turn's own freshly-fetched portfolio — wrong tenant, no linked document, deleted since the conversation was opened — now returns `kind: "refusal"` before any pack is assembled, rather than silently falling back to an unscoped answer. **Lock 4 exception:** a `PortfolioMarketPosition` question (`AskIntent.PortfolioMarketPosition`, NW-79/NW-86) is exempt from both rules — it is always portfolio-wide by construction, so it never depends on the scoped contract resolving and is never narrowed to it  **Wave w20 (ADR-030):** a fifth `kind`, `draft`, and a required nullable `payload` on every reply and stored message — see "Ask Raffa V2 — capability gaps, the drafted email and the feedback loop" below |
+| POST | `/api/conversations/{id}/feedback` | Ask Raffa's in-chat feedback card (ADR-030 D5, wave w20); `{ messageId, answers: { what, frequency, importance } }` + `X-Tenant-Id` header + caller identity. `messageId` names the Raffa turn whose `payload.feedbackOffer` was answered; `what` is free text (1–500 chars), `frequency` one of `every-renewal` / `weekly` / `sometimes`, `importance` one of `blocking` / `very-useful` / `nice-to-have` (`Raffa.Chat.Application.Gaps.FeedbackQuestions`, validated server-side). `Raffa.Chat.Application.Feedback.FeedbackService` **stores** a `feature_request` row first (tenant table, RLS, unique per message), **then** publishes best-effort through `IFeatureRequestPublisher` (the host's `GitHubIssueFeatureRequestPublisher` when `Feedback__GitHub__Enabled` is true, else the module's `NullFeatureRequestPublisher`), then builds the confirmation turn the handler appends exactly like a reply and returns as `message`. 201 `{ feedbackId, status: recorded \| issue_opened, issueNumber, issueUrl, message }`; 400 for a non-GUID id, invalid answers, or a message without an offer; 404 under the conversation rule above; 409 when the offer was already answered (`message: null`). The published issue carries only the gap key/title, the three answers, the question language, the environment and an opaque workspace hash — never the question, a supplier, contract data or an identity (the repository is public); the audit row (`conversation.feedback.submitted`) carries the gap key and the outcome, never the answers |
 | GET | `/api/renewals` | Renewal pipeline + insight card (spec §9.3/§10.1); `X-Tenant-Id` header; auto-renewing contracts only, most urgent first; response is `{ items, totalCount }`, each item `{ contractId, supplierId, status, renewalDate, daysUntilRenewal, annualSpend, cancellationDeadline, daysUntilCancellationDeadline, autoRenewal, action, savedAction, insightCard: { facts, recommendations } }` — `insightCard.recommendations`' benchmark/savings fields (`annualUpliftPercent`, `marketPosition`, `potentialSavingsRange`) are honestly `null` until the Benchmark/Savings modules land (R3); `action`/`recommendedAction` is a deterministic urgency rule, not the full spec §9.2 Priority Score — see `Raffa.Renewals.Application.RenewalPipelineBuilder`'s own doc comment. **`savedAction` (task E19/F01/US01/T01, renewal-action-api; ADR-028 §D1)** is the persisted `POST .../action` row for that same contract — `{ contractId, owner, status, action, updatedAt }` — or `null` when nothing was ever recorded; resolved for the whole page in one batch call (`RenewalActionService.GetActionsAsync`), never a per-row query. Binding name: `savedAction` is never `action` — `action` stays the calculator's own `RecommendedAction`, unchanged, so the user's own saved state can never overwrite it |
 | GET | `/api/renewals/{contractId}/priority` | Explainable priority-score breakdown for one contract (spec §9.2; story us-02-priority-score AC-1/AC-2, task E03/F01/US02/T02); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant (same rule as `GET /api/contracts/{id}`); response is `{ contractId, totalScore, components: { spendWeight, timeUrgency, benchmarkOpportunity, priceIncreaseRisk, contractRisk } }`, each component `{ score, explanation }` — component weights are configurable, see `Raffa.Renewals.Configuration.PriorityScoreWeightsOptions` below; `priceIncreaseRisk`/`benchmarkOpportunity` use their honest no-data default (minimum / neutral respectively) since no uplift or benchmark-position data is wired to real contracts yet |
 | POST | `/api/renewals/{id}/action` | Updates owner/status/action for one renewal (spec Appendix A; story us-01-renewal-dashboard-api AC-3); `X-Tenant-Id` header; `{id}` is the same `contractId` the GET above returns per row, not a separate stored "renewal" id; body `{ owner, status, action }` — `status` is one of `NotStarted`/`InProgress`/`Completed`; upserts one row (never a second for the same contract) and writes one `IAuditWriter` entry (`renewal.action_updated`); 400 (not 404) for a missing/invalid tenant header or route id, or for an empty `owner`/`action`/unrecognized `status` — see `Raffa.Renewals.Application.RenewalActionService`'s own doc comment for the honest gap this leaves (no check that `{id}` names an existing, tenant-owned contract; `Raffa.Renewals` cannot reference `Raffa.Documents.Contracts` at all) |
@@ -1284,6 +1285,101 @@ Golden cases `seeded-savings-leve-20k-salesforce-it`,
 `seeded-portfolio_savings_target-cut-costs-en` pin the two motivating
 questions; `Raffa.Api.Tests.AskSavingsConsultantTests` runs them end to end
 over HTTP with the fixture gateway.
+
+### Ask Raffa V2 — capability gaps, the drafted email and the feedback loop (ADR-030, wave w20)
+
+A request for an **operation Raffa cannot perform** — "Can you help me create
+an email based on the negotiation leverage?", "invia una mail al fornitore",
+"mettimi un promemoria per la disdetta", "export my contracts to Excel",
+"raise a PO" — used to fall into the savings/strategy pack (the `lever`
+lexicon) or the capability tour (`help`), and, when the `answer` role then
+wrote a zero-based `[0]`, ended as an abstain that dumped the pack's facts.
+It now rides the same route with one branch before the planner:
+
+1. **The gate.** `Raffa.Chat.Application.Gaps.CapabilityGapCatalog` — five
+   entries, regex only, IT + EN, each an operation verb **and** its object (or
+   an unmistakable noun): `send-supplier`, `email-draft` (alternative: the
+   drafted email), `reminder` (Renewals), `export-file` (Portfolio),
+   `purchase-order` (Contract 360). `DomainGate.Classify` checks it after the
+   legal lexicon and before the capability lexicon and returns
+   `GateLabel.CapabilityGap` with the entry and the supplier name it still
+   extracts; a timing question ("when must we send the notice?") is vetoed
+   for the send gap. Conservative by design: a missed gap costs the old
+   honest abstain, a false positive would hijack a real question
+   (`CapabilityGapCatalogTests` carries the positives and the negatives).
+2. **The reply.** `AskCopilotService.Gaps.cs` branches on the label.
+   `Application.Language.QuestionLanguage.Detect` (two lexicons of
+   language-exclusive function words, ties → English) decides the language
+   of every deterministic sentence (`Gaps.CapabilityGapCopy`). A non-draft
+   gap returns a `redirect` — "Al momento non posso impostare promemoria …
+   da Raffa.ai, però in Renewals trovi già ogni scadenza di preavviso." —
+   with the alternative's real catalog action (`?select=` when a contract
+   resolved) and `payload.gap` + `payload.feedbackOffer`. A draft gap with
+   no contract resolved returns a `redirect` that asks which contract, one
+   validated supplier per follow-up chip ("Scrivi la mail per il rinnovo
+   {supplier}", which re-enters the gap with the name resolved), Portfolio as
+   the action (Documents upload when nothing is on file). A draft gap with a
+   contract returns the fifth kind, **`draft`**.
+3. **The drafting workflow** (`Raffa.Chat.Application.Drafting`). The same
+   Q3 pack a scoped renewal-strategy turn gets (`persistTodos: true`, so the
+   Renewals link the reply offers is true after the turn) with the council's
+   plays inserted, then `NegotiationDraftingWorkflow`: the **offer planner**
+   (`IAiGateway.AnalyzeAsync`, `draft-v1`) returns the position, the asks in
+   value order with their citation keys, the trade and the deadline anchor
+   (asks are validated locally — keys in the pack, `NumericGuard` over the
+   sentence — and a failed planner falls back to `DraftPlan.FromPack`, the
+   council's plays or the lever items); the **negotiation writer** returns
+   `{ subject, body, usedCitationKeys }` in the question's language.
+   `DraftGuard` polices it — no inline `[n]`, no link, no guid, no internal
+   key, every amount/percentage/date in the pack (`NumericGuard`,
+   unchanged), `usedCitationKeys` in the pack — one retry names the
+   violation, and a second failure, a gateway outage, a thin pack or
+   `Chat:Drafting:Enabled=false` fall back to `NegotiationEmailTemplate`, an
+   email written from the pack's own values with every clause conditional on
+   its fact (passes the guard by construction). **The draft path never
+   abstains.** Prompts live in `Prompts/draft/v1.md` (drift-tested);
+   `Chat:Drafting` (`Enabled`, `MinPackItems`, `MaxItemsPerAgent`,
+   `MaxBodyChars`) is the kill switch. The reply: the preface plus a lead-in
+   in `answerMarkdown` (never a marker), the email in `payload.draft`, the
+   items it used as `citations`, Renewals + Contract 360 actions, two
+   follow-ups on intents that already work, `payload.feedbackOffer`. A
+   template fallback or a retried writer is audited as a guard intervention
+   (`chat.drafted`, `abstainGuardIntervened=True`) — the golden set's
+   zero-intervention rule proves the fixture draft passes first time
+   (`FixtureAiGateway` carries deterministic `planner`/`writer` doubles).
+4. **The store and the wire.** `conversation_message.payload_json` (nullable
+   `jsonb`) persists the structured half (`Reply.ReplyPayload`, serialized
+   by `ReplyPayloadJson`); `GET /api/conversations/{id}` serves it as
+   `payload` so a resumed draft is byte-for-byte the live one.
+   `ConversationMessageKind.Draft`, `ReplyKind.Draft` (`"draft"`),
+   `CopilotActionKind.External` (`"external"`, built only by
+   `CopilotAction.External`, https only) join their enums. Migration
+   `AddDraftPayloadAndFeatureRequest` adds the column and the
+   `feature_request` table with its RLS policy; `chat.sql` is regenerated
+   and `ChatMigrationScriptStaleCheckTests` (new) fails the build if it
+   drifts.
+5. **The feedback loop** (`Raffa.Chat.Application.Feedback`, ADR-030 D5).
+   The card asks three questions one at a time (`FeedbackQuestions`: `what`
+   free text prefilled with the gap's description, `frequency`,
+   `importance`), then one `POST /api/conversations/{id}/feedback` (HTTP
+   surface above). `IFeatureRequestPublisher` is the outbound seam: the
+   host's `Infrastructure/GitHubIssueFeatureRequestPublisher` (plain
+   `HttpClient`, `POST /repos/{owner}/{repo}/issues`, `Bearer` PAT, one
+   retry without labels on 422, never throws for a remote failure) is
+   registered by `Program.cs` only while `Feedback__GitHub__Enabled` is true
+   (`Feedback__GitHub__Token` from Key Vault, `Feedback__GitHub__Repository`,
+   `Feedback__GitHub__Labels`, `Feedback__Environment`; enabled with no token
+   refuses to start, `FeedbackHostOptions.ValidateOrThrow`). `FeatureRequestIssueText`
+   is the whole allow-list of a public issue. `appsettings.Development.json`
+   sets `Feedback:GitHub:Enabled=false`, the stored-only path.
+
+Golden cases `seeded-capability_gap-email-draft-salesforce-en` (the
+screenshot question, → `draft`), `seeded-capability_gap-email-draft-unscoped-it`,
+`seeded-capability_gap-reminder-docusign-it` and
+`seeded-capability_gap-export-excel-en` pin the behaviour (`KnownIntents`
+gains `capability_gap`, `KnownKinds` gains `draft`);
+`Raffa.Api.Tests.AskCapabilityGapTests` and `ConversationFeedbackEndpointTests`
+run it end to end over HTTP with the fixture gateway and a stub publisher.
 
 ### Ask Raffa V2 — the notice pack (tasks E30/F01/US01/T01 + E30/F02/US01/T01, NW-91/NW-92/NW-94, ADR-024 w19 cl. 22)
 

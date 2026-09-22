@@ -2157,6 +2157,56 @@ describe("createApiClient().getConversation (task E13/F09/US01/T04)", () => {
   });
 });
 
+describe("createApiClient().postConversationFeedback (ADR-030 D5)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const request = { messageId: "msg-1", answers: { what: "Send it for me", frequency: "weekly", importance: "blocking" } };
+  const created = { feedbackId: "fb-1", status: "issue_opened", issueNumber: 42, issueUrl: "https://github.com/lucalamalfa91/Raffa.ai/issues/42", message: null };
+
+  it("POSTs JSON {messageId, answers} to <baseUrl>/api/conversations/{id}/feedback and maps 201", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(created), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createApiClient("https://api.dev.raffa.example").postConversationFeedback("tenant-1", "conv-1", request);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/conversations/conv-1/feedback");
+    expect(init).toEqual({
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    });
+    expect(result).toEqual({ ok: true, statusCode: 201, result: created, error: null });
+  });
+
+  it("treats 409 (already answered) as ok with the existing request", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(created), { status: 409 })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").postConversationFeedback("tenant-1", "conv-1", request);
+
+    expect(result).toEqual({ ok: true, statusCode: 409, result: created, error: null });
+  });
+
+  it("reports a named 404 and a parsed 400, and resolves on a network failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    expect(await createApiClient("https://api.dev.raffa.example").postConversationFeedback("tenant-1", "missing", request)).toEqual({
+      ok: false, statusCode: 404, result: null, error: "No conversation found for id missing.",
+    });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("'answers.what' is required."), { status: 400 })));
+    expect((await createApiClient("https://api.dev.raffa.example").postConversationFeedback("tenant-1", "conv-1", request)).error).toBe("'answers.what' is required.");
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+    const failed = await createApiClient("https://api.dev.raffa.example").postConversationFeedback("tenant-1", "conv-1", request);
+    expect(failed.ok).toBe(false);
+    expect(failed.statusCode).toBeNull();
+    expect(failed.error).toContain("network down");
+  });
+});
+
 describe("createApiClient().postMessage (task E13/F09/US01/T04)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -2488,6 +2538,8 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       createConversation: () => client.createConversation("tenant-1"),
       getConversation: () => client.getConversation("tenant-1", "conv-1"),
       postMessage: () => client.postMessage("tenant-1", "conv-1", { question: "?" }),
+      postConversationFeedback: () =>
+        client.postConversationFeedback("tenant-1", "conv-1", { messageId: "msg-1", answers: { what: "x", frequency: "weekly", importance: "blocking" } }),
       deleteConversation: () => client.deleteConversation("tenant-1", "conv-1"),
       getCapabilities: () => client.getCapabilities(),
       getMarketRecord: () => client.getMarketRecord("rec-1"),

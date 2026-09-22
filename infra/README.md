@@ -269,6 +269,22 @@ secret, `acs-connection` (handle `acs-cs`, API app only). The sender
 address is always the module's own `sender_address` output, never
 hand-composed.
 
+**Ask Raffa feedback issues (ADR-030 D5, wave w20).** `modules/keyvault`
+carries a `count`-gated secret, `github-feedback-token` (handle
+`gh-feedback`, API app only): a fine-grained GitHub personal access token
+with **Issues: write on `lucalamalfa91/Raffa.ai` only**, so the API can open
+one issue per feature request users file from Ask's in-chat feedback card.
+The token is a **sensitive HCP workspace variable** (`github_feedback_token`)
+in each workspace, never a `.tf` literal (ADR-011); empty — the default —
+creates no secret, publishes an empty `Feedback__GitHub__Token` the API never
+reads, and the API keeps every request stored-only. `Feedback__GitHub__Enabled` is published as
+`var.feedback_github_enabled && <a token secret exists>`, so an environment
+without a token can never fail closed at startup; `Feedback__Environment`
+carries the environment name into every issue body. Per-environment switch:
+`feedback_github_enabled` is `true` on `dev`, `false` on `demo` until its
+own post-promotion acceptance. Rotation is an operator act: change the HCP
+variable, apply — no code change, no image rebuild.
+
 **Guest provisioning (NW-67).** `modules/identity` carries a `count`-gated
 `azuread_app_role_assignment` granting the workload identity the Microsoft
 Graph **application** permission `User.Invite.All`. **The apply identity —

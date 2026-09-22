@@ -27,6 +27,8 @@ public sealed class ConversationMessageConfiguration : IEntityTypeConfiguration<
         // Raffa.Documents.Contracts.Domain.ContractVersion.SnapshotJson already use).
         builder.Property(e => e.CitationsJson).HasColumnType("jsonb");
         builder.Property(e => e.ActionsJson).HasColumnType("jsonb");
+        // ADR-030 D2: nullable, unlike the two arrays above — most turns have no payload at all.
+        builder.Property(e => e.PayloadJson).HasColumnType("jsonb");
 
         builder.Property(e => e.ModelId).HasMaxLength(200);
         builder.Property(e => e.PromptVersion).HasMaxLength(50);

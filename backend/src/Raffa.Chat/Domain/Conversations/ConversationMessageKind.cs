@@ -23,4 +23,8 @@ public enum ConversationMessageKind
     /// <summary>Declines a legal reading and offers the commercial analogue instead (R-ASK-02
     /// "legal" label).</summary>
     Refusal,
+
+    /// <summary>A drafted negotiation email (ADR-030 D2) — the preface in <c>Markdown</c>, the
+    /// email in <c>ConversationMessage.PayloadJson</c>.</summary>
+    Draft,
 }

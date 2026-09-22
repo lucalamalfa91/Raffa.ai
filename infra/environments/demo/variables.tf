@@ -47,6 +47,23 @@ variable "ai_gateway_extra_env" {
 # footer clause 14): both false at this merge -- flipped by a one-line PR
 # after demo's own post-promotion acceptance (OQ-w15-dm-01: demo's infra
 # moves at this merge even though its code does not).
+# ADR-030 D5 (Ask Raffa feedback loop): the GitHub token is a SENSITIVE
+# HCP workspace variable, never a .tf literal (ADR-011); empty means no
+# secret and a stored-only feedback loop. The switch mirrors
+# invitation_mail_enabled's per-environment lifecycle.
+variable "github_feedback_token" {
+  description = "Fine-grained GitHub PAT (Issues: write on lucalamalfa91/Raffa.ai) for Ask Raffa's feedback issues. Set as a sensitive HCP workspace variable; empty = no secret (ADR-030 D5)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "feedback_github_enabled" {
+  description = "Publishes Feedback__GitHub__Enabled to the API app (ADR-030 D5). demo: false until its own post-promotion acceptance, like invitation_mail_enabled."
+  type        = bool
+  default     = false
+}
+
 variable "invitation_mail_enabled" {
   description = "Publishes Invitations__Mail__Enabled to the API app (ADR-005 w15 footer). demo: false until its own acceptance."
   type        = bool

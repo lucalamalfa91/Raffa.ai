@@ -693,7 +693,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { id: string; title: string; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string })[] };
+          "application/json": { id: string; title: string; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null })[] };
         };
       };
       400: {
@@ -711,7 +711,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { conversationId: string; messageId: string; kind: "answer" | "abstain" | "redirect" | "refusal"; answerMarkdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" })[]; provenance: { sources: (string)[]; modelId: string | null; promptVersion: string | null; inputHash: string | null }; followUps: (string)[] };
+          "application/json": { conversationId: string; messageId: string; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft"; answerMarkdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; provenance: { sources: (string)[]; modelId: string | null; promptVersion: string | null; inputHash: string | null }; followUps: (string)[]; payload: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null };
         };
       };
       400: {
@@ -864,6 +864,29 @@ export interface operations {
       };
     };
   };
+  postConversationFeedback: {
+    responses: {
+      201: {
+        content: {
+          "application/json": { feedbackId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null; message: { id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null } | null };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      409: {
+        content: {
+          "application/json": { feedbackId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null; message: { id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null } | null };
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -998,5 +1021,8 @@ export interface paths {
   };
   "/api/quotes/benchmark-history": {
     get: operations["getQuoteBenchmarkHistory"];
+  };
+  "/api/conversations/{id}/feedback": {
+    post: operations["postConversationFeedback"];
   };
 }

@@ -8,6 +8,7 @@ using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Council;
+using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
@@ -196,6 +197,7 @@ internal sealed partial class AskCopilotService(
     IMarketKnowledgeRetrieval marketKnowledgeRetrieval,
     IMarketDealLookup marketDealLookup,
     NegotiationCouncil negotiationCouncil,
+    NegotiationDraftingWorkflow negotiationDraftingWorkflow,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock)
@@ -322,11 +324,13 @@ internal sealed partial class AskCopilotService(
                 ? resolvedScopedSupplierName
                 : null;
 
-        if (scopedSupplierName is not null && gate.Label is GateLabel.NeedsDocument or GateLabel.InDomain)
+        // ADR-030: a capability-gap turn keeps its own label but takes the scoped supplier the same
+        // way, so a chat opened from Contract 360 drafts for that contract.
+        if (scopedSupplierName is not null && gate.Label is GateLabel.NeedsDocument or GateLabel.InDomain or GateLabel.CapabilityGap)
         {
             gate = gate with
             {
-                Label = GateLabel.InDomain,
+                Label = gate.Label == GateLabel.CapabilityGap ? GateLabel.CapabilityGap : GateLabel.InDomain,
                 Reason = $"scoped entry resolved to known supplier '{scopedSupplierName}' before the " +
                     "gate's own free-text extraction decided (ADR-024, task E25/F03/US01/T01).",
                 NamedSupplier = scopedSupplierName,
@@ -344,6 +348,9 @@ internal sealed partial class AskCopilotService(
             GateLabel.Legal => (BuildLegalReply(portfolio, supplierNames, gate.NamedSupplier), false),
             GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false),
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false),
+            GateLabel.CapabilityGap => await BuildCapabilityGapReplyAsync(
+                tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor, cancellationToken)
+                .ConfigureAwait(false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
                 tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
                 scopeContractId, scopedContractItem, actor, cancellationToken)
@@ -2519,6 +2526,7 @@ internal sealed partial class AskCopilotService(
             ReplyKind.Abstain => AuditAbstainedAction,
             ReplyKind.Redirect => AuditRedirectedAction,
             ReplyKind.Refusal => AuditRefusedAction,
+            ReplyKind.Draft => AuditDraftedAction,
             _ => AuditAnsweredAction,
         };
 

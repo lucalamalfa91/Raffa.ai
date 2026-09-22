@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Raffa API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Contract for the Raffa backend API (backend/src/Raffa.Api), consumed by the web (this file) and mobile (ADR-013) TypeScript clients per ADR-012's \"single OpenAPI document -> one generated TypeScript client, no hand-written divergent DTOs\" rule (see reports/architecture/draft/client-architect/api-consumption.md #1).\n\nProvenance / interim status (task E01/F07/US01/T02): the API host does not yet self-publish this document -- no Microsoft.AspNetCore.OpenApi / Swashbuckle / NSwag is wired into backend/src/Raffa.Api/Program.cs as of this task, and adding that is outside this task's file scope (the web client only; this task's frontmatter is target_repo: raffa-web). Until a backend task adds self-published OpenAPI generation, this file is hand-authored to describe exactly the routes Program.cs actually implements today, cross-checked against backend/tests/Raffa.Api.Tests. It is the single file `npm run generate:api` (web/scripts/generate-api-client.mjs) reads to produce web/src/api/generated/schema.ts, and must grow endpoint-by-endpoint as backend/src/Raffa.Api/Program.cs grows -- then be replaced outright once the API self-publishes its own document.\n\nURL versioning (OQ-client-007 in reports/open-questions.md, still `open` at council-close: \"OpenAPI codegen tool and URL versioning scheme ... owned by software-architect\") is deliberately NOT applied to the paths below: Program.cs maps bare `/health`, not `/v1/health`, and a client generated against a path the API does not actually serve would 404 in every real environment. `info.version` above tracks this document's own revision; add a URL path prefix here only once software-architect fixes one and Program.cs actually serves it under that prefix.\n\nCodegen tool choice (also part of OQ-client-007, resolved here for this task rather than left blocking it, per reports/open-questions.md's \"add an entry, state the assumption, build against it\"): third-party OpenAPI-to-TypeScript generators evaluated at authoring time (openapi-typescript@7.13.0, which peer-depends on `typescript@^5.x`) hard-conflict with this repo's already-committed `typescript@^7.0.2` (web/package.json, task E01/F07/US01/T01) under npm's default strict peer resolution. Rather than force an incorrect peer resolution (`--legacy-peer-deps`/`--force`) or downgrade a previous task's already-committed TypeScript version, this contract is compiled by a small first-party generator (web/scripts/generate-api-client.mjs, zero new dependencies) that reads this JSON file and emits the `paths`/`operations` TypeScript types the same way the mainstream tools shape them. Swap in a third-party tool once one publishes TypeScript-7-compatible peer ranges; the generated *output shape* (`paths`/`operations`) is deliberately kept compatible with that ecosystem convention so the swap is mechanical.\n\nTask E06/F01/US01/T01 (typescript-client-regen) added the four operations below beyond `/health`: `POST /api/workspaces` (create), `POST /api/workspaces/{tenantId}/invites` (invite), `POST /api/documents` (upload), `GET /api/documents/{id}` (read back) -- exactly epic-06-web-foundation's own R0 scope (\"the sign-in -> workspace picker flow ... and the R0 surfaces (members & roles, document upload, document-status read-back)\"). backend/src/Raffa.Api/Program.cs now also maps many more routes added by backend epics E02-E05 (GET /api/contracts, GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections, GET /api/renewals and /api/renewals/{contractId}/priority, POST /api/renewals/{id}/action, GET/PATCH /api/savings and GET /api/savings/kpis, POST /api/chat/query, POST /api/quotes and GET /api/quotes/{id}/assessment, POST /api/negotiations/outcomes) that this task deliberately did NOT add here: epic-06-web-foundation's own \"Out of scope\" list names exactly that set (\"portfolio, Contract 360, review, Ask, renewals, savings, quote check -- later web epics\"), and feature-01-typescript-client-regen's own \"Council decisions carried into this story\" calls this a \"Repeating chore\" -- whichever web epic first builds a screen against one of those endpoints should extend this file next, the same way this task extended the `/health`-only version task E01/F07/US01/T02 left behind. Nullable fields (e.g. a freshly-uploaded or not-yet-classified document's `contractId`) use OpenAPI 3.1's `type: [X, \"null\"]` union instead of a bolted-on `nullable: true` flag; web/scripts/generate-api-client.mjs gained one small, additive case for it (a `type` array renders as the equivalent TypeScript union, plus a case for `object`/`properties` -- every new response below is a flat, single-level object) -- see that script's own comments on the change.\n\nTask E07/F03/US01/T01 (field-review-correction, ADR-020 screen 6) added `PATCH /api/contracts/{id}` (`correctContract`) and `GET /api/contracts/{id}/corrections` (`getCorrectionHistory`) -- the third web epic to extend this document (task E07/F01/US01/T01 was the first, task E07/F02/US01/T01 the second; see this paragraph's own 'repeating chore' provenance note above). Both operations were already implemented by backend task E02/F05/US01/T01/T02 (us-01-correction-history) and already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/contracts/{id}, GET /api/contracts/{id}/corrections') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Both response/request bodies use the same plain-object/array shapes generate-api-client.mjs already supports; no generator change was needed.\n\nTask E08/F01/US01/T01 (renewal-pipeline, ADR-020 screen 8) added `POST /api/renewals/{id}/action` (`postRenewalAction`) -- the fourth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). This operation was already named in this document's own provenance paragraph's backend-routes list ('POST /api/renewals/{id}/action') as not yet documented here -- this task closes that gap, it does not add new backend behaviour. Already implemented by backend task E03/F03/US01/T02 (renewal-action). The 200 response's `status` field is a real, closed three-value enum (NotStarted/InProgress/Completed, RenewalActionStatus.ToString()) so it is declared with `enum` the same way GET /api/renewals's own `status` field already is -- generate-api-client.mjs renders it as a TypeScript string-literal union with no generator change needed. The request body (owner/status/action, all free-form strings on the wire) is hand-written in src/api/client.ts, like every other write operation's request type in this document -- the generator does not parse `requestBody` at all (see this file's own 'Codegen tool choice' paragraph above).\n\nTask E08/F03/US01/T01 (quote-check-ui, ADR-018 route /quotes/:id, ADR-020 screen 10) adds the four operations this document's own provenance paragraph above named as deliberately deferred: `POST /api/quotes` (uploadQuote), `GET /api/quotes/{id}/assessment` (getQuoteAssessment), `POST /api/quotes/{id}/assessment/recalculate` (recalculateQuoteAssessment), and `POST /api/negotiations/outcomes` (captureNegotiationOutcome) -- the fourth and, for this document, last web epic to extend this file (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third; see this paragraph's own 'repeating chore' provenance note above). All four operations were already implemented by backend epic E05 (Raffa.Quotes module, wired into Program.cs via AddQuotesModule/MapQuotesEndpoints/MapNegotiationsEndpoints) before this task started; this task only documents and wraps them, it does not add new backend behaviour. `position` (Raffa.Quotes.Domain.MarketPosition) is deliberately typed as a bare nullable string, not a nullable enum -- the same generate-api-client.mjs#renderSchemaType 'enum drops the null union member' limitation getPortfolio's own `risk` field and Contract 360's `header.risk`/`clauses[].riskLevel` already worked around; web/src/api/client.ts names the real 3-value set as its own hand-written `QuoteMarketPosition` alias plus an `isQuoteMarketPosition` guard, the same pattern `PortfolioRiskSeverity`/`isPortfolioRiskSeverity` already establish. `GET /api/quotes/{id}/assessment` and `POST /api/quotes/{id}/assessment/recalculate` share an identical per-line assessment shape, duplicated rather than `$ref`'d (the generator has no `$ref`/`oneOf` support -- see its own header comment). Two operations' 404s carry a real string body (`Results.NotFound(result.Error)`, not the bare empty-body `Results.NotFound()` every earlier 404 in this document uses) -- documented with `content` accordingly, and web/src/api/client.ts reads that body instead of fabricating a generic not-found message, unlike its own earlier 404 handlers. `Raffa.Quotes.Application.Strategy.NegotiationStrategyService` (negotiation-lever recommendations + evidence, task E05/F03/US01/T01) has no HTTP endpoint anywhere in `Program.cs` -- a genuine, pre-existing backend gap this task's `raffa-web` file scope cannot close; `POST /api/negotiations/outcomes`'s own description above names it, and web/src/routes/quotes/ renders an honest gap notice in its place rather than inventing lever evidence to match the cited prototype's own fixture data.\n\nTask E08/F02/US01/T01 (savings-home, ADR-020 screen 9) adds `GET /api/savings/kpis` (getSavingsKpis) and the GET half of `/api/savings` (getSavingsOpportunities) -- the fifth web epic to extend this document (task E07/F01/US01/T01 was the first, E07/F02/US01/T01 the second, E07/F03/US01/T01 the third, E08/F01/US01/T01 the fourth; see this paragraph's own 'repeating chore' provenance note above). Both operations were already named in this document's own provenance paragraph's backend-routes list ('GET/PATCH /api/savings and GET /api/savings/kpis') as not yet documented here; this task closes the GET half of that gap (already implemented by backend tasks E04/F02/US02/T01, E04/F03/US01/T01, E04/F03/US01/T02), it does not add new backend behaviour. `PATCH /api/savings/{id}` stays undocumented -- no screen in this task's own AC needs it (Home is read-only), so it is left for whichever future task first builds a real caller, the same 'wiring lands with the first real caller' convention this codebase already follows elsewhere. `confidenceLevel`/`status` are real, closed enums (SavingsConfidenceLevel.ToString() / SavingsOpportunityStatus.ToString()) declared with `enum`, the same way GET /api/renewals's own `status` field already is; `getSavingsKpis` never calls Raffa.Benchmark directly (it only aggregates Documents/Contracts and Savings data already at rest), so the Home screen's own 'benchmark provider unreachable' state (screens.md #9) is this call failing for any reason, not a status this endpoint reserves for that specific cause.\n\nThis task also found src/api/generated/schema.ts (the committed, supposedly-generated file `npm run generate:api` regenerates from this document) missing the closing brace for its top-level `operations` interface -- a pre-existing defect unrelated to this task's own two new operations, left by an earlier task that could not run the generator in this same harness (no `node`/`npm` on PATH; see AGENTS/CLAUDE instructions) and hand-appended its own operation block without re-closing the interface. Fixed in the same pass as this task's own additions rather than left to break every later task's `tsc --noEmit`.\n\nTask E13/F09/US01/T03 (web-documents-v2, epic-13/feature-09 phase-3) adds `GET /api/documents` (listDocuments), `GET /api/documents/{id}/preview` (getDocumentPreview), `POST /api/documents/{id}/reprocess` (reprocessDocument), `DELETE /api/documents/{id}` (deleteDocument), the 413/415/422 responses on `POST /api/documents`, and widens `documentType` (Quote, Invoice, PriceList, Nda, Dpa alongside the original Msa/OrderForm/Sow/Amendment/RenewalLetter/Other) on every operation that already declared it. This task's own wave-spec `depends_on: [documents-v2-api, web-shell-v2]` -- the backend counterpart (epic-13/feature-04, tasks E13/F04/US01/T01 documents-admission and E13/F04/US01/T02 documents-v2-api) had not actually landed in this worktree when this task ran (checked: no `Documents:AdmissionThreshold`/`DocumentsEndpointExtensions.cs`/`DocumentAdmissionGate`/reprocess-or-preview-or-delete endpoint exists anywhere under `backend/` as of this commit, despite both backend tasks' own workitem files claiming exactly this surface). Rather than halt the whole web phase on an unmet upstream dependency this task cannot itself close, this document is authored directly from `inputs/requirements.md` §5.1/§6 (the named authoritative source both this task's own text and task-02-documents-v2-api.md's own text point to: \"the phase-3 web task documents these endpoints from inputs/requirements.md §6\") plus the two backend tasks' own workitem files for field names/algorithms neither requirements.md nor an ADR pins exactly (e.g. `DocumentProcessingSummary`'s real field set for the reprocess response, `ISupplierNameLookup`'s nullability for `supplierName`). Every new operation's own `description` above names this provenance individually. Widening the `documentType` enum is scoped to the Documents-only operations above (`listDocuments`, `getDocument`, `reprocessDocument`'s response) -- `getPortfolio`'s `items[].type` and `getContract360`'s `header.type`/`tabs.documents[].documentType` keep the original 6-member set, since Portfolio and Contract 360 are outside this task's own screens and widening their enums without also updating those already-shipped screens' own exhaustive-looking switches would be an uncalled-for, untested ripple; a future task that gives Portfolio/Contract 360 the same widened vocabulary can do so deliberately. When the backend tasks above do land, whichever lands last should diff its own real response shapes against this document rather than assume a silent match.\n\nTask E13/F09/US01/T04 (web-ask-v2, epic-13/feature-09 phase-4) adds `GET/POST /api/conversations`, `GET /api/conversations/{id}`, `POST /api/conversations/{id}/messages` (the ADR-024 §6 reply contract), `GET /api/capabilities`, `GET /api/market/records/{id}` -- the sixth web epic to extend this document (see this paragraph's own 'repeating chore' provenance note above) -- plus `GET /api/insights/criticality` and `GET /api/contracts/{id}/strategy` (documented for completeness, no client.ts wrapper; see each operation's own description), and a `supplierName` property on getPortfolio's / getContract360's / getRenewals' response items (R-SUP-04; already real on listDocuments since task E13/F09/US01/T03). Every new operation's own description names its exact provenance; two are worth flagging here: `GET /api/market/records/{id}`'s real backend handler (backend/src/Raffa.Api/MarketEndpointExtensions.cs) does not compile as of this commit (two concatenated method bodies, confirmed by reading the file directly), so this operation is authored from the clean domain types underneath it, not the broken handler; and the existing `askRaffa` operation below (`POST /api/chat/query`) still documents the pre-ADR-024 `{question,intent,canDetermine,answer,citations,message}` shape that ChatEndpointExtensions.cs's own doc comment says was 'replaced entirely' -- left untouched here since this task's own web screens (web/src/routes/ask/**) no longer call it at all, replaced by the conversations endpoints above; a future task that removes the V1 alias and its stale documentation together can close that gap.\n\nTask E18/F02/US02/T01 (wave w16, NW-08; story us-02-audit-read-for-a-real-admin) adds `GET /api/audit` -- closing the gap this document's own provenance paragraph above named ('GET /api/audit' is removed from that not-yet-documented list, since the route is documented from this task on). Already implemented by backend task E01/F06/US02/T02, and reachable by a real caller only from this task on: it swaps the route's guard from a claims-based check (`WorkspacePrincipalAuthorization`, unreachable by any real client, deleted whole by this task) to the same `ICallerContext`/`WorkspaceRoleResolver` membership ladder `POST /api/documents/{id}/reprocess` and `DELETE /api/documents/{id}` already use (ADR-025 §K). `X-Tenant-Id` is declared as a required header for the first time on this route (ADR-026 w16 clause 2: 'a route that gains a required header silently is a runtime discovery'), even though it is documentation `tsc` cannot check -- the generator parses only `responses` (see this file's own 'Codegen tool choice' paragraph above). No `client.ts` wrapper: this route has no caller in any shipped web screen (product-owner ruled no web audit surface in scope, OQ-w16-003), so it joins the documented-but-unwrapped set `GET /api/insights/criticality` and `GET /api/contracts/{id}/strategy` already establish (ADR-012 w16 footer clauses 24, 27) -- the generated schema.ts type, arriving at zero extra cost when schema.ts is regenerated wholesale, is what this story's client-side acceptance is satisfied by.\n\nTask E19/F06/US01/T01 (wave w16, theme B contract+client) adds GET `/api/renewals/{id}/action`, `savedAction` on GET `/api/renewals` items, GET `/api/quotes`, GET `/api/quotes/{id}` (outcomes newest first), and GET/PUT `/api/contracts/{id}/negotiation-steps`. Wrappers in client.ts are only `getQuote`, `getNegotiationSteps`, `putNegotiationSteps`. GET `/api/renewals/{id}/action` and GET `/api/quotes` are published unwrapped on purpose (same set as `/api/insights/criticality` and GET `/api/contracts/{id}/strategy`): screens reach the action via `savedAction` on `getRenewals`, and no shipped screen lists quotes."
   },
   "servers": [
@@ -3055,140 +3055,140 @@
                     "fields": {
                       "type": "array",
                       "items": {
-                    "type": "object",
-                    "required": [
-                      "fieldName",
-                      "value",
-                      "confidence",
-                      "decision",
-                      "sourcePage",
-                      "sourceSpan",
-                      "box",
-                      "sourceDocumentId",
-                      "sourceFileName",
-                      "passage",
-                      "highlightStart",
-                      "highlightLength",
-                      "modelId",
-                      "extractedAt"
-                    ],
-                    "properties": {
-                      "fieldName": {
-                        "type": "string"
-                      },
-                      "value": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "description": "What the model proposed, verbatim -- not the contract's current (possibly corrected) value."
-                      },
-                      "confidence": {
-                        "type": [
-                          "number",
-                          "null"
-                        ],
-                        "description": "0..1 as the model reported it; null when it reported none."
-                      },
-                      "decision": {
-                        "type": "string",
-                        "enum": [
-                          "auto_accepted",
-                          "human_accepted",
-                          "review_required"
-                        ],
-                        "description": "Server-computed acceptance of this field. Never supplied by a caller."
-                      },
-                      "sourcePage": {
-                        "type": [
-                          "integer",
-                          "null"
-                        ],
-                        "description": "1-based page the span was read from; null when unknown."
-                      },
-                      "sourceSpan": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "description": "The literal text the fact was read from, as quoted by the model."
-                      },
-                      "box": {
-                        "type": [
-                          "object",
-                          "null"
-                        ],
-                        "description": "Pixel-space bounding box of this phrase on the rendered page image (the same page sourcePage names), from prebuilt-layout word geometry (ADR-017 w18) unioned over the phrase's words. Null for every document rasterized before this wave, or any page the OCR call returned no layout geometry for -- the viewer then falls back to the sourceSpan text-level highlight, never an error.",
+                        "type": "object",
                         "required": [
-                          "x",
-                          "y",
-                          "width",
-                          "height"
+                          "fieldName",
+                          "value",
+                          "confidence",
+                          "decision",
+                          "sourcePage",
+                          "sourceSpan",
+                          "box",
+                          "sourceDocumentId",
+                          "sourceFileName",
+                          "passage",
+                          "highlightStart",
+                          "highlightLength",
+                          "modelId",
+                          "extractedAt"
                         ],
                         "properties": {
-                          "x": {
-                            "type": "number",
-                            "description": "Left edge, in the rendered page image's pixel coordinate space."
+                          "fieldName": {
+                            "type": "string"
                           },
-                          "y": {
-                            "type": "number",
-                            "description": "Top edge, in the rendered page image's pixel coordinate space."
+                          "value": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "What the model proposed, verbatim -- not the contract's current (possibly corrected) value."
                           },
-                          "width": {
-                            "type": "number"
+                          "confidence": {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "description": "0..1 as the model reported it; null when it reported none."
                           },
-                          "height": {
-                            "type": "number"
+                          "decision": {
+                            "type": "string",
+                            "enum": [
+                              "auto_accepted",
+                              "human_accepted",
+                              "review_required"
+                            ],
+                            "description": "Server-computed acceptance of this field. Never supplied by a caller."
+                          },
+                          "sourcePage": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "description": "1-based page the span was read from; null when unknown."
+                          },
+                          "sourceSpan": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "The literal text the fact was read from, as quoted by the model."
+                          },
+                          "box": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "description": "Pixel-space bounding box of this phrase on the rendered page image (the same page sourcePage names), from prebuilt-layout word geometry (ADR-017 w18) unioned over the phrase's words. Null for every document rasterized before this wave, or any page the OCR call returned no layout geometry for -- the viewer then falls back to the sourceSpan text-level highlight, never an error.",
+                            "required": [
+                              "x",
+                              "y",
+                              "width",
+                              "height"
+                            ],
+                            "properties": {
+                              "x": {
+                                "type": "number",
+                                "description": "Left edge, in the rendered page image's pixel coordinate space."
+                              },
+                              "y": {
+                                "type": "number",
+                                "description": "Top edge, in the rendered page image's pixel coordinate space."
+                              },
+                              "width": {
+                                "type": "number"
+                              },
+                              "height": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          "sourceDocumentId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          },
+                          "sourceFileName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "File name of the source document, for the evidence card header."
+                          },
+                          "passage": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Sentence(s) of the indexed page text around the span; null when the span cannot be located."
+                          },
+                          "highlightStart": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "description": "Zero-based offset of sourceSpan inside passage."
+                          },
+                          "highlightLength": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "description": "Length of sourceSpan inside passage."
+                          },
+                          "modelId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Model id of the extraction job that proposed this fact (brief §8 traceability)."
+                          },
+                          "extractedAt": {
+                            "type": "string",
+                            "format": "date-time"
                           }
                         }
-                      },
-                      "sourceDocumentId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "format": "uuid"
-                      },
-                      "sourceFileName": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "description": "File name of the source document, for the evidence card header."
-                      },
-                      "passage": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "description": "Sentence(s) of the indexed page text around the span; null when the span cannot be located."
-                      },
-                      "highlightStart": {
-                        "type": [
-                          "integer",
-                          "null"
-                        ],
-                        "description": "Zero-based offset of sourceSpan inside passage."
-                      },
-                      "highlightLength": {
-                        "type": [
-                          "integer",
-                          "null"
-                        ],
-                        "description": "Length of sourceSpan inside passage."
-                      },
-                      "modelId": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "description": "Model id of the extraction job that proposed this fact (brief §8 traceability)."
-                      },
-                      "extractedAt": {
-                        "type": "string",
-                        "format": "date-time"
-                      }
-                    }
                       }
                     }
                   }
@@ -5898,7 +5898,8 @@
                           "modelId",
                           "promptVersion",
                           "inputHash",
-                          "createdAt"
+                          "createdAt",
+                          "payload"
                         ],
                         "properties": {
                           "id": {
@@ -5918,8 +5919,10 @@
                               "answer",
                               "abstain",
                               "redirect",
-                              "refusal"
-                            ]
+                              "refusal",
+                              "draft"
+                            ],
+                            "description": "ADR-024 §6's four reply kinds -- answer | abstain | redirect | refusal -- plus, since ADR-030 D2, 'draft': a drafted negotiation email. For 'draft' the markdown carries the honest preface ('I can't send an email from Raffa.ai yet, but…') and the email itself lives in payload.draft; citations are the pack items the email was written from."
                           },
                           "markdown": {
                             "type": "string",
@@ -6029,8 +6032,10 @@
                                   "type": "string",
                                   "enum": [
                                     "navigate",
-                                    "upload"
-                                  ]
+                                    "upload",
+                                    "external"
+                                  ],
+                                  "description": "'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind), plus -- since ADR-030 D6 -- 'external': an absolute https URL the client opens in a new tab (today only the GitHub issue a feedback submission opened; server-authored from the publisher's own response, never model-authored and never a catalog route)."
                                 }
                               }
                             }
@@ -6056,6 +6061,223 @@
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
+                          },
+                          "payload": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "description": "ADR-030 D2: the reply's structured half -- the drafted email, the capability gap, the feedback offer or the feedback result. null for every turn that carries none (every 'answer'/'abstain'/'refusal' and every non-gap 'redirect'). Each member is itself null when absent; the object is written with every member present so this required list is honest.",
+                            "required": [
+                              "gap",
+                              "draft",
+                              "feedbackOffer",
+                              "feedbackResult"
+                            ],
+                            "properties": {
+                              "gap": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                                "required": [
+                                  "key",
+                                  "title",
+                                  "language"
+                                ],
+                                "properties": {
+                                  "key": {
+                                    "type": "string",
+                                    "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "language": {
+                                    "type": "string",
+                                    "enum": [
+                                      "it",
+                                      "en"
+                                    ]
+                                  }
+                                }
+                              },
+                              "draft": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "description": "The drafted negotiation email -- only on kind 'draft'.",
+                                "required": [
+                                  "subject",
+                                  "body"
+                                ],
+                                "properties": {
+                                  "subject": {
+                                    "type": "string"
+                                  },
+                                  "body": {
+                                    "type": "string",
+                                    "description": "Plain text, verbatim: rendered in a pre-wrap block with a Copy email button, never through the markdown subset. Carries no inline [n] marker, no link, no identifier (Raffa.Chat.Application.Drafting.DraftGuard)."
+                                  }
+                                }
+                              },
+                              "feedbackOffer": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "description": "The in-chat feedback card, fully localised by the server in the question's language (ADR-030 D5); the client owns no copy of its own for it. Present on a capability-gap 'redirect' and on every 'draft'.",
+                                "required": [
+                                  "prompt",
+                                  "yesLabel",
+                                  "noLabel",
+                                  "nextLabel",
+                                  "backLabel",
+                                  "submitLabel",
+                                  "sendingLabel",
+                                  "thanksLabel",
+                                  "errorLabel",
+                                  "publicNotice",
+                                  "questions"
+                                ],
+                                "properties": {
+                                  "prompt": {
+                                    "type": "string"
+                                  },
+                                  "yesLabel": {
+                                    "type": "string"
+                                  },
+                                  "noLabel": {
+                                    "type": "string"
+                                  },
+                                  "nextLabel": {
+                                    "type": "string"
+                                  },
+                                  "backLabel": {
+                                    "type": "string"
+                                  },
+                                  "submitLabel": {
+                                    "type": "string"
+                                  },
+                                  "sendingLabel": {
+                                    "type": "string"
+                                  },
+                                  "thanksLabel": {
+                                    "type": "string"
+                                  },
+                                  "errorLabel": {
+                                    "type": "string"
+                                  },
+                                  "publicNotice": {
+                                    "type": "string",
+                                    "description": "Shown before the free-text question: the answers are published on a public GitHub repository."
+                                  },
+                                  "questions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "key",
+                                        "kind",
+                                        "label",
+                                        "prefill",
+                                        "choices"
+                                      ],
+                                      "properties": {
+                                        "key": {
+                                          "type": "string",
+                                          "enum": [
+                                            "what",
+                                            "frequency",
+                                            "importance"
+                                          ]
+                                        },
+                                        "kind": {
+                                          "type": "string",
+                                          "enum": [
+                                            "text",
+                                            "choice"
+                                          ]
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "prefill": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ],
+                                          "description": "The editable default of a 'text' question (the gap's own one-line description); null for a 'choice'."
+                                        },
+                                        "choices": {
+                                          "type": [
+                                            "array",
+                                            "null"
+                                          ],
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "key",
+                                              "label"
+                                            ],
+                                            "properties": {
+                                              "key": {
+                                                "type": "string"
+                                              },
+                                              "label": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          "description": "The quick-choice chips of a 'choice' question; null for 'text'."
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "feedbackResult": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "description": "Carried by the confirmation turn POST /api/conversations/{id}/feedback appends.",
+                                "required": [
+                                  "forMessageId",
+                                  "status",
+                                  "issueNumber",
+                                  "issueUrl"
+                                ],
+                                "properties": {
+                                  "forMessageId": {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "description": "The id of the turn whose feedbackOffer was answered -- the client hides that offer on resume."
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "recorded",
+                                      "issue_opened"
+                                    ]
+                                  },
+                                  "issueNumber": {
+                                    "type": [
+                                      "integer",
+                                      "null"
+                                    ]
+                                  },
+                                  "issueUrl": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  }
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -6085,7 +6307,7 @@
       "post": {
         "operationId": "postConversationMessage",
         "summary": "Asks a question in an existing conversation; runs the Ask engine and returns the reply.",
-        "description": "Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA). `actions[].kind` is 'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind) -- inputs/requirements.md §6's own JSON example shows 'primary'/'secondary' instead, an illustrative visual-priority label the real backend never emits; web/src/routes/ask/askViewModel.ts maps the real navigate/upload/index-ordered actions onto ReplyAction's presentational primary/secondary at the UI boundary (replyTypes.ts, task E13/F09/US01/T02, is out of this task's file scope to change). See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "description": "Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA). `actions[].kind` is 'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind) -- inputs/requirements.md §6's own JSON example shows 'primary'/'secondary' instead, an illustrative visual-priority label the real backend never emits; web/src/routes/ask/askViewModel.ts maps the real navigate/upload/index-ordered actions onto ReplyAction's presentational primary/secondary at the UI boundary (replyTypes.ts, task E13/F09/US01/T02, is out of this task's file scope to change). See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents. ADR-030 (wave w20): a fifth kind, `draft`, carries the drafted negotiation email in `payload.draft` (plain text, copied verbatim by the client's Copy email button), the honest preface in `answerMarkdown`, the pack items the email was written from as `citations`, two follow-ups, and `payload.feedbackOffer`; a capability-gap `redirect` (a reminder, an export, a purchase order, or an email request with no contract to draft for) carries `payload.gap` + `payload.feedbackOffer` and may carry `followUps` (one validated supplier per chip). Every other turn has `payload: null`. `actions[].kind` gains `external` (see its own description).",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -6131,7 +6353,8 @@
                     "citations",
                     "actions",
                     "provenance",
-                    "followUps"
+                    "followUps",
+                    "payload"
                   ],
                   "properties": {
                     "conversationId": {
@@ -6148,8 +6371,10 @@
                         "answer",
                         "abstain",
                         "redirect",
-                        "refusal"
-                      ]
+                        "refusal",
+                        "draft"
+                      ],
+                      "description": "ADR-024 §6's four reply kinds -- answer | abstain | redirect | refusal -- plus, since ADR-030 D2, 'draft': a drafted negotiation email. For 'draft' the markdown carries the honest preface ('I can't send an email from Raffa.ai yet, but…') and the email itself lives in payload.draft; citations are the pack items the email was written from."
                     },
                     "answerMarkdown": {
                       "type": "string",
@@ -6260,8 +6485,10 @@
                             "type": "string",
                             "enum": [
                               "navigate",
-                              "upload"
-                            ]
+                              "upload",
+                              "external"
+                            ],
+                            "description": "'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind), plus -- since ADR-030 D6 -- 'external': an absolute https URL the client opens in a new tab (today only the GitHub issue a feedback submission opened; server-authored from the publisher's own response, never model-authored and never a catalog route)."
                           }
                         }
                       }
@@ -6305,6 +6532,223 @@
                       "type": "array",
                       "items": {
                         "type": "string"
+                      }
+                    },
+                    "payload": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "ADR-030 D2: the reply's structured half -- the drafted email, the capability gap, the feedback offer or the feedback result. null for every turn that carries none (every 'answer'/'abstain'/'refusal' and every non-gap 'redirect'). Each member is itself null when absent; the object is written with every member present so this required list is honest.",
+                      "required": [
+                        "gap",
+                        "draft",
+                        "feedbackOffer",
+                        "feedbackResult"
+                      ],
+                      "properties": {
+                        "gap": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                          "required": [
+                            "key",
+                            "title",
+                            "language"
+                          ],
+                          "properties": {
+                            "key": {
+                              "type": "string",
+                              "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "language": {
+                              "type": "string",
+                              "enum": [
+                                "it",
+                                "en"
+                              ]
+                            }
+                          }
+                        },
+                        "draft": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "The drafted negotiation email -- only on kind 'draft'.",
+                          "required": [
+                            "subject",
+                            "body"
+                          ],
+                          "properties": {
+                            "subject": {
+                              "type": "string"
+                            },
+                            "body": {
+                              "type": "string",
+                              "description": "Plain text, verbatim: rendered in a pre-wrap block with a Copy email button, never through the markdown subset. Carries no inline [n] marker, no link, no identifier (Raffa.Chat.Application.Drafting.DraftGuard)."
+                            }
+                          }
+                        },
+                        "feedbackOffer": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "The in-chat feedback card, fully localised by the server in the question's language (ADR-030 D5); the client owns no copy of its own for it. Present on a capability-gap 'redirect' and on every 'draft'.",
+                          "required": [
+                            "prompt",
+                            "yesLabel",
+                            "noLabel",
+                            "nextLabel",
+                            "backLabel",
+                            "submitLabel",
+                            "sendingLabel",
+                            "thanksLabel",
+                            "errorLabel",
+                            "publicNotice",
+                            "questions"
+                          ],
+                          "properties": {
+                            "prompt": {
+                              "type": "string"
+                            },
+                            "yesLabel": {
+                              "type": "string"
+                            },
+                            "noLabel": {
+                              "type": "string"
+                            },
+                            "nextLabel": {
+                              "type": "string"
+                            },
+                            "backLabel": {
+                              "type": "string"
+                            },
+                            "submitLabel": {
+                              "type": "string"
+                            },
+                            "sendingLabel": {
+                              "type": "string"
+                            },
+                            "thanksLabel": {
+                              "type": "string"
+                            },
+                            "errorLabel": {
+                              "type": "string"
+                            },
+                            "publicNotice": {
+                              "type": "string",
+                              "description": "Shown before the free-text question: the answers are published on a public GitHub repository."
+                            },
+                            "questions": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "key",
+                                  "kind",
+                                  "label",
+                                  "prefill",
+                                  "choices"
+                                ],
+                                "properties": {
+                                  "key": {
+                                    "type": "string",
+                                    "enum": [
+                                      "what",
+                                      "frequency",
+                                      "importance"
+                                    ]
+                                  },
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "text",
+                                      "choice"
+                                    ]
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "prefill": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "description": "The editable default of a 'text' question (the gap's own one-line description); null for a 'choice'."
+                                  },
+                                  "choices": {
+                                    "type": [
+                                      "array",
+                                      "null"
+                                    ],
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "key",
+                                        "label"
+                                      ],
+                                      "properties": {
+                                        "key": {
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "description": "The quick-choice chips of a 'choice' question; null for 'text'."
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "feedbackResult": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "Carried by the confirmation turn POST /api/conversations/{id}/feedback appends.",
+                          "required": [
+                            "forMessageId",
+                            "status",
+                            "issueNumber",
+                            "issueUrl"
+                          ],
+                          "properties": {
+                            "forMessageId": {
+                              "type": "string",
+                              "format": "uuid",
+                              "description": "The id of the turn whose feedbackOffer was answered -- the client hides that offer on resume."
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "issue_opened"
+                              ]
+                            },
+                            "issueNumber": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "issueUrl": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          }
+                        }
                       }
                     }
                   }
@@ -7596,6 +8040,942 @@
               "application/json": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/feedback": {
+      "post": {
+        "operationId": "postConversationFeedback",
+        "summary": "Submits the in-chat feedback card's three answers for one capability-gap turn; stores a feature request, opens a GitHub issue when configured, and appends the confirmation turn.",
+        "description": "ADR-030 D5. Maps to PostConversationFeedbackAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs. Request body `{ messageId, answers: { what, frequency, importance } }` (ConversationsEndpointExtensions.PostConversationFeedbackRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph): `messageId` names the Raffa turn whose `payload.feedbackOffer` was answered; `answers.what` is free text (1-500 chars), `answers.frequency` is one of every-renewal | weekly | sometimes, `answers.importance` one of blocking | very-useful | nice-to-have (Raffa.Chat.Application.Gaps.FeedbackQuestions, validated server-side). Raffa.Chat.Application.Feedback.FeedbackService stores the request first (table feature_request, RLS), then publishes it best-effort through IFeatureRequestPublisher (the host's GitHubIssueFeatureRequestPublisher when Feedback__GitHub__Enabled is true, else nothing), then builds the confirmation turn this handler persists exactly like a reply and returns as `message`. Privacy: the published issue carries only the gap key/title, the three answers, the question language, the environment name and an opaque workspace hash -- never the question, a supplier name, contract data or the user's identity (the repository is public). 400: non-GUID ids, missing/invalid answers, or a messageId that is not a Raffa turn of this conversation carrying a feedback offer. 404: same tenant/user/unknown-id rule as GET /api/conversations/{id}. 409: this offer was already answered (the existing request's facts, `message: null`).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "See GET /api/conversations above."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Conversation.Id."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created. The request was stored (and, when configured, published); `message` is the appended confirmation turn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "feedbackId",
+                    "status",
+                    "issueNumber",
+                    "issueUrl",
+                    "message"
+                  ],
+                  "properties": {
+                    "feedbackId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "recorded",
+                        "issue_opened"
+                      ],
+                      "description": "'issue_opened' when a GitHub issue was opened; 'recorded' when the request was stored without one (no publisher configured, or the publisher failed -- the failure is an operator's concern, never the user's)."
+                    },
+                    "issueNumber": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "issueUrl": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "message": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "required": [
+                        "id",
+                        "role",
+                        "kind",
+                        "markdown",
+                        "citations",
+                        "actions",
+                        "modelId",
+                        "promptVersion",
+                        "inputHash",
+                        "createdAt",
+                        "payload"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "you",
+                            "raffa"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "answer",
+                            "abstain",
+                            "redirect",
+                            "refusal",
+                            "draft"
+                          ],
+                          "description": "ADR-024 §6's four reply kinds -- answer | abstain | redirect | refusal -- plus, since ADR-030 D2, 'draft': a drafted negotiation email. For 'draft' the markdown carries the honest preface ('I can't send an email from Raffa.ai yet, but…') and the email itself lives in payload.draft; citations are the pack items the email was written from."
+                        },
+                        "markdown": {
+                          "type": "string",
+                          "description": "The caller's own question verbatim for a 'you' turn; Raffa's answerMarkdown for a 'raffa' turn."
+                        },
+                        "citations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "n",
+                              "corpus",
+                              "title",
+                              "subtitle",
+                              "snippet",
+                              "documentId",
+                              "contractId",
+                              "page",
+                              "section",
+                              "previewUrl",
+                              "href",
+                              "recordId"
+                            ],
+                            "properties": {
+                              "n": {
+                                "type": "integer"
+                              },
+                              "corpus": {
+                                "type": "string",
+                                "description": "Usually 'tenant' | 'market' | 'raffa' (requirements.md §6 / R-WEB-04's three-corpus citation-badge vocabulary). Backend truth (Raffa.Chat.Application.Reply.ReplyCitation.Corpus's own doc comment: 'Echoes PackItem.Corpus') admits a fourth internal value, 'calc' (a deterministic-calculator-derived fact -- a renewal date, a negotiation lever, a criticality score -- Raffa.Chat.Application.Pack.PackCorpus.Calc), with no remapping step anywhere before the wire; confirmed by reading backend/src/Raffa.Api/AskCopilotService.cs's own PackItem constructions for 'when-you-must-move'/lever/target/criticality items, which set a real /contracts/{id} Href despite PackItem.Href's own doc comment claiming Href is null for PackCorpus.Calc. Left a plain string (not `enum`) to stay honest about this observed gap rather than declare a fourth badge variant replyTypes.ts does not have; web/src/routes/ask/askViewModel.ts#toCitationCorpus folds an unrecognised value into 'tenant' (the closer honest bucket -- a calculator fact is always about this tenant's own contract, never a market/feature fact)."
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "snippet": {
+                                "type": "string"
+                              },
+                              "documentId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "contractId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "format": "uuid"
+                              },
+                              "page": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "section": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "previewUrl": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "href": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "recordId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "actions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "label",
+                              "href",
+                              "kind"
+                            ],
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "href": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "navigate",
+                                  "upload",
+                                  "external"
+                                ],
+                                "description": "'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind), plus -- since ADR-030 D6 -- 'external': an absolute https URL the client opens in a new tab (today only the GitHub issue a feedback submission opened; server-authored from the publisher's own response, never model-authored and never a catalog route)."
+                              }
+                            }
+                          }
+                        },
+                        "modelId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "promptVersion": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "inputHash": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "payload": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "ADR-030 D2: the reply's structured half -- the drafted email, the capability gap, the feedback offer or the feedback result. null for every turn that carries none (every 'answer'/'abstain'/'refusal' and every non-gap 'redirect'). Each member is itself null when absent; the object is written with every member present so this required list is honest.",
+                          "required": [
+                            "gap",
+                            "draft",
+                            "feedbackOffer",
+                            "feedbackResult"
+                          ],
+                          "properties": {
+                            "gap": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                              "required": [
+                                "key",
+                                "title",
+                                "language"
+                              ],
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "language": {
+                                  "type": "string",
+                                  "enum": [
+                                    "it",
+                                    "en"
+                                  ]
+                                }
+                              }
+                            },
+                            "draft": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "The drafted negotiation email -- only on kind 'draft'.",
+                              "required": [
+                                "subject",
+                                "body"
+                              ],
+                              "properties": {
+                                "subject": {
+                                  "type": "string"
+                                },
+                                "body": {
+                                  "type": "string",
+                                  "description": "Plain text, verbatim: rendered in a pre-wrap block with a Copy email button, never through the markdown subset. Carries no inline [n] marker, no link, no identifier (Raffa.Chat.Application.Drafting.DraftGuard)."
+                                }
+                              }
+                            },
+                            "feedbackOffer": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "The in-chat feedback card, fully localised by the server in the question's language (ADR-030 D5); the client owns no copy of its own for it. Present on a capability-gap 'redirect' and on every 'draft'.",
+                              "required": [
+                                "prompt",
+                                "yesLabel",
+                                "noLabel",
+                                "nextLabel",
+                                "backLabel",
+                                "submitLabel",
+                                "sendingLabel",
+                                "thanksLabel",
+                                "errorLabel",
+                                "publicNotice",
+                                "questions"
+                              ],
+                              "properties": {
+                                "prompt": {
+                                  "type": "string"
+                                },
+                                "yesLabel": {
+                                  "type": "string"
+                                },
+                                "noLabel": {
+                                  "type": "string"
+                                },
+                                "nextLabel": {
+                                  "type": "string"
+                                },
+                                "backLabel": {
+                                  "type": "string"
+                                },
+                                "submitLabel": {
+                                  "type": "string"
+                                },
+                                "sendingLabel": {
+                                  "type": "string"
+                                },
+                                "thanksLabel": {
+                                  "type": "string"
+                                },
+                                "errorLabel": {
+                                  "type": "string"
+                                },
+                                "publicNotice": {
+                                  "type": "string",
+                                  "description": "Shown before the free-text question: the answers are published on a public GitHub repository."
+                                },
+                                "questions": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "key",
+                                      "kind",
+                                      "label",
+                                      "prefill",
+                                      "choices"
+                                    ],
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": [
+                                          "what",
+                                          "frequency",
+                                          "importance"
+                                        ]
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "text",
+                                          "choice"
+                                        ]
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "prefill": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ],
+                                        "description": "The editable default of a 'text' question (the gap's own one-line description); null for a 'choice'."
+                                      },
+                                      "choices": {
+                                        "type": [
+                                          "array",
+                                          "null"
+                                        ],
+                                        "items": {
+                                          "type": "object",
+                                          "required": [
+                                            "key",
+                                            "label"
+                                          ],
+                                          "properties": {
+                                            "key": {
+                                              "type": "string"
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        },
+                                        "description": "The quick-choice chips of a 'choice' question; null for 'text'."
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "feedbackResult": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "Carried by the confirmation turn POST /api/conversations/{id}/feedback appends.",
+                              "required": [
+                                "forMessageId",
+                                "status",
+                                "issueNumber",
+                                "issueUrl"
+                              ],
+                              "properties": {
+                                "forMessageId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "description": "The id of the turn whose feedbackOffer was answered -- the client hides that offer on resume."
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "recorded",
+                                    "issue_opened"
+                                  ]
+                                },
+                                "issueNumber": {
+                                  "type": [
+                                    "integer",
+                                    "null"
+                                  ]
+                                },
+                                "issueUrl": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "description": "The confirmation turn just appended to the conversation (same shape as GET /api/conversations/{id} messages[] -- role 'raffa', kind 'answer', payload.feedbackResult set); null on 409."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id, a non-GUID id, missing or out-of-vocabulary answers, or a messageId without a feedback offer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown conversation, another tenant's, or another user's -- one honest outcome."
+          },
+          "409": {
+            "description": "A feature request already exists for this message; `message` is null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "feedbackId",
+                    "status",
+                    "issueNumber",
+                    "issueUrl",
+                    "message"
+                  ],
+                  "properties": {
+                    "feedbackId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "recorded",
+                        "issue_opened"
+                      ],
+                      "description": "'issue_opened' when a GitHub issue was opened; 'recorded' when the request was stored without one (no publisher configured, or the publisher failed -- the failure is an operator's concern, never the user's)."
+                    },
+                    "issueNumber": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "issueUrl": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "message": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "required": [
+                        "id",
+                        "role",
+                        "kind",
+                        "markdown",
+                        "citations",
+                        "actions",
+                        "modelId",
+                        "promptVersion",
+                        "inputHash",
+                        "createdAt",
+                        "payload"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "you",
+                            "raffa"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "answer",
+                            "abstain",
+                            "redirect",
+                            "refusal",
+                            "draft"
+                          ],
+                          "description": "ADR-024 §6's four reply kinds -- answer | abstain | redirect | refusal -- plus, since ADR-030 D2, 'draft': a drafted negotiation email. For 'draft' the markdown carries the honest preface ('I can't send an email from Raffa.ai yet, but…') and the email itself lives in payload.draft; citations are the pack items the email was written from."
+                        },
+                        "markdown": {
+                          "type": "string",
+                          "description": "The caller's own question verbatim for a 'you' turn; Raffa's answerMarkdown for a 'raffa' turn."
+                        },
+                        "citations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "n",
+                              "corpus",
+                              "title",
+                              "subtitle",
+                              "snippet",
+                              "documentId",
+                              "contractId",
+                              "page",
+                              "section",
+                              "previewUrl",
+                              "href",
+                              "recordId"
+                            ],
+                            "properties": {
+                              "n": {
+                                "type": "integer"
+                              },
+                              "corpus": {
+                                "type": "string",
+                                "description": "Usually 'tenant' | 'market' | 'raffa' (requirements.md §6 / R-WEB-04's three-corpus citation-badge vocabulary). Backend truth (Raffa.Chat.Application.Reply.ReplyCitation.Corpus's own doc comment: 'Echoes PackItem.Corpus') admits a fourth internal value, 'calc' (a deterministic-calculator-derived fact -- a renewal date, a negotiation lever, a criticality score -- Raffa.Chat.Application.Pack.PackCorpus.Calc), with no remapping step anywhere before the wire; confirmed by reading backend/src/Raffa.Api/AskCopilotService.cs's own PackItem constructions for 'when-you-must-move'/lever/target/criticality items, which set a real /contracts/{id} Href despite PackItem.Href's own doc comment claiming Href is null for PackCorpus.Calc. Left a plain string (not `enum`) to stay honest about this observed gap rather than declare a fourth badge variant replyTypes.ts does not have; web/src/routes/ask/askViewModel.ts#toCitationCorpus folds an unrecognised value into 'tenant' (the closer honest bucket -- a calculator fact is always about this tenant's own contract, never a market/feature fact)."
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "snippet": {
+                                "type": "string"
+                              },
+                              "documentId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "contractId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "format": "uuid"
+                              },
+                              "page": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "section": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "previewUrl": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "href": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "recordId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "actions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "label",
+                              "href",
+                              "kind"
+                            ],
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "href": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "navigate",
+                                  "upload",
+                                  "external"
+                                ],
+                                "description": "'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind), plus -- since ADR-030 D6 -- 'external': an absolute https URL the client opens in a new tab (today only the GitHub issue a feedback submission opened; server-authored from the publisher's own response, never model-authored and never a catalog route)."
+                              }
+                            }
+                          }
+                        },
+                        "modelId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "promptVersion": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "inputHash": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "payload": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "ADR-030 D2: the reply's structured half -- the drafted email, the capability gap, the feedback offer or the feedback result. null for every turn that carries none (every 'answer'/'abstain'/'refusal' and every non-gap 'redirect'). Each member is itself null when absent; the object is written with every member present so this required list is honest.",
+                          "required": [
+                            "gap",
+                            "draft",
+                            "feedbackOffer",
+                            "feedbackResult"
+                          ],
+                          "properties": {
+                            "gap": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                              "required": [
+                                "key",
+                                "title",
+                                "language"
+                              ],
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "language": {
+                                  "type": "string",
+                                  "enum": [
+                                    "it",
+                                    "en"
+                                  ]
+                                }
+                              }
+                            },
+                            "draft": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "The drafted negotiation email -- only on kind 'draft'.",
+                              "required": [
+                                "subject",
+                                "body"
+                              ],
+                              "properties": {
+                                "subject": {
+                                  "type": "string"
+                                },
+                                "body": {
+                                  "type": "string",
+                                  "description": "Plain text, verbatim: rendered in a pre-wrap block with a Copy email button, never through the markdown subset. Carries no inline [n] marker, no link, no identifier (Raffa.Chat.Application.Drafting.DraftGuard)."
+                                }
+                              }
+                            },
+                            "feedbackOffer": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "The in-chat feedback card, fully localised by the server in the question's language (ADR-030 D5); the client owns no copy of its own for it. Present on a capability-gap 'redirect' and on every 'draft'.",
+                              "required": [
+                                "prompt",
+                                "yesLabel",
+                                "noLabel",
+                                "nextLabel",
+                                "backLabel",
+                                "submitLabel",
+                                "sendingLabel",
+                                "thanksLabel",
+                                "errorLabel",
+                                "publicNotice",
+                                "questions"
+                              ],
+                              "properties": {
+                                "prompt": {
+                                  "type": "string"
+                                },
+                                "yesLabel": {
+                                  "type": "string"
+                                },
+                                "noLabel": {
+                                  "type": "string"
+                                },
+                                "nextLabel": {
+                                  "type": "string"
+                                },
+                                "backLabel": {
+                                  "type": "string"
+                                },
+                                "submitLabel": {
+                                  "type": "string"
+                                },
+                                "sendingLabel": {
+                                  "type": "string"
+                                },
+                                "thanksLabel": {
+                                  "type": "string"
+                                },
+                                "errorLabel": {
+                                  "type": "string"
+                                },
+                                "publicNotice": {
+                                  "type": "string",
+                                  "description": "Shown before the free-text question: the answers are published on a public GitHub repository."
+                                },
+                                "questions": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "key",
+                                      "kind",
+                                      "label",
+                                      "prefill",
+                                      "choices"
+                                    ],
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": [
+                                          "what",
+                                          "frequency",
+                                          "importance"
+                                        ]
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "text",
+                                          "choice"
+                                        ]
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "prefill": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ],
+                                        "description": "The editable default of a 'text' question (the gap's own one-line description); null for a 'choice'."
+                                      },
+                                      "choices": {
+                                        "type": [
+                                          "array",
+                                          "null"
+                                        ],
+                                        "items": {
+                                          "type": "object",
+                                          "required": [
+                                            "key",
+                                            "label"
+                                          ],
+                                          "properties": {
+                                            "key": {
+                                              "type": "string"
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        },
+                                        "description": "The quick-choice chips of a 'choice' question; null for 'text'."
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "feedbackResult": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "Carried by the confirmation turn POST /api/conversations/{id}/feedback appends.",
+                              "required": [
+                                "forMessageId",
+                                "status",
+                                "issueNumber",
+                                "issueUrl"
+                              ],
+                              "properties": {
+                                "forMessageId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "description": "The id of the turn whose feedbackOffer was answered -- the client hides that offer on resume."
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "recorded",
+                                    "issue_opened"
+                                  ]
+                                },
+                                "issueNumber": {
+                                  "type": [
+                                    "integer",
+                                    "null"
+                                  ]
+                                },
+                                "issueUrl": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "description": "The confirmation turn just appended to the conversation (same shape as GET /api/conversations/{id} messages[] -- role 'raffa', kind 'answer', payload.feedbackResult set); null on 409."
+                    }
+                  }
                 }
               }
             }
