@@ -557,7 +557,7 @@ internal sealed partial class AskCopilotService(
         // is built (nothing of the tenant's data is in scope of that call, by construction); an
         // explicit or forced WebResearch intent gets the consent question, or a redirect naming
         // the closed gate. There is no path from here to the search without a consumed consent.
-        if (hints.AuthorizedWebResearch is { } authorizedWebResearch)
+        if (hints.AuthorizedWebResearch is { } authorizedWebResearch && plan.Intent == AskIntent.WebResearch)
         {
             var reply = await RunWebResearchAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, cancellationToken)
                 .ConfigureAwait(false);

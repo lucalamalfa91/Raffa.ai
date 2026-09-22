@@ -33,6 +33,12 @@ public static class WebQuerySanitizer
     // Any remaining number with four or more digits (a contract number, an amount typed without
     // a currency) is not something a public search needs.
     private static readonly Regex LongNumberPattern = new(@"\b\d[\d,.'’]{3,}\b", RegexOptions.Compiled);
+    private static readonly Regex StandaloneAmountPattern = new(
+        @"\b\d{1,3}(?:[.,]\d+)?\b(?=\s+(?:" +
+        @"per\s+(?:seat|user|licen[cs]e|month|year)|" +
+        @"for\s+(?:seats?|users?|licen[cs]es?|months?|years?)|" +
+        @"(?:normal|average|reasonable|expensive|cheap|high|low)\b))",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex WhitespacePattern = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex DanglingPunctuationPattern = new(@"\s+([,;:.!?])", RegexOptions.Compiled);
@@ -58,6 +64,7 @@ public static class WebQuerySanitizer
         text = SlashDatePattern.Replace(text, " ");
         text = LongDatePattern.Replace(text, " ");
         text = LongNumberPattern.Replace(text, " ");
+        text = StandaloneAmountPattern.Replace(text, " ");
         text = WhitespacePattern.Replace(text, " ");
         text = DanglingPunctuationPattern.Replace(text, "$1").Trim();
         text = text.Trim(' ', ',', ';', ':', '.', '!', '?', '-', '–', '—');

@@ -588,6 +588,12 @@ public static class ConversationsEndpointExtensions
                 InterviewJsonCodec.SerializeAnswer(messageId, question.Key, option.Key, freeText: false));
         }
 
+        if (answer.FreeText is not true)
+        {
+            return InterviewAnswerResolution.Fail(
+                Results.BadRequest("'interviewAnswer.optionKey' is required unless 'interviewAnswer.freeText' is true."));
+        }
+
         if (!question.AllowFreeText)
         {
             return InterviewAnswerResolution.Fail(Results.BadRequest("That interview question takes one of its options, not free text."));

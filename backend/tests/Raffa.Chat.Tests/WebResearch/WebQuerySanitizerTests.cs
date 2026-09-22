@@ -25,6 +25,8 @@ public sealed class WebQuerySanitizerTests
     [InlineData("search online for news about acme, contact john@acme.example or https://acme.example/x", "@")]
     [InlineData("search online for news about acme, contact john@acme.example or https://acme.example/x", "https")]
     [InlineData("search the web for contract 20240917 pricing practice", "20240917")]
+    [InlineData("search the web for is 999 normal for licences", "999")]
+    [InlineData("search the web for is 250 per seat normal", "250")]
     public void Strips_amounts_percentages_dates_shorthand_emails_urls_and_long_numbers(string question, string forbidden)
     {
         var query = WebQuerySanitizer.Sanitize(question, 300);
