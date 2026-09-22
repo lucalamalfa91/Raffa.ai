@@ -365,12 +365,12 @@ internal sealed partial class AskCopilotService(
         // branch here carries its own guardIntervened alongside the reply, rather than WriteAuditAsync
         // inferring it from ReplyKind alone (which cannot tell the two apart; see
         // BuildInDomainReplyAsync's own doc comment on its tuple return).
-        var (reply, guardIntervened) = gate.Label switch
+        var (reply, guardIntervened, fallbackUsed) = gate.Label switch
         {
-            GateLabel.Greeting or GateLabel.OffDomain => (BuildGreetingReply(portfolio, supplierNames), false),
-            GateLabel.Legal => (BuildLegalReply(portfolio, supplierNames, gate.NamedSupplier), false),
-            GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false),
-            GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false),
+            GateLabel.Greeting or GateLabel.OffDomain => (BuildGreetingReply(portfolio, supplierNames), false, false),
+            GateLabel.Legal => (BuildLegalReply(portfolio, supplierNames, gate.NamedSupplier), false, false),
+            GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false, false),
+            GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
                 tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
                 scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken)
@@ -378,7 +378,7 @@ internal sealed partial class AskCopilotService(
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
 
-        await WriteAuditAsync(tenantId, reply, guardIntervened, actor, cancellationToken).ConfigureAwait(false);
+        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, actor, cancellationToken).ConfigureAwait(false);
 
         // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
         // answer above), so "asked, said no" is visible without the query ever being logged.
@@ -480,7 +480,7 @@ internal sealed partial class AskCopilotService(
     /// <see cref="AskIntent.RenewalStrategy"/> named-contract branch can pass it on to
     /// <see cref="BuildNegotiationPointsPackAsync"/>'s own required <c>actor</c> parameter whenever
     /// <c>persistTodos: true</c> (task E29/F02/US01/T01, todo-host-upsert). Never the model.</param>
-    private async Task<(CopilotReply Reply, bool GuardIntervened)> BuildInDomainReplyAsync(
+    private async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildInDomainReplyAsync(
         TenantId tenantId,
         string question,
         string? namedSupplier,
@@ -515,7 +515,7 @@ internal sealed partial class AskCopilotService(
             forcedContractItem = portfolio.Items.FirstOrDefault(item => item.ContractId == forcedContractId.Value);
             if (forcedContractItem is null && plan.Intent != AskIntent.PortfolioMarketPosition)
             {
-                return (BuildUnseenScopeRefusal(portfolio), false);
+                return (BuildUnseenScopeRefusal(portfolio), false, false);
             }
         }
 
@@ -527,7 +527,7 @@ internal sealed partial class AskCopilotService(
         // scope, so it never depends on the scoped contract resolving at all.
         if (scopeContractId is not null && scopedContractItem is null && plan.Intent != AskIntent.PortfolioMarketPosition)
         {
-            return (BuildUnseenScopeRefusal(portfolio), false);
+            return (BuildUnseenScopeRefusal(portfolio), false, false);
         }
 
         // AC-2 (NW-76) / NW-80 (task E27/F05/US01/T01): a resolved, visible scope id wins outright
@@ -552,8 +552,9 @@ internal sealed partial class AskCopilotService(
         // the closed gate. There is no path from here to the search without a consumed consent.
         if (hints.AuthorizedWebResearch is { } authorizedWebResearch)
         {
-            return await RunWebResearchAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, cancellationToken)
+            var reply = await RunWebResearchAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, cancellationToken)
                 .ConfigureAwait(false);
+            return (reply.Reply, reply.GuardIntervened, false);
         }
 
         if (plan.Intent == AskIntent.WebResearch)
@@ -561,12 +562,13 @@ internal sealed partial class AskCopilotService(
             return (
                 await BuildWebResearchEntryReplyAsync(tenantId, question, portfolio, routingContext, actor, cancellationToken)
                     .ConfigureAwait(false),
+                false,
                 false);
         }
 
         if (plan.Intent is AskIntent.Navigate or AskIntent.QuoteRoute)
         {
-            return (BuildRoutingOnlyReply(plan, routingContext), false);
+            return (BuildRoutingOnlyReply(plan, routingContext), false, false);
         }
 
         // ADR-030 — the interview. Decided here, after scope and supplier resolution and before
@@ -592,7 +594,7 @@ internal sealed partial class AskCopilotService(
                     question, plan, signals, BuildInterviewInputs(supplierMatches, portfolio, supplierNames), webOffer);
                 if (interview is not null)
                 {
-                    return (InterviewReplyBuilder.Interview(interview), false);
+                    return (InterviewReplyBuilder.Interview(interview), false, false);
                 }
             }
         }
@@ -614,6 +616,7 @@ internal sealed partial class AskCopilotService(
             return (
                 await BuildNoticeFallbackReplyAsync(namedContractItem, disambiguationItem, routingContext, cancellationToken)
                     .ConfigureAwait(false),
+                false,
                 false);
         }
 
@@ -667,6 +670,12 @@ internal sealed partial class AskCopilotService(
 
         var boundedPack = packBudget.Apply(packItems);
 
+        // Every abstain this turn can end in offers the same way forward: the screen where this kind
+        // of answer lives, and two questions that route to a real answer (ADR-024 "every abstain has
+        // a clickable next step").
+        var recoveryActions = ResolveAbstainRecoveryActions(portfolio, routingContext, plan.Intent);
+        var recoveryFollowUps = AbstainFollowUps(question, portfolio, plan.Intent);
+
         if (boundedPack.Count == 0)
         {
             // ADR-027 §D8 (task E16/F02/US03/T01): no number here. `portfolio.Items.Count` is the
@@ -679,7 +688,7 @@ internal sealed partial class AskCopilotService(
                 ReplyKind.Abstain,
                 "Nothing in your validated contracts supports a reliable answer. " +
                 "Try a question about dates, spend, notice periods or clauses.",
-                [], ResolveAbstainRecoveryActions(portfolio, routingContext), ReplyProvenance.NoModelCall([]), []), false);
+                [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps), false, false);
         }
 
         var composed = await answerComposer.AnswerAsync(question, boundedPack, recentTurns, cancellationToken)
@@ -690,29 +699,53 @@ internal sealed partial class AskCopilotService(
             return (new CopilotReply(
                 ReplyKind.Abstain,
                 "Raffa could not reach the answer service just now — please try again shortly.",
-                [], ResolveAbstainRecoveryActions(portfolio, routingContext), ReplyProvenance.NoModelCall([]), []), false);
+                [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps), false, false);
         }
+
+        var result = composed.Value.Result;
 
         // ADR-030 stage 3: the model itself says the question was ambiguous -- offer the
         // interpretation menu (deterministic options, never the model's) instead of the abstain
         // block with its dead "Open Ask Raffa" button.
-        if (!composed.Value.Result.CanDetermine
+        if (!result.CanDetermine
             && !composed.Value.GuardIntervened
             && interviewOptions.Enabled
             && interviewOptions.ConvertAmbiguousAbstain
             && !hints.SuppressInterview
             && !previousRaffaTurnWasInterview
-            && AmbiguousAbstainDetector.IsAmbiguous(composed.Value.Result.AbstainReason))
+            && AmbiguousAbstainDetector.IsAmbiguous(result.AbstainReason))
         {
             var webOffer = await BuildWebOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
             var interview = interviewPlanner.PlanInterpretationMenu(question, plan, webOffer);
             if (interview is not null)
             {
-                return (InterviewReplyBuilder.Interview(interview), false);
+                return (InterviewReplyBuilder.Interview(interview), false, false);
             }
         }
 
-        var actionKeys = composed.Value.Result.ActionKeys ?? [];
+        // The composed-from-the-pack answer is only as relevant as the pack. A structured question
+        // the deterministic planner could not handle gets a stand-in snapshot of the soonest-ending
+        // contracts (no calc:structured-query item) -- quoting that back would answer a question
+        // that was not asked (GAP-ASK-UNANSWERABLE-STILL-ANSWERED), so that one case stays an
+        // honest abstain.
+        if (composed.Value.FallbackUsed && plan.Intent == AskIntent.StructuredFact && namedContractItem is null &&
+            !boundedPack.Any(item => item.CitationKey == InsightsCitationKeys.Calc("structured-query")))
+        {
+            return (
+                new CopilotReply(
+                    ReplyKind.Abstain,
+                    CopilotReplyBuilder.DefaultAbstainReason,
+                    [],
+                    recoveryActions,
+                    new ReplyProvenance([], result.Metadata.ModelId, result.Metadata.PromptVersion, result.Metadata.InputHash),
+                    recoveryFollowUps),
+                true,
+                false);
+        }
+        // Model action keys were already normalized to catalog keys by AnswerComposer
+        // (ActionKeyNormalizer); a key whose route needs an id this turn does not carry (Contract 360
+        // on a portfolio-wide turn) is dropped here rather than failing CapabilityRouting.ForKey.
+        var actionKeys = ActionKeyNormalizer.Routable(result.ActionKeys, routingContext);
         var resolvedActions = actionKeys.Count > 0
             ? capabilityRouting.ResolveActions(actionKeys.Select(CapabilityIntent.HowTo).ToList(), routingContext)
             : [];
@@ -737,10 +770,21 @@ internal sealed partial class AskCopilotService(
             resolvedActions = resolvedActions.Concat(injectedRenewalsAction).Distinct().ToList();
         }
 
+        // A savings answer always leads somewhere: the Savings opportunities it is about and the
+        // Renewals deadlines that time them, first (the first action is the primary button) --
+        // server-resolved from the catalog, never from the model's own keys, merged with them the
+        // same Distinct() way as the Q3 injection above.
+        if (result.CanDetermine && plan.Intent is AskIntent.Savings or AskIntent.PortfolioSavingsTarget)
+        {
+            var injectedSavingsActions = capabilityRouting.ResolveActions(
+                [CapabilityIntent.Savings, CapabilityIntent.Deadline], routingContext);
+            resolvedActions = injectedSavingsActions.Concat(resolvedActions).Distinct().ToList();
+        }
+
         return (
-            CopilotReplyBuilder.FromGuardedResult(
-                composed.Value.Result, boundedPack, resolvedActions, ResolveAbstainRecoveryActions(portfolio, routingContext)),
-            composed.Value.GuardIntervened);
+            CopilotReplyBuilder.FromGuardedResult(result, boundedPack, resolvedActions, recoveryActions, recoveryFollowUps),
+            composed.Value.GuardIntervened,
+            composed.Value.FallbackUsed);
     }
 
     /// <summary>
@@ -895,23 +939,70 @@ internal sealed partial class AskCopilotService(
     }
 
     /// <summary>
-    /// The one recovery action every abstain path this method's caller can reach attaches
+    /// The recovery actions every abstain path this method's caller can reach attaches
     /// (E25/F05/US01/T01, story us-01-abstain-recovery-backend AC-1/AC-3; ADR-024 "every abstain
     /// has a clickable next step"). Never derived from <c>AiAnswerResult.ActionKeys</c> — an
     /// abstaining model has nothing grounded to suggest, and AC-2 requires a real catalog href
     /// regardless of what it returned. Zero validated contracts is the one failure Ask can actually
     /// unblock (upload something), so that case gets the Documents upload action; otherwise the
-    /// recovery is the Ask capability's own "ask about dates, spend, notice periods and clauses"
-    /// hint (<see cref="CapabilityCatalog.AskKey"/>'s own catalog description), which is exactly
-    /// what every abstain reply's own prose already suggests trying next. Both target capabilities
-    /// are <see cref="CapabilityRoleGate.Any"/>, so this never role-gates away to an empty list.
+    /// recovery is where the answer to <paramref name="intent"/>'s kind of question lives: Savings +
+    /// Renewals for a savings or priority question, Renewals + Portfolio for a date or renewal
+    /// question, Quote check (+ Contract 360 when a contract is in scope) for a market question,
+    /// the contract or Portfolio + Documents for a clause, Documents review for a document-status
+    /// question, and Portfolio for everything else (including a turn with no intent, the unseen-scope
+    /// refusal, whose own copy already says "Open Portfolio"). It used to be the Ask capability
+    /// itself (<c>/ask</c>) — the screen the user is already on, so the button led nowhere. Every
+    /// target is <see cref="CapabilityRoleGate.Any"/>, so this never role-gates away to an empty list.
     /// </summary>
-    private IReadOnlyList<CopilotAction> ResolveAbstainRecoveryActions(PortfolioPage portfolio, RoutingContext routingContext) =>
-        portfolio.Items.Count == 0
+    private IReadOnlyList<CopilotAction> ResolveAbstainRecoveryActions(
+        PortfolioPage portfolio, RoutingContext routingContext, AskIntent? intent = null)
+    {
+        if (portfolio.Items.Count == 0)
+        {
             // Documents is Always-available, so HowTo(DocumentsKey) would Navigate to /documents.
             // UnknownSupplier is the catalog path that emits CopilotActionKind.Upload at /documents.
-            ? capabilityRouting.ResolveActions([CapabilityIntent.UnknownSupplier], routingContext)
-            : capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.AskKey)], routingContext);
+            return capabilityRouting.ResolveActions([CapabilityIntent.UnknownSupplier], routingContext);
+        }
+
+        CapabilityIntent[] intents = intent switch
+        {
+            AskIntent.Savings or AskIntent.PortfolioSavingsTarget or AskIntent.PortfolioStrategy =>
+                [CapabilityIntent.Savings, CapabilityIntent.Deadline],
+            AskIntent.RenewalStrategy or AskIntent.StructuredFact =>
+                [CapabilityIntent.Deadline, CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)],
+            AskIntent.MarketCompare or AskIntent.PortfolioMarketPosition =>
+                [CapabilityIntent.Benchmark],
+            AskIntent.Clause when routingContext.ContractId is not null =>
+                [CapabilityIntent.HowTo(CapabilityCatalog.ContractDetailKey), CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)],
+            AskIntent.Clause =>
+                [CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey), CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)],
+            AskIntent.DocumentStatus =>
+                [CapabilityIntent.HowTo(CapabilityCatalog.DocumentsAttentionKey)],
+            _ => [CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)],
+        };
+
+        return capabilityRouting.ResolveActions(intents, routingContext);
+    }
+
+    /// <summary>The area an abstain's suggested follow-ups come from: Documents while nothing is
+    /// uploaded (the one thing that unblocks Ask), else the same grouping
+    /// <see cref="ResolveAbstainRecoveryActions"/> routes to — savings, renewals, market position,
+    /// documents — and the general pair for a clause or anything else.</summary>
+    private static IReadOnlyList<string> AbstainFollowUps(string question, PortfolioPage portfolio, AskIntent intent)
+    {
+        var capabilityKey = portfolio.Items.Count == 0
+            ? CapabilityCatalog.DocumentsKey
+            : intent switch
+            {
+                AskIntent.Savings or AskIntent.PortfolioSavingsTarget or AskIntent.PortfolioStrategy => CapabilityCatalog.SavingsKey,
+                AskIntent.RenewalStrategy or AskIntent.StructuredFact => CapabilityCatalog.RenewalsKey,
+                AskIntent.MarketCompare or AskIntent.PortfolioMarketPosition => CapabilityCatalog.QuoteCheckKey,
+                AskIntent.DocumentStatus => CapabilityCatalog.DocumentsKey,
+                _ => CapabilityCatalog.AskKey,
+            };
+
+        return GroundedFallbackAnswer.SuggestedQuestions(question, capabilityKey);
+    }
 
     private CopilotReply BuildRoutingOnlyReply(IntentPlanResult plan, RoutingContext routingContext)
     {
@@ -2708,7 +2799,7 @@ internal sealed partial class AskCopilotService(
             item.AutoRenewal);
 
     private async Task WriteAuditAsync(
-        TenantId tenantId, CopilotReply reply, bool guardIntervened, string actor, CancellationToken cancellationToken)
+        TenantId tenantId, CopilotReply reply, bool guardIntervened, bool fallbackUsed, string actor, CancellationToken cancellationToken)
     {
         var action = reply.Kind switch
         {
@@ -2737,6 +2828,7 @@ internal sealed partial class AskCopilotService(
                 clock.UtcNow,
                 $"kind={reply.Kind} citationCount={reply.Citations.Count} actionCount={reply.Actions.Count} " +
                 $"packHash={packHash} abstainGuardIntervened={guardIntervened} " +
+                $"fallbackUsed={fallbackUsed} " +
                 $"interviewQuestions={reply.Interview?.Questions.Count ?? 0} " +
                 $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
                 $"unverified={reply.Provenance.Unverified}"),

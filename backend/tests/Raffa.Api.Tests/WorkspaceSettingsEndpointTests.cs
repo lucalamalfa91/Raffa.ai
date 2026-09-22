@@ -115,7 +115,7 @@ public sealed class WorkspaceSettingsEndpointTests : IClassFixture<RaffaApiFacto
         new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
 
     private WebApplicationFactory<Program> WithInMemoryIdentity(RecordingAuditWriter audit) =>
-        _baseFactory.WithInMemoryAskEngine(NewGateway(), clock: FixedClock.Instance, auditWriter: audit);
+        _baseFactory.WithInMemoryAskEngine(NewGateway(), clock: new FixedClock(Now), auditWriter: audit);
 
     private static async Task<HttpResponseMessage> SendAsync(
         HttpClient client, HttpMethod method, Guid tenantId, string callerUserId, object? body = null)

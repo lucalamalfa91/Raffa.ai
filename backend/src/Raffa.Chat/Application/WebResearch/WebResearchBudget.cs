@@ -65,19 +65,29 @@ public sealed class WebResearchBudget(
             return await TryConsumeTrackedAsync(tenantId, day, limit, cancellationToken).ConfigureAwait(false);
         }
 
-        // Command tag "INSERT 0 1" when the row was inserted or updated, "INSERT 0 0" when the
-        // DO UPDATE's WHERE refused the increment — that count is the whole verdict.
-        var affected = await dbContext.Database
-            .ExecuteSqlAsync(
-                $"""
-                INSERT INTO chat_web_research_usage (tenant_id, day, calls)
-                VALUES ({tenant}, {day}, 1)
-                ON CONFLICT (tenant_id, day) DO UPDATE
-                SET calls = chat_web_research_usage.calls + 1
-                WHERE chat_web_research_usage.calls < {limit}
-                """,
-                cancellationToken)
-            .ConfigureAwait(false);
+        int affected;
+        try
+        {
+            // Command tag "INSERT 0 1" when the row was inserted or updated, "INSERT 0 0" when the
+            // DO UPDATE's WHERE refused the increment — that count is the whole verdict.
+            affected = await dbContext.Database
+                .ExecuteSqlAsync(
+                    $"""
+                    INSERT INTO chat_web_research_usage (tenant_id, day, calls)
+                    VALUES ({tenant}, {day}, 1)
+                    ON CONFLICT (tenant_id, day) DO UPDATE
+                    SET calls = chat_web_research_usage.calls + 1
+                    WHERE chat_web_research_usage.calls < {limit}
+                    """,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Relational-specific methods can only be used", StringComparison.Ordinal))
+        {
+            // Some test hosts swap the DbContext late enough that the relational guard above still
+            // reports true, but the eventual provider is EF InMemory and cannot execute SQL.
+            return await TryConsumeTrackedAsync(tenantId, day, limit, cancellationToken).ConfigureAwait(false);
+        }
 
         return affected == 1;
     }

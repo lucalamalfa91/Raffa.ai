@@ -36,6 +36,7 @@ function item(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalPipeline
     daysUntilCancellationDeadline: 22,
     autoRenewal: true,
     action: "Finalize decision now",
+    priority: null,
     insightCard: {
       facts: {
         supplierId: "s-1",

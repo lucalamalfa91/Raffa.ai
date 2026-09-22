@@ -1,3 +1,4 @@
+using Raffa.SharedKernel.Persistence;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
@@ -39,7 +40,7 @@ public static class IdentityWorkspaceDbContextOptions
         ICallerIdentityContext? callerIdentityContext = null)
     {
         builder
-            .UseNpgsql(connectionString)
+            .UseNpgsql(PostgresConnectionPool.Bound(connectionString))
             // Postgres/ADR-009 convention is snake_case (`tenant_id`, `workspace`, ...); without
             // this, EF Core would emit quoted PascalCase identifiers instead.
             .UseSnakeCaseNamingConvention();

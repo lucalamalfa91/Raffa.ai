@@ -125,6 +125,7 @@ jobs:
             echo "::error::no Key Vault found in resource group $RESOURCE_GROUP. Confirm the HCP VCS apply at $HCP_RUNS, then re-run this job."
             exit 1
           fi
+          echo "KV_NAME=$KV_NAME" >> "$GITHUB_ENV"
           set +e
           RAW_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name postgres-connection --query value -o tsv 2>/tmp/kv_secret_show.err)
           KV_STATUS=$?
@@ -150,6 +151,27 @@ jobs:
             echo "PGSSLMODE=$PGSSLMODE"
             echo "MARKET_DB_CONNECTION=$RAW_CONN"
           } >> "$GITHUB_ENV"
+
+      # Raffa.Worker/Program.cs fails fast without ConnectionStrings:Storage
+      # (E16/F02/US03/T01 moved the content gate + pipeline into the Worker, so
+      # the host registers the blob adapter before dispatching any command).
+      # `ingest-market` never touches blob storage and constructing the
+      # BlobContainerClient makes no network call, but the host will not build
+      # without it -- same fetch reprocess-tenant-documents.yml already does
+      # from the same vault, with the same CI principal and role.
+      - name: Fetch Storage connection string
+        run: |
+          set -euo pipefail
+          set +e
+          STORAGE_CONN=$(az keyvault secret show --vault-name "$KV_NAME" --name storage-connection --query value -o tsv 2>/tmp/kv_storage.err)
+          ST_STATUS=$?
+          set -e
+          if [ $ST_STATUS -ne 0 ] || [ -z "$STORAGE_CONN" ]; then
+            echo "::error::could not read secret 'storage-connection' from $KV_NAME. Azure CLI said: $(tail -c 500 /tmp/kv_storage.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$STORAGE_CONN"
+          echo "STORAGE_CONN=$STORAGE_CONN" >> "$GITHUB_ENV"
 
       # Honest failure instead of an opaque "relation market_record does not
       # exist" from inside the Worker: ADR-021's apply order is schema first
@@ -180,10 +202,14 @@ jobs:
             --configuration Release --no-restore
 
       # `ingest-market` fails fast without ConnectionStrings:DocumentsContracts,
-      # :Audit and :Renewals (Raffa.Worker/Program.cs builds the whole host
-      # before dispatching the command) and requires ConnectionStrings:Market
-      # for the ingestion service itself (IngestMarketCommand.RunAsync). All
-      # four are the same environment database.
+      # :Audit, :Renewals and :Storage (Raffa.Worker/Program.cs builds the
+      # whole host before dispatching the command) and requires
+      # ConnectionStrings:Market for the ingestion service itself
+      # (IngestMarketCommand.RunAsync). The four Postgres ones are the same
+      # environment database; Storage is only there so the host builds.
+      # ServiceBus__* is deliberately not set: the in-memory queue is
+      # registered instead, and its consumer never starts because the command
+      # returns before host.Run().
       #
       # AiGateway__Endpoint is deliberately not set: with it unset the gateway
       # DI swap keeps the fixture `embed` role (ADR-004 / R-AI-01), which is
@@ -199,6 +225,7 @@ jobs:
           export ConnectionStrings__Audit="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Renewals="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Market="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Storage="$STORAGE_CONN"
           dotnet run --project backend/src/Raffa.Worker/Raffa.Worker.csproj \
             --configuration Release --no-build --no-restore \
             -- ingest-market --feed "$FEED_PATH" | tee /tmp/ingest-first.log
@@ -220,6 +247,7 @@ jobs:
           export ConnectionStrings__Audit="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Renewals="$MARKET_DB_CONNECTION"
           export ConnectionStrings__Market="$MARKET_DB_CONNECTION"
+          export ConnectionStrings__Storage="$STORAGE_CONN"
           dotnet run --project backend/src/Raffa.Worker/Raffa.Worker.csproj \
             --configuration Release --no-build --no-restore \
             -- ingest-market --feed "$FEED_PATH" | tee /tmp/ingest-second.log

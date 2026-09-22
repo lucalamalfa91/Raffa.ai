@@ -473,7 +473,11 @@ public sealed class FixtureAiGateway(
               "commitments as the lever buyers cite most often [2]. Nothing here is verified against your contracts.";
 
         return Task.FromResult(Result<AiResearchResult>.Success(
-            new AiResearchResult(summary, sources, offTopic, BuildMetadata(model, request.Query))));
+            new AiResearchResult(
+                summary,
+                sources,
+                offTopic,
+                BuildMetadata(model, request.Query) with { PromptVersion = request.PromptVersion })));
     }
 
     public Task<Result<AiOcrResult>> OcrAsync(

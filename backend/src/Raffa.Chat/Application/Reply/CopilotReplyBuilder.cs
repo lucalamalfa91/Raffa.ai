@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Pack;
@@ -13,6 +14,17 @@ namespace Raffa.Chat.Application.Reply;
 /// </summary>
 public static class CopilotReplyBuilder
 {
+    /// <summary>The abstain copy when there is no reason fit to show — the same sentence every
+    /// other "nothing supports an answer" path in Ask uses.</summary>
+    public const string DefaultAbstainReason = "Nothing in your validated contracts supports a reliable answer.";
+
+    // An abstain reason is shown to the user as is (the web prints it verbatim), so one that talks
+    // about the machinery — the pack, its keys, the guards, a requirement id — is replaced by
+    // DefaultAbstainReason rather than shown (R-ASK-08 "never engineer chrome").
+    private static readonly Regex EngineerChrome = new(
+        @"\b(context\s+pack|the\s+pack|pack\s+items?|citation\s?keys?|action\s?keys?|canDetermine|guards?|R-[A-Z]{2,5}-\d+|Appendix\s+C)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// Turns a guarded <see cref="AiAnswerResult"/> (already validated by
     /// <c>Guards.GroundingGuard</c>/<c>Guards.NumericGuard</c>, and downgraded by
@@ -36,12 +48,17 @@ public static class CopilotReplyBuilder
     /// <see cref="AiAnswerResult.ActionKeys"/>, because an abstaining model has nothing grounded to
     /// suggest and AC-2 forbids a model-authored action regardless. Ignored when
     /// <see cref="AiAnswerResult.CanDetermine"/> is <see langword="true"/>.</param>
-    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    /// <param name="abstainFollowUps">Next-step questions for an abstain whose result carries none of
+    /// its own (<c>Answering.GroundedFallbackAnswer.SuggestedQuestions</c>, chosen by the composition
+    /// root from the turn's intent) — so a user who hit a gap still has somewhere to go.
+    /// <see langword="null"/> or empty for none; ignored for <see cref="ReplyKind.Answer"/>.</param>
+    /// <exception cref="ArgumentNullException">Any required argument is <see langword="null"/>.</exception>
     public static CopilotReply FromGuardedResult(
         AiAnswerResult guarded,
         IReadOnlyList<PackItem> pack,
         IReadOnlyList<CopilotAction> actions,
-        IReadOnlyList<CopilotAction> recoveryActions)
+        IReadOnlyList<CopilotAction> recoveryActions,
+        IReadOnlyList<string>? abstainFollowUps = null)
     {
         ArgumentNullException.ThrowIfNull(guarded);
         ArgumentNullException.ThrowIfNull(pack);
@@ -52,24 +69,32 @@ public static class CopilotReplyBuilder
         {
             return new CopilotReply(
                 ReplyKind.Abstain,
-                guarded.AbstainReason ?? "Nothing in the validated contracts supports a reliable answer.",
+                UserFacingAbstainReason(guarded.AbstainReason),
                 [],
                 recoveryActions,
                 new ReplyProvenance([], guarded.Metadata.ModelId, guarded.Metadata.PromptVersion, guarded.Metadata.InputHash),
-                []);
+                guarded.FollowUps is { Count: > 0 } modelFollowUps ? modelFollowUps : abstainFollowUps ?? []);
         }
 
-        var citations = BuildCitations(guarded.CitationKeys ?? [], pack);
+        // A citation key the model wrote into its prose becomes an [n] marker (or goes), so the
+        // reader never sees a lookup token -- see InlineCitationNormalizer's own doc comment.
+        var (answerMarkdown, citationKeys) = InlineCitationNormalizer.Normalize(guarded.AnswerMarkdown, guarded.CitationKeys ?? [], pack);
+        var citations = BuildCitations(citationKeys, pack);
         var sources = citations.Select(c => c.Corpus).Distinct(StringComparer.Ordinal).ToList();
 
         return new CopilotReply(
             ReplyKind.Answer,
-            guarded.AnswerMarkdown ?? string.Empty,
+            answerMarkdown,
             citations,
             actions,
             new ReplyProvenance(sources, guarded.Metadata.ModelId, guarded.Metadata.PromptVersion, guarded.Metadata.InputHash),
             guarded.FollowUps ?? []);
     }
+
+    /// <summary>The model's (or the downgrade's) abstain reason when it reads as plain language for
+    /// the user; <see cref="DefaultAbstainReason"/> when it is blank or talks about the machinery.</summary>
+    public static string UserFacingAbstainReason(string? reason) =>
+        string.IsNullOrWhiteSpace(reason) || EngineerChrome.IsMatch(reason) ? DefaultAbstainReason : reason.Trim();
 
     /// <summary>
     /// Resolves <paramref name="citationKeys"/> (already proven, by

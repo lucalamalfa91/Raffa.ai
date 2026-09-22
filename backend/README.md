@@ -229,8 +229,8 @@ request.
 | GET | `/api/conversations` | Caller's last N conversations, most recently updated first (spec §7; R-CONV-02; story us-01-conversations AC-2, task E13/F05/US01/T02); `X-Tenant-Id` header + caller identity (see "Authentication" below); optional `take` (default 5, must be a positive integer); response is a bare array of `{ id, title, scopeContractId, updatedAt }`, never an `{ items, totalCount }` envelope — there is no paging concept for "my last N conversations" |
 | POST | `/api/conversations` | Creates a conversation (AC-2); `X-Tenant-Id` header + caller identity; body `{ scopeContractId? }` — a GUID naming the contract "Ask about it" (Contract 360) was opened from, or omitted for the global Ask bar (ADR-024: "The global Ask bar always opens a new chat"); 201 with the same `{ id, title, scopeContractId, updatedAt }` shape as the list row above; `title` starts as `ConversationService.DefaultTitle` ("New chat") until the first message lands |
 | GET | `/api/conversations/{id}` | The conversation plus its messages, oldest first (AC-2); `X-Tenant-Id` header + caller identity; 404 when `{id}` does not exist, belongs to another tenant, or belongs to another user of the same tenant — RLS backstops the tenant half (ADR-009), `Raffa.Chat.Application.Conversations.ConversationService` itself is the only thing enforcing the per-user half (RLS has no per-user predicate), and both read back as the identical 404, never a distinguishing 403; response `{ id, title, scopeContractId, createdAt, updatedAt, messages: [{ id, role, kind, markdown, citations, actions, modelId, promptVersion, inputHash, createdAt }] }` — `role` is `you`/`raffa`, `kind` is `answer`/`abstain`/`redirect`/`refusal` (ADR-024 §6 wire literals); `citations`/`actions` are real JSON arrays, never a JSON string nested inside JSON; never the raw retrieval pack (ADR-011) |
-| POST | `/api/conversations/{id}/messages` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine, AC-8); `{ question: string }` + `X-Tenant-Id` header + caller identity; 400 for a missing/invalid tenant or user header, an invalid `{id}`, or a blank `question` — all before any database call (see `Raffa.Api.Tests.ConversationsEndpointTests`). Runs the full engine (`AskCopilotService`: `Gate.DomainGate` →, for `in_domain` turns, `Planning.IntentPlanner` → per-intent context pack → guarded `answer` call → `Guards.GroundingGuard`/`NumericGuard`/`RegenerateOnce`), appends both the caller's question and Raffa's reply to the conversation via `ConversationService`, then returns the same ADR-024 §6 reply contract `GET /api/conversations/{id}` echoes back for one message: `{ kind, answerMarkdown, citations: [{ n, corpus, title, subtitle, snippet, documentId?, contractId?, page?, section?, previewUrl?, href?, recordId? }], actions: [{ label, href, kind }], provenance: { sources, modelId, promptVersion, inputHash }, followUps }` plus `conversationId`/`messageId` — never engineer chrome (a `Document:` guid, a "Structured query" line) in `answerMarkdown`. **Wave w18 additions:** an optional `scopeContractId` now threads from the conversation (`Conversation.ScopeContractId`, set at `POST /api/conversations` time) into `AskCopilotService.AskAsync`, resolved into the gate **before** the R-ASK-10 in-domain check so a scoped turn's own gate resolution never falls through to the generic `NeedsDocument` redirect and its pack/citations scope to that contract's own supplier (epic-25 feature-03, task E25/F03/US01/T01 + `ConversationsEndpointExtensions.AskAndAppendAsync`, closes NW-56). Every `abstain` reply this engine can produce — the guard-downgraded path (`CopilotReplyBuilder.FromGuardedResult`), the empty-pack path and the composer-failure path, `AskCopilotService.BuildInDomainReplyAsync` — now carries a non-empty `actions` array resolved from the real capability catalog, never model-authored (`ResolveAbstainRecoveryActions`, epic-25 feature-05, task E25/F05/US01/T01, closes NW-59): the Documents-upload action for a contract-free tenant, otherwise the Ask capability's own "ask about dates, spend, notice periods and clauses" hint action. **Known gap (found by task E23/F05/US01/T01, w18 final integration, not fixed there — out of that task's own file scope):** the contract-free branch resolves the upload action via `CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)`, which `CapabilityRouting.ResolveOne`'s generic `HowTo` case maps to `CopilotActionKind.Navigate` (label "Open Documents"), not `CopilotActionKind.Upload` — `backend/tests/Raffa.Api.Tests/AskAbstainRecoveryActionTests.Empty_pack_abstain_for_a_contract_free_tenant_offers_the_documents_upload_action` fails on this exact mismatch (`Expected: "upload", Actual: "navigate"`). The href still lands on `/documents` either way; only the action's `kind`/label are wrong. `CapabilityIntent.UnknownSupplier` (→ `UploadInDocuments()`, real `Upload` kind) is the fix, not yet applied. **Wave w19 additions (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12; lock 4):** the w18 gate-level override above only carried the scoped contract's *name* forward, so two portfolio rows sharing one supplier's display name could still let a plain name lookup answer about the wrong one. `AskCopilotService.BuildInDomainReplyAsync` now also receives the scoped *id* itself and lets it win outright over that name lookup (never `FirstOrDefault`-by-name when a scope is set), and folds it into the routing context's own contract id so a follow-up action targets the real scoped contract too. A `scopeContractId` that does not resolve to a row in that turn's own freshly-fetched portfolio — wrong tenant, no linked document, deleted since the conversation was opened — now returns `kind: "refusal"` before any pack is assembled, rather than silently falling back to an unscoped answer. **Lock 4 exception:** a `PortfolioMarketPosition` question (`AskIntent.PortfolioMarketPosition`, NW-79/NW-86) is exempt from both rules — it is always portfolio-wide by construction, so it never depends on the scoped contract resolving and is never narrowed to it |
-| GET | `/api/renewals` | Renewal pipeline + insight card (spec §9.3/§10.1); `X-Tenant-Id` header; auto-renewing contracts only, most urgent first; response is `{ items, totalCount }`, each item `{ contractId, supplierId, status, renewalDate, daysUntilRenewal, annualSpend, cancellationDeadline, daysUntilCancellationDeadline, autoRenewal, action, savedAction, insightCard: { facts, recommendations } }` — `insightCard.recommendations`' benchmark/savings fields (`annualUpliftPercent`, `marketPosition`, `potentialSavingsRange`) are honestly `null` until the Benchmark/Savings modules land (R3); `action`/`recommendedAction` is a deterministic urgency rule, not the full spec §9.2 Priority Score — see `Raffa.Renewals.Application.RenewalPipelineBuilder`'s own doc comment. **`savedAction` (task E19/F01/US01/T01, renewal-action-api; ADR-028 §D1)** is the persisted `POST .../action` row for that same contract — `{ contractId, owner, status, action, updatedAt }` — or `null` when nothing was ever recorded; resolved for the whole page in one batch call (`RenewalActionService.GetActionsAsync`), never a per-row query. Binding name: `savedAction` is never `action` — `action` stays the calculator's own `RecommendedAction`, unchanged, so the user's own saved state can never overwrite it |
+| POST | `/api/conversations/{id}/messages` | Ask Raffa V2 (ADR-024 §6; task E13/F06/US01/T01, ask-engine, AC-8); `{ question: string }` + `X-Tenant-Id` header + caller identity; 400 for a missing/invalid tenant or user header, an invalid `{id}`, or a blank `question` — all before any database call (see `Raffa.Api.Tests.ConversationsEndpointTests`). Runs the full engine (`AskCopilotService`: `Gate.DomainGate` →, for `in_domain` turns, `Planning.IntentPlanner` → per-intent context pack → guarded `answer` call → `Guards.GroundingGuard`/`NumericGuard`/`RegenerateOnce`), appends both the caller's question and Raffa's reply to the conversation via `ConversationService`, then returns the same ADR-024 §6 reply contract `GET /api/conversations/{id}` echoes back for one message: `{ kind, answerMarkdown, citations: [{ n, corpus, title, subtitle, snippet, documentId?, contractId?, page?, section?, previewUrl?, href?, recordId? }], actions: [{ label, href, kind }], provenance: { sources, modelId, promptVersion, inputHash }, followUps }` plus `conversationId`/`messageId` — never engineer chrome (a `Document:` guid, a "Structured query" line) in `answerMarkdown`. **Wave w18 additions:** an optional `scopeContractId` now threads from the conversation (`Conversation.ScopeContractId`, set at `POST /api/conversations` time) into `AskCopilotService.AskAsync`, resolved into the gate **before** the R-ASK-10 in-domain check so a scoped turn's own gate resolution never falls through to the generic `NeedsDocument` redirect and its pack/citations scope to that contract's own supplier (epic-25 feature-03, task E25/F03/US01/T01 + `ConversationsEndpointExtensions.AskAndAppendAsync`, closes NW-56). Every `abstain` reply this engine can produce — the guard-downgraded path (`CopilotReplyBuilder.FromGuardedResult`), the empty-pack path and the composer-failure path, `AskCopilotService.BuildInDomainReplyAsync` — now carries a non-empty `actions` array resolved from the real capability catalog, never model-authored (`ResolveAbstainRecoveryActions`, epic-25 feature-05, task E25/F05/US01/T01, closes NW-59): the Documents-upload action for a contract-free tenant, otherwise (since the Ask-answers-from-the-pack change) the screen where that kind of answer lives — Savings + Renewals, Renewals + Portfolio, Quote check, Documents review or Portfolio, by intent — plus two follow-up questions; it used to be the Ask capability's own hint action (`/ask`, the screen the user is already on). **Known gap (found by task E23/F05/US01/T01, w18 final integration, not fixed there — out of that task's own file scope):** the contract-free branch resolves the upload action via `CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)`, which `CapabilityRouting.ResolveOne`'s generic `HowTo` case maps to `CopilotActionKind.Navigate` (label "Open Documents"), not `CopilotActionKind.Upload` — `backend/tests/Raffa.Api.Tests/AskAbstainRecoveryActionTests.Empty_pack_abstain_for_a_contract_free_tenant_offers_the_documents_upload_action` fails on this exact mismatch (`Expected: "upload", Actual: "navigate"`). The href still lands on `/documents` either way; only the action's `kind`/label are wrong. `CapabilityIntent.UnknownSupplier` (→ `UploadInDocuments()`, real `Upload` kind) is the fix, not yet applied. **Wave w19 additions (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12; lock 4):** the w18 gate-level override above only carried the scoped contract's *name* forward, so two portfolio rows sharing one supplier's display name could still let a plain name lookup answer about the wrong one. `AskCopilotService.BuildInDomainReplyAsync` now also receives the scoped *id* itself and lets it win outright over that name lookup (never `FirstOrDefault`-by-name when a scope is set), and folds it into the routing context's own contract id so a follow-up action targets the real scoped contract too. A `scopeContractId` that does not resolve to a row in that turn's own freshly-fetched portfolio — wrong tenant, no linked document, deleted since the conversation was opened — now returns `kind: "refusal"` before any pack is assembled, rather than silently falling back to an unscoped answer. **Lock 4 exception:** a `PortfolioMarketPosition` question (`AskIntent.PortfolioMarketPosition`, NW-79/NW-86) is exempt from both rules — it is always portfolio-wide by construction, so it never depends on the scoped contract resolving and is never narrowed to it |
+| GET | `/api/renewals` | Renewal pipeline + insight card (spec §9.3/§10.1); `X-Tenant-Id` header; auto-renewing contracts only, most urgent first; response is `{ items, totalCount }`, each item `{ contractId, supplierId, status, renewalDate, daysUntilRenewal, annualSpend, cancellationDeadline, daysUntilCancellationDeadline, autoRenewal, action, savedAction, priority, insightCard: { facts, recommendations } }` — **`priority`** is the same `{ contractId, totalScore, components }` object `GET /api/renewals/{contractId}/priority` returns, computed by the same `ComputePriority` from the four header facts already on the portfolio row (no extra query), so the Renewals screen reads one list instead of one priority call per row (that fan-out alone could exhaust the demo server's 50 Postgres connections; see "Postgres connections" below); `insightCard.recommendations`' benchmark/savings fields (`annualUpliftPercent`, `marketPosition`, `potentialSavingsRange`) are honestly `null` until the Benchmark/Savings modules land (R3); `action`/`recommendedAction` is a deterministic urgency rule, not the full spec §9.2 Priority Score — see `Raffa.Renewals.Application.RenewalPipelineBuilder`'s own doc comment. **`savedAction` (task E19/F01/US01/T01, renewal-action-api; ADR-028 §D1)** is the persisted `POST .../action` row for that same contract — `{ contractId, owner, status, action, updatedAt }` — or `null` when nothing was ever recorded; resolved for the whole page in one batch call (`RenewalActionService.GetActionsAsync`), never a per-row query. Binding name: `savedAction` is never `action` — `action` stays the calculator's own `RecommendedAction`, unchanged, so the user's own saved state can never overwrite it |
 | GET | `/api/renewals/{contractId}/priority` | Explainable priority-score breakdown for one contract (spec §9.2; story us-02-priority-score AC-1/AC-2, task E03/F01/US02/T02); `X-Tenant-Id` header; 404 when the contract does not exist or belongs to another tenant (same rule as `GET /api/contracts/{id}`); response is `{ contractId, totalScore, components: { spendWeight, timeUrgency, benchmarkOpportunity, priceIncreaseRisk, contractRisk } }`, each component `{ score, explanation }` — component weights are configurable, see `Raffa.Renewals.Configuration.PriorityScoreWeightsOptions` below; `priceIncreaseRisk`/`benchmarkOpportunity` use their honest no-data default (minimum / neutral respectively) since no uplift or benchmark-position data is wired to real contracts yet |
 | POST | `/api/renewals/{id}/action` | Updates owner/status/action for one renewal (spec Appendix A; story us-01-renewal-dashboard-api AC-3); `X-Tenant-Id` header; `{id}` is the same `contractId` the GET above returns per row, not a separate stored "renewal" id; body `{ owner, status, action }` — `status` is one of `NotStarted`/`InProgress`/`Completed`; upserts one row (never a second for the same contract) and writes one `IAuditWriter` entry (`renewal.action_updated`); 400 (not 404) for a missing/invalid tenant header or route id, or for an empty `owner`/`action`/unrecognized `status` — see `Raffa.Renewals.Application.RenewalActionService`'s own doc comment for the honest gap this leaves (no check that `{id}` names an existing, tenant-owned contract; `Raffa.Renewals` cannot reference `Raffa.Documents.Contracts` at all) |
 | GET | `/api/renewals/{id}/action` | Reads back the row the POST above wrote (task E19/F01/US01/T01, renewal-action-api; ADR-028 §D1; parent story us-01-renewal-action-api AC-1); `X-Tenant-Id` header; `{id}` carries **exactly** the same contract-id meaning as the POST above (confirmed, not assumed — ADR-028 assumption 1); `200 { contractId, owner, status, action, updatedAt }` — the identical shape the POST already returns, via the same `RenewalActionService.GetActionAsync`/`ToActionResponse` — or **404** when nothing was ever recorded for this contract (never a default/placeholder body: absence of a row **is** the status `NotStarted`, which the caller renders itself, not one this route fabricates); no `DELETE` route exists or is planned — "Undo" is a `POST` of `NotStarted`, and the row survives it (the table's own upsert on `(tenant_id, contract_id)`). The identical row is also embedded under `savedAction` on every `GET /api/renewals` row above |
@@ -1179,18 +1179,42 @@ itself (querying `PortfolioQueryService`/`Contract360QueryService`,
    notes, calculator output — every item citable, tagged `tenant`/
    `market`/`raffa`/`calc`).
 3. **Answer** (`Application.Answering.AnswerComposer`, persona prompt
-   `Prompts/answer/v2.1.md`) calls `IAiGateway.AnswerAsync` with the pack +
+   `Prompts/answer/v2.3.md`) calls `IAiGateway.AnswerAsync` with the pack +
    last N turns; `Fixtures.FixtureAiGateway.AnswerAsync` gives a
    deterministic v2 behaviour when a pack is supplied (cites the first N
    pack keys, copies their values verbatim — no chunk concatenation), so
    every test below runs without Foundry.
+   Rule 9 of the prompt makes inline citations `[n]` markers only; if a key
+   still leaks into the prose, `Application.Reply.InlineCitationNormalizer`
+   turns it into the matching marker (appending a citable pack item to the
+   citation list when the model forgot to list it) or drops it.
 4. **Guards** — `Application.Guards.GroundingGuard` (every citationKey /
    inline `[n]` marker / actionKey must resolve), `Guards.NumericGuard`
    (every currency amount, percentage and date in the answer must equal a
    pack value — currency-aware — or appear verbatim in a cited snippet),
-   `Guards.RegenerateOnce` (one retry naming the violation, then downgrade
-   to an honest abstain naming the pack's own facts, metadata preserved for
-   ADR-011 auditability) — never shown or persisted unguarded.
+   `Guards.RegenerateOnce` (one retry naming the violation, metadata
+   preserved for ADR-011 auditability) — never shown or persisted unguarded.
+   Before any guard runs, `Capabilities.ActionKeyNormalizer` repairs the
+   model's action keys (`raffa:renewals` → `renewals`, a route → its key, an
+   unknown key dropped): an optional button never fails a grounded answer.
+   When both attempts still fail and the model had tried to answer, the reply
+   is `Answering.GroundedFallbackAnswer` — an acknowledgement ("Here's where
+   you can save and what to negotiate, based on your validated contracts and
+   the market data.") and the pack's own facts quoted verbatim and cited
+   (calculator verdict, council plays, validated-contract candidates, levers,
+   clauses, market deals), each line re-checked by `NumericGuard` and the
+   whole answer by the full guard pipeline. Only a pack with nothing quotable
+   ends in an abstain, and its reason is one plain sentence ("Nothing in your
+   validated contracts supports a reliable answer."), never the guard's
+   violation or a `key=value` dump; a model's own abstain reason that talks
+   about the pack, keys or checks is replaced by the same sentence
+   (`CopilotReplyBuilder.UserFacingAbstainReason`). This narrows R-ASK-06's
+   "downgraded to an abstain that shows the pack's own facts" — the facts are
+   still the pack's own, now as a readable answer. Every abstain carries
+   intent-aware recovery actions (Savings + Renewals for a savings question,
+   Renewals + Portfolio for dates, Quote check for market, …; never `/ask`,
+   the screen the user is on) and two follow-up questions that route to a
+   real answer.
 5. **Reply** (`Application.Reply.CopilotReply`) — the one shape every gate
    label / guard outcome produces: `{ kind, answerMarkdown, citations[],
    actions[], provenance: { sources, modelId, promptVersion, inputHash },
@@ -1204,7 +1228,10 @@ itself (querying `PortfolioQueryService`/`Contract360QueryService`,
 never text, ADR-011), with one further field on every row:
 `abstainGuardIntervened=true|false` (AC-7) — `true` only when
 `Answering.AnswerComposer`'s own guard pipeline actually rejected the first
-attempt and forced `Guards.RegenerateOnce`'s retry-then-downgrade path, never
+attempt and forced `Guards.RegenerateOnce`'s retry-then-downgrade path — and
+`fallbackUsed=true|false`, `true` when that turn's reply is
+`GroundedFallbackAnswer`'s server-composed answer (the row is then
+`chat.answered`), never
 just because the reply happens to be `abstain` (an empty pack or a failed
 gateway call both also produce `kind=abstain` but leave this field `false` —
 the same field name/shape `RagAnswerService`'s older, evidence-only audit
@@ -1275,17 +1302,24 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    Leve in ordine di valore → Piano e timing → Cosa chiedere al fornitore →
    Rischi e cosa manca; a follow-up advances instead of restating; only bold
    and lists, which is all the web renderer supports. `NegotiationPlaybook`
-   (`raffa:playbook:*`, digit-free by test) supplies tactics and wording,
-   never numbers. v2.3 adds two formatting rules: name the supplier on every
-   contract reference ("Salesforce · MSA", never "the MSA" or "contract [2]")
-   and write amounts with their currency code.
+   never numbers. v2.3 makes rule 7 exact — an action key is the bare
+   capability key after `raffa:` (`raffa:renewals` → `renewals`), never the
+   citation key itself; v2.2's wording made a live model return
+   `raffa:renewals`, which failed the whole answer — and rule 6 says the
+   abstain reason is shown to the user verbatim, so it is plain language.
+   v2.3 also adds two formatting rules: name the supplier on every contract
+   reference ("Salesforce · MSA", never "the MSA" or "contract [2]") and
+   write amounts with their currency code.
 
 Golden cases `seeded-savings-leve-20k-salesforce-it`,
 `seeded-savings-levers-20k-salesforce-en`,
 `seeded-portfolio_savings_target-40k-quarterly-it` and
 `seeded-portfolio_savings_target-cut-costs-en` pin the two motivating
 questions; `Raffa.Api.Tests.AskSavingsConsultantTests` runs them end to end
-over HTTP with the fixture gateway.
+over HTTP with the fixture gateway. `Raffa.Api.Tests.AskSavingsAnswerRecoveryTests`
+pins "Where can I save the most this quarter?" against a model that returns
+`raffa:renewals` as its action key and one that fabricates a figure twice:
+both come back as an `answer` whose first actions are Savings and Renewals.
 
 ### Ask Raffa V2 — the notice pack (tasks E30/F01/US01/T01 + E30/F02/US01/T01, NW-91/NW-92/NW-94, ADR-024 w19 cl. 22)
 
@@ -3057,6 +3091,43 @@ Image pull uses this environment's workload identity (`AcrPull` on
 `modules/acr`, `registry {}` on `modules/containerapps`). Confirm the
 HCP VCS apply on `raffa-<env>` before the first `az containerapp update`
 to that registry, or the revision fails with ACR `UNAUTHORIZED`.
+
+## Postgres connections — one per-process pool budget
+
+`psql-raffa-<env>` is a Burstable `Standard_B1ms` Flexible Server:
+`max_connections = 50`, server-wide, shared by every module's `DbContext`
+in every replica of both hosts (API `max_replicas = 3`; Worker 3 on demo,
+5 on dev). Npgsql pools per process and per distinct connection string,
+100 connections per pool by default — so one screen fanning its reads out
+in parallel (Renewals: one priority call per row; Contract 360: five reads
+at once, re-polled every 2 s while a contract was still being prepared)
+could open dozens of connections per replica, keep them idle for five
+minutes, and starve every other process. Postgres then refuses the next
+connection (`53300 too_many_connections`) and the request answers an
+unexplained 500 — on whichever endpoint asked next (demo, 2026-09-22).
+
+- `Raffa.SharedKernel.Persistence.PostgresConnectionPool` is the one
+  bound. Every module's `*DbContextOptions.Configure` routes its
+  connection string through `Bound()`: pool clamped to the ceiling (8),
+  `Connection Idle Lifetime` 60 s and `Connection Pruning Interval` 5 s
+  unless the string says otherwise. A config edit anywhere can never
+  reopen the ceiling.
+- Each host applies its own smaller budget once, to every string it reads:
+  `Postgres:MaxPoolSize` (env var `Postgres__MaxPoolSize`), default 4 per
+  pool. A process runs two pools at most (the plugin-free modules share one
+  string and therefore one pool; Documents/Contracts and Market, the two
+  pgvector contexts, share the other), so 8 per process — demo's six
+  replicas reach 48 only if every pool is saturated at once.
+- Once its pool is full a process waits its turn (Npgsql `Timeout`, 15 s)
+  instead of being refused by the server. If the wait runs out, or the
+  server still refuses, the API answers **503** with `Retry-After: 2` and
+  `{ "error": "Raffa.ai's database is busy right now. Try again in a
+  moment." }` (`Raffa.Api.Infrastructure.DatabaseSaturationExceptionHandler`,
+  first in the pipeline; every other exception propagates exactly as
+  before). The web already renders 503 as "temporarily unavailable".
+- The durable lever is the server itself — a bigger SKU or the
+  `max_connections` server parameter in `infra/modules/postgres` — and is
+  deliberately not part of this code-side guarantee.
 
 ## Dependency direction (ADR-002)
 

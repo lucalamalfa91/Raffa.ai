@@ -13,7 +13,16 @@ namespace Raffa.Chat.Application.Answering;
 /// negotiation question gets a fixed structure (diagnosis, levers ordered by value, plan and
 /// timing, what to ask the supplier verbatim, risks and what is missing); a quantified goal is
 /// answered explicitly; a follow-up advances instead of restating; only bold and lists (the web
-/// renderer supports nothing else). The eight grounding laws of v2.1 are unchanged.
+/// renderer supports nothing else). Inline citations must be rendered as `[n]` markers only, never
+/// as internal citation keys.
+/// </para>
+///
+/// <para>
+/// v2.3: rule 7 names the action key exactly — the bare capability key after <c>raffa:</c> of a
+/// feature item's citation key, never the citation key itself, a playbook item or a route (the
+/// v2.2 wording led the model to return <c>raffa:renewals</c>, which failed the whole answer).
+/// <c>Capabilities.ActionKeyNormalizer</c> repairs the same slip code-side. Rule 6 adds that the
+/// abstain reason is shown to the user verbatim, so it must be plain language.
 /// </para>
 ///
 /// <para>
@@ -51,11 +60,19 @@ public static class AnswerPromptV2
            Italian answer; an English question gets an English answer).
         6. If the pack does not support a reliable answer, set canDetermine to false and explain
            why in abstainReason instead of guessing - uncertainty over fabricated precision.
-        7. actionKeys may only name a capability key already present among the pack's own raffa
-           -corpus items - never a URL or route; hrefs are resolved by the caller, never authored
-           by you.
+           abstainReason is shown to the user as is: one or two plain sentences saying what is
+           missing, never the pack, citation keys, rules or checks.
+        7. actionKeys name only the bare capability key of a Raffa feature item in the pack: the
+           part of its citationKey after "raffa:" (raffa:renewals gives renewals, raffa:savings
+           gives savings). Never a raffa:playbook item, never the citationKey itself, a URL or a
+           route; hrefs are resolved by the caller, never authored by you.
         8. Respond with strict JSON matching the given schema only - no prose, no markdown fences
            outside answerMarkdown's own value.
+        9. Cite inline with [n] markers only, where n is the 1-based position of the item in the
+           citationKeys array you return (the first key is [1], the second [2], ...). Never write
+           a citation key itself (fact:..., calc:..., tenant:..., market:..., raffa:...), a
+           contract, document or clause id, or any other pack identifier inside answerMarkdown or
+           abstainReason - the reader sees only your words and the [n] markers.
 
         How to answer a savings or negotiation question (a pack that carries calc items such as
         savings-target, lever[...], council:play[...], negotiation-point[...], candidate[...]):

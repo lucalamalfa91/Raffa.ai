@@ -15,7 +15,7 @@ namespace Raffa.Chat.Application.Reply;
 /// <param name="ModelId">Echoes <c>Raffa.AiGateway.Contracts.AiCallMetadata.ModelId</c> when an
 /// `answer`-role call actually produced this reply.</param>
 /// <param name="PromptVersion">Echoes <c>AiCallMetadata.PromptVersion</c> — this story's own
-/// versioned persona prompt tag (<c>Answering.AnswerPromptV2.Version</c>, e.g. <c>"answer-v2.2"</c>).</param>
+/// versioned persona prompt tag (<c>Answering.AnswerPromptV2.Version</c>, e.g. <c>"answer-v2.3"</c>).</param>
 /// <param name="InputHash">Echoes <c>AiCallMetadata.InputHash</c> — a content hash of the pack/prompt,
 /// never the confidential input itself (ADR-011).</param>
 /// <param name="Unverified">ADR-030: <see langword="true"/> only for a reply the research role

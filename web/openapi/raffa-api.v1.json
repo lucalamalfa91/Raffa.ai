@@ -3374,6 +3374,7 @@
                           "daysUntilCancellationDeadline",
                           "autoRenewal",
                           "action",
+                          "priority",
                           "insightCard"
                         ],
                         "properties": {
@@ -3488,6 +3489,115 @@
                               "updatedAt": {
                                 "type": "string",
                                 "format": "date-time"
+                              }
+                            }
+                          },
+                          "priority": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "description": "The same score object `GET /api/renewals/{contractId}/priority` returns for this row, computed by the same code from the same four header facts (end date, auto-renewal, annual spend, risk) the portfolio row already carries -- so the Renewals screen reads one list instead of one priority call per row (that fan-out alone could exhaust the demo server's 50 Postgres connections). Null only when the pipeline row has no portfolio source row.",
+                            "required": [
+                              "contractId",
+                              "totalScore",
+                              "components"
+                            ],
+                            "properties": {
+                              "contractId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "totalScore": {
+                                "type": "number",
+                                "description": "0-100 under the spec-default weights (5 components, 20 max each)."
+                              },
+                              "components": {
+                                "type": "object",
+                                "required": [
+                                  "spendWeight",
+                                  "timeUrgency",
+                                  "benchmarkOpportunity",
+                                  "priceIncreaseRisk",
+                                  "contractRisk"
+                                ],
+                                "properties": {
+                                  "spendWeight": {
+                                    "type": "object",
+                                    "required": [
+                                      "score",
+                                      "explanation"
+                                    ],
+                                    "properties": {
+                                      "score": {
+                                        "type": "number"
+                                      },
+                                      "explanation": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "timeUrgency": {
+                                    "type": "object",
+                                    "required": [
+                                      "score",
+                                      "explanation"
+                                    ],
+                                    "properties": {
+                                      "score": {
+                                        "type": "number"
+                                      },
+                                      "explanation": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "benchmarkOpportunity": {
+                                    "type": "object",
+                                    "required": [
+                                      "score",
+                                      "explanation"
+                                    ],
+                                    "properties": {
+                                      "score": {
+                                        "type": "number"
+                                      },
+                                      "explanation": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "priceIncreaseRisk": {
+                                    "type": "object",
+                                    "required": [
+                                      "score",
+                                      "explanation"
+                                    ],
+                                    "properties": {
+                                      "score": {
+                                        "type": "number"
+                                      },
+                                      "explanation": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  "contractRisk": {
+                                    "type": "object",
+                                    "required": [
+                                      "score",
+                                      "explanation"
+                                    ],
+                                    "properties": {
+                                      "score": {
+                                        "type": "number"
+                                      },
+                                      "explanation": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                }
                               }
                             }
                           },

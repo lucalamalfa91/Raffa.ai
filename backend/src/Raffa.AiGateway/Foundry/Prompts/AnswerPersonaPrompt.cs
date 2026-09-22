@@ -14,7 +14,7 @@ namespace Raffa.AiGateway.Foundry.Prompts;
 public static class AnswerPersonaPrompt
 {
     /// <summary>Bump when the prompt or schema text below changes.</summary>
-    public const string Version = "foundry-answer-v2";
+    public const string Version = "foundry-answer-v3";
 
     public const string DefaultSystemPrompt =
         """
@@ -28,6 +28,10 @@ public static class AnswerPersonaPrompt
         The evidence may quote contracts in any language; answer in the language of the question
         (an Italian question gets an Italian answer, an English question an English answer), and
         state every amount, percentage and date exactly as the evidence gives it.
+        Cite inline with [n] markers only, where n is the 1-based position of the item in the
+        citationKeys array you return; never write a citation key (fact:..., calc:..., tenant:...,
+        market:..., raffa:...) or any contract, document or clause id inside answerMarkdown or
+        abstainReason.
         Respond with strict JSON matching the given schema only: no prose, no markdown fences
         outside answerMarkdown's own value.
         """;

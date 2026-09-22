@@ -138,11 +138,14 @@ export interface RedirectReply {
  * AC-1/AC-3): `../askViewModel.ts#buildReply` maps it off the wire's own generic `actions[]`
  * (backend: `CopilotReplyBuilder`'s `recoveryActions`, task E25/F05/US01/T01). `ReplyBody.tsx`
  * renders it as a **secondary** `ActionRow`, never primary, and only when present -- an abstain
- * with no action still renders just the block, never an empty screen (AC-3). */
+ * with no action still renders just the block, never an empty screen (AC-3). May also carry the
+ * server's next-step questions (`followUps`, only when non-empty) so a gap is never a dead end;
+ * still never citations. */
 export interface AbstainReply {
   kind: "abstain";
   reason: string;
   actions?: readonly ReplyAction[];
+  followUps?: readonly string[];
 }
 
 /** ADR-030: one clarifying question (or two) with clickable options, asked before Raffa

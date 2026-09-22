@@ -132,6 +132,23 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
     expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toBeInTheDocument();
   });
 
+  it("abstain: renders the server's next-step questions, and clicking one asks it", async () => {
+    const user = userEvent.setup();
+    const { container, onFollowUp } = renderReply({
+      kind: "abstain",
+      reason: "Nothing in your validated contracts supports a reliable answer.",
+      followUps: ["Which contracts are most critical?", "Where can we save?"],
+    });
+
+    expect(container.querySelectorAll(".abstain-block")).toHaveLength(1);
+    expect(container.querySelectorAll(".reply-followup")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: /Where can we save\?/ }));
+
+    expect(onFollowUp).toHaveBeenCalledTimes(1);
+    expect(onFollowUp).toHaveBeenCalledWith("Where can we save?");
+  });
+
   it("abstain: renders exactly one accent-left block with the reason -- the only place that block appears", () => {
     const { container } = renderReply({
       kind: "abstain",

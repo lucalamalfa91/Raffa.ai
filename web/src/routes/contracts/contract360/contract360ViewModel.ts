@@ -725,13 +725,14 @@ export interface SectionCopy {
   description: string;
 }
 
+/** Page order: the facts first (Key terms), then the negotiation material in the mock's own sequence. */
 export const SECTION_COPY = {
-  leverage: { number: "01", title: "Leverage", description: "Where your negotiating power sits, strongest first." },
-  products: { number: "02", title: "Products & pricing", description: "What you buy, what you pay, and the market price for the same line." },
-  clauses: { number: "03", title: "Clauses that matter", description: "Grouped by what to do with them at the table. Standard terms stay out of the way." },
-  obligations: { number: "04", title: "Obligations", description: "Who owes what, and when. Dates you can miss come first." },
-  risks: { number: "05", title: "Risk factors", description: "What drives the priority score, and what could go wrong." },
-  terms: { number: "06", title: "Key terms", description: "The facts in one glance. Validated during review — no sources here." },
+  terms: { number: "01", title: "Key terms", description: "The facts in one glance. Validated during review — no sources here." },
+  leverage: { number: "02", title: "Leverage", description: "Where your negotiating power sits, strongest first." },
+  products: { number: "03", title: "Products & pricing", description: "What you buy, what you pay, and the market price for the same line." },
+  clauses: { number: "04", title: "Clauses that matter", description: "Grouped by what to do with them at the table. Standard terms stay out of the way." },
+  obligations: { number: "05", title: "Obligations", description: "Who owes what, and when. Dates you can miss come first." },
+  risks: { number: "06", title: "Risk factors", description: "What drives the priority score, and what could go wrong." },
 } as const satisfies Record<string, SectionCopy>;
 
 // ---- 01 Leverage ----------------------------------------------------------------------------
@@ -761,21 +762,38 @@ const LEVER_HEADLINES: Readonly<Record<ContractStrategyBody["whereYouCanPush"][n
 export const LEVERS_NOT_YET_AVAILABLE =
   "Levers light up once the renewal strategy has a priced line to work from — the clauses and obligations below are already validated.";
 
+export interface LeverGroup {
+  /** The priced line these levers belong to (`StrategyPackBuilder`'s own `"{description}: "` prefix), `null` on a single-line contract. */
+  line: string | null;
+  cards: LeverCard[];
+}
+
 /**
  * `d.levers` from the strategy pack's `whereYouCanPush` (`StrategyPackBuilder`: strongest first,
- * prefixed by the line's own description on a multi-line contract). The wire carries no strength
- * grade, so only the first card is "strong"; `citationKeys` are pack-internal keys (never rendered,
- * R-ASK-08), so there is no "Rests on" line.
+ * every lever type per priced line, each rationale prefixed by the line's own description when the
+ * contract has more than one). The prefix is lifted off the card and becomes the group heading, so
+ * a two-line contract reads as two labelled sets of seven rather than fourteen look-alike cards.
+ * The wire carries no strength grade, so only the very first card is "strong"; `citationKeys` are
+ * pack-internal keys (never rendered, R-ASK-08), so there is no "Rests on" line.
  */
-export function buildLeverCards(strategy: ContractStrategyBody | null): LeverCard[] {
+export function buildLeverGroups(strategy: ContractStrategyBody | null, lineDescriptions: readonly string[] = []): LeverGroup[] {
   if (strategy === null) return [];
-  return strategy.whereYouCanPush.map((lever, index) => ({
-    key: `${lever.leverType}-${index}`,
-    kicker: `${LEVER_HEADLINES[lever.leverType]} lever`,
-    headline: LEVER_HEADLINES[lever.leverType],
-    body: lever.rationale,
-    strong: index === 0,
-  }));
+  const groups: LeverGroup[] = [];
+  strategy.whereYouCanPush.forEach((lever, index) => {
+    const line = lineDescriptions.find((description) => description !== "" && lever.rationale.startsWith(`${description}: `)) ?? null;
+    const body = line === null ? lever.rationale : lever.rationale.slice(line.length + 2);
+    const card: LeverCard = {
+      key: `${lever.leverType}-${index}`,
+      kicker: `${LEVER_HEADLINES[lever.leverType]} lever`,
+      headline: LEVER_HEADLINES[lever.leverType],
+      body,
+      strong: index === 0,
+    };
+    const group = groups.find((candidate) => candidate.line === line);
+    if (group === undefined) groups.push({ line, cards: [card] });
+    else group.cards.push(card);
+  });
+  return groups;
 }
 
 // ---- 02 Products & pricing --------------------------------------------------------------------

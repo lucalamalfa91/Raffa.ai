@@ -13,7 +13,7 @@ import {
   buildClauseGroups,
   buildDocumentRows,
   buildKeyTerms,
-  buildLeverCards,
+  buildLeverGroups,
   buildObligationColumns,
   buildProductLines,
   buildRiskItems,
@@ -58,19 +58,26 @@ function SectionFrame({ copy, label, children }: { copy: SectionCopy; label: str
 
 // ---- 01 Leverage ------------------------------------------------------------------------------
 
-export function LeverageSection({ strategy }: { strategy: ContractStrategyBody | null }) {
-  const levers = buildLeverCards(strategy);
+export function LeverageSection({ strategy, lineDescriptions }: { strategy: ContractStrategyBody | null; lineDescriptions: readonly string[] }) {
+  const groups = buildLeverGroups(strategy, lineDescriptions);
   return (
     <SectionFrame copy={SECTION_COPY.leverage} label="Leverage">
-      {levers.length === 0 ? (
+      {groups.length === 0 ? (
         <p className="contract360-section-empty">{LEVERS_NOT_YET_AVAILABLE}</p>
       ) : (
-        <div className="contract360-levers">
-          {levers.map((lever) => (
-            <div key={lever.key} className={`contract360-lever${lever.strong ? " is-strong" : ""}`}>
-              <div className="contract360-lever-kicker">{lever.kicker}</div>
-              <div className="contract360-lever-headline">{lever.headline}</div>
-              <div className="contract360-lever-body">{lever.body}</div>
+        <div className="contract360-lever-groups">
+          {groups.map((group) => (
+            <div key={group.line ?? "all"} className="contract360-lever-group">
+              {group.line !== null && <div className="contract360-lever-line">{group.line}</div>}
+              <div className="contract360-levers">
+                {group.cards.map((lever) => (
+                  <div key={lever.key} className={`contract360-lever${lever.strong ? " is-strong" : ""}`}>
+                    <div className="contract360-lever-kicker">{lever.kicker}</div>
+                    <div className="contract360-lever-headline">{lever.headline}</div>
+                    <div className="contract360-lever-body">{lever.body}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>

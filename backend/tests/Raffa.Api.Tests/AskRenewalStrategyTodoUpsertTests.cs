@@ -160,7 +160,7 @@ public sealed class AskRenewalStrategyTodoUpsertTests : IClassFixture<RaffaApiFa
 
         using var tenantScope = tenantContext.BeginScope(tenantId);
         return await askCopilotService.AskAsync(
-            tenantId, Question, recentTurns: [], Actor, scopeContractId: null, CancellationToken.None);
+            tenantId, Question, recentTurns: [], Actor, scopeContractId: null, cancellationToken: CancellationToken.None);
     }
 
     private async Task<IReadOnlyList<RenewalNegotiationTodoResult>> GetTodosAsync(TenantId tenantId, EntityId contractId)
