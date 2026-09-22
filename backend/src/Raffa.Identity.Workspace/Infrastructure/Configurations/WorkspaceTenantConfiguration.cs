@@ -26,6 +26,10 @@ public sealed class WorkspaceTenantConfiguration : IEntityTypeConfiguration<Work
         builder.Property(e => e.Country).HasMaxLength(2);
         builder.Property(e => e.Currency).HasMaxLength(3);
 
+        // ADR-030 gate 2: NOT NULL with a false default -- an existing row is "off", never a
+        // fabricated business fact (a switch defaults closed).
+        builder.Property(e => e.WebResearchEnabled).HasDefaultValue(false);
+
         // WorkspaceTenant.TenantId always equals WorkspaceTenant.Id (WorkspaceFactory) -- the
         // workspace IS the tenant boundary (ADR-009) -- so this unique index guards that
         // invariant rather than expressing an independent business rule.

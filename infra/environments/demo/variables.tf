@@ -43,6 +43,16 @@ variable "ai_gateway_extra_env" {
   default     = {}
 }
 
+# ADR-030: Ask Raffa's web research (kill switch), on in demo because demo
+# is where the feature is tested. Published as Chat__WebResearch__Enabled
+# through the same gated env map; a search still needs the workspace
+# Admin's opt-in and the user's consent on each question.
+variable "web_research_enabled" {
+  description = "Publishes Chat__WebResearch__Enabled to both Container Apps (ADR-030 kill switch). false keeps the web path off even with the research role bound."
+  type        = bool
+  default     = true
+}
+
 # Task E16/F01/US01/T01 (NW-68, ADR-005 w15 footer §5 rule 3 / ADR-016 w15
 # footer clause 14): both false at the w15 merge, to be flipped by a
 # one-line PR after demo's own post-promotion acceptance. That flip is this

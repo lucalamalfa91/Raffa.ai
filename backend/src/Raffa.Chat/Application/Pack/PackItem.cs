@@ -24,6 +24,12 @@ public static class PackCorpus
     /// <c>Raffa.Insights.Contracts.InsightsCitationKeys.Calc</c>'s identical "name the
     /// computation" convention.</summary>
     public const string Calc = "calc";
+
+    /// <summary>A public web source the research role actually read (ADR-030) — produced only by
+    /// <c>Application.WebResearch.WebResearchComposer</c>, never by the composition root's pack
+    /// builders, never mixed into an <c>answer</c>-role pack, never indexed. Always rendered as
+    /// "unverified": nothing in this corpus was checked against the tenant's contracts.</summary>
+    public const string Web = "web";
 }
 
 /// <summary>

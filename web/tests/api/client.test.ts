@@ -2483,6 +2483,8 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       inviteWorkspaceMember: () => client.inviteWorkspaceMember("tenant-1", { email: "buyer@acme.example", role: "Procurement" }),
       listWorkspaces: () => client.listWorkspaces(),
       getWorkspaceMembers: () => client.getWorkspaceMembers("tenant-1"),
+      getWorkspaceSettings: () => client.getWorkspaceSettings("tenant-1"),
+      updateWorkspaceSettings: () => client.updateWorkspaceSettings("tenant-1", { webResearchEnabled: true }),
       revokeInvitation: () => client.revokeInvitation("tenant-1", "invite-1"),
       removeMember: () => client.removeMember("tenant-1", "member-1"),
       getInvitation: () => client.getInvitation("invite-token-1"),
@@ -2756,5 +2758,38 @@ describe("createApiClient().validateDocument (review sign-off, POST /api/documen
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.error).toContain("network down");
+  });
+});
+
+describe("workspace settings (ADR-030 gate 2)", () => {
+  it("getWorkspaceSettings reads the switch over GET with no X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ webResearchEnabled: false, canEdit: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createApiClient("https://api.dev.raffa.example", async () => "test-access-token").getWorkspaceSettings("tenant-1");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, settings: { webResearchEnabled: false, canEdit: true }, error: null });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/workspaces/tenant-1/settings");
+    expect(init.method).toBe("GET");
+    expect(init.headers).toEqual({ Authorization: "Bearer test-access-token" });
+  });
+
+  it("updateWorkspaceSettings PATCHes the body and maps 403 to the Admin-only reason", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ webResearchEnabled: true, canEdit: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient("https://api.dev.raffa.example", async () => "test-access-token");
+
+    const ok = await client.updateWorkspaceSettings("tenant-1", { webResearchEnabled: true });
+    const forbidden = await client.updateWorkspaceSettings("tenant-1", { webResearchEnabled: false });
+
+    expect(ok.settings).toEqual({ webResearchEnabled: true, canEdit: true });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.method).toBe("PATCH");
+    expect(init.body).toBe(JSON.stringify({ webResearchEnabled: true }));
+    expect(forbidden).toEqual({ ok: false, statusCode: 403, settings: null, error: "Only a Workspace Admin can change this setting." });
   });
 });

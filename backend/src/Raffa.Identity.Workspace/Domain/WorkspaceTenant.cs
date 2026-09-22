@@ -54,4 +54,12 @@ public sealed class WorkspaceTenant : TenantScopedEntity
     /// footer names E14/F03/US01/T01).
     /// </summary>
     public string? Currency { get; set; }
+
+    /// <summary>
+    /// ADR-030 gate 2: this workspace's Admin opted into Ask Raffa's web research. Off by default
+    /// and never inferred: with it off, no web option is ever offered, no consent is ever asked, and
+    /// an explicit "search the web" gets a redirect naming this switch. Only
+    /// <c>PATCH /api/workspaces/{tenantId}/settings</c> (Admin) flips it, with an audit row.
+    /// </summary>
+    public bool WebResearchEnabled { get; set; }
 }

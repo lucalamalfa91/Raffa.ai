@@ -1303,12 +1303,14 @@ gate → planner → pack → answer → guards pipeline, with four additions:
    Leve in ordine di valore → Piano e timing → Cosa chiedere al fornitore →
    Rischi e cosa manca; a follow-up advances instead of restating; only bold
    and lists, which is all the web renderer supports. `NegotiationPlaybook`
-   (`raffa:playbook:*`, digit-free by test) supplies tactics and wording,
    never numbers. v2.3 makes rule 7 exact — an action key is the bare
    capability key after `raffa:` (`raffa:renewals` → `renewals`), never the
    citation key itself; v2.2's wording made a live model return
    `raffa:renewals`, which failed the whole answer — and rule 6 says the
    abstain reason is shown to the user verbatim, so it is plain language.
+   v2.3 also adds two formatting rules: name the supplier on every contract
+   reference ("Salesforce · MSA", never "the MSA" or "contract [2]") and
+   write amounts with their currency code.
 
 Golden cases `seeded-savings-leve-20k-salesforce-it`,
 `seeded-savings-levers-20k-salesforce-en`,
@@ -1477,6 +1479,86 @@ five cases (a real clause seeded via `InMemoryAskEngineFactory
 .SeedClauseAsync`, this task's own addition to the shared InMemory fixture —
 no Postgres needed for a "matching clause" scenario, since
 `Contract360QueryService.GetByIdAsync`'s `Clauses` read is a plain EF query).
+
+### Ask Raffa V2 — the interview and web research (ADR-030)
+
+**Interview.** An ambiguous in-domain question no longer reaches the `answer`
+role with a pack it cannot ground. `Application.Planning.IntentPlanResult`
+carries `Basis` (`Lexicon | LegacyRouter | Fallback | FollowUp | Forced`) and
+`Candidates`; `Application.Interview.AmbiguityDetector` turns planner
+fall-through, vague/deictic phrasing ("Did you over all my contract?"),
+several readings, a supplier with several contracts, or an unscoped notice
+question into `Clear | Unsure | Ambiguous`; only `Ambiguous` interviews.
+`InterviewPlanner` builds the turn — the interpretation menu
+(`portfolio-overview`, `total-spend`, `renewals-window`, `document-status`,
+optionally `web-research`), "which contract?" for a supplier with several,
+or "which contract for the notice?" — from fixed IT/EN templates; the model
+never authors an option. Each option carries a server-side
+`InterviewResolution` persisted in `conversation_message.interview_json`
+(migration `AddInterviewJson`) and never sent on the wire. The client answers
+`POST /api/conversations/{id}/messages` with `{ question: <label or text>,
+interviewAnswer: { messageId, questionKey, optionKey | freeText } }`; the
+endpoint reloads the turn under RLS, resolves the key, and `AskCopilotService`
+runs the normal pipeline on the rewrite with `AskTurnHints` (forced
+intent/contract/supplier, `SuppressInterview`) — every guard unchanged. A
+model abstain whose reason says "ambiguous" becomes the menu (stage 3). Never
+two interviews in a row. `Chat:Interview` (`Enabled`=true, `MaxQuestions`,
+`MaxOptionsPerQuestion`, `UseModelStage`=false, `ShortQuestionMaxWords`,
+`AskWhichContract`, `AskOnUnscopedNotice`, `ConvertAmbiguousAbstain`) is bound
+in `Program.cs` before `AddChatModule`; `Enabled=false` restores the previous
+behaviour exactly. Audit: `chat.interviewed` (`interviewQuestions=`,
+`webConsent=`).
+
+**Web research — an isolated, consented exception to R-AI-03.** The `answer`
+role still has no tools and never sees the web (`FoundryAnswerClientTests`).
+A separate `research` role (`AiGateway:Models:Research`, env
+`AiGateway__Models__Research__ModelId/ModelVersion`; null = the feature does
+not exist, **no fallback** to `answer`) is served by
+`Raffa.AiGateway.Foundry.FoundryResearchClient` on the Azure OpenAI
+**Responses API** (`openai/v1/responses`, so `AiGateway:OpenAiApiVersion`
+must be unset) with exactly one `web_search` tool and strict JSON; sources
+are only the tool's own `url_citation` annotations. `AiResearchRequest`
+carries `Query, Purpose, Language, MaxSources, SystemPrompt, PromptVersion`
+and **no pack** — isolation is in the type. In `Raffa.Chat`,
+`Application.WebResearch.WebResearchComposer.ComposeAsync(query, purpose,
+language)` is the only caller of `ResearchAsync` and the only producer of
+`PackCorpus.Web` (`WebResearchIsolationTests`); it runs `Guards.WebGuard`
+(≥ 1 source, https + public DNS host only, `[n]` in range, no foreign URL in
+the prose), then `NumericGuard` against the sources' snippets, then
+`GroundingGuard`; a failure is an abstain naming the hosts (no retry — every
+call is budgeted), `offTopic` is a refusal. The persona is
+`Prompts/research/v1.md` (`WebResearchPrompt`, `research-v1`). The query is
+`WebQuerySanitizer`'s: the user's words minus the "search the web" phrase and
+every amount, percentage, date, money shorthand, e-mail and URL.
+
+Three gates, re-checked when a consent is spent: `Chat:WebResearch:Enabled`
+(kill switch, **default false**), the workspace Admin's opt-in
+(`workspace.web_research_enabled`, `GET/PATCH /api/workspaces/{tenantId}/settings`
+— any live member reads, Admin writes, audited as
+`workspace.settings.web_research_enabled`), and the daily budget
+(`chat_web_research_usage`, `Chat:WebResearch:DailyCallsPerTenant`=20, RLS,
+one atomic `INSERT … ON CONFLICT DO UPDATE … WHERE calls < limit`). Only a
+question matching `WebResearchTopicLexicon` (market practice, supplier news,
+public benchmark ranges, negotiation tactics) is ever offered the web. An
+explicit "cerca sul web" / "search the web" is `AskIntent.WebResearch`; with
+every gate open it returns an interview whose question has
+`presentation: "consent"` (`WebConsentInterview`: `allow` carries the
+server-authored query and is single-use — a replay is **409**; `decline`
+re-plans the same words without the web phrase and is audited); with a gate
+closed it returns a redirect naming the gate. The web reply is `answer` with
+`citations[].corpus = "web"`, `provenance.sources = ["web"]`,
+`provenance.unverified = true`; web results are never indexed and never
+merged into an `answer`-role pack. Audit: `chat.web_research_authorized`,
+`chat.web_research_declined`, `chat.web_researched`, `chat.web_research_refused`,
+`ai.researched` — hashes and counts, never the query. Infra: `research` is an
+optional `model_roles` key bound in **both** `dev` and `demo` (demo is where
+the feature is tested), with `Chat__WebResearch__Enabled` published from each
+root's `web_research_enabled` variable; `scripts/foundry_research_probe.py`
+is the pre-flight/diagnostic and `AiGateway:ResearchWebSearchToolType`
+(default `web_search`) covers the tool's earlier `web_search_preview` name
+(see `infra/README.md`). The fixture gateway's `ResearchAsync` returns two
+example.com/.org sources (off-topic without a procurement word), which is
+what `AskWebResearchConsentTests` exercises.
 
 ## Ask Raffa — capability catalog
 

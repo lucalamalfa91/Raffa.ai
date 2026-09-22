@@ -164,6 +164,29 @@ export interface GetWorkspaceMembersResult {
   error: string | null;
 }
 
+// ADR-030 gate 2: `getWorkspaceSettings(tenantId)` / `updateWorkspaceSettings(tenantId, request)`
+// over `/api/workspaces/{tenantId}/settings`. The 200 body is anchored to the generated type; the
+// PATCH body is hand-written (the generator does not parse `requestBody`).
+type GetWorkspaceSettingsResponses = paths["/api/workspaces/{tenantId}/settings"]["get"]["responses"];
+export type WorkspaceSettingsBody = GetWorkspaceSettingsResponses[200]["content"]["application/json"];
+
+export interface GetWorkspaceSettingsResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The settings, present only when `ok` is true. */
+  settings: WorkspaceSettingsBody | null;
+  /** Plain-language failure reason (401/403/404/network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+export interface UpdateWorkspaceSettingsRequest {
+  webResearchEnabled: boolean;
+}
+
+export type UpdateWorkspaceSettingsResult = GetWorkspaceSettingsResult;
+
 // Task E06/F04/US01/T01 (workspace-members-invite): `inviteWorkspaceMember`, wrapping
 // `POST /api/workspaces/{tenantId}/invites`. The 201 body is anchored to the generated
 // `paths["/api/workspaces/{tenantId}/invites"]["post"]` type -- not invented. There is still no
@@ -1223,7 +1246,20 @@ export type ConversationProvenanceBody = ConversationReplyBody["provenance"];
  * comment for why (the generator does not parse `requestBody`). */
 export interface PostMessageRequest {
   question: string;
+  /** ADR-030: answers an interview turn -- by key, never by label. `question` is what the
+   * transcript shows (the option's label, or the typed text); the server runs the option's own
+   * persisted rewrite. Either `optionKey` or `freeText: true`. */
+  interviewAnswer?: InterviewAnswerRequest;
 }
+
+export interface InterviewAnswerRequest {
+  messageId: string;
+  questionKey: string;
+  optionKey?: string;
+  freeText?: boolean;
+}
+
+export type ConversationInterviewBody = NonNullable<ConversationReplyBody["interview"]>;
 
 export interface PostMessageResult {
   /**
@@ -1305,6 +1341,64 @@ export interface GetMarketRecordResult {
   error: string | null;
 }
 
+/**
+ * ADR-030 gate 2: the one fetch behind `getWorkspaceSettings`/`updateWorkspaceSettings`. No
+ * `X-Tenant-Id` (the route carries the tenant, as on the members routes); 401/403/404 are normal
+ * outcomes the caller renders inline, never exceptions.
+ */
+async function workspaceSettingsRequest(
+  baseUrl: string,
+  getAccessToken: GetAccessToken,
+  tenantId: string,
+  init: { method: "GET" | "PATCH"; headers?: Record<string, string>; body?: string },
+): Promise<GetWorkspaceSettingsResult> {
+  const path = `/api/workspaces/${encodeURIComponent(tenantId)}/settings`;
+  let response: Response;
+  try {
+    const headers = { ...(init.headers ?? {}), ...await authHeaders(getAccessToken) };
+    response = await fetch(new URL(path, baseUrl), {
+      method: init.method,
+      ...(Object.keys(headers).length > 0 ? { headers } : {}),
+      ...(init.body !== undefined ? { body: init.body } : {}),
+      cache: "no-store",
+    });
+  } catch (cause) {
+    return {
+      ok: false,
+      statusCode: null,
+      settings: null,
+      error: `Unable to reach ${baseUrl}${path}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+    };
+  }
+
+  if (response.status === 200) {
+    const settings = (await response.json()) as WorkspaceSettingsBody;
+    return { ok: true, statusCode: 200, settings, error: null };
+  }
+
+  if (response.status === 401) {
+    return { ok: false, statusCode: 401, settings: null, error: "Sign-in required." };
+  }
+
+  if (response.status === 403) {
+    return { ok: false, statusCode: 403, settings: null, error: "Only a Workspace Admin can change this setting." };
+  }
+
+  if (response.status === 404) {
+    return { ok: false, statusCode: 404, settings: null, error: `No workspace found for id ${tenantId}.` };
+  }
+
+  let failure: string;
+  try {
+    const errorBody: unknown = await response.json();
+    failure = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+  } catch {
+    failure = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+  }
+
+  return { ok: false, statusCode: response.status, settings: null, error: failure };
+}
+
 export interface ApiClient {
   /**
    * Calls `GET /health` (operationId `getHealth` in
@@ -1353,6 +1447,17 @@ export interface ApiClient {
    * never an empty `200` (ADR-025 Rule D.4b).
    */
   getWorkspaceMembers(tenantId: string): Promise<GetWorkspaceMembersResult>;
+  /**
+   * Calls `GET /api/workspaces/{tenantId}/settings` (operationId `getWorkspaceSettings`, ADR-030
+   * gate 2) -- the workspace's web-research opt-in and whether this caller may change it. Same
+   * ladder and never-throws shape as `getWorkspaceMembers`.
+   */
+  getWorkspaceSettings(tenantId: string): Promise<GetWorkspaceSettingsResult>;
+  /**
+   * Calls `PATCH /api/workspaces/{tenantId}/settings` (operationId `updateWorkspaceSettings`) --
+   * Admin only (403 otherwise). Returns the settings as stored.
+   */
+  updateWorkspaceSettings(tenantId: string, request: UpdateWorkspaceSettingsRequest): Promise<UpdateWorkspaceSettingsResult>;
   /**
    * Calls `DELETE /api/workspaces/{tenantId}/invites/{id}` (operationId `revokeInvitation`, task
    * E15/F01/US01/T01, wave w14; ADR-025 §D.5) -- Admin only. `id` is the invitation id
@@ -1921,6 +2026,18 @@ export function createApiClient(
         members: null,
         error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
       };
+    },
+
+    async getWorkspaceSettings(tenantId) {
+      return workspaceSettingsRequest(baseUrl, getAccessToken, tenantId, { method: "GET" });
+    },
+
+    async updateWorkspaceSettings(tenantId, request) {
+      return workspaceSettingsRequest(baseUrl, getAccessToken, tenantId, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
     },
 
     async revokeInvitation(tenantId, id) {
@@ -3509,6 +3626,11 @@ export function createApiClient(
 
       if (response.status === 404) {
         return { ok: false, statusCode: 404, reply: null, error: `No conversation found for id ${conversationId}.` };
+      }
+
+      // ADR-030: a single-use consent option was already taken -- ask again rather than replay.
+      if (response.status === 409) {
+        return { ok: false, statusCode: 409, reply: null, error: "This permission was already used — ask again." };
       }
 
       let postError: string;

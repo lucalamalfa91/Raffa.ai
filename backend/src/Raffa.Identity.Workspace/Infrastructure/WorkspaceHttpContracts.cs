@@ -23,3 +23,13 @@ public sealed record CreateWorkspaceRequest(string Name, string? Industry = null
 /// for why this type lives here and not in Raffa.Api.
 /// </summary>
 public sealed record InviteRequest(string Email, string Role);
+
+/// <summary>
+/// Request body for `PATCH /api/workspaces/{tenantId}/settings` (ADR-030 gate 2). Every field is
+/// optional so a client patches one switch without restating the others; a body naming none is a
+/// 400. Same "lives next to its service, not in the host" reason as <see cref="CreateWorkspaceRequest"/>.
+/// </summary>
+public sealed record UpdateWorkspaceSettingsRequest(bool? WebResearchEnabled = null);
+
+/// <summary>The settings a workspace member may read and its Admin may change (ADR-030).</summary>
+public sealed record WorkspaceSettingsResult(bool WebResearchEnabled);

@@ -98,11 +98,14 @@ variable "model_deployments" {
 }
 
 variable "model_roles" {
-  description = "AI Gateway role -> key of model_deployments. Exactly classify, extract, embed and answer; the fifth role, ocr, is Document Intelligence prebuilt-read and is fixed inside this module (ADR-017)."
+  description = "AI Gateway role -> key of model_deployments. classify, extract, embed and answer are required; research (ADR-030: the web-grounded Responses API deployment Ask Raffa's opt-in web research runs on -- never the answer deployment) is optional and bound only after scripts/foundry_research_probe.py passes in the region; the fifth fixed role, ocr, is Document Intelligence prebuilt-read and lives inside this module (ADR-017)."
   type        = map(string)
 
   validation {
-    condition     = toset(keys(var.model_roles)) == toset(["classify", "extract", "embed", "answer"])
-    error_message = "model_roles must bind exactly classify, extract, embed and answer."
+    condition = (
+      length(setsubtract(toset(["classify", "extract", "embed", "answer"]), toset(keys(var.model_roles)))) == 0
+      && length(setsubtract(toset(keys(var.model_roles)), toset(["classify", "extract", "embed", "answer", "research"]))) == 0
+    )
+    error_message = "model_roles must bind classify, extract, embed and answer, and may additionally bind research (ADR-030); no other role."
   }
 }

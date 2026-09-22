@@ -232,6 +232,18 @@ var draftingOptions = new Raffa.Chat.Application.Drafting.DraftingOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
 builder.Services.AddSingleton(draftingOptions);
 
+// ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
+// council/drafting options above so a configured value wins over the module's TryAdd default.
+var interviewOptions = new Raffa.Chat.Application.Interview.InterviewOptions();
+builder.Configuration.GetSection(Raffa.Chat.Application.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
+builder.Services.AddSingleton(interviewOptions);
+
+// ADR-030: Chat:WebResearch — the kill switch (default OFF), the workspace opt-in requirement,
+// the daily budget and the query bounds of the one path that may reach the public web.
+var webResearchOptions = new Raffa.Chat.Application.WebResearch.WebResearchOptions();
+builder.Configuration.GetSection(Raffa.Chat.Application.WebResearch.WebResearchOptions.SectionName).Bind(webResearchOptions);
+builder.Services.AddSingleton(webResearchOptions);
+
 // Feedback:* (ADR-030 D5): the environment name every published issue carries, and the GitHub
 // publisher -- registered BEFORE AddChatModule because the module's own defaults
 // (FeedbackOptions "local", NullFeatureRequestPublisher) are TryAdd. Same "optional keys, fail

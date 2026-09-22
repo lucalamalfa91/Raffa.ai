@@ -1,4 +1,5 @@
 using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Interview;
 
 namespace Raffa.Chat.Application.Reply;
 
@@ -10,15 +11,15 @@ namespace Raffa.Chat.Application.Reply;
 /// `POST /api/conversations/{id}/messages` HTTP JSON body and the persisted
 /// <c>Raffa.Chat.Application.Conversations.AppendConversationMessageRequest</c> row.
 /// </summary>
-/// <param name="Kind">Which of the four reply shapes this is.</param>
+/// <param name="Kind">Which of the reply shapes this is.</param>
 /// <param name="AnswerMarkdown">The rendered body — the grounded answer, the capability answer,
-/// the redirect/refusal warm prose, or the abstain reason, in the question's own language
-/// (OQ-askv2-006). Engineer chrome (guids, "Structured query...", a route line) is never rendered
-/// here (R-ASK-08).</param>
+/// the redirect/refusal warm prose, the abstain reason, the draft preface or the interview prompt,
+/// in the question's own language (OQ-askv2-006). Engineer chrome (guids, "Structured query...",
+/// a route line) is never rendered here (R-ASK-08).</param>
 /// <param name="Citations">In answer-order (<c>[n]</c> matches <see cref="ReplyCitation.N"/>).
 /// Empty for <see cref="ReplyKind.Redirect"/>/<see cref="ReplyKind.Refusal"/>/
-/// <see cref="ReplyKind.Abstain"/> unless a citation genuinely backs the decline (rare — most
-/// redirects/refusals cite nothing, they only ever offer an action).</param>
+/// <see cref="ReplyKind.Abstain"/>/<see cref="ReplyKind.Interview"/> unless a citation genuinely
+/// backs the decline (rare — most redirects/refusals cite nothing, they only ever offer an action).</param>
 /// <param name="Actions">Always from <see cref="CapabilityRouting.ResolveActions"/> — real hrefs
 /// from the catalog only (R-SYS-02), never model-authored.</param>
 /// <param name="Provenance">See <see cref="ReplyProvenance"/>.</param>
@@ -30,6 +31,8 @@ namespace Raffa.Chat.Application.Reply;
 /// capability gap, the feedback offer or the feedback result — <see langword="null"/> for every
 /// turn that carries none, which is every turn that existed before ADR-030. Persisted verbatim
 /// as <c>ConversationMessage.PayloadJson</c> and served as the wire's <c>payload</c>.</param>
+/// <param name="Interview">ADR-030 interview metadata: the clarifying question(s), options and
+/// keys resolved server-side by the next turn. Present only on <see cref="ReplyKind.Interview"/>.</param>
 public sealed record CopilotReply(
     ReplyKind Kind,
     string AnswerMarkdown,
@@ -37,4 +40,5 @@ public sealed record CopilotReply(
     IReadOnlyList<CopilotAction> Actions,
     ReplyProvenance Provenance,
     IReadOnlyList<string> FollowUps,
-    ReplyPayload? Payload = null);
+    ReplyPayload? Payload = null,
+    InterviewTurn? Interview = null);

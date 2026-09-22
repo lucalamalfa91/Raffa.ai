@@ -43,6 +43,8 @@ function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): 
     // both this and acceptPendingInvitation below.
     listWorkspaces: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, workspaces: [], pendingInvitations: [], error: null }),
     getWorkspaceMembers: vi.fn(),
+    getWorkspaceSettings: vi.fn(),
+    updateWorkspaceSettings: vi.fn(),
     // Task E15/F01/US01/T01 (wave w14, invitation lifecycle): plain stubs, same isolation
     // convention as the rest of this mock -- this suite exercises none of them.
     revokeInvitation: vi.fn(),

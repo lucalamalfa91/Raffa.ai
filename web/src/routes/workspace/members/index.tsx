@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ApiClient, WorkspaceMemberBody } from "../../../api/client";
+import type { ApiClient, WorkspaceMemberBody, WorkspaceSettingsBody } from "../../../api/client";
 import { useShellContext } from "../../../components/shell/shellContext";
 import { canManageMembers, type WorkspaceRole } from "../../../components/shell/navItems";
 import InvitePane, { type InviteFailure } from "./InvitePane";
@@ -45,6 +45,15 @@ type RosterState =
   | { phase: "error"; statusCode: number | null; message: string }
   | { phase: "ready"; members: readonly WorkspaceMemberBody[] };
 
+/** ADR-030 gate 2: the workspace's web-research opt-in. `hidden` when the settings could not be
+ * read (an older backend, a non-member) -- the block simply does not render, never a guess. */
+type SettingsState =
+  | { phase: "loading" }
+  | { phase: "hidden" }
+  | { phase: "ready"; settings: WorkspaceSettingsBody; saving: boolean; error: string | null };
+
+export const WEB_RESEARCH_SETTING_LABEL = "Allow Ask Raffa to search the public web";
+
 /**
  * Route `/workspace/members` -- Workspace & members, V2 (ADR-024 V2 IA; screens-v2.md #10;
  * `raffa-v2/markup.html` "WORKSPACE & MEMBERS" block). Header ("Setup" kicker · "Workspace &
@@ -79,8 +88,45 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
   const [submitting, setSubmitting] = useState(false);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<MembersActionError | null>(null);
+  const [settings, setSettings] = useState<SettingsState>({ phase: "loading" });
 
   const tenantDomain = workspaceDomainFromEmail(userLabel);
+
+  useEffect(() => {
+    if (!workspaceId) {
+      setSettings({ phase: "hidden" });
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const result = await apiClient.getWorkspaceSettings(workspaceId);
+      if (cancelled) return;
+      if (!result || !result.ok || !result.settings) {
+        setSettings({ phase: "hidden" });
+        return;
+      }
+      setSettings({ phase: "ready", settings: result.settings, saving: false, error: null });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, workspaceId]);
+
+  const setWebResearch = useCallback(
+    (enabled: boolean) => {
+      if (!workspaceId || settings.phase !== "ready" || settings.saving) return;
+      const previous = settings.settings;
+      setSettings({ phase: "ready", settings: previous, saving: true, error: null });
+      void apiClient.updateWorkspaceSettings(workspaceId, { webResearchEnabled: enabled }).then((result) => {
+        if (!result.ok || !result.settings) {
+          setSettings({ phase: "ready", settings: previous, saving: false, error: result.error ?? "The setting could not be saved." });
+          return;
+        }
+        setSettings({ phase: "ready", settings: result.settings, saving: false, error: null });
+      });
+    },
+    [apiClient, workspaceId, settings],
+  );
 
   const loadRoster = useCallback(() => {
     if (!workspaceId) return;
@@ -282,6 +328,36 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
               onReissue={handleReissue}
               onRemove={handleRemove}
             />
+          )}
+
+          {settings.phase === "ready" && (
+            <section className="members-settings" aria-labelledby="members-settings-title">
+              <h3 id="members-settings-title" className="members-settings-title">
+                Ask Raffa
+              </h3>
+              <label className="members-settings-row">
+                <input
+                  type="checkbox"
+                  checked={settings.settings.webResearchEnabled}
+                  disabled={!settings.settings.canEdit || settings.saving}
+                  onChange={(event) => setWebResearch(event.target.checked)}
+                />
+                <span>
+                  <span className="members-settings-label">{WEB_RESEARCH_SETTING_LABEL}</span>
+                  <span className="micro-meta members-settings-hint">
+                    Off by default. When on, Raffa may offer a web search for market practice, supplier news or negotiation
+                    tactics -- and asks the person for permission on every single question before it searches. Nothing from
+                    your contracts leaves Raffa; results are labelled unverified.
+                  </span>
+                </span>
+              </label>
+              {!settings.settings.canEdit && <p className="micro-meta">Only a Workspace Admin can change this.</p>}
+              {settings.error !== null && (
+                <p className="micro-meta members-settings-error" role="alert">
+                  {settings.error}
+                </p>
+              )}
+            </section>
           )}
         </div>
 

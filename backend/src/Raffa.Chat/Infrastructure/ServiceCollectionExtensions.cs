@@ -5,9 +5,11 @@ using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Feedback;
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
+using Raffa.Chat.Application.WebResearch;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -110,6 +112,16 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new FeedbackOptions());
         services.TryAddScoped<IFeatureRequestPublisher, NullFeatureRequestPublisher>();
 
+        // ADR-030: the interview (kill switch + bounds) — a configured value registered before
+        // this call wins, same TryAdd contract as CouncilOptions above.
+        services.TryAddSingleton(new InterviewOptions());
+        services.AddScoped<InterviewPlanner>();
+
+        // ADR-030: web research. The options default to Enabled=false (the kill switch), so a host
+        // that never binds Chat:WebResearch has no web path at all.
+        services.TryAddSingleton(new WebResearchOptions());
+        services.AddScoped<WebResearchComposer>();
+
         // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
         // dependency at all — this project has no PackageReference for
         // Microsoft.Extensions.Configuration.Binder (unlike Raffa.Api/Program.cs, a full
@@ -141,6 +153,10 @@ public static class ServiceCollectionExtensions
 
             // ADR-030 D5: the feedback write path shares the request's own ChatDbContext.
             services.AddScoped<FeedbackService>();
+
+            // ADR-030 gate 3: the daily budget lives in this module's own database.
+            services.AddScoped<WebResearchBudget>();
+            services.AddScoped<IWebResearchBudget>(sp => sp.GetRequiredService<WebResearchBudget>());
         }
 
         return services;

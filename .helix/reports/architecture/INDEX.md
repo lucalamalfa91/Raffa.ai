@@ -2031,29 +2031,15 @@ clause 4(g) from "two applies" to **three runs across two workspaces, not
 interchangeable**; **clause 9** records that the **phase graph is unchanged** by
 round 3, checked item by item, with `FactTable.tsx` still unowned.
 
-## Ask says what it cannot do, and does the next best thing (wave w20, appended 2026-09-22)
-
-Owner's ruling on the Amazon screenshot ("non devi rispondere a caso o non dare
-alternative all'utente"): a request for an operation Raffa cannot perform must
-be said honestly, followed by the nearest real alternative, and reportable to
-the team from the chat. **One new ADR at this table — ADR-030** (software-architect,
-owner; deciders also product-owner, security-architect, client-architect):
+## Post-w19 / w20 product feedback (2026-09-22) — Ask Raffa capability gaps, interview and web research
 
 | ADR | Topic | Seat | One-line decision |
 | --- | --- | --- | --- |
-| ADR-030 | Ask Raffa capability gaps: honest preface, drafted negotiation email, in-chat feedback loop → GitHub issue | software-architect | A capability gap is a **gate label** (after Legal, before Capability) from a five-entry IT/EN catalog, never a planner intent; a **fifth reply kind `draft`** carries the preface in `answerMarkdown`, the email verbatim in a new required nullable `payload` (`conversation_message.payload_json`), and the cited pack items; the email is written by a two-agent workflow (offer planner → negotiation writer) over the Q3 pack, guarded by `DraftGuard` (no inline `[n]`, numbers in the pack), retried once, and **falls back to a deterministic template — the draft path never abstains**; the other gaps redirect to Renewals / Portfolio / Contract 360; every gap turn offers an in-chat **three-question feedback card** whose one `POST /api/conversations/{id}/feedback` stores a `feature_request` row (RLS) **first**, then opens a GitHub issue best-effort with a fine-grained PAT from Key Vault (`github-feedback-token`, API app only, product switch), the issue body **allow-listed** for a public repository (gap, answers, language, environment, opaque workspace hash — never the question, a supplier or an identity); `external` is a server-authored action kind. |
+| ADR-030 | Ask Raffa: capability gaps, drafted negotiation email, interview and web research | software-architect (+ product-owner, security-architect, client-architect on their respective seams) | A capability gap is a **gate label** (after Legal, before Capability) from a five-entry IT/EN catalog, never a planner intent; `draft` and `interview` extend the reply contract alongside a required nullable `payload`; ambiguous turns ask **one server-authored question resolved by key** before retrieval, while web research stays an isolated, consented exception behind a kill switch, workspace opt-in and daily budget; the email gap with a resolved contract runs the guarded draft workflow and never abstains; other gaps redirect with follow-ups and an in-chat feedback card that stores a `feature_request` row first and then opens a GitHub issue best-effort through the host publisher. |
 
-**ADR-024 gains a w20 amendment footer** (clauses 1–5: the seventh gate label,
-the fifth kind and `payload`, the draft guard and `chat.drafted`, the gap
-redirect's follow-ups and `external`, the store's column and table). **ADR-016
-gains a w20 amendment footer** (owner's ruling 2026-09-22): the w15 clause-14
-flip on `demo` is done — `invitation_mail_enabled` and
-`guest_provisioning_enabled` are `true` on both roots, `guest_role_assignment_managed`
-stays `false` so the apply writes nothing in Entra and the `User.Invite.All`
-grant for `demo`'s workload identity remains an out-of-band Global Administrator
-step; and `feedback_github_enabled` was never flag-gated per environment because
-the HCP sensitive token is the real gate. **No ADR
-body is rewritten, none is superseded.** ADR-001 `none` (a human-approved draft
-shown in the UI is not autonomous supplier communication; the mail transport
-stays deferred). ADR-011 `none` (a PAT in Key Vault via the existing secret
-pattern; the audit row names the gap and the outcome, never the answers).
+ADR-030 amends ADR-024's engine and wire contract (capability-gap gate,
+`draft`, `interview`, `payload`, follow-ups and `external`), records the draft
+guard / `chat.drafted` / `chat.interviewed` audit consequences, and keeps web
+research a narrow exception to R-AI-03 (separate role, no pack slot, explicit
+consent, `WebGuard`, always unverified). ADR-016 also gains the w20 footer for
+the demo invitation / guest-provisioning flip and the feedback token gate.

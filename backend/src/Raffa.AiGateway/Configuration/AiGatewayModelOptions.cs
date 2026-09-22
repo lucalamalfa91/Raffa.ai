@@ -57,4 +57,10 @@ public sealed class AiGatewayModelOptions
     /// (<c>AiGateway:Models:Analyst:*</c>). Optional: when unset, <see cref="Answer"/>'s
     /// deployment is used, so no infrastructure change is needed to run the council.</summary>
     public AiModelSelection? Analyst { get; init; }
+
+    /// <summary>ADR-030: the web-grounded research deployment (Responses API + hosted web search).
+    /// Null means the research role does not exist in this environment; unlike
+    /// <see cref="Analyst"/> it never falls back to <see cref="Answer"/> -- a web tool on the answer
+    /// deployment is exactly what R-AI-03 forbids.</summary>
+    public AiModelSelection? Research { get; init; }
 }

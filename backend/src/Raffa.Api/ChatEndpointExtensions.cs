@@ -1,5 +1,6 @@
 using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Interview;
 
 namespace Raffa.Api;
 
@@ -91,7 +92,9 @@ public static class ChatEndpointExtensions
 
         var reply = await ConversationsEndpointExtensions.AskAndAppendAsync(
                 askCopilotService, conversationService, tenantId, userId, conversation.ConversationId,
-                detail, request.Question, cancellationToken)
+                // The alias always opens a fresh conversation, so it can never be answering an
+                // interview: no hints, no interview reference (ADR-030).
+                detail, request.Question, request.Question, AskTurnHints.None, null, cancellationToken)
             .ConfigureAwait(false);
 
         return Results.Ok(reply);

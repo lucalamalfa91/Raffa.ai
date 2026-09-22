@@ -1,33 +1,24 @@
 using Raffa.Chat.Domain.Conversations;
 using Raffa.Chat.Domain.Feedback;
+using Raffa.Chat.Domain.WebResearch;
 using Raffa.Chat.Infrastructure.Configurations;
 using Microsoft.EntityFrameworkCore;
 
 namespace Raffa.Chat.Infrastructure;
 
-/// <summary>
-/// EF Core DbContext for the Chat bounded context's conversations store (task E13/F05/US01/T01,
-/// ADR-003). Postgres via npgsql is the only access path; schema changes flow through code-first
-/// migrations only (no hand-edited DDL). RLS policies and the ambient per-request tenant claim
-/// are wired exactly like <c>Raffa.Documents.Contracts.Infrastructure.DocumentsContractsDbContext</c>
-/// / <c>Raffa.Audit.Infrastructure.AuditDbContext</c> — this context only shapes the model and
-/// exposes the DbSets. No `HasPostgresExtension("vector")` call: unlike Documents/Contracts,
-/// neither <see cref="Conversation"/> nor <see cref="ConversationMessage"/> (nor, since ADR-030,
-/// <see cref="FeatureRequest"/>) has a vector column.
-/// </summary>
 public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(options)
 {
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
-
-    /// <summary>ADR-030 D5: the feature requests users file from the in-chat feedback card.</summary>
     public DbSet<FeatureRequest> FeatureRequests => Set<FeatureRequest>();
+    public DbSet<WebResearchUsage> WebResearchUsage => Set<WebResearchUsage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new ConversationConfiguration());
         modelBuilder.ApplyConfiguration(new ConversationMessageConfiguration());
         modelBuilder.ApplyConfiguration(new FeatureRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new WebResearchUsageConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

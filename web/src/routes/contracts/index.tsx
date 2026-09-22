@@ -7,10 +7,14 @@ import PortfolioTable from "./PortfolioTable";
 import {
   buildPortfolioRows,
   buildPortfolioSummary,
+  filterRowsByContractIds,
+  formatHighlightNotice,
   formatPortfolioSummary,
   moreColumnsLabel,
   PORTFOLIO_SUMMARY_OFF,
   readCategoryFilter,
+  readContractIdsFilter,
+  withCategoryFilter,
 } from "./portfolioViewModel";
 import "./contracts.css";
 
@@ -85,6 +89,9 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   // shared link, a reload or the browser's back/forward all reproduce the same filtered request
   // (ADR-012 "a client store never stands in for a missing GET").
   const category = readCategoryFilter(searchParams);
+  // `?ids=`: the contracts an Ask evidence card highlighted -- a client-side narrowing of the same
+  // page, never a second request, so "Show all" is one link away and the summary stays honest.
+  const highlightedIds = useMemo(() => readContractIdsFilter(searchParams), [searchParams]);
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [moreColumns, setMoreColumns] = useState(false);
   const [documentCounts, setDocumentCounts] = useState<DocumentListPageBody["counts"] | null>(null);
@@ -147,12 +154,19 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
     loadPortfolio();
   }, [loadPortfolio]);
 
-  const rows = useMemo(() => (fetchState.phase === "ready" ? buildPortfolioRows(fetchState.items) : []), [fetchState]);
+  const allRows = useMemo(() => (fetchState.phase === "ready" ? buildPortfolioRows(fetchState.items) : []), [fetchState]);
+  const rows = useMemo(() => filterRowsByContractIds(allRows, highlightedIds), [allRows, highlightedIds]);
   const summary = useMemo(() => buildPortfolioSummary(rows), [rows]);
 
   const ready = fetchState.phase === "ready";
-  const lit = ready && rows.length > 0;
-  const zero = ready && rows.length === 0;
+  const lit = ready && allRows.length > 0;
+  const zero = ready && allRows.length === 0;
+  const highlighting = lit && highlightedIds.length > 0;
+  const showAllHref = (() => {
+    const params = withCategoryFilter(new URLSearchParams(), category);
+    const query = params.toString();
+    return query === "" ? "/contracts" : `/contracts?${query}`;
+  })();
 
   // Counts drive both the zero-state sentence and the in-flight poll, including when rows are
   // already on screen (later Completions must be able to appear without a remount).
@@ -252,7 +266,16 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         </div>
       )}
 
-      {lit && <PortfolioTable rows={rows} moreColumns={moreColumns} />}
+      {highlighting && (
+        <div className="portfolio-highlight-notice" role="status" data-testid="portfolio-highlight-notice">
+          <span>{formatHighlightNotice(rows.length, allRows.length)}</span>
+          <Link to={showAllHref} className="btn btn-ghost">
+            Show all contracts →
+          </Link>
+        </div>
+      )}
+
+      {lit && rows.length > 0 && <PortfolioTable rows={rows} moreColumns={moreColumns} />}
     </div>
   );
 }

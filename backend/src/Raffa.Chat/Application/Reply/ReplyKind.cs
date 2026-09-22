@@ -2,9 +2,7 @@ namespace Raffa.Chat.Application.Reply;
 
 /// <summary>
 /// ADR-024 §6 reply contract kinds (task E13/F06/US01/T01, ask-engine; `inputs/requirements.md`
-/// R-ASK-07). Wire-format lowercase via <see cref="ReplyKindWireFormat.ToApiValue"/> — the exact
-/// four literals the API contract names: <c>answer</c>, <c>abstain</c>, <c>redirect</c>,
-/// <c>refusal</c> — plus, since ADR-030, <c>draft</c>.
+/// R-ASK-07). Wire-format lowercase via <see cref="ReplyKindWireFormat.ToApiValue"/>.
 /// </summary>
 public enum ReplyKind
 {
@@ -33,13 +31,14 @@ public enum ReplyKind
     /// feedback offer. Never carries inline <c>[n]</c> markers — the draft is guarded by
     /// <c>Application.Drafting.DraftGuard</c>, not by the `answer` role's citation gate.</summary>
     Draft,
+
+    /// <summary>ADR-030: Raffa asks one clarifying question (with options) before it retrieves
+    /// anything. Rendered as chips or as the consent dialog; answered by key.</summary>
+    Interview,
 }
 
 /// <summary>`GET`/`POST` reply wire-format for <see cref="ReplyKind"/> — lower-case, matching
-/// `inputs/requirements.md` §6's own literal <c>kind</c> values (not this codebase's usual bare
-/// <c>.ToString()</c> PascalCase convention — same reasoning
-/// <c>Raffa.Chat.Application.Capabilities.CapabilityWireFormat</c> already documents for its own
-/// two wire-format enums).</summary>
+/// `inputs/requirements.md` §6's own literal <c>kind</c> values.</summary>
 public static class ReplyKindWireFormat
 {
     public static string ToApiValue(this ReplyKind kind) => kind switch
@@ -49,6 +48,7 @@ public static class ReplyKindWireFormat
         ReplyKind.Redirect => "redirect",
         ReplyKind.Refusal => "refusal",
         ReplyKind.Draft => "draft",
+        ReplyKind.Interview => "interview",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ReplyKind."),
     };
 }

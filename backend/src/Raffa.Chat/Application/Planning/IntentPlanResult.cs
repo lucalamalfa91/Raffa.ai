@@ -20,4 +20,35 @@ namespace Raffa.Chat.Application.Planning;
 /// savings-family intents (<see cref="AskIntent.Savings"/>,
 /// <see cref="AskIntent.PortfolioSavingsTarget"/>, <see cref="AskIntent.RenewalStrategy"/>) read
 /// it.</param>
-public sealed record IntentPlanResult(AskIntent Intent, string Reason, string? NamedSupplier, SavingsGoal? Goal = null);
+/// <param name="Basis">How <see cref="Intent"/> was decided (see <see cref="IntentPlanBasis"/>) — the
+/// structured signal the interview planner reads instead of parsing <see cref="Reason"/>.</param>
+/// <param name="Candidates">Every intent whose lexicon matched this question, in planner order
+/// (<see cref="IntentPlanner.Candidates"/>); <see cref="Intent"/> is the first of them unless the
+/// plan was forced. Empty when nothing matched at all.</param>
+public sealed record IntentPlanResult(
+    AskIntent Intent,
+    string Reason,
+    string? NamedSupplier,
+    SavingsGoal? Goal = null,
+    IntentPlanBasis Basis = IntentPlanBasis.Lexicon,
+    IReadOnlyList<AskIntent>? Candidates = null);
+
+/// <summary>How an <see cref="IntentPlanResult"/> was reached.</summary>
+public enum IntentPlanBasis
+{
+    /// <summary>One of <see cref="IntentPlanner"/>'s own lexicons matched.</summary>
+    Lexicon,
+
+    /// <summary>No lexicon matched; the legacy query router matched a structured or clause keyword.</summary>
+    LegacyRouter,
+
+    /// <summary>Nothing matched anywhere: the legacy router fell back to its own default. The
+    /// planner has no evidence about what the user means.</summary>
+    Fallback,
+
+    /// <summary>A bare follow-up re-planned on the previous user question.</summary>
+    FollowUp,
+
+    /// <summary>Forced by a server-authored interview resolution; no lexicon was consulted.</summary>
+    Forced,
+}

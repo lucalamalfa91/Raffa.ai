@@ -139,6 +139,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace()),
     getWorkspaceMembers: vi.fn(),
+    getWorkspaceSettings: vi.fn(),
+    updateWorkspaceSettings: vi.fn(),
     revokeInvitation: vi.fn(),
     removeMember: vi.fn(),
     getInvitation: vi.fn(),
@@ -412,7 +414,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
   });
 
   describe("AC-3: a mocked answer reply renders markdown + citation cards + actions", () => {
-    it("renders bold markdown, a numbered citation card (validated contract badge), and an action button", async () => {
+    it("renders bold markdown, one evidence card (the supplier named, the row labelled), and an action button", async () => {
       renderAsk(
         mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply()) }),
       );
@@ -420,9 +422,11 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
 
       expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
-      expect(screen.getByText("Validated contract")).toBeInTheDocument();
-      expect(screen.getByText("Salesforce · MSA 2024")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
+      expect(screen.getByText("Your contracts")).toBeInTheDocument();
+      // The card names the supplier as the group and keeps only what the row adds ("MSA 2024").
+      expect(document.querySelector(".evidence-group-title")).toHaveTextContent("Salesforce");
+      expect(screen.getByText("MSA 2024")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Salesforce · Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
       expect(screen.getByRole("button", { name: /Where can I push on the renewal\?/ })).toBeInTheDocument();
       expect(screen.queryByText(/cannot determine reliably/i)).not.toBeInTheDocument();
     });
@@ -433,7 +437,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       );
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-      await screen.findByText("Salesforce · MSA 2024");
+      await screen.findByText("MSA 2024");
 
       // Scoped to the chat log itself: `PathProbe` (this suite's own routing harness) legitimately
       // renders the conversation id as part of `/ask/<id>` once navigation lands, which is not the
@@ -492,13 +496,83 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-      await screen.findByText("Salesforce · MSA 2024");
+      await screen.findByText("MSA 2024");
 
       await userEvent.click(screen.getByRole("button", { name: /Where can I push on the renewal\?/ }));
 
       await waitFor(() => expect(postMessage).toHaveBeenCalledTimes(2));
       expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, { question: "Where can I push on the renewal?" });
       expect(await screen.findByText("Second answer.")).toBeInTheDocument();
+    });
+  });
+
+  // ADR-030: an ambiguous question is interviewed; a chip answers it by key with the label as the
+  // transcript line; a typed reply while the interview is pending answers it as free text.
+  describe("interview (ADR-030)", () => {
+    const interviewReply = () =>
+      answerReply({
+        kind: "interview",
+        messageId: "msg-interview",
+        answerMarkdown: "Before I answer, one quick check.",
+        citations: [],
+        actions: [],
+        followUps: [],
+        interview: {
+          prompt: "Before I answer, one quick check.",
+          answered: false,
+          questions: [
+            {
+              key: "interpretation",
+              prompt: "Which of these do you mean?",
+              presentation: "choice",
+              allowFreeText: true,
+              options: [
+                { key: "portfolio-overview", label: "The most critical contracts and where we can save", hint: null },
+                { key: "renewals-window", label: "The contracts renewing in the next 120 days", hint: null },
+              ],
+            },
+          ],
+        },
+      });
+
+    it("renders the chips and a click posts the option by key with its label as the question", async () => {
+      const postMessage = vi.fn().mockResolvedValueOnce(postedReply(interviewReply())).mockResolvedValueOnce(postedReply());
+      renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "Did you over all my contract?{Enter}");
+      const chip = await screen.findByRole("button", { name: /renewing in the next 120 days/ });
+      expect(screen.queryByText("I don't have data I trust enough to answer.")).toBeNull();
+
+      await userEvent.click(chip);
+
+      await waitFor(() =>
+        expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+          question: "The contracts renewing in the next 120 days",
+          interviewAnswer: { messageId: "msg-interview", questionKey: "interpretation", optionKey: "renewals-window" },
+        }),
+      );
+      // The chips stay on screen but can no longer be clicked; the transcript shows the label.
+      expect((chip as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText("The contracts renewing in the next 120 days")).toBeInTheDocument();
+      expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
+    });
+
+    it("typing while an interview is pending answers it as free text", async () => {
+      const postMessage = vi.fn().mockResolvedValueOnce(postedReply(interviewReply())).mockResolvedValueOnce(postedReply());
+      renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+      const input = await screen.findByRole("textbox", { name: /ask raffa a question/i });
+      await userEvent.type(input, "Did you over all my contract?{Enter}");
+      await screen.findByRole("button", { name: /renewing in the next 120 days/ });
+
+      await userEvent.type(input, "the renewals{Enter}");
+
+      await waitFor(() =>
+        expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+          question: "the renewals",
+          interviewAnswer: { messageId: "msg-interview", questionKey: "interpretation", freeText: true },
+        }),
+      );
     });
   });
 
@@ -509,8 +583,8 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       );
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-      const card = await screen.findByText("Salesforce · MSA 2024");
-      await userEvent.click(card.closest("button")!);
+      await screen.findByText("MSA 2024");
+      await userEvent.click(screen.getByRole("button", { name: "Open source 1" }));
 
       expect(await screen.findByText(/CONTRACT_360/)).toHaveTextContent("contractId=contract-1");
       expect(screen.getByText(/CONTRACT_360/)).toHaveTextContent("search=?page=12");
@@ -559,8 +633,8 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       );
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-      const card = await screen.findByText("Sales Cloud Enterprise · CH");
-      await userEvent.click(card.closest("button")!);
+      await screen.findByText("Sales Cloud Enterprise · CH");
+      await userEvent.click(screen.getByRole("button", { name: "Open source 1" }));
 
       expect(getMarketRecord).toHaveBeenCalledWith("rec-1");
       const panel = await screen.findByLabelText("Market record");
@@ -623,7 +697,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       const log = await screen.findByRole("log");
       expect(await within(log).findByText("When does Salesforce expire?")).toBeInTheDocument();
       expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Open Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
+      expect(screen.getByRole("link", { name: "Salesforce · Contract 360 →" })).toHaveAttribute("href", "/contracts/contract-1");
       expect(getConversation).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID);
       expect(screen.queryByRole("link", { name: "+ New chat" })).not.toBeInTheDocument();
       // `convTitle`: the resumed conversation's own server-side title in the header.
@@ -861,11 +935,97 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
     );
 
     await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
-    await screen.findByText("Northwind · MSA");
+    await screen.findAllByText("Northwind");
     await userEvent.click(screen.getByRole("link", { name: "Open at this span" }));
 
     expect(await screen.findByRole("dialog", { name: "Document viewer" })).toBeInTheDocument();
     expect(screen.getByTestId("path").textContent).toMatch(/^\/ask/);
     expect(screen.queryByText(/CONTRACT_360/)).not.toBeInTheDocument();
+  });
+});
+
+describe("AskRoute web research consent (ADR-030)", () => {
+  const consentReply = () =>
+    answerReply({
+      kind: "interview",
+      messageId: "msg-consent",
+      answerMarkdown: "Raffa will search the public web for: “typical uplift caps on saas renewals”. Allow?",
+      citations: [],
+      actions: [],
+      followUps: [],
+      interview: {
+        prompt: "Raffa will search the public web for: “typical uplift caps on saas renewals”. Allow?",
+        answered: false,
+        questions: [
+          {
+            key: "web-consent",
+            prompt: "Raffa will search the public web for: “typical uplift caps on saas renewals”. Nothing from your contracts leaves Raffa. The results are not verified. Allow?",
+            presentation: "consent",
+            allowFreeText: false,
+            options: [
+              { key: "allow", label: "Yes, search the web", hint: "One search, for this question only." },
+              { key: "decline", label: "No, stay in Raffa", hint: "I answer from your contracts only." },
+            ],
+          },
+        ],
+      },
+    });
+
+  const webAnswer = () =>
+    answerReply({
+      messageId: "msg-web-answer",
+      answerMarkdown: "Public, unverified: a 5-10% uplift cap is common [1].",
+      citations: [
+        { n: 1, corpus: "web", title: "example.com · SaaS renewals", subtitle: null, snippet: "5-10% uplift cap", documentId: null, contractId: null, page: null, section: null, previewUrl: null, href: "https://example.com/a", recordId: null },
+      ],
+      actions: [{ label: "Quote check →", href: "/quotes", kind: "navigate" }],
+      provenance: { sources: ["web"], modelId: "gpt-research", promptVersion: "research-v1", inputHash: "h", unverified: true },
+      followUps: [],
+    });
+
+  it("shows the alert dialog for a consent question and Allow posts the allow option by key", async () => {
+    const postMessage = vi.fn().mockResolvedValueOnce(postedReply(consentReply())).mockResolvedValueOnce(postedReply(webAnswer()));
+    renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+    await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "search the web for typical uplift caps on saas renewals{Enter}");
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Search the public web?" });
+    expect(dialog).toHaveAccessibleDescription(/typical uplift caps on saas renewals/);
+    expect(screen.getByRole("button", { name: "No, stay in Raffa" })).toHaveFocus();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Yes, search the web" }));
+
+    await waitFor(() =>
+      expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+        question: "Yes, search the web",
+        interviewAnswer: { messageId: "msg-consent", questionKey: "web-consent", optionKey: "allow" },
+      }),
+    );
+    // The dialog is gone, the answer is labelled unverified and its source opens in a new tab.
+    await screen.findByText("Public web · not verified.");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    const link = screen.getByRole("link", { name: "example.com ↗" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("Decline posts the decline option and never the allow one", async () => {
+    const postMessage = vi.fn().mockResolvedValueOnce(postedReply(consentReply())).mockResolvedValueOnce(postedReply());
+    renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+    await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "search the web for typical uplift caps on saas renewals{Enter}");
+    const dialog = await screen.findByRole("alertdialog", { name: "Search the public web?" });
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "No, stay in Raffa" }));
+
+    await waitFor(() =>
+      expect(postMessage).toHaveBeenLastCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+        question: "No, stay in Raffa",
+        interviewAnswer: { messageId: "msg-consent", questionKey: "web-consent", optionKey: "decline" },
+      }),
+    );
+    expect(postMessage).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

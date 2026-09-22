@@ -97,6 +97,10 @@ namespace Raffa.Chat.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("input_hash");
 
+                    b.Property<string>("InterviewJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("interview_json");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -210,7 +214,6 @@ namespace Raffa.Chat.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
-
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -238,6 +241,26 @@ namespace Raffa.Chat.Migrations
                         .HasDatabaseName("ix_feature_request_tenant_id_message_id");
 
                     b.ToTable("feature_request", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Chat.Domain.WebResearch.WebResearchUsage", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<int>("Calls")
+                        .HasColumnType("integer")
+                        .HasColumnName("calls");
+
+                    b.HasKey("TenantId", "Day")
+                        .HasName("pk_chat_web_research_usage");
+
+                    b.ToTable("chat_web_research_usage", (string)null);
                 });
 
             modelBuilder.Entity("Raffa.Chat.Domain.Conversations.ConversationMessage", b =>

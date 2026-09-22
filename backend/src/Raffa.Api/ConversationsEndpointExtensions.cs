@@ -5,6 +5,7 @@ using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Feedback;
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.SharedKernel;
@@ -297,8 +298,28 @@ public static class ConversationsEndpointExtensions
             return Results.NotFound();
         }
 
+        var hints = AskTurnHints.None;
+        var effectiveQuestion = request.Question;
+        string? youInterviewJson = null;
+
+        if (request.InterviewAnswer is { } interviewAnswer)
+        {
+            var resolution = await ResolveInterviewAnswerAsync(
+                    conversationService, tenantId, userId, conversationId, interviewAnswer, request.Question, cancellationToken)
+                .ConfigureAwait(false);
+            if (resolution.Failure is not null)
+            {
+                return resolution.Failure;
+            }
+
+            hints = resolution.Hints;
+            effectiveQuestion = resolution.EffectiveQuestion;
+            youInterviewJson = resolution.YouInterviewJson;
+        }
+
         var reply = await AskAndAppendAsync(
-                askCopilotService, conversationService, tenantId, userId, conversationId, conversation, request.Question, cancellationToken)
+                askCopilotService, conversationService, tenantId, userId, conversationId, conversation,
+                request.Question, effectiveQuestion, hints, youInterviewJson, cancellationToken)
             .ConfigureAwait(false);
 
         return Results.Ok(reply);
@@ -339,6 +360,9 @@ public static class ConversationsEndpointExtensions
         EntityId conversationId,
         ConversationDetailResult conversation,
         string question,
+        string effectiveQuestion,
+        AskTurnHints hints,
+        string? youInterviewJson,
         CancellationToken cancellationToken)
     {
         var recentTurns = conversation.Messages
@@ -346,13 +370,20 @@ public static class ConversationsEndpointExtensions
             .Select(m => (Role: ToWireRole(m.Role), Markdown: m.Markdown))
             .ToList();
 
+        var previousRaffaTurnWasInterview =
+            conversation.Messages.LastOrDefault(m => m.Role == ConversationRole.Raffa)?.Kind == ConversationMessageKind.Interview;
+
         var reply = await askCopilotService
-            .AskAsync(tenantId, question, recentTurns, userId, conversation.ScopeContractId, cancellationToken)
+            .AskAsync(
+                tenantId, effectiveQuestion, recentTurns, userId, conversation.ScopeContractId, hints,
+                previousRaffaTurnWasInterview, cancellationToken)
             .ConfigureAwait(false);
 
         await conversationService.AppendMessageAsync(
                 tenantId, userId, conversationId,
-                new AppendConversationMessageRequest(ConversationRole.You, ConversationMessageKind.Answer, question, "[]", "[]"),
+                new AppendConversationMessageRequest(
+                    ConversationRole.You, ConversationMessageKind.Answer, question, "[]", "[]",
+                    InterviewJson: youInterviewJson),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -376,10 +407,11 @@ public static class ConversationsEndpointExtensions
                 modelId = reply.Provenance.ModelId,
                 promptVersion = reply.Provenance.PromptVersion,
                 inputHash = reply.Provenance.InputHash,
+                unverified = reply.Provenance.Unverified,
             },
             followUps = reply.FollowUps,
-            // ADR-030 D2: the structured half (drafted email / gap / feedback offer or result), or null.
             payload = reply.Payload is null ? (JsonElement?)null : ReplyPayloadJson.ToJsonElement(reply.Payload),
+            interview = reply.Interview is null ? null : ToInterviewJson(reply.Interview, answered: false),
         };
     }
 
@@ -397,7 +429,8 @@ public static class ConversationsEndpointExtensions
             reply.Provenance.ModelId,
             reply.Provenance.PromptVersion,
             reply.Provenance.InputHash,
-            reply.Payload is null ? null : ReplyPayloadJson.Serialize(reply.Payload));
+            reply.Payload is null ? null : ReplyPayloadJson.Serialize(reply.Payload),
+            reply.Interview is null ? null : InterviewJsonCodec.SerializeTurn(reply.Interview));
 
     /// <summary>
     /// `POST /api/conversations/{id}/feedback` (ADR-030 D5): the in-chat feedback card's one call.
@@ -465,7 +498,7 @@ public static class ConversationsEndpointExtensions
 
         return Results.Created(
             $"/api/conversations/{conversationId.Value}/feedback",
-            ToFeedbackResponse(submitted.Request!, confirmation is null ? null : ToMessageResponse(confirmation)));
+            ToFeedbackResponse(submitted.Request!, confirmation is null ? null : ToMessageResponse(confirmation, hasLaterTurn: false)));
     }
 
     private static object ToFeedbackResponse(FeatureRequestResult request, object? message) => new
@@ -475,6 +508,116 @@ public static class ConversationsEndpointExtensions
         issueNumber = request.IssueNumber,
         issueUrl = request.IssueUrl,
         message,
+    };
+
+    private static async Task<InterviewAnswerResolution> ResolveInterviewAnswerAsync(
+        ConversationService conversationService,
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        InterviewAnswerRequest answer,
+        string typedQuestion,
+        CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(answer.MessageId, out var messageGuid))
+        {
+            return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.messageId' must be a GUID."));
+        }
+
+        if (string.IsNullOrWhiteSpace(answer.QuestionKey))
+        {
+            return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.questionKey' is required."));
+        }
+
+        var messageId = new EntityId(messageGuid);
+        var message = await conversationService
+            .GetMessageAsync(tenantId, userId, conversationId, messageId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var record = message is { Role: ConversationRole.Raffa, Kind: ConversationMessageKind.Interview }
+            ? InterviewJsonCodec.TryDecodeTurn(message.InterviewJson)
+            : null;
+
+        if (record is null)
+        {
+            return InterviewAnswerResolution.Fail(
+                Results.BadRequest("'interviewAnswer.messageId' does not name an interview turn of this conversation."));
+        }
+
+        var question = record.FindQuestion(answer.QuestionKey);
+        if (question is null)
+        {
+            return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.questionKey' is not a question of that interview."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(answer.OptionKey))
+        {
+            var option = question.Options.FirstOrDefault(o => string.Equals(o.Key, answer.OptionKey, StringComparison.Ordinal));
+            if (option is null)
+            {
+                return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.optionKey' is not an option of that question."));
+            }
+
+            if (question.Presentation == InterviewPresentation.Consent || option.ResolvesTo.WebResearch is not null)
+            {
+                var outcome = await conversationService
+                    .MarkInterviewConsumedAsync(tenantId, userId, conversationId, messageId, option.Key, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (outcome == InterviewConsumeOutcome.AlreadyConsumed)
+                {
+                    return InterviewAnswerResolution.Fail(Results.Conflict("This authorization was already used — ask again."));
+                }
+
+                if (outcome == InterviewConsumeOutcome.NotFound)
+                {
+                    return InterviewAnswerResolution.Fail(Results.BadRequest("'interviewAnswer.messageId' does not name an interview turn of this conversation."));
+                }
+            }
+
+            var hints = AskTurnHints.From(option.ResolvesTo);
+            if (question.Presentation == InterviewPresentation.Consent && option.ResolvesTo.WebResearch is null)
+            {
+                hints = hints with { DeclinedWebResearch = true };
+            }
+
+            return new InterviewAnswerResolution(
+                null,
+                hints,
+                option.ResolvesTo.RewrittenQuestion,
+                InterviewJsonCodec.SerializeAnswer(messageId, question.Key, option.Key, freeText: false));
+        }
+
+        if (!question.AllowFreeText)
+        {
+            return InterviewAnswerResolution.Fail(Results.BadRequest("That interview question takes one of its options, not free text."));
+        }
+
+        return new InterviewAnswerResolution(
+            null,
+            AskTurnHints.FreeText,
+            typedQuestion,
+            InterviewJsonCodec.SerializeAnswer(messageId, question.Key, null, freeText: true));
+    }
+
+    private sealed record InterviewAnswerResolution(
+        IResult? Failure, AskTurnHints Hints, string EffectiveQuestion, string? YouInterviewJson)
+    {
+        public static InterviewAnswerResolution Fail(IResult failure) => new(failure, AskTurnHints.None, string.Empty, null);
+    }
+
+    private static object ToInterviewJson(InterviewTurn turn, bool answered) => new
+    {
+        prompt = turn.Prompt,
+        questions = turn.Questions.Select(q => new
+        {
+            key = q.Key,
+            prompt = q.Prompt,
+            presentation = q.Presentation == InterviewPresentation.Consent ? "consent" : "choice",
+            allowFreeText = q.AllowFreeText,
+            options = q.Options.Select(o => new { key = o.Key, label = o.Label, hint = o.Hint }),
+        }),
+        answered,
     };
 
     private static object ToCitationJson(ReplyCitation citation) => new
@@ -518,6 +661,7 @@ public static class ConversationsEndpointExtensions
         ReplyKind.Redirect => ConversationMessageKind.Redirect,
         ReplyKind.Refusal => ConversationMessageKind.Refusal,
         ReplyKind.Draft => ConversationMessageKind.Draft,
+        ReplyKind.Interview => ConversationMessageKind.Interview,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ReplyKind."),
     };
     /// <summary>Same "reject, don't clamp" convention as
@@ -557,10 +701,10 @@ public static class ConversationsEndpointExtensions
         scopeContractId = detail.ScopeContractId?.Value,
         createdAt = detail.CreatedAt,
         updatedAt = detail.UpdatedAt,
-        messages = detail.Messages.Select(ToMessageResponse),
+        messages = detail.Messages.Select((message, index) => ToMessageResponse(message, index < detail.Messages.Count - 1)),
     };
 
-    private static object ToMessageResponse(ConversationMessageResult message) => new
+    private static object ToMessageResponse(ConversationMessageResult message, bool hasLaterTurn) => new
     {
         id = message.MessageId.Value,
         role = ToWireRole(message.Role),
@@ -572,9 +716,20 @@ public static class ConversationsEndpointExtensions
         promptVersion = message.PromptVersion,
         inputHash = message.InputHash,
         createdAt = message.CreatedAt,
-        // ADR-030 D2: the stored structured half, re-parsed so the wire carries real JSON, or null.
         payload = string.IsNullOrWhiteSpace(message.PayloadJson) ? (JsonElement?)null : ParseJsonObject(message.PayloadJson),
+        interview = ToPersistedInterviewJson(message, hasLaterTurn),
     };
+
+    private static object? ToPersistedInterviewJson(ConversationMessageResult message, bool hasLaterTurn)
+    {
+        if (message.Role != ConversationRole.Raffa || message.Kind != ConversationMessageKind.Interview)
+        {
+            return null;
+        }
+
+        var record = InterviewJsonCodec.TryDecodeTurn(message.InterviewJson);
+        return record is null ? null : ToInterviewJson(record.ToTurn(), hasLaterTurn || record.ConsumedAt is not null);
+    }
 
     /// <summary>ADR-024 §6's wire literals — see <see cref="ConversationRole"/>'s own doc comment
     /// ("task E13/F05/US01/T02... owns mapping these PascalCase members onto the wire-format
@@ -595,6 +750,7 @@ public static class ConversationsEndpointExtensions
         ConversationMessageKind.Redirect => "redirect",
         ConversationMessageKind.Refusal => "refusal",
         ConversationMessageKind.Draft => "draft",
+        ConversationMessageKind.Interview => "interview",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown ConversationMessageKind."),
     };
 
@@ -641,5 +797,7 @@ public static class ConversationsEndpointExtensions
     /// nested type for the identical reason <see cref="CreateConversationRequest"/>'s own doc
     /// comment gives.
     /// </summary>
-    public sealed record PostConversationMessageRequest(string? Question);
+    public sealed record PostConversationMessageRequest(string? Question, InterviewAnswerRequest? InterviewAnswer = null);
+
+    public sealed record InterviewAnswerRequest(string? MessageId, string? QuestionKey, string? OptionKey = null, bool? FreeText = null);
 }

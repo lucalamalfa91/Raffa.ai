@@ -97,4 +97,11 @@ public interface IAiGateway
         AiAnalysisRequest request, CancellationToken cancellationToken = default) =>
         Task.FromResult(Result<AiAnalysisResult>.Failure(
             $"{GetType().Name} does not implement the analyst role."));
+
+    /// <summary>ADR-030: the one role that may reach the public web -- a separate deployment, a
+    /// separate client, never a context pack. Default: unavailable.</summary>
+    Task<Result<AiResearchResult>> ResearchAsync(
+        AiResearchRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Result<AiResearchResult>.Failure(
+            $"{GetType().Name} does not implement the research role."));
 }

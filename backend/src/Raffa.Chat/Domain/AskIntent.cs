@@ -60,4 +60,14 @@ public enum AskIntent
     /// <summary>A bare "take me to X" request with nothing to narrate — deterministic routing
     /// only, the same shape as <see cref="QuoteRoute"/>.</summary>
     Navigate,
+
+    /// <summary>"Cerca sul web le pratiche di mercato sui rinnovi SaaS" / "search the web for
+    /// supplier news on X" — an explicit request to leave the tenant's data and read the public
+    /// web (ADR-030). Never answered directly: the composition root first asks the user's consent
+    /// (an interview question with the <c>consent</c> presentation) and only an authorised turn
+    /// runs <c>Application.WebResearch.WebResearchComposer</c>, behind the kill switch, the
+    /// workspace opt-in and the daily budget. With any gate closed it becomes a redirect that says
+    /// why. An interview option can also force this intent (the "search the public web" choice on
+    /// the interpretation menu).</summary>
+    WebResearch,
 }

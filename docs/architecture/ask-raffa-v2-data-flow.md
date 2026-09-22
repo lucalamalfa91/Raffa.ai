@@ -261,9 +261,29 @@ sequenceDiagram
         API-->>SPA: kind redirect · preface · Renewals / Portfolio / Contract 360 · feedbackOffer (+ one supplier per follow-up)
       end
     end
-    API->>API: Planner — StructuredFact, Clause, MarketCompare, RenewalStrategy, PortfolioStrategy, PortfolioMarketPosition, …
+    API->>API: Planner — StructuredFact, Clause, MarketCompare, RenewalStrategy, PortfolioStrategy, PortfolioMarketPosition, WebResearch, …
+    opt ambiguous question (ADR-030)
+      API-->>SPA: interview — one question, server-authored options, zero retrieval, no model call
+      U->>SPA: picks an option (or types)
+      SPA->>API: POST … { interviewAnswer: { messageId, questionKey, optionKey } }
+      Note over API: the option resolves by key to a rewrite + forced intent; the normal pipeline runs
+    end
+    opt explicit "search the web" (ADR-030, kill switch + workspace opt-in + budget all open)
+      API-->>SPA: interview with presentation "consent" — the exact query, nothing of the contracts leaves
+      U->>SPA: Allow (single-use) / Decline
+      SPA->>API: POST … { interviewAnswer: { optionKey: "allow" | "decline" } }
+    end
     opt notice question
       API-->>SPA: fallback answer from the bound contract — Foundry is not called
+    end
+  end
+  rect rgb(254, 226, 226)
+    Note over API,F: Web research — only after a consumed consent; a separate role, no pack in the request
+    opt consent consumed
+      API->>F: research (Responses API, one web_search tool, sanitised query)
+      F-->>API: summary + url_citation sources
+      API->>G: WebGuard · NumericGuard on the sources · GroundingGuard
+      API-->>SPA: answer · citations corpus "web" · provenance.unverified = true
     end
   end
   rect rgb(220, 252, 231)
@@ -331,6 +351,12 @@ stateDiagram-v2
   CapabilityGap --> Draft: email gap with a contract — planner + writer, DraftGuard, template fallback
   CapabilityGap --> Redirect: reminder / export / PO, or no contract to draft for
   InDomain --> Planner
+  Planner --> Interview: ambiguous (ADR-030)
+  Interview --> Planner: option resolved by key, forced intent
+  Planner --> Consent: WebResearch intent, gates open
+  Consent --> Research: allow, single-use
+  Consent --> Planner: decline, same words without the web phrase
+  Research --> Guards: web pack only, labelled unverified
   Planner --> Pack: fixed intents
   Pack --> Answer: Foundry answer, no tools
   Answer --> Guards
@@ -346,13 +372,23 @@ stateDiagram-v2
   Draft --> [*]: honest preface + the email verbatim + cited facts + feedback offer — never an abstain
 ```
 
-Five reply kinds, five layouts in the UI: `answer` (prose, cards,
-buttons), `draft` (the preface, the email card with **Copy email**, cards,
-buttons, the feedback card — ADR-030), `redirect` and `refusal` (warm prose +
-one CTA; a capability-gap redirect adds one supplier per follow-up chip and
-the feedback card), `abstain` (the accent-left block, only when there is
-truly nothing to stand on). Every reply carries `payload` — the drafted
-email, the gap, the feedback offer or result — `null` when it carries none.
+Six layouts in the UI: `answer` (prose, one evidence card, buttons), `draft`
+(the preface, the email card with **Copy email**, evidence, the feedback
+card), `redirect` and `refusal` (warm prose + one CTA; a capability-gap
+redirect adds one supplier per follow-up chip and the feedback card),
+`abstain` (the accent-left block, only when there is truly nothing to stand
+on) and `interview` (ADR-030: one clarifying question with clickable options,
+or the consent alert when the option is "search the public web"). Every reply
+also carries `payload` when it needs structured content — the drafted email,
+the gap, the feedback offer or result — and `null` otherwise.
+
+Web research (ADR-030) is a side path, never the main one: it needs the
+environment's kill switch, the workspace Admin's opt-in and a daily budget
+all open, and then a single-use consent on *that* question. The research
+role is its own deployment and client (Responses API, one `web_search`
+tool); its request has no slot for a pack, so nothing of the tenant can be
+sent; its result is guarded like any other and always rendered as
+"unverified" with its sources under their own section.
 
 A bound notice question never reaches Foundry. `PortfolioMarketPosition`
 is a planner destination (not Quote check) but has no pack yet — those

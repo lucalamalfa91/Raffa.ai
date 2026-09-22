@@ -49,7 +49,7 @@ internal sealed partial class AskCopilotService
             return (BuildUnseenScopeRefusal(portfolio), false, false);
         }
 
-        var (namedContractItem, disambiguationItem) = ResolveNamedContractItem(
+        var (namedContractItem, disambiguationItem, _) = ResolveNamedContractItem(
             scopedContractItem, gate.NamedSupplier, portfolio, supplierNames);
 
         var contractIdForActions = namedContractItem is not null ? new EntityId(namedContractItem.ContractId) : (EntityId?)null;

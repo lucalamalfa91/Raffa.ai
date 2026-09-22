@@ -22,7 +22,7 @@ import type { ReplyCitation } from "./replyTypes";
  * makes the DoD's "`<script>` in markdown is escaped" true structurally, not by a special case.
  *
  * **`[n]` is a callback, not a DOM anchor.** "Rendered as superscript links to the matching card"
- * (task text) is satisfied by calling the exact same `onOpenCitation` callback `CitationCard`'s own
+ * (task text) is satisfied by calling the exact same `onOpenCitation` callback `EvidenceCard`'s own
  * click does, not an `href="#some-id"` fragment jump: an anchor id would have to be unique
  * page-wide, but `n` is only unique *within one reply* (this file's own `ReplyCitation.n` doc
  * comment) -- a real conversation renders many replies at once, each restarting citation numbering
@@ -38,7 +38,7 @@ export interface ReplyMarkdownProps {
    * backend guard; this component's own fallback is what an honest renderer does if that guard is
    * ever wrong, rather than fabricating a link to nothing). */
   citations: readonly ReplyCitation[];
-  /** Shared with every `CitationCard` for this same reply -- see this file's own header comment. */
+  /** Shared with every `EvidenceCard` row for this same reply -- see this file's own header comment. */
   onOpenCitation: (citation: ReplyCitation) => void;
 }
 

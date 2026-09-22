@@ -240,7 +240,13 @@ module "foundry" {
   publish_endpoint      = var.ai_gateway_wired
 
   ai_operator_principal_ids = var.ai_operator_principal_ids
-  extra_gateway_env         = var.ai_gateway_extra_env
+  # ADR-030: the web-research kill switch, published with the rest of the
+  # gated AiGateway__* map. demo is the environment the feature is tested
+  # in, so it carries the switch exactly like dev.
+  extra_gateway_env = merge(
+    var.ai_gateway_extra_env,
+    { Chat__WebResearch__Enabled = var.web_research_enabled ? "true" : "false" },
+  )
 
   model_deployments = {
     "gpt-5.4"                = { model_version = "2026-03-05", sku_name = "DataZoneStandard", capacity = 200 }
@@ -248,11 +254,14 @@ module "foundry" {
     "text-embedding-3-large" = { model_version = "1", sku_name = "GlobalStandard", capacity = 100 }
   }
 
+  # ADR-030: research (Responses API + web_search) on the frontier chat
+  # deployment demo already declares -- no new capacity.
   model_roles = {
     classify = "gpt-5.4-nano"
     extract  = "gpt-5.4"
     answer   = "gpt-5.4"
     embed    = "text-embedding-3-large"
+    research = "gpt-5.4"
   }
 }
 
