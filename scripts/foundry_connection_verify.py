@@ -135,6 +135,10 @@ RETIRED_ENV_ROOT_VARIABLE = "foundry_ai_services_resource_id"
 # must bind to a declared deployment; the fifth role (ocr) is fixed inside
 # the module.
 MODEL_ROLES = ("classify", "extract", "embed", "answer")
+# ADR-030: the web-grounded research role (Responses API + web_search) is
+# optional per root -- bound to a deployment the root already declares, never
+# the answer role's own binding by convention. Both dev and demo bind it.
+OPTIONAL_MODEL_ROLES = ("research",)
 OCR_MODEL = ("prebuilt-read", "2024-11-30")
 ALLOWED_DEPLOYMENT_SKUS = ("DataZoneStandard", "GlobalStandard")
 
@@ -926,10 +930,10 @@ def env_root_model_bindings(environments_root: Path = ENVIRONMENTS_ROOT) -> dict
 
 
 def check_env_roots_model_roles_complete(environments_root: Path = ENVIRONMENTS_ROOT) -> tuple:
-    """ADR-004 amendment 2026-09-09: every root binds exactly the four
-    chat/embedding roles, each to a deployment it declares, every
-    deployment pinned to an explicit version on an allowed pay-per-token
-    SKU (provisioned SKUs carry a fixed cost -- ADR-005)."""
+    """ADR-004 amendment 2026-09-09: every root binds the four chat/embedding
+    roles (ADR-030 adds the optional research role), each to a deployment it
+    declares, every deployment pinned to an explicit version on an allowed
+    pay-per-token SKU (provisioned SKUs carry a fixed cost -- ADR-005)."""
     problems = []
     bindings = env_root_model_bindings(environments_root)
     for env in ENVS:
@@ -938,8 +942,13 @@ def check_env_roots_model_roles_complete(environments_root: Path = ENVIRONMENTS_
             continue
         roles = bindings[env]["roles"]
         deployments = bindings[env]["deployments"]
-        if set(roles) != set(MODEL_ROLES):
-            problems.append(f"{env}: model_roles keys {sorted(roles)}, expected {sorted(MODEL_ROLES)}")
+        missing = set(MODEL_ROLES) - set(roles)
+        unknown = set(roles) - set(MODEL_ROLES) - set(OPTIONAL_MODEL_ROLES)
+        if missing or unknown:
+            problems.append(
+                f"{env}: model_roles keys {sorted(roles)}, expected {sorted(MODEL_ROLES)} "
+                f"plus optionally {sorted(OPTIONAL_MODEL_ROLES)}"
+            )
         if not deployments:
             problems.append(f"{env}: no model_deployments declared")
         for role, key in roles.items():
@@ -960,7 +969,10 @@ def check_env_roots_model_roles_complete(environments_root: Path = ENVIRONMENTS_
         f"{env}: " + ", ".join(f"{role}={key}-{env}" for role, key in sorted(b["roles"].items()))
         for env, b in bindings.items()
     )
-    return True, f"every root binds exactly {list(MODEL_ROLES)} to pinned deployments on allowed SKUs ({summary})"
+    return True, (
+        f"every root binds {list(MODEL_ROLES)} (plus optionally {list(OPTIONAL_MODEL_ROLES)}) "
+        f"to pinned deployments on allowed SKUs ({summary})"
+    )
 
 
 def check_no_secret_literals(repo_root: Path = REPO_ROOT, infra_root: Path = INFRA_ROOT) -> tuple:

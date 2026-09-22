@@ -118,12 +118,15 @@ the isolation structural.
     `chat.web_research_declined`, `chat.web_researched` (queryHash, outcome, sourceCount,
     guardIntervened), `chat.web_research_refused` (gate), `ai.researched` on the gateway, and
     `workspace.settings.web_research_enabled`.
-13. **Infra.** `research` is an optional key of `model_roles` (Terraform validation relaxed);
-    `scripts/foundry_research_probe.py` proves the Responses API + `web_search` in the region
-    before any environment binds it; `dev` binds the role and flips `Chat__WebResearch__Enabled`
-    only after the probe passes; `demo` stays off until promotion (ADR-016). If the probe fails,
-    the fallback is Foundry Agent Service + Grounding with Bing Search behind the same
-    `AiResearchResult`.
+13. **Infra.** `research` is an optional key of `model_roles` (Terraform validation relaxed).
+    **Both `dev` and `demo` bind it** on a chat deployment they already declare and publish
+    `Chat__WebResearch__Enabled=true` from a per-root `web_research_enabled` variable — `demo`
+    is the environment the feature is tested in (product-owner ruling, 2026-09-22), so it is
+    not held back for a promotion step; the variable is the per-environment kill switch.
+    `scripts/foundry_research_probe.py` is the pre-flight/diagnostic for the Responses API +
+    `web_search` in the region; `AiGateway:ResearchWebSearchToolType` covers the tool's earlier
+    `web_search_preview` name. If the Responses API itself is refused, the fallback is Foundry
+    Agent Service + Grounding with Bing Search behind the same `AiResearchResult`.
 
 ## Consequences
 

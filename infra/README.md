@@ -230,16 +230,25 @@ holds the module and both roots to this shape (single owner, gated
 outputs, per-env deployment names, allowed SKUs, both roles, no hub) and
 `scripts/bootstrap_hcp_org.py` records the names it compares against.
 
-**Binding the `research` role (ADR-030).** `model_roles` accepts an optional
-fifth key, `research`, next to the four required ones. Bind it only after
-`scripts/foundry_research_probe.py --endpoint <account endpoint> --deployment
-<name>` passes in the region (HTTP 200 on `openai/v1/responses`, at least one
-`url_citation`): the probe sends exactly the request the backend's
-`FoundryResearchClient` sends. `dev` binds it first; `demo` stays unbound
-(and `Chat__WebResearch__Enabled` unset) until the promotion decision
-(ADR-016). If the probe fails in `northeurope`, the fallback is Foundry Agent
-Service + Grounding with Bing Search behind the same `AiResearchResult`, a
-separate client and its own infra -- not a change to this module.
+**The `research` role (ADR-030).** `model_roles` accepts an optional fifth
+key, `research`, next to the four required ones. **Both roots bind it** --
+`dev` on `gpt-5.4-nano`, `demo` on `gpt-5.4` -- reusing a chat deployment each
+root already declares (no new capacity), and both publish
+`Chat__WebResearch__Enabled` from their own `web_research_enabled` variable
+(default `true`; `false` is the kill switch without unbinding the role). demo
+is where the feature is being tested, so it is wired exactly like dev, not
+held back for a promotion step. `scripts/foundry_research_probe.py --endpoint
+<account endpoint> --deployment <name>` is the pre-flight and the diagnostic:
+it sends exactly the request the backend's `FoundryResearchClient` sends
+(`openai/v1/responses`, one `web_search` tool) and passes on HTTP 200 with at
+least one `url_citation`. If the region serves the tool under its earlier
+name, set `AiGateway__ResearchWebSearchToolType = "web_search_preview"` in
+`ai_gateway_extra_env` (still exactly one tool, still only the research
+deployment). If the Responses API itself is refused in `northeurope`, the
+fallback is Foundry Agent Service + Grounding with Bing Search behind the
+same `AiResearchResult`, a separate client and its own infra -- not a change
+to this module. `scripts/foundry_connection_verify.py` accepts the optional
+role and still requires the four chat/embedding roles.
 
 **Live probe (after the `dev` apply, before wiring).** Wait a few minutes
 for RBAC propagation, then, as an operator listed in

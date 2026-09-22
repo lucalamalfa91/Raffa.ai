@@ -75,4 +75,13 @@ public sealed class AiGatewayFoundryOptions
     /// own doc comment), so a 300-page upload does not spend 300 pages of tokens to learn it is an MSA.
     /// </summary>
     public int ClassifyMaxInputChars { get; init; } = 40_000;
+
+    /// <summary>
+    /// ADR-030: the hosted web-search tool type the <c>research</c> role sends on the Responses API
+    /// (<c>AiGateway:ResearchWebSearchToolType</c>, env <c>AiGateway__ResearchWebSearchToolType</c>).
+    /// <c>web_search</c> by default; the one knob to turn if the region serves the tool under its
+    /// earlier <c>web_search_preview</c> name. Still exactly one tool, still only on the research
+    /// deployment -- this never widens the answer role.
+    /// </summary>
+    public string ResearchWebSearchToolType { get; init; } = "web_search";
 }

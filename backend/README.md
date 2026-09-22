@@ -1421,10 +1421,14 @@ closed it returns a redirect naming the gate. The web reply is `answer` with
 merged into an `answer`-role pack. Audit: `chat.web_research_authorized`,
 `chat.web_research_declined`, `chat.web_researched`, `chat.web_research_refused`,
 `ai.researched` — hashes and counts, never the query. Infra: `research` is an
-optional `model_roles` key; `scripts/foundry_research_probe.py` must pass
-before an environment binds it (see `infra/README.md`). The fixture gateway's
-`ResearchAsync` returns two example.com/.org sources (off-topic without a
-procurement word), which is what `AskWebResearchConsentTests` exercises.
+optional `model_roles` key bound in **both** `dev` and `demo` (demo is where
+the feature is tested), with `Chat__WebResearch__Enabled` published from each
+root's `web_research_enabled` variable; `scripts/foundry_research_probe.py`
+is the pre-flight/diagnostic and `AiGateway:ResearchWebSearchToolType`
+(default `web_search`) covers the tool's earlier `web_search_preview` name
+(see `infra/README.md`). The fixture gateway's `ResearchAsync` returns two
+example.com/.org sources (off-topic without a procurement word), which is
+what `AskWebResearchConsentTests` exercises.
 
 ## Ask Raffa — capability catalog
 

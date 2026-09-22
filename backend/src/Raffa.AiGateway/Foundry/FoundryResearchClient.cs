@@ -99,11 +99,15 @@ public sealed class FoundryResearchClient(
             $"Max sources: {request.MaxSources}\n" +
             $"Query: {request.Query}";
 
+        var toolType = string.IsNullOrWhiteSpace(foundryOptions.ResearchWebSearchToolType)
+            ? WebSearchToolType
+            : foundryOptions.ResearchWebSearchToolType.Trim();
+
         var wireRequest = new ResponsesRequest(
             model.ModelId,
             request.SystemPrompt,
             input,
-            [new ResponsesTool(WebSearchToolType)],
+            [new ResponsesTool(toolType)],
             new ResponsesText(new ResponsesTextFormat("json_schema", SchemaName, Strict: true, OutputSchema)),
             model.MaxCompletionTokens);
 

@@ -109,6 +109,28 @@ public class FoundryResearchClientTests
     }
 
     [Fact]
+    public async Task The_tool_type_is_configurable_but_stays_exactly_one_tool()
+    {
+        var handler = new FakeHttpMessageHandler(FakeHttpMessageHandler.Json(
+            HttpStatusCode.OK,
+            ResponsesEnvelope(new { summaryMarkdown = "A [1].", offTopic = false, sources = new[] { new { n = 1, url = "https://example.com/a", title = "A" } } }, ("https://example.com/a", "A"))));
+        var httpClient = new HttpClient(handler) { BaseAddress = FoundryBaseAddress };
+        var foundryOptions = new AiGatewayFoundryOptions { Endpoint = FoundryBaseAddress.ToString(), ResearchWebSearchToolType = "web_search_preview" };
+        var httpJsonClient = new FoundryHttpJsonClient(httpClient, new FoundryTokenProvider(new FakeTokenCredential()), foundryOptions, TestRetryPolicies.NoDelay());
+        var client = new FoundryResearchClient(
+            httpJsonClient, foundryOptions,
+            new AiGatewayModelOptions { Research = new AiModelSelection("gpt-5.4-research-dev", "2026-03-17") },
+            new FixedClock(Now));
+
+        var result = await client.ResearchAsync(Request(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error : null);
+        using var bodyJson = JsonDocument.Parse(Assert.Single(handler.RequestBodies)!);
+        var tool = Assert.Single(bodyJson.RootElement.GetProperty("tools").EnumerateArray());
+        Assert.Equal("web_search_preview", tool.GetProperty("type").GetString());
+    }
+
+    [Fact]
     public async Task Sources_come_from_the_tools_own_citations_never_from_the_models_text()
     {
         var (client, _) = CreateClient(

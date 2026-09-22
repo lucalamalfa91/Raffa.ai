@@ -45,6 +45,16 @@ variable "ai_gateway_extra_env" {
   default     = {}
 }
 
+# ADR-030: Ask Raffa's web research (kill switch). Published as
+# Chat__WebResearch__Enabled through the same gated env map; even when
+# true, a search needs the workspace Admin's opt-in and the user's consent
+# on each question. Bound to the research role above.
+variable "web_research_enabled" {
+  description = "Publishes Chat__WebResearch__Enabled to both Container Apps (ADR-030 kill switch). false keeps the web path off even with the research role bound."
+  type        = bool
+  default     = true
+}
+
 # Task E16/F01/US01/T01 (NW-68, ADR-005 w15 footer §5 rule 3 / ADR-016 w15
 # footer clause 14): mirrors ai_gateway_wired's own per-environment
 # lifecycle. dev flips both true from this apply.
