@@ -199,6 +199,7 @@ function renewalItem(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalP
     daysUntilCancellationDeadline: 14,
     autoRenewal: true,
     action: "Start renewal negotiation now",
+    priority: null,
     insightCard: {
       facts: {
         supplierId: null,

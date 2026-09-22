@@ -231,6 +231,7 @@ function renewalPipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): 
     daysUntilCancellationDeadline: 14,
     autoRenewal: true,
     action: "Start renewal negotiation now",
+    priority: null,
     insightCard: {
       facts: {
         supplierId: SUPPLIER_ID,
@@ -430,12 +431,16 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
         readiness: { state: "unavailable", stage: null, documentCount: 1, completedDocumentCount: 0 },
         tabs: emptyTabs(),
       });
-      renderContract360(populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(body)) }));
+      const client = populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(body)) });
+      renderContract360(client);
 
       expect(await screen.findByRole("heading", { name: "This contract has no validated facts yet." })).toBeInTheDocument();
       expect(screen.getByText("Raffa.ai could not finish processing its documents. Open Documents to see what happened to each one.")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Go to Documents" })).toBeInTheDocument();
       expect(screen.queryByText(/still being prepared/)).toBeNull();
+      // Nothing beyond `readiness` is on screen, so nothing beyond the contract is read.
+      expect(client.getRenewals).not.toHaveBeenCalled();
+      expect(client.getContractStrategy).not.toHaveBeenCalled();
     });
 
     it("re-reads a processing contract every 2 s and opens the page the moment readiness flips to ready", async () => {
@@ -459,6 +464,81 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
           await vi.advanceTimersByTimeAsync(4_000);
         });
         expect(getContract360).toHaveBeenCalledTimes(callsWhenReady); // the poll stops once ready
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // A demo tab parked on a "still being prepared" contract used to fire the five answer/proof
+    // reads (each behind its own CORS preflight on the cross-origin API host) on every 2 s re-read
+    // for the whole five-minute budget, and throw every one of them away.
+    it("reads the answers and proof once, on the re-read that finds the contract ready -- never while it is still being prepared", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const processing = () =>
+          ok(contract({ readiness: { state: "processing", stage: "Classifying", documentCount: 1, completedDocumentCount: 0 }, tabs: emptyTabs() }));
+        const getContract360 = vi
+          .fn()
+          .mockResolvedValueOnce(processing())
+          .mockResolvedValueOnce(processing())
+          .mockResolvedValueOnce(processing())
+          .mockResolvedValue(ok(contract()));
+        const client = populatedClient({ getContract360 });
+        const answerReads = [client.getRenewals, client.getRenewalPriority, client.getNegotiationSteps, client.getContractStrategy, client.getContractEvidence];
+        renderContract360(client);
+
+        await screen.findByRole("heading", { name: "This contract is still being prepared." });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(4_000);
+        });
+        expect(getContract360).toHaveBeenCalledTimes(3);
+        for (const read of answerReads) expect(read).not.toHaveBeenCalled();
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2_000);
+        });
+        expect(await screen.findByRole("heading", { level: 2, name: "MSA" })).toBeInTheDocument();
+        for (const read of answerReads) expect(read).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("skips a 2 s re-read while the previous one is still in flight, instead of stacking requests on a slow API", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const processing = () =>
+          ok(contract({ readiness: { state: "processing", stage: "Classifying", documentCount: 1, completedDocumentCount: 0 }, tabs: emptyTabs() }));
+        let releaseSecondRead: (value: GetContract360Result) => void = () => {};
+        const getContract360 = vi
+          .fn()
+          .mockResolvedValueOnce(processing())
+          .mockImplementationOnce(
+            () =>
+              new Promise<GetContract360Result>((resolve) => {
+                releaseSecondRead = resolve;
+              }),
+          )
+          .mockResolvedValue(processing());
+        renderContract360(populatedClient({ getContract360 }));
+
+        await screen.findByRole("heading", { name: "This contract is still being prepared." });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2_000);
+        });
+        expect(getContract360).toHaveBeenCalledTimes(2); // the second read is now in flight
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(6_000);
+        });
+        expect(getContract360).toHaveBeenCalledTimes(2); // three ticks passed; none stacked a third read
+
+        await act(async () => {
+          releaseSecondRead(processing());
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2_000);
+        });
+        expect(getContract360).toHaveBeenCalledTimes(3); // the cadence resumes once it answered
       } finally {
         vi.useRealTimers();
       }

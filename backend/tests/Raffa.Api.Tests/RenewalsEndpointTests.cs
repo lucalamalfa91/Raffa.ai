@@ -151,6 +151,16 @@ public sealed class RenewalsEndpointTests : IClassFixture<RaffaApiFactory>
             item.GetProperty("insightCard").GetProperty("facts").GetProperty("supplierName").GetString());
         Assert.Equal("Completed", item.GetProperty("contractStatus").GetString());
         Assert.Equal("Completed", item.GetProperty("documentProcessingStatus").GetString());
+
+        // Every row carries the same score object GET /api/renewals/{contractId}/priority returns,
+        // so the Renewals screen reads one list instead of one priority call per row (the fan-out
+        // that exhausted demo's 50-connection server).
+        var priority = item.GetProperty("priority");
+        Assert.Equal(JsonValueKind.Object, priority.ValueKind);
+        Assert.Equal(contract.Id.Value.ToString(), priority.GetProperty("contractId").GetString());
+        var totalScore = priority.GetProperty("totalScore").GetDecimal();
+        Assert.InRange(totalScore, 0m, 100m);
+        Assert.Equal(JsonValueKind.Object, priority.GetProperty("components").GetProperty("timeUrgency").ValueKind);
     }
 
     [Fact]

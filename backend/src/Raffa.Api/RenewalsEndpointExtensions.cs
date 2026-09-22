@@ -139,6 +139,8 @@ public static class RenewalsEndpointExtensions
         RenewalActionService actionService,
         IBenchmarkService benchmarkService,
         BenchmarkKeyResolution benchmarkKeyResolution,
+        RenewalEngine renewalEngine,
+        PriorityScoreCalculator priorityScoreCalculator,
         IClock clock,
         ITenantContext tenantContext,
         ICallerContext callerContext,
@@ -204,7 +206,17 @@ public static class RenewalsEndpointExtensions
             items = pipeline.Select(item =>
             {
                 portfolioByContractId.TryGetValue(item.ContractId.Value, out var portfolioItem);
-                return ToPipelineResponse(item, supplierNames, savedActions, portfolioItem);
+                // The same score `GET /api/renewals/{contractId}/priority` computes, from the same
+                // four header facts -- already on the portfolio row, so no query is spent on it.
+                // Carrying it here retires the web's one-priority-read-per-row fan-out, which on a
+                // Standard_B1ms server (50 connections for every replica of both hosts) was enough
+                // on its own to exhaust the server and turn the rows' own reads into 500s.
+                var priority = portfolioItem is null
+                    ? null
+                    : ComputePriority(
+                        item.ContractId, portfolioItem.EndDate, portfolioItem.AutoRenewal, portfolioItem.AnnualSpend,
+                        portfolioItem.Risk, renewalEngine, priorityScoreCalculator);
+                return ToPipelineResponse(item, supplierNames, savedActions, portfolioItem, priority);
             }),
             totalCount = portfolioPage.TotalCount,
         });
@@ -389,7 +401,8 @@ public static class RenewalsEndpointExtensions
         RenewalPipelineItem item,
         IReadOnlyDictionary<EntityId, string> supplierNames,
         IReadOnlyDictionary<EntityId, RenewalActionResult> savedActions,
-        PortfolioListItem? portfolioItem)
+        PortfolioListItem? portfolioItem,
+        PriorityScoreResult? priority)
     {
         var facts = item.InsightCard.Facts;
         var recommendations = item.InsightCard.Recommendations;
@@ -414,6 +427,10 @@ public static class RenewalsEndpointExtensions
             autoRenewal = item.AutoRenewal,
             action = recommendations.RecommendedAction,
             savedAction,
+            // Same object `GET /api/renewals/{contractId}/priority` returns; null only when the
+            // pipeline row has no portfolio source row (never, in practice -- the pipeline is built
+            // from that same page).
+            priority = priority is null ? null : ToPriorityResponse(priority),
             insightCard = new
             {
                 facts = new
@@ -449,16 +466,32 @@ public static class RenewalsEndpointExtensions
     /// endpoint only needs the priority score, not a cancellation deadline.
     /// </summary>
     private static PriorityScoreResult ComputePriority(
-        Contract360Header header, RenewalEngine renewalEngine, PriorityScoreCalculator priorityScoreCalculator)
+        Contract360Header header, RenewalEngine renewalEngine, PriorityScoreCalculator priorityScoreCalculator) =>
+        ComputePriority(
+            header.ContractId, header.EndDate, header.AutoRenewal, header.AnnualSpend, header.Risk,
+            renewalEngine, priorityScoreCalculator);
+
+    /// <summary>
+    /// The one priority computation both <c>GET /api/renewals/{contractId}/priority</c> and every
+    /// <c>GET /api/renewals</c> row share, from the four header facts it needs -- so the list's own
+    /// score can never drift from the per-contract endpoint's.
+    /// </summary>
+    private static PriorityScoreResult ComputePriority(
+        EntityId contractId,
+        DateOnly? endDate,
+        bool autoRenewal,
+        decimal? annualSpend,
+        RiskSeverity? risk,
+        RenewalEngine renewalEngine,
+        PriorityScoreCalculator priorityScoreCalculator)
     {
-        var terms = new ContractRenewalTerms(
-            header.ContractId, header.EndDate, header.AutoRenewal, CancellationNoticeDays: null);
+        var terms = new ContractRenewalTerms(contractId, endDate, autoRenewal, CancellationNoticeDays: null);
         var calculation = renewalEngine.Calculate(terms);
 
         var inputs = new RenewalPriorityInputs(
-            header.AnnualSpend,
+            annualSpend,
             AnnualUpliftPercent: null,
-            MapRiskLevel(header.Risk),
+            MapRiskLevel(risk),
             BenchmarkMarketPositionPercent: null);
 
         return priorityScoreCalculator.Calculate(calculation, inputs);
