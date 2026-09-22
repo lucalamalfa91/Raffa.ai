@@ -198,7 +198,7 @@ variable "azuread_audience" {
 # switches, not provisioning gates. A working connection string / a
 # granted permission behind either flag false is harmless.
 variable "invitation_mail_enabled" {
-  description = "Publishes Invitations__Mail__Enabled = \"true\"|\"false\" on the API app (dev: true; demo: false until its own post-promotion acceptance -- infra/environments/{dev,demo}/variables.tf)."
+  description = "Publishes Invitations__Mail__Enabled = \"true\"|\"false\" on the API app (true on dev and, since the owner's ruling of 2026-09-22, on demo too -- infra/environments/{dev,demo}/variables.tf)."
   type        = bool
 }
 

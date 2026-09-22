@@ -44,9 +44,15 @@ variable "ai_gateway_extra_env" {
 }
 
 # Task E16/F01/US01/T01 (NW-68, ADR-005 w15 footer §5 rule 3 / ADR-016 w15
-# footer clause 14): both false at this merge -- flipped by a one-line PR
-# after demo's own post-promotion acceptance (OQ-w15-dm-01: demo's infra
-# moves at this merge even though its code does not).
+# footer clause 14): both false at the w15 merge, to be flipped by a
+# one-line PR after demo's own post-promotion acceptance. That flip is this
+# one (owner's ruling 2026-09-22, ADR-016 w20 footer): demo runs the same
+# product switches as dev from this apply. The ACS sender and connection
+# already come from module.communication, so InvitationHostOptions'
+# fail-closed validation holds; the Graph User.Invite.All grant for demo's
+# workload identity is still written OUT-OF-BAND by a Global Administrator
+# (docs/waves/w15-acceptance.md §0.3 step 2) -- until it is, invitations
+# on demo run in the NotConfigured (link-only) shape, never a failure.
 # ADR-030 D5 (Ask Raffa feedback loop): the GitHub token is a SENSITIVE
 # HCP workspace variable, never a .tf literal (ADR-011); empty means no
 # secret and a stored-only feedback loop. Unlike invitation_mail_enabled,
@@ -66,25 +72,28 @@ variable "feedback_github_enabled" {
 }
 
 variable "invitation_mail_enabled" {
-  description = "Publishes Invitations__Mail__Enabled to the API app (ADR-005 w15 footer). demo: false until its own acceptance."
+  description = "Publishes Invitations__Mail__Enabled to the API app (ADR-005 w15 footer). demo: true from this apply (owner's ruling 2026-09-22, ADR-016 w20 footer) -- module.communication already provides the sender and the connection string."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "guest_provisioning_enabled" {
-  description = "Enables the count-gated Graph app-role assignment (modules/identity) and publishes Invitations__GuestProvisioning__Enabled (modules/containerapps). demo: false until its own acceptance."
+  description = "Enables the count-gated Graph app-role assignment (modules/identity) and publishes Invitations__GuestProvisioning__Enabled (modules/containerapps). demo: true from this apply (owner's ruling 2026-09-22, ADR-016 w20 footer); the grant itself stays out-of-band, see guest_role_assignment_managed."
   type        = bool
-  default     = false
+  default     = true
 }
 
 # Fix 2026-09-14: false for the same reason as dev -- the Graph
 # User.Invite.All grant is written OUT-OF-BAND by a Global Administrator,
 # never by this apply, because the identity running the HCP apply is not a
 # directory administrator (on dev it returned `Authorization_RequestDenied`
-# and failed the whole run, Service Bus and ACS included). demo also keeps
-# guest_provisioning_enabled false this wave, so the resource is gated
-# twice over; this var is what stops demo's own post-promotion flip from
-# reproducing the dev failure.
+# and failed the whole run, Service Bus and ACS included). Now that
+# guest_provisioning_enabled above is true, this var is the ONLY thing
+# keeping modules/identity from writing the assignment: the resource is
+# count-gated on both, so the flip publishes the product switch to the API
+# app and creates nothing in the directory. Same rule as dev: flip to true
+# only if the apply identity is ever granted the directory right, and
+# import the existing assignment in the same change.
 variable "guest_role_assignment_managed" {
   description = "Whether Terraform manages the Graph User.Invite.All app-role assignment (modules/identity). demo: false -- the same apply identity, the same out-of-band grant."
   type        = bool

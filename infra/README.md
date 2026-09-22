@@ -321,10 +321,19 @@ identifier URI).
 
 **Per-environment flags**, mirroring `ai_gateway_wired`'s own shape
 (`infra/environments/{dev,demo}/variables.tf`): `invitation_mail_enabled`
-and `guest_provisioning_enabled` are both `true` on `dev` and `false` on
-`demo` until its own post-promotion acceptance flips them in a one-line PR.
-`guest_role_assignment_managed` is `false` on **both** — it tracks who
-holds the directory right, not which environment wants the feature.
+and `guest_provisioning_enabled` are `true` on **both** `dev` and `demo` —
+`demo` flipped on 2026-09-22 by the owner's ruling (ADR-016 w20 footer),
+which is the one-line PR clause 14 of ADR-016's w15 footer had reserved for
+`demo`'s own acceptance. `guest_role_assignment_managed` stays `false` on
+**both** — it tracks who holds the directory right, not which environment
+wants the feature — so the flip publishes the two product switches to the
+API app and writes nothing in Entra. For guest provisioning to actually run
+on `demo`, a Global Administrator grants `User.Invite.All` to `demo`'s
+workload identity out-of-band exactly as on `dev`
+(`docs/waves/w15-acceptance.md` §0.3 step 2, with `demo`'s principal id from
+`az identity show -g rg-raffa-demo -n id-raffa-demo-workload --query
+principalId -o tsv`); until then invitations on `demo` run in the
+`NotConfigured` (link-only) shape, which is a documented state, not a failure.
 
 ## Known gaps
 

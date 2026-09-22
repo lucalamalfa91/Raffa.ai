@@ -2045,7 +2045,14 @@ owner; deciders also product-owner, security-architect, client-architect):
 
 **ADR-024 gains a w20 amendment footer** (clauses 1–5: the seventh gate label,
 the fifth kind and `payload`, the draft guard and `chat.drafted`, the gap
-redirect's follow-ups and `external`, the store's column and table). **No ADR
+redirect's follow-ups and `external`, the store's column and table). **ADR-016
+gains a w20 amendment footer** (owner's ruling 2026-09-22): the w15 clause-14
+flip on `demo` is done — `invitation_mail_enabled` and
+`guest_provisioning_enabled` are `true` on both roots, `guest_role_assignment_managed`
+stays `false` so the apply writes nothing in Entra and the `User.Invite.All`
+grant for `demo`'s workload identity remains an out-of-band Global Administrator
+step; and `feedback_github_enabled` was never flag-gated per environment because
+the HCP sensitive token is the real gate. **No ADR
 body is rewritten, none is superseded.** ADR-001 `none` (a human-approved draft
 shown in the UI is not autonomous supplier communication; the mail transport
 stays deferred). ADR-011 `none` (a PAT in Key Vault via the existing secret

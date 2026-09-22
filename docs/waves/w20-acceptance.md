@@ -45,6 +45,7 @@ opens a GitHub issue on `lucalamalfa91/Raffa.ai` with a public-safe body.
 | 2 | Set the GitHub token in **both** HCP workspaces, `raffa-dev` and `raffa-demo`: sensitive variable `github_feedback_token` = a fine-grained PAT with **Issues: write on `lucalamalfa91/Raffa.ai` only** (no other repo, no other permission); one token per workspace, so either can be rotated alone | HCP UI → workspace variables |
 | 3 | HCP VCS apply of `infra/` on each workspace — creates `github-feedback-token`, the `gh-feedback` secret handle and `Feedback__GitHub__*` on the API app (`feedback_github_enabled` is `true` on `dev` **and** `demo`) | confirm the apply in the HCP UI, **then** the API revision restarts |
 | 4 | Without step 2 on a workspace: nothing to do — the switch is ANDed with the token's presence, so the API boots with the null publisher and every submission is `status: recorded` | `az containerapp show … --query "properties.template.containers[0].env[?name=='Feedback__GitHub__Enabled']"` → `false` |
+| 5 | **`demo` product switches** (owner's ruling 2026-09-22, ADR-016 w20 footer): the same apply as step 3 flips `Invitations__Mail__Enabled` and `Invitations__GuestProvisioning__Enabled` to `true` on `demo`'s API app — the one-line PR ADR-016's w15 clause 14 had reserved. Terraform writes nothing in Entra (`guest_role_assignment_managed` stays `false`), so **a Global Administrator grants `User.Invite.All` to `demo`'s workload identity out-of-band**, the `docs/waves/w15-acceptance.md` §0.3 step 2 command with `demo`'s principal id (`az identity show -g rg-raffa-demo -n id-raffa-demo-workload --query principalId -o tsv`). Skipping it is legitimate: invitations then run in the `NotConfigured` (link-only) shape | `az containerapp show … env[?name=='Invitations__Mail__Enabled']` → `true`; an invite from `demo` arrives by mail, and provisions a guest once the grant is written |
 
 ### 0.3 The values every command below needs
 
@@ -208,6 +209,11 @@ ask-raffa-v2-data-flow.md` (§4 sequence, §5 five kinds, §8 provenance rows),
 4. Set `github_feedback_token` in `raffa-demo`, confirm its HCP apply, then tag `demo-v*`; walk
    W20-4 on `demo` too — the issue title reads `(demo)`. Until the token is set there, W20-4 reads
    `recorded` on `demo` with no flag change needed.
+5. The same `raffa-demo` apply carries `invitation_mail_enabled = true` and
+   `guest_provisioning_enabled = true` (§0.2 step 5). After it, write the out-of-band Graph grant
+   for `demo`'s workload identity and re-walk w15's A15-4/A15-5/A15-7 on `demo` — the invitation
+   walk w17's known gap 5 left owed. Record the `NotConfigured` shape honestly if the grant is
+   not written yet.
 
 ## Known gaps that shape acceptance today
 
@@ -218,3 +224,4 @@ ask-raffa-v2-data-flow.md` (§4 sequence, §5 five kinds, §8 provenance rows),
 | 3 | The gap lexicon is conservative; the language heuristic is a word-count | A phrasing outside the lexicon gets the old honest abstain; a tie in the heuristic answers in English. |
 | 4 | `terraform validate` could not run in this harness (provider registry blocked) | `infra.yml` on the PR is the validate/plan gate. |
 | 5 | No e2e case for the card (`web/e2e` runs only in the manual acceptance walk) | W20-4's click path is manual on `dev`. |
+| 6 | `demo`'s invitation switches are on from this apply, but its workload identity holds no `User.Invite.All` grant until a Global Administrator writes it (§0.2 step 5) | Mail goes out from `demo`; guest provisioning reads `NotConfigured` (link-only) until the grant lands — the same two-step `dev` went through at w15. |

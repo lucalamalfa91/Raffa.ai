@@ -91,8 +91,8 @@ module "identity" {
   location            = var.location
   resource_group_name = azurerm_resource_group.this.name
   web_redirect_uri    = "https://${module.staticwebapp.default_host_name}/"
-  # Task E16/F01/US01/T01 (NW-67): demo stays false until its own
-  # post-promotion acceptance (ADR-016 w15 footer clause 14).
+  # Task E16/F01/US01/T01 (NW-67): true since the owner's ruling of
+  # 2026-09-22 (ADR-016 w20 footer) -- the w15 clause-14 flip, done.
   guest_provisioning_enabled = var.guest_provisioning_enabled
   # Fix 2026-09-14: same as dev -- the grant is out-of-band, Terraform
   # never owns it, so demo's later flip cannot repeat the dev failure.
