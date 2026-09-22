@@ -48,14 +48,20 @@ internal static class DatabaseSaturationExceptionHandler
             {
                 case PostgresException { SqlState: TooManyConnections or ConfigurationLimitExceeded }:
                     return true;
-                case NpgsqlException { InnerException: TimeoutException }:
+                case NpgsqlException
+                    {
+                        InnerException: TimeoutException,
+                    } npgsql when npgsql.Message.Contains("pool has been exhausted", StringComparison.OrdinalIgnoreCase):
                     return true;
-                case NpgsqlException npgsql when npgsql.Message.Contains("pool has been exhausted", StringComparison.OrdinalIgnoreCase):
-                    return true;
+            }
+
+            if (current.Message.Contains(TransientDataAccessFault.EfRetryExhaustedMessage, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
             }
         }
 
-        return TransientDataAccessFault.IsTransient(exception);
+        return false;
     }
 
     /// <summary>
