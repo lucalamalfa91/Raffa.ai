@@ -6,7 +6,7 @@ using Raffa.Chat.Application.Reply;
 namespace Raffa.Chat.Application.WebResearch;
 
 /// <summary>
-/// The two replies only a web-mode turn produces (ADR-031). <see cref="OffContext"/> points a
+/// The two replies only a web-mode turn produces (ADR-032). <see cref="OffContext"/> points a
 /// plainly personal question at a search engine and an AI search assistant — two server-authored
 /// outbound links, no model call. <see cref="Combine"/> puts the contracts-only answer and the web
 /// research side by side in one reply without ever merging their packs: each half was grounded and

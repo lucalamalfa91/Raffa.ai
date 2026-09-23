@@ -6,21 +6,23 @@ export interface KpiRowProps {
 }
 
 /**
- * The V2 four-cell KPI band (screens-v2.md #8's triple plus the ADR-020 w17 §15/§17 verified-money
- * cell: "Contracts analyzed · Upcoming renewals · Savings identified · Savings verified") plus the
- * "benchmark-provider-unreachable → KPIs stale-labelled" state. Cells always render from
- * `kpiState.kpis` (`buildKpiCells` -- an empty `lines` array is an honest "—", never a fabricated
- * number); the notice above them renders only while `kpiState.stale` is true, through the shared
- * `.error-state` every other screen's error uses.
+ * The headline band: Savings verified (the figure the dashboard leads with, set larger) · Savings
+ * identified · Savings in progress · Savings potential, each a big number with the one meta line
+ * that explains it, plus the "benchmark-provider-unreachable → KPIs stale-labelled" state. Cells
+ * always render from `kpiState.kpis` (`buildKpiCells` -- an empty `lines` array is an honest "—",
+ * never a fabricated number); the notice above them renders only while `kpiState.stale` is true,
+ * through the shared `.error-state` every other screen's error uses.
  */
 export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
   if (kpiState.phase === "loading") {
     return (
       <div className="savings-kpi-skeleton" role="status" aria-live="polite">
         <p className="micro-meta">Loading savings KPIs…</p>
-        {Array.from({ length: 4 }, (_, index) => (
-          <div key={index} className="skeleton savings-kpi-skeleton-cell" />
-        ))}
+        <div className="savings-kpi-skeleton-row">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="skeleton savings-kpi-skeleton-cell" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -44,12 +46,17 @@ export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
 
       <div className="savings-kpi-row" role="group" aria-label="Savings KPIs">
         {cells.map((cell) => (
-          <div key={cell.key} className="savings-kpi-cell">
+          <div key={cell.key} className={`savings-kpi-cell${cell.hero ? " is-hero" : ""}`} data-kpi={cell.key}>
             <span className="savings-kpi-label">{cell.label}</span>
             <div className="savings-kpi-value">
               {cell.lines.length === 0 ? <span>—</span> : cell.lines.map((line, index) => <span key={index}>{line}</span>)}
             </div>
             {cell.meta !== null && <span className="savings-kpi-meta">{cell.meta}</span>}
+            {cell.notes.map((note) => (
+              <span key={note} className="savings-kpi-note">
+                {note}
+              </span>
+            ))}
             {kpiState.stale && (
               // Text, not colour, carries the meaning (ADR-019 accessibility baseline); applied to
               // every cell because GET /api/savings/kpis returns all four in one response.

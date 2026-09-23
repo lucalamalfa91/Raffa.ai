@@ -10,7 +10,7 @@ using Raffa.SharedKernel;
 namespace Raffa.Api;
 
 /// <summary>
-/// The web-mode half of <see cref="AskCopilotService"/> (ADR-031): the composer's web-search
+/// The web-mode half of <see cref="AskCopilotService"/> (ADR-032): the composer's web-search
 /// toggle. Switching it on is the user's consent for every question sent with it, so there is no
 /// per-question consent dialog, and the procurement-only filters are lifted — the domain gate's
 /// off-domain/legal/unknown-supplier redirects, the interview, and the four research purposes of

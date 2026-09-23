@@ -2,8 +2,11 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Raffa.Api.Tests.TestSupport;
+using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
+using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
+using Raffa.Chat.Application.Gaps;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Suppliers;
@@ -28,10 +31,13 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
     private static readonly DateTimeOffset Now = new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
 
     private (WebApplicationFactory<Program> Factory, RecordingAiGateway Gateway, RecordingAuditWriter Audit) Host(
-        IReadOnlyDictionary<EntityId, string> supplierNames)
+        IReadOnlyDictionary<EntityId, string> supplierNames,
+        GapInvestigationOptions? gapInvestigation = null,
+        TimeSpan? investigatorDelay = null)
     {
+        IAiGateway fixture = new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions());
         var gateway = new RecordingAiGateway(
-            new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
+            investigatorDelay is { } delay ? new SlowInvestigatorGateway(fixture, delay) : fixture);
         var audit = new RecordingAuditWriter();
 
         var host = factory
@@ -41,7 +47,13 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
                 "Host=localhost;Port=5432;Database=raffa_dev;Username=raffa;Password=raffa;Include Error Detail=true"))
             .WithInMemoryAskEngine(gateway, new FixedClock(Now), auditWriter: audit)
             .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-                services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(supplierNames))));
+            {
+                services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(supplierNames));
+                if (gapInvestigation is not null)
+                {
+                    services.AddSingleton(gapInvestigation);
+                }
+            }));
 
         return (host, gateway, audit);
     }
@@ -247,5 +259,207 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
         Assert.Equal("redirect", reply.RootElement.GetProperty("kind").GetString());
         Assert.Contains("upload a contract in Documents", raw, StringComparison.Ordinal);
         Assert.DoesNotContain("Raffa can", raw, StringComparison.Ordinal);
+    }
+
+    /// <summary>The owner's screenshot of 2026-09-23: no regex knows "scrivere un report", so the
+    /// capability investigator decides — beside the answer, never in front of it. The user gets the
+    /// standard reply at once (here the interview, as in the screenshot), and the proposal follows
+    /// as a separate Raffa message: the honest preface, the nearest screen, the questions Ask can
+    /// already answer, and the offer to propose the feature.</summary>
+    [Fact]
+    public async Task A_report_request_gets_the_standard_answer_then_the_proposal_as_a_separate_message()
+    {
+        var tenantId = TenantId.New();
+        var amazonId = EntityId.New();
+        var (host, gateway, audit) = Host(new Dictionary<EntityId, string> { [amazonId] = "Amazon Web Services" });
+
+        var contract = AmazonContract(tenantId, amazonId);
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        var client = host.CreateClient();
+        var (conversationId, reply, raw) = await AskAsync(
+            client, tenantId, "puoi scrivere un report per riportare l'anamento del 2026 al CFO?");
+
+        // The standard reply, untouched by the check.
+        var root = reply.RootElement;
+        Assert.Equal("interview", root.GetProperty("kind").GetString());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("payload").ValueKind);
+        Assert.DoesNotContain("CFO contract", raw, StringComparison.Ordinal);
+
+        // The check finished first here (the fixture answers at once), so the follow-up is already
+        // stored and returned in the same response; nothing is pending.
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("capabilityCheck").ValueKind);
+        var followUp = root.GetProperty("followUpMessage");
+        Assert.Equal("raffa", followUp.GetProperty("role").GetString());
+        Assert.Equal("redirect", followUp.GetProperty("kind").GetString());
+        var markdown = followUp.GetProperty("markdown").GetString()!;
+        Assert.StartsWith(
+            "Ho verificato cosa sa fare Raffa.ai per la tua richiesta. Al momento non posso generare un report per il " +
+            "management da Raffa.ai, però in Portfolio trovi già",
+            markdown,
+            StringComparison.Ordinal);
+        Assert.Contains("approvazione di una persona del team", markdown, StringComparison.Ordinal);
+
+        var payload = followUp.GetProperty("payload");
+        Assert.Equal(root.GetProperty("messageId").GetGuid().ToString(), payload.GetProperty("capabilityCheckFor").GetString());
+        Assert.Equal(2, payload.GetProperty("followUps").GetArrayLength());
+        var gap = payload.GetProperty("gap");
+        Assert.Equal("discovered:management-report", gap.GetProperty("key").GetString());
+        Assert.Equal("Report per il management", gap.GetProperty("title").GetString());
+        Assert.Equal("it", gap.GetProperty("language").GetString());
+        var discovery = gap.GetProperty("discovery");
+        Assert.Equal("Management reports", discovery.GetProperty("titleEn").GetString());
+        Assert.Equal("portfolio", discovery.GetProperty("nearestCapability").GetString());
+        Assert.Equal(CapabilityInvestigatorAgent.Version, discovery.GetProperty("investigatorVersion").GetString());
+
+        var offer = payload.GetProperty("feedbackOffer");
+        Assert.Equal("Vuoi proporre «Report per il management» come nuova funzionalità di Raffa.ai?", offer.GetProperty("prompt").GetString());
+        Assert.Contains("dovrà approvarla", offer.GetProperty("publicNotice").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("Generare un report periodico", offer.GetProperty("questions")[0].GetProperty("prefill").GetString(), StringComparison.Ordinal);
+        Assert.Equal("/contracts", Assert.Single(followUp.GetProperty("actions").EnumerateArray()).GetProperty("href").GetString());
+
+        // One model call — the investigator — and nothing else: the interview retrieves nothing.
+        Assert.Equal([RecordingAiGateway.CapabilityInvestigatorAgent], gateway.Agents);
+        Assert.Empty(gateway.CallsBeyondCapabilityCheck);
+
+        var turn = Assert.Single(audit.Entries, e => e.Action.StartsWith("chat.", StringComparison.Ordinal));
+        Assert.Equal("chat.interviewed", turn.Action);
+        Assert.Contains("gapInvestigation=started", turn.Detail, StringComparison.Ordinal);
+        var offered = Assert.Single(audit.Entries, e => e.Action == CapabilityCheckDispatcher.AuditAction);
+        Assert.Contains("gapKey=discovered:management-report", offered.Detail, StringComparison.Ordinal);
+
+        // Resume: question, answer, follow-up — in that order, the follow-up with its chips.
+        using var getRequest = Request(HttpMethod.Get, $"/api/conversations/{conversationId}", tenantId);
+        using var detail = JsonDocument.Parse(await (await client.SendAsync(getRequest)).Content.ReadAsStringAsync());
+        var messages = detail.RootElement.GetProperty("messages").EnumerateArray().ToList();
+        Assert.Equal(["you", "raffa", "raffa"], messages.Select(m => m.GetProperty("role").GetString()).ToList());
+        Assert.Equal(followUp.GetProperty("id").GetGuid(), messages[2].GetProperty("id").GetGuid());
+        Assert.Equal(2, messages[2].GetProperty("payload").GetProperty("followUps").GetArrayLength());
+
+        // The interview is still the turn a typed message answers: the follow-up after it does not
+        // count as "the last Raffa turn", so the same words do not get a second interview.
+        using var nextRequest = Request(
+            HttpMethod.Post, $"/api/conversations/{conversationId}/messages", tenantId,
+            new { question = "puoi scrivere un report per riportare l'anamento del 2026 al CFO?" });
+        using var next = JsonDocument.Parse(await (await client.SendAsync(nextRequest)).Content.ReadAsStringAsync());
+        Assert.NotEqual("interview", next.RootElement.GetProperty("kind").GetString());
+    }
+
+    /// <summary>A check slower than the answer never holds it: the reply says the check is pending,
+    /// and the follow-up is appended right after the answer once the check completes.</summary>
+    [Fact]
+    public async Task A_check_slower_than_the_answer_appends_its_follow_up_afterwards()
+    {
+        var tenantId = TenantId.New();
+        var amazonId = EntityId.New();
+        var (host, _, _) = Host(
+            new Dictionary<EntityId, string> { [amazonId] = "Amazon Web Services" },
+            investigatorDelay: TimeSpan.FromSeconds(1));
+
+        var contract = AmazonContract(tenantId, amazonId);
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        var client = host.CreateClient();
+        var (conversationId, reply, _) = await AskAsync(
+            client, tenantId, "puoi scrivere un report per riportare l'anamento del 2026 al CFO?");
+
+        Assert.Equal("interview", reply.RootElement.GetProperty("kind").GetString());
+        Assert.Equal("pending", reply.RootElement.GetProperty("capabilityCheck").GetString());
+        Assert.Equal(JsonValueKind.Null, reply.RootElement.GetProperty("followUpMessage").ValueKind);
+
+        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+
+        using var getRequest = Request(HttpMethod.Get, $"/api/conversations/{conversationId}", tenantId);
+        using var detail = JsonDocument.Parse(await (await client.SendAsync(getRequest)).Content.ReadAsStringAsync());
+        var last = detail.RootElement.GetProperty("messages").EnumerateArray().Last();
+        Assert.Equal("redirect", last.GetProperty("kind").GetString());
+        Assert.Equal(
+            reply.RootElement.GetProperty("messageId").GetGuid().ToString(),
+            last.GetProperty("payload").GetProperty("capabilityCheckFor").GetString());
+        Assert.Equal("discovered:management-report", last.GetProperty("payload").GetProperty("gap").GetProperty("key").GetString());
+    }
+
+    /// <summary>When the user has already asked something else, a late proposal would land in the
+    /// middle of another exchange: it is dropped.</summary>
+    [Fact]
+    public async Task A_late_follow_up_is_dropped_once_the_conversation_has_moved_on()
+    {
+        var tenantId = TenantId.New();
+        var amazonId = EntityId.New();
+        var (host, _, audit) = Host(
+            new Dictionary<EntityId, string> { [amazonId] = "Amazon Web Services" },
+            investigatorDelay: TimeSpan.FromSeconds(1));
+
+        var contract = AmazonContract(tenantId, amazonId);
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        var client = host.CreateClient();
+        var (conversationId, first, _) = await AskAsync(
+            client, tenantId, "puoi scrivere un report per riportare l'anamento del 2026 al CFO?");
+        Assert.Equal("pending", first.RootElement.GetProperty("capabilityCheck").GetString());
+
+        using var secondRequest = Request(
+            HttpMethod.Post, $"/api/conversations/{conversationId}/messages", tenantId,
+            new { question = "Did you over all my contract?" });
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(secondRequest)).StatusCode);
+
+        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+
+        using var getRequest = Request(HttpMethod.Get, $"/api/conversations/{conversationId}", tenantId);
+        using var detail = JsonDocument.Parse(await (await client.SendAsync(getRequest)).Content.ReadAsStringAsync());
+        Assert.Equal(4, detail.RootElement.GetProperty("messages").GetArrayLength());
+        Assert.DoesNotContain(audit.Entries, e => e.Action == CapabilityCheckDispatcher.AuditAction);
+    }
+
+    [Fact]
+    public async Task With_the_investigator_switched_off_no_check_runs_and_no_gap_is_discovered()
+    {
+        var tenantId = TenantId.New();
+        var amazonId = EntityId.New();
+        var (host, gateway, audit) = Host(
+            new Dictionary<EntityId, string> { [amazonId] = "Amazon Web Services" },
+            new GapInvestigationOptions { Enabled = false });
+
+        var contract = AmazonContract(tenantId, amazonId);
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        var client = host.CreateClient();
+        var (_, reply, raw) = await AskAsync(client, tenantId, "puoi scrivere un report per riportare l'anamento del 2026 al CFO?");
+
+        Assert.DoesNotContain("discovered:", raw, StringComparison.Ordinal);
+        Assert.Equal(JsonValueKind.Null, reply.RootElement.GetProperty("followUpMessage").ValueKind);
+        Assert.Equal(JsonValueKind.Null, reply.RootElement.GetProperty("capabilityCheck").ValueKind);
+        Assert.Equal(0, gateway.CapabilityChecks);
+        Assert.Contains(
+            "gapInvestigation=off",
+            Assert.Single(audit.Entries, e => e.Action.StartsWith("chat.", StringComparison.Ordinal)).Detail,
+            StringComparison.Ordinal);
+        Assert.NotEqual("draft", reply.RootElement.GetProperty("kind").GetString());
+    }
+
+    /// <summary>Delays only the capability investigator, the way a real model call would outlast a
+    /// fast deterministic answer.</summary>
+    private sealed class SlowInvestigatorGateway(IAiGateway inner, TimeSpan delay) : IAiGateway
+    {
+        public Task<Result<AiClassificationResult>> ClassifyAsync(AiClassificationRequest request, CancellationToken cancellationToken = default) => inner.ClassifyAsync(request, cancellationToken);
+        public Task<Result<AiExtractionResult>> ExtractAsync(AiExtractionRequest request, CancellationToken cancellationToken = default) => inner.ExtractAsync(request, cancellationToken);
+        public Task<Result<AiEmbeddingResult>> EmbedAsync(AiEmbeddingRequest request, CancellationToken cancellationToken = default) => inner.EmbedAsync(request, cancellationToken);
+        public Task<Result<AiAnswerResult>> AnswerAsync(AiAnswerRequest request, CancellationToken cancellationToken = default) => inner.AnswerAsync(request, cancellationToken);
+        public Task<Result<AiOcrResult>> OcrAsync(AiOcrRequest request, CancellationToken cancellationToken = default) => inner.OcrAsync(request, cancellationToken);
+        public Task<Result<AiResearchResult>> ResearchAsync(AiResearchRequest request, CancellationToken cancellationToken = default) => inner.ResearchAsync(request, cancellationToken);
+
+        public async Task<Result<AiAnalysisResult>> AnalyzeAsync(AiAnalysisRequest request, CancellationToken cancellationToken = default)
+        {
+            if (request.AgentName == RecordingAiGateway.CapabilityInvestigatorAgent)
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+
+            return await inner.AnalyzeAsync(request, cancellationToken);
+        }
     }
 }

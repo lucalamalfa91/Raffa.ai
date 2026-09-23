@@ -5,6 +5,7 @@ import type { WorkspaceRole } from "../shell/navItems";
 import { loadCurrentWorkspace } from "../../routes/signin/workspaceStore";
 import { isAskRoute } from "../shell/isAskRoute";
 import { contractIdForPath, getAskBarCopy } from "./askSuggestions";
+import { buildAskLaunch } from "./askLaunch";
 import "./ask-bar.css";
 
 export interface GlobalAskBarProps {
@@ -133,8 +134,9 @@ export default function GlobalAskBar({ kbReady, role, apiClient }: GlobalAskBarP
     // NW-77 AC-1: `?scope=` (query string), never a new nav-state field (ADR-012 cl. 49) -- the same
     // bare-id template `Contract360Header.tsx`'s own "Ask about it" link already uses, reused by
     // `AskRoute`'s w18 `parseScopeContractId` (`askViewModel.ts`) to create the scoped conversation.
-    const path = contractId !== null ? `/ask?scope=${contractId}` : "/ask";
-    navigate(path, { state: { query: trimmed, newChat: true } });
+    // `askLaunch.ts` builds that same navigation for every other "Ask Raffa about this" control.
+    const launch = buildAskLaunch(trimmed, contractId);
+    navigate(launch.to, { state: launch.state });
   };
 
   return (

@@ -75,8 +75,8 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
   const searchParams = new URLSearchParams(location.search);
   const clauseParam = searchParams.get("clause");
   const pageParam = searchParams.get("page");
-  const fromState = (location.state as { from?: unknown } | null)?.from;
-  const backLink = resolveBackLink(fromState);
+  const navigationState = location.state as { from?: unknown; returnTo?: unknown } | null;
+  const backLink = resolveBackLink(navigationState?.from, navigationState?.returnTo);
 
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [selectedClauseId, setSelectedClauseId] = useState<string | null>(null);

@@ -35,7 +35,7 @@ public static class CapabilityGapReplyBuilder
             ReplyProvenance.NoModelCall([]),
             followUps,
             new ReplyPayload(
-                Gap: new GapInfo(gap.Key, gap.Title(language), language),
+                Gap: new GapInfo(gap.Key, gap.Title(language), language, gap.Discovery),
                 FeedbackOffer: CapabilityGapCopy.FeedbackOfferFor(gap, language)));
     }
 
@@ -78,7 +78,7 @@ public static class CapabilityGapReplyBuilder
             provenance,
             followUps,
             new ReplyPayload(
-                Gap: new GapInfo(gap.Key, gap.Title(language), language),
+                Gap: new GapInfo(gap.Key, gap.Title(language), language, gap.Discovery),
                 Draft: new EmailDraft(draft.Subject, draft.Body),
                 FeedbackOffer: CapabilityGapCopy.FeedbackOfferFor(gap, language)));
     }

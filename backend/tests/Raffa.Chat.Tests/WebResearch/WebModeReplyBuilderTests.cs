@@ -6,7 +6,7 @@ using Raffa.Chat.Application.WebResearch;
 namespace Raffa.Chat.Tests.WebResearch;
 
 /// <summary>
-/// ADR-031: the off-context pointer is two outbound links and no model call; a combined web-mode
+/// ADR-032: the off-context pointer is two outbound links and no model call; a combined web-mode
 /// reply keeps the tenant's answer and the web research under their own headings, and every
 /// <c>[n]</c> still resolves to its own card after the web citations are renumbered.
 /// </summary>

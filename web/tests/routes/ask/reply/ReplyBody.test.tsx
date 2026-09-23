@@ -465,7 +465,7 @@ describe("ReplyBody web research answer (ADR-030)", () => {
     expect(container.querySelector('[data-section="web"]')).not.toBeNull();
   });
 
-  it("says only the web part is unverified when a web-search answer also cites the contracts (ADR-031)", () => {
+  it("says only the web part is unverified when a web-search answer also cites the contracts (ADR-032)", () => {
     const { container } = renderReply({
       kind: "answer",
       answerMarkdown: "**From your contracts and Raffa's data**\n\nYour cap is 5% [1].\n\n**From the public web · unverified**\n\nPublic, unverified: 5-10% is common [2].",

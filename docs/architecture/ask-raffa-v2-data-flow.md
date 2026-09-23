@@ -8,7 +8,7 @@ Buyer screens and the upload → review → validated path:
 > plus its deterministic calculators. Microsoft Foundry on Azure reads,
 > classifies, embeds and narrates; it carries **no tools and no web access**.
 > The one exception is the isolated `research` role (ADR-030, and the
-> composer's web-search toggle of ADR-031): it sees only the user's sanitised
+> composer's web-search toggle of ADR-032): it sees only the user's sanitised
 > words, never a pack, and its answer is always labelled unverified.
 > The market-intelligence source (a mock feed today, a third-party API
 > tomorrow) is read **only by the ingestion job**, never while a user is
@@ -276,7 +276,7 @@ sequenceDiagram
       U->>SPA: Allow (single-use) / Decline
       SPA->>API: POST … { interviewAnswer: { optionKey: "allow" | "decline" } }
     end
-    opt web-search toggle on (ADR-031) — POST … { question, webResearch: true }
+    opt web-search toggle on (ADR-032) — POST … { question, webResearch: true }
       alt plainly personal (recipe, match, weather, joke)
         API-->>SPA: kind redirect · Google + Perplexity external actions · no retrieval, no model call
       else any work question
@@ -365,7 +365,7 @@ stateDiagram-v2
   InDomain --> Planner
   Planner --> Interview: ambiguous (ADR-030)
   Interview --> Planner: option resolved by key, forced intent
-  Gate --> WebMode: web-search toggle on (ADR-031)
+  Gate --> WebMode: web-search toggle on (ADR-032)
   WebMode --> Redirect: plainly personal — Google / Perplexity links
   WebMode --> Planner: contracts-only half, interview suppressed
   WebMode --> Research: open persona, gates open, no consent
@@ -398,7 +398,7 @@ or the consent alert when the option is "search the public web"). Every reply
 also carries `payload` when it needs structured content — the drafted email,
 the gap, the feedback offer or result — and `null` otherwise.
 
-**Web-search toggle (ADR-031).** The composer's toggle sends `webResearch: true`: the toggle is
+**Web-search toggle (ADR-032).** The composer's toggle sends `webResearch: true`: the toggle is
 the consent, so there is no dialog, and the procurement-only filters (topic lexicon, interview,
 off-domain/legal/unknown-supplier redirects) are lifted for that question. The same three gates,
 the sanitiser, the isolated research role and its guards still apply. A plainly personal question
@@ -586,6 +586,6 @@ and no Foundry project (ADR-006, ADR-008, ADR-011).
 | The drafted email's numbers, dates and asks (ADR-030) | The same pack — copied by the negotiation writer, or by the template | offer planner + writer (analyst role), guarded by `DraftGuard`/`NumericGuard`; template on failure | yes |
 | "I can't send an email from Raffa.ai yet, but…" and the feedback card | Capability-gap catalog — `Raffa.Chat` (IT/EN, versioned in code) | deterministic, in the question's language | yes |
 | "Open issue #123 →" | GitHub's own response to the feedback submission | server-authored `external` action, never the model | yes |
-| "From the public web · unverified" and its `web` citations (ADR-030 consent, or the ADR-031 toggle) | Public web sources the research role's `web_search` tool returned for the sanitised question | research role (no pack), guarded by `WebGuard`/`NumericGuard`/`GroundingGuard` | yes, only after consent or with the toggle on |
-| "Search on Google →" / "Ask Perplexity →" (ADR-031) | The question's own sanitised words | server-authored `external` actions, no model call | yes, with the toggle on |
+| "From the public web · unverified" and its `web` citations (ADR-030 consent, or the ADR-032 toggle) | Public web sources the research role's `web_search` tool returned for the sanitised question | research role (no pack), guarded by `WebGuard`/`NumericGuard`/`GroundingGuard` | yes, only after consent or with the toggle on |
+| "Search on Google →" / "Ask Perplexity →" (ADR-032) | The question's own sanitised words | server-authored `external` actions, no model call | yes, with the toggle on |
 | Anything else — the model's memory, a web page the research tool did not return | — | — | **never**: the guards abstain |

@@ -114,7 +114,8 @@ public sealed class FeedbackService(
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // Best-effort publish: a failing or missing publisher never fails the submission.
-        var issue = new FeatureRequestIssue(gap.Key, gap.Title, gap.Language, options.Environment, request.WorkspaceHash, answers);
+        var issue = new FeatureRequestIssue(
+            gap.Key, gap.Title, gap.Language, options.Environment, request.WorkspaceHash, answers, gap.Discovery);
         FeatureRequestPublishResult publish;
         try
         {

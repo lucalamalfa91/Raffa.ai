@@ -103,7 +103,7 @@ export default function ReplyBody({
         <div className="reply-body" data-reply-kind="answer" data-unverified={reply.unverifiedWeb ? "true" : undefined}>
           {reply.unverifiedWeb &&
             (reply.citations.some((citation) => citation.corpus !== "web") ? (
-              // ADR-031: a web-search answer sets the web part beside the answer from the
+              // ADR-032: a web-search answer sets the web part beside the answer from the
               // workspace's own data -- only the web part is unverified.
               <p className="reply-unverified-banner" role="note">
                 <strong>Includes public web findings · not verified.</strong> The web part comes from public sources and
@@ -166,7 +166,7 @@ export default function ReplyBody({
           <ReplyMarkdown text={reply.answerMarkdown} citations={[]} onOpenCitation={onOpenCitation} />
           {/* R-ASK-07 / parent AC-3 "one CTA": rendered defensively -- only ever the first action --
               even if the reply somehow carried more than one; see replyTypes.ts#RedirectReply. The
-              one exception is ADR-031's off-context pointer, whose actions are all outbound
+              one exception is ADR-032's off-context pointer, whose actions are all outbound
               searches (a search engine and an AI search assistant): both are shown. */}
           {reply.actions.length > 0 && <ActionRow actions={redirectActions(reply.actions)} />}
           {/* ADR-030: a capability-gap redirect ("which contract?") offers one supplier per chip
@@ -222,7 +222,7 @@ export default function ReplyBody({
   }
 }
 
-/** At most two outbound searches side by side (ADR-031), otherwise the one CTA. */
+/** At most two outbound searches side by side (ADR-032), otherwise the one CTA. */
 function redirectActions(actions: readonly ReplyAction[]): readonly ReplyAction[] {
   return actions.every((action) => action.external === true) ? actions.slice(0, 2) : actions.slice(0, 1);
 }

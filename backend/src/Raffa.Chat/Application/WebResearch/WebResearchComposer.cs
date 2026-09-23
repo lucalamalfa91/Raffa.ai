@@ -32,7 +32,7 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
         var italian = string.Equals(language, "it", StringComparison.OrdinalIgnoreCase);
         var lang = italian ? "it" : "en";
 
-        // ADR-031: a web-mode turn (the composer toggle) runs the open persona; every other
+        // ADR-032: a web-mode turn (the composer toggle) runs the open persona; every other
         // purpose is one of the four procurement purposes of ADR-030.
         var open = string.Equals(purpose, WebModeLexicon.Purpose, StringComparison.Ordinal);
         var request = new AiResearchRequest(

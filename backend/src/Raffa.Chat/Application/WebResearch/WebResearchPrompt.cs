@@ -5,7 +5,7 @@ namespace Raffa.Chat.Application.WebResearch;
 /// reviewable markdown twin" discipline as <c>Answering.AnswerPromptV2</c>:
 /// <see cref="SystemPrompt"/> is exactly the body of `Prompts/research/v1.md`, and a test in
 /// <c>Raffa.Chat.Tests</c> fails when the two drift. Bump <see cref="Version"/>, this string and
-/// the `.md` file together. <see cref="OpenSystemPrompt"/> is the web-mode persona (ADR-031), with
+/// the `.md` file together. <see cref="OpenSystemPrompt"/> is the web-mode persona (ADR-032), with
 /// its own twin `Prompts/research/open-v1.md` under the same rule.
 /// </summary>
 public static class WebResearchPrompt
@@ -40,7 +40,7 @@ public static class WebResearchPrompt
            sources[] with n, url and title.
         """;
 
-    /// <summary>The web-mode persona's version (ADR-031): the user switched web search on, so the
+    /// <summary>The web-mode persona's version (ADR-032): the user switched web search on, so the
     /// research is no longer held to the four procurement purposes.</summary>
     public const string OpenVersion = "research-open-v1";
 

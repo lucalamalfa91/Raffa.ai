@@ -40,6 +40,8 @@ public enum GateLabel
     /// <c>Application.Gaps.CapabilityGapCatalog</c>). Answered with an honest preface in the
     /// question's language plus the nearest real alternative (a drafted negotiation email, or a
     /// deep link) and an offer to report the gap — never retrieval-then-abstain, never the
-    /// feature tour. Checked after <see cref="Legal"/> and before <see cref="Capability"/>.</summary>
+    /// feature tour. Checked after <see cref="Legal"/> and before <see cref="Capability"/>. An
+    /// <see cref="InDomain"/> turn can also become this label after the gate, when ADR-031's
+    /// capability investigator judges that it asks for a feature Raffa does not have.</summary>
     CapabilityGap,
 }

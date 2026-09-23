@@ -44,7 +44,68 @@
   height: 32px;
 }
 
-/* ---- Ready / to-review segmented filter --------------------------------- */
+/* ---- KPI strip (the design system's attention strip: big number + label, each a filter) ---- */
+
+.renewal-kpis {
+  padding: 20px 32px 0;
+}
+
+.attention-strip.renewal-kpi-strip {
+  border-top-color: var(--color-text);
+}
+
+.attention-cell.renewal-kpi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px;
+  font: inherit;
+  color: inherit;
+}
+
+.attention-cell.renewal-kpi-cell:first-child {
+  padding-left: 0;
+}
+
+.attention-cell.renewal-kpi-cell:hover {
+  background: var(--color-neutral-200);
+}
+
+/* Pressed = the list is filtered by this cell: an ink underline, paired with aria-pressed. */
+.attention-cell.renewal-kpi-cell.is-active {
+  background: var(--color-surface);
+  box-shadow: inset 0 -3px 0 var(--color-text);
+}
+
+.attention-cell .attention-label.renewal-kpi-label {
+  order: -1;
+  margin-top: 0;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+}
+
+.attention-cell .attention-number.renewal-kpi-number {
+  font-size: 28px;
+  overflow-wrap: anywhere;
+}
+
+.renewal-kpi-meta {
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+/* ---- Toolbar: readiness .seg + search + status ------------------------------------- */
+
+.renewal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  padding: 16px 32px var(--space-3);
+}
 
 .readiness-filter-row {
   display: flex;
@@ -52,7 +113,77 @@
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
-  padding: 16px 32px var(--space-3);
+}
+
+.renewal-toolbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.input.renewal-search {
+  width: 240px;
+  max-width: 100%;
+}
+
+.input.renewal-state-select {
+  width: auto;
+}
+
+.renewal-ask {
+  text-decoration: none;
+}
+
+/* Two header actions: on a narrow screen they wrap under the title instead of pushing the page sideways. */
+.renewal-screen > .screen-header {
+  flex-wrap: wrap;
+}
+
+.renewal-screen > .screen-header .screen-header-actions {
+  flex-wrap: wrap;
+}
+
+/* ---- Bulk bar ------------------------------------------------------------------------- */
+
+.renewal-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 32px var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.renewal-bulk-count {
+  font-size: 13px;
+}
+
+.renewal-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.renewal-bulk .btn.renewal-bulk-button {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-bg);
+  border-color: var(--color-bg);
+  background: transparent;
+  text-decoration: none;
+}
+
+.renewal-bulk .btn.renewal-bulk-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-bg) 15%, transparent);
+}
+
+.renewal-bulk .micro-meta,
+.renewal-bulk .hint {
+  margin: 0;
+  color: var(--color-neutral-300);
 }
 
 .renewal-readiness-empty {
@@ -79,6 +210,7 @@
 }
 
 .renewal-table {
+  min-width: 640px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -90,6 +222,7 @@
 
 .renewal-table th {
   letter-spacing: var(--tracking-kicker);
+  white-space: nowrap;
 }
 
 .renewal-table th.renewal-table-numeric,
@@ -97,16 +230,40 @@
   text-align: right;
 }
 
+.renewal-table .renewal-col-check {
+  width: 36px;
+}
+
 .renewal-table .renewal-col-score {
   width: 64px;
 }
 
+.renewal-table .renewal-col-spend {
+  width: 13%;
+}
+
+.renewal-check {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-text);
+  cursor: pointer;
+}
+
+.renewal-table tr.row-checked {
+  background: var(--color-surface);
+}
+
+.renewal-cell-spend {
+  color: var(--color-neutral-700);
+}
+
 .renewal-table .renewal-col-days {
-  width: 15%;
+  width: 11%;
 }
 
 .renewal-table .renewal-col-status {
-  width: 18%;
+  width: 16%;
 }
 
 /* Rows select the pane (markup.html `cg-row` + `r.select`); the Score cell's own <button> stays the
@@ -165,8 +322,8 @@
 /* ---- "Why it is here" pane ---------------------------------------------------- */
 
 .renewal-pane {
-  flex: 1 1 300px;
-  max-width: 380px;
+  flex: 1 1 320px;
+  max-width: 400px;
   padding: 20px 24px;
   background: var(--color-surface);
   border-left: 2px solid var(--color-divider);
@@ -175,6 +332,87 @@
 .renewal-pane-heading {
   margin: var(--space-1) 0 2px;
   font-size: 20px;
+}
+
+/* ---- Pane: key facts + priority breakdown --------------------------------------------- */
+
+.renewal-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 var(--space-3);
+  border-top: 1px solid var(--color-divider);
+}
+
+.renewal-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 10px 10px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.renewal-fact:nth-child(even) {
+  padding-left: 12px;
+  border-left: 1px solid var(--color-divider);
+}
+
+.renewal-fact dt {
+  font-size: 10px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.renewal-fact dd {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 16px;
+  line-height: var(--leading-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.renewal-score-details {
+  margin: 0 0 var(--space-4);
+  font-size: 12px;
+}
+
+.renewal-score-details summary {
+  cursor: pointer;
+  color: var(--color-neutral-700);
+}
+
+.renewal-score-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: var(--space-2);
+}
+
+.renewal-score-part-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.renewal-score-part-value {
+  font-weight: var(--weight-body-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.renewal-score-bar {
+  height: 6px;
+  margin-top: 4px;
+  background: var(--color-neutral-200);
+}
+
+.renewal-score-bar-fill {
+  height: 100%;
+  background: var(--color-text);
+}
+
+.renewal-score-bar-fill.is-accent {
+  background: var(--color-accent);
 }
 
 .renewal-pane-contract {
@@ -224,6 +462,134 @@
 .renewal-pane-inline-link {
   font-size: 12px;
   padding: 0 var(--space-1);
+}
+
+.renewal-pane-acted-next {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+/* ---- Pane: "What you can do from here" (the action registry, renewalActions.ts) -------------- */
+
+.renewal-launcher {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.renewal-launcher .card-kicker {
+  margin: 0;
+}
+
+.renewal-launcher-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.renewal-launcher-title {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.renewal-launcher-group.is-ask .renewal-launcher-title {
+  color: var(--color-accent-700);
+}
+
+.renewal-launcher-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+}
+
+.renewal-launcher-list,
+.renewal-launcher-chips {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.renewal-launcher-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.renewal-launcher-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label arrow"
+    "hint arrow";
+  column-gap: var(--space-2);
+  padding: 7px var(--space-2);
+  margin: 0 calc(-1 * var(--space-2));
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
+}
+
+.renewal-launcher-item:hover,
+.renewal-launcher-item:focus-visible {
+  background: var(--color-neutral-200);
+}
+
+.renewal-launcher-label {
+  grid-area: label;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: var(--weight-body-strong);
+}
+
+.renewal-launcher-hint {
+  grid-area: hint;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+.renewal-launcher-arrow {
+  grid-area: arrow;
+  align-self: center;
+  color: var(--color-neutral-600);
+}
+
+.renewal-launcher-item:hover .renewal-launcher-arrow {
+  color: var(--color-accent-700);
+}
+
+.renewal-launcher-group.is-soon .renewal-launcher-label {
+  font-weight: var(--weight-body);
+}
+
+.tag.renewal-launcher-soon {
+  padding: 1px 6px;
+  font-size: 10px;
+}
+
+.renewal-launcher-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px solid var(--color-divider);
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  color: inherit;
+  text-decoration: none;
+}
+
+.renewal-launcher-chip:hover,
+.renewal-launcher-chip:focus-visible {
+  border-color: var(--color-text);
+  background: var(--color-neutral-200);
 }
 
 .renewal-pane-facts-link {
@@ -309,7 +675,35 @@
   font-size: 12px;
 }
 
+@media (max-width: 1100px) {
+  .attention-strip.renewal-kpi-strip {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .attention-cell.renewal-kpi-cell,
+  .attention-cell.renewal-kpi-cell:first-child {
+    padding-left: 12px;
+    border-bottom: 1px solid var(--color-divider);
+  }
+}
+
 @media (max-width: 900px) {
+  .renewal-kpis,
+  .renewal-toolbar {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .renewal-bulk {
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+
+  .attention-strip.renewal-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .renewal-table-wrapper {
     padding-right: 0;
   }

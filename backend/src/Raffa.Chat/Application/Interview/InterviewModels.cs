@@ -78,7 +78,7 @@ public sealed record InterviewAnswer(EntityId MessageId, string QuestionKey, str
 /// <see cref="AuthorizedWebResearch"/> is set only by a consumed consent option (ADR-030);
 /// <see cref="DeclinedWebResearch"/> only by the consent's "no" option, so the turn is audited as
 /// a decline while it runs the normal, contracts-only pipeline. <see cref="WebMode"/> is the
-/// composer's web-search toggle (ADR-031): set by the endpoint from the request, never by an
+/// composer's web-search toggle (ADR-032): set by the endpoint from the request, never by an
 /// interview resolution, it sends the turn to the web and to Raffa's own store with the
 /// procurement-only filters lifted — the toggle itself is the consent.
 /// </summary>

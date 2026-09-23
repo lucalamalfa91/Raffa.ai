@@ -1,8 +1,9 @@
-import type { ApiClient } from "../../api/client";
+import type { ApiClient, ConversationReplyBody } from "../../api/client";
 import type { FeedbackAnswers } from "./reply/replyTypes";
 import { CONVERSATION_NAME_MAX_LENGTH, normalizeConversationName } from "./conversationTitle";
 import {
   TRANSPORT_ERROR_REASON,
+  appendCapabilityFollowUp,
   buildErrorTurn,
   buildInterviewAnswerRequest,
   buildRaffaTurnFromMessage,
@@ -14,6 +15,7 @@ import {
   markInterviewAnswered,
   nextTurnId,
   pendingInterview,
+  pollCapabilityFollowUp,
   type AskTurnView,
 } from "./askViewModel";
 
@@ -83,7 +85,7 @@ export interface AskSendInput {
   interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null };
   /** `/ask?scope=<contractId>`: only read when this send creates the conversation. */
   scopeContractId?: string;
-  /** ADR-031: the composer's web-search toggle was on. A typed question then starts a web search
+  /** ADR-032: the composer's web-search toggle was on. A typed question then starts a web search
    * of its own rather than answering a pending interview as free text. */
   webResearch?: boolean;
 }
@@ -180,6 +182,9 @@ export function createAskSessionStore(): AskSessionStore {
   const composerDrafts = new Map<string, string>();
   // The latest rename per chat: an older one settling late never overwrites a newer name.
   const renameSeq = new Map<string, number>();
+  // ADR-031: one generation per conversation -- bumped by every question sent in it, so a poll for
+  // an older answer's capability follow-up stops instead of landing after a newer question.
+  const followUpWatch = new Map<string, number>();
 
   function commit(next: Partial<AskSessionsSnapshot>) {
     snapshot = { ...snapshot, ...next };
@@ -227,6 +232,31 @@ export function createAskSessionStore(): AskSessionStore {
     const name = session.conversationId === null ? null : customTitleFor(snapshot, session.conversationId, session.customTitle);
     const event: AskReplyEvent = { conversationId: session.conversationId, title: name ?? session.title, ok, seen };
     for (const listener of replyListeners) listener(event);
+  }
+
+  /**
+   * ADR-031: the capability check runs beside the answer, never in front of it. Its follow-up is a
+   * separate Raffa turn after the answer, landing in the session that asked -- like the reply
+   * itself, whichever chat is on screen. The reply carries it as `followUpMessage` when the check
+   * finished first; `capabilityCheck: "pending"` means it is still running, so the conversation is
+   * read back for a few seconds (`pollCapabilityFollowUp`) until it appears -- or until a newer
+   * question is sent in the same chat, or the chat is deleted.
+   */
+  function receiveCapabilityFollowUp(conversationId: string, reply: ConversationReplyBody, apiClient: ApiClient, tenantId: string) {
+    const followUpMessage = reply.followUpMessage ?? null;
+    if (followUpMessage) {
+      withSession(conversationId, (current) => ({ ...current, turns: appendCapabilityFollowUp(current.turns, followUpMessage) }));
+      return;
+    }
+    if (reply.capabilityCheck !== "pending") return;
+
+    const generation = followUpWatch.get(conversationId) ?? 0;
+    const stale = () => (followUpWatch.get(conversationId) ?? 0) !== generation || !snapshot.sessions.has(conversationId);
+    void pollCapabilityFollowUp(apiClient, tenantId, conversationId, reply.messageId, stale).then((message) => {
+      if (message && !stale()) {
+        withSession(conversationId, (current) => ({ ...current, turns: appendCapabilityFollowUp(current.turns, message) }));
+      }
+    });
   }
 
   return {
@@ -281,6 +311,10 @@ export function createAskSessionStore(): AskSessionStore {
       // An interview answer always runs its own server-side resolution: never a web-mode turn.
       const web = webResearch && pending === null;
 
+      if (existing.conversationId !== null) {
+        followUpWatch.set(existing.conversationId, (followUpWatch.get(existing.conversationId) ?? 0) + 1);
+      }
+
       const turns = pending === null ? existing.turns : markInterviewAnswered(existing.turns, pending.messageId);
       const sessions = new Map(snapshot.sessions);
       sessions.set(sessionKey, {
@@ -315,6 +349,7 @@ export function createAskSessionStore(): AskSessionStore {
               result.ok ? buildRaffaTurnFromReply(nextTurnId(), result.reply) : buildErrorTurn(nextTurnId(), result.reason),
               result.ok,
             );
+            if (result.ok) receiveCapabilityFollowUp(result.conversationId, result.reply, apiClient, tenantId);
             return;
           }
 
@@ -327,6 +362,7 @@ export function createAskSessionStore(): AskSessionStore {
             ok && result.reply ? buildRaffaTurnFromReply(nextTurnId(), result.reply) : buildErrorTurn(nextTurnId(), result.error ?? TRANSPORT_ERROR_REASON),
             ok,
           );
+          if (ok && result.reply) receiveCapabilityFollowUp(existing.conversationId, result.reply, apiClient, tenantId);
         } catch {
           land(landingKey, buildErrorTurn(nextTurnId(), TRANSPORT_ERROR_REASON), false);
         }

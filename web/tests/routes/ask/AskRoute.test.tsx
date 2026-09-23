@@ -139,7 +139,7 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace()),
     getWorkspaceMembers: vi.fn(),
-    // ADR-031: the chat surface reads this once to decide whether the web-search toggle exists; the
+    // ADR-032: the chat surface reads this once to decide whether the web-search toggle exists; the
     // default is an environment without web research (no toggle), so every older test is unchanged.
     getWorkspaceSettings: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, settings: { webResearchEnabled: false, canEdit: true }, error: null }),
     updateWorkspaceSettings: vi.fn(),
@@ -898,6 +898,78 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
     });
   });
 
+  // ADR-031: the capability check runs beside the answer; its proposal is a separate turn after it.
+  describe("ADR-031: capability follow-up", () => {
+    const proposalOffer = {
+      prompt: "Want to propose “Management reports” as a new Raffa.ai feature?",
+      yesLabel: "Yes", noLabel: "No", nextLabel: "Next", backLabel: "Back", submitLabel: "Send",
+      sendingLabel: "Sending…", thanksLabel: "Thanks!", errorLabel: "Try again.", publicNotice: "Public on GitHub.",
+      questions: [
+        { key: "what" as const, kind: "text" as const, label: "What exactly should Raffa do?", prefill: "Generate a report.", choices: null },
+      ],
+    };
+
+    function followUpMessage(forMessageId: string) {
+      return {
+        id: "msg-follow-up", role: "raffa" as const, kind: "redirect" as const,
+        markdown: "I checked what Raffa.ai can do for your request. I can't generate a report for management from Raffa.ai yet.",
+        citations: [], actions: [{ label: "Portfolio →", href: "/contracts", kind: "navigate" as const }],
+        modelId: null, promptVersion: null, inputHash: null, createdAt: "2026-09-23T00:00:05Z",
+        payload: {
+          gap: { key: "discovered:management-report", title: "Management reports", language: "en" as const },
+          draft: null, feedbackOffer: proposalOffer, feedbackResult: null,
+          followUps: ["What is our total annual spend across contracts?"],
+          capabilityCheckFor: forMessageId,
+        },
+      };
+    }
+
+    it("shows the answer, then the proposal the reply carried as a separate turn with its chips and card", async () => {
+      const user = userEvent.setup();
+      renderAsk(
+        mockApiClient({
+          createConversation: vi.fn().mockResolvedValue(createdConversation()),
+          postMessage: vi.fn().mockResolvedValue(postedReply(answerReply({ followUpMessage: followUpMessage("msg-1") }))),
+        }),
+      );
+
+      await user.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "Can you write a report for my boss?{Enter}");
+
+      expect(await screen.findByText(/I checked what Raffa.ai can do for your request/)).toBeInTheDocument();
+      expect(screen.getByText(proposalOffer.prompt)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "What is our total annual spend across contracts?" })).toBeInTheDocument();
+      // The standard answer is still there, first.
+      expect(screen.getByText(/Salesforce ends on/)).toBeInTheDocument();
+    });
+
+    it("looks for a pending follow-up in the conversation and appends it once it is stored", async () => {
+      const user = userEvent.setup();
+      const getConversation = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        conversation: {
+          id: CONVERSATION_ID, title: "Report", scopeContractId: null, createdAt: "2026-09-23T00:00:00Z", updatedAt: "2026-09-23T00:00:05Z",
+          messages: [followUpMessage("msg-1")],
+        },
+        error: null,
+      });
+      renderAsk(
+        mockApiClient({
+          createConversation: vi.fn().mockResolvedValue(createdConversation()),
+          postMessage: vi.fn().mockResolvedValue(postedReply(answerReply({ capabilityCheck: "pending", followUpMessage: null }))),
+          getConversation,
+        }),
+      );
+
+      await user.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "Can you write a report for my boss?{Enter}");
+
+      expect(await screen.findByText(/Salesforce ends on/)).toBeInTheDocument();
+      // The store reads the conversation back every 2 s (real timers): the first read finds it.
+      expect(await screen.findByText(/I checked what Raffa.ai can do for your request/, undefined, { timeout: 8000 })).toBeInTheDocument();
+      expect(getConversation).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID);
+    }, 15000);
+  });
+
   /**
    * Task E27/F04/US01/T01 (binding-chip; parent story us-01-binding-chip AC-1/AC-2/AC-3; closes
    * NW-78, ADR-012 cl. 49 / ADR-020 37.2 per `reports/architecture/waves/w19.md`; screens-v2.md #2
@@ -1215,7 +1287,7 @@ describe("AskRoute web research consent (ADR-030)", () => {
   });
 });
 
-describe("AskRoute web search toggle (ADR-031)", () => {
+describe("AskRoute web search toggle (ADR-032)", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));

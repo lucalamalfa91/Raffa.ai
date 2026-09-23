@@ -228,6 +228,57 @@ public sealed class ConversationFeedbackEndpointTests(RaffaApiFactory factory) :
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    /// <summary>ADR-031: a proposal for a gap the investigator discovered reaches the publisher with
+    /// the discovery (generic, English) and opens as a proposal awaiting a person's approval.</summary>
+    [Fact]
+    public async Task A_discovered_gap_is_published_as_a_proposal_awaiting_human_approval()
+    {
+        var tenantId = TenantId.New();
+        var (host, publisher, audit) = Host(configured: true);
+        var client = host.CreateClient();
+
+        using var createRequest = Request(HttpMethod.Post, "/api/conversations", tenantId, new { });
+        using var created = JsonDocument.Parse(await (await client.SendAsync(createRequest)).Content.ReadAsStringAsync());
+        var conversationId = created.RootElement.GetProperty("id").GetGuid();
+
+        using var messageRequest = Request(
+            HttpMethod.Post, $"/api/conversations/{conversationId}/messages", tenantId,
+            new { question = "Can you prepare a slide deck on our renewals for the board?" });
+        using var reply = JsonDocument.Parse(await (await client.SendAsync(messageRequest)).Content.ReadAsStringAsync());
+        // The proposal is the follow-up message after the standard answer, not the answer itself.
+        var followUp = reply.RootElement.GetProperty("followUpMessage");
+        Assert.Equal("redirect", followUp.GetProperty("kind").GetString());
+        var messageId = followUp.GetProperty("id").GetGuid();
+
+        using var request = Request(HttpMethod.Post, $"/api/conversations/{conversationId}/feedback", tenantId, new
+        {
+            messageId,
+            answers = new { what = "A board-ready summary of spend and renewals", frequency = "weekly", importance = "very-useful" },
+        });
+        var response = await client.SendAsync(request);
+        var raw = await response.Content.ReadAsStringAsync();
+
+        Assert.True(response.StatusCode == HttpStatusCode.Created, $"{response.StatusCode}: {raw}");
+        using var body = JsonDocument.Parse(raw);
+        Assert.Contains("must approve it before it is built", body.RootElement.GetProperty("message").GetProperty("markdown").GetString(), StringComparison.Ordinal);
+
+        var issue = Assert.Single(publisher.Published);
+        Assert.Equal("discovered:management-report", issue.GapKey);
+        var discovery = Assert.IsType<Raffa.Chat.Application.Reply.GapDiscovery>(issue.Discovery);
+        Assert.Equal("Management reports", discovery.TitleEn);
+
+        var (title, text) = FeatureRequestIssueText.Compose(issue);
+        Assert.Equal("[Ask Raffa feature proposal] Management reports (test)", title);
+        Assert.Contains("## Human approval", text, StringComparison.Ordinal);
+        Assert.Contains(FeatureRequestIssueText.DiscoveredLabel, FeatureRequestIssueText.Labels(issue, ["feedback"]));
+        Assert.Contains(FeatureRequestIssueText.AwaitingApprovalLabel, FeatureRequestIssueText.Labels(issue, ["feedback"]));
+
+        Assert.Contains(
+            "gapKey=discovered:management-report",
+            Assert.Single(audit.Entries, e => e.Action == FeedbackService.AuditSubmittedAction).Detail,
+            StringComparison.Ordinal);
+    }
+
     private sealed class StubPublisher(bool configured, bool fail, bool throws) : IFeatureRequestPublisher
     {
         public List<FeatureRequestIssue> Published { get; } = [];

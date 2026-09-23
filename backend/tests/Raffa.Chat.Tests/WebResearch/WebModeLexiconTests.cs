@@ -3,7 +3,7 @@ using Raffa.Chat.Application.WebResearch;
 namespace Raffa.Chat.Tests.WebResearch;
 
 /// <summary>
-/// ADR-031: with the web-search toggle on, the only question Raffa does not research is the plainly
+/// ADR-032: with the web-search toggle on, the only question Raffa does not research is the plainly
 /// personal or leisure one — and a leisure word next to a work word is a work question.
 /// </summary>
 public sealed class WebModeLexiconTests

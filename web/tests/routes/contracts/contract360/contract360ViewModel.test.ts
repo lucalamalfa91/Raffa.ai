@@ -369,6 +369,9 @@ describe("header", () => {
     expect(resolveBackLink("portfolio")).toEqual({ label: "Portfolio", href: "/contracts" });
     expect(resolveBackLink("renewals")).toEqual({ label: "Renewals", href: "/renewals" });
     expect(resolveBackLink("savings")).toEqual({ label: "Savings", href: "/savings" });
+    expect(resolveBackLink("renewals", "/renewals?select=abc")).toEqual({ label: "Renewals", href: "/renewals?select=abc" });
+    expect(resolveBackLink("renewals", "/savings?contract=abc")).toEqual({ label: "Renewals", href: "/renewals" });
+    expect(resolveBackLink("renewals", "//evil.test/renewals")).toEqual({ label: "Renewals", href: "/renewals" });
     expect(resolveBackLink(undefined)).toBeNull();
     expect(resolveBackLink(null)).toBeNull();
     expect(resolveBackLink("something-else")).toBeNull();

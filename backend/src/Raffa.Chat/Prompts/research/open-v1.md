@@ -1,6 +1,6 @@
 # Ask Raffa — web research persona, open mode (open-v1)
 
-ADR-031. The system prompt of the `research` role when the user switches **web search** on in
+ADR-032. The system prompt of the `research` role when the user switches **web search** on in
 Ask Raffa's composer. Same role, deployment and isolation as [`v1.md`](v1.md) (ADR-030): one
 Foundry call with exactly one hosted `web_search` tool and **no context pack** — the query is the
 user's own words through `WebQuerySanitizer`. What changes is law 1: the scope is any work topic,

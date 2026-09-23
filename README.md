@@ -58,6 +58,29 @@ Upload in Documents → Worker processes → Review weak facts → Validated con
    adds Start / Auto / Risk); Renewals defaults to **Ready**, with **To
    review** and **All** one click away.
 
+**Savings** is a dashboard: verified money leads (with its share of spend),
+then identified, in progress and savings potential; a portfolio-context strip
+links into Portfolio and Renewals; the identified → in progress → verified
+pipeline, "When you saved" (verified money per month, this year / last 90 days /
+last verified saving), where the savings are (by supplier or lever) and the open
+savings whose notice deadline is ahead. Pipeline stages and supplier bars filter
+the opportunities table; each row offers Renewals (`?select=`) and a scoped Ask.
+`/savings?contract=<id>` focuses one contract (Contract 360 "Track it in
+Savings").
+
+**Renewals** opens on a KPI strip (notice in 30 / 90 days, spend renewing inside
+90 days, not started / in negotiation / closed — each a filter), a search and
+status filter, and tick boxes for bulk actions (assign to me, show in Portfolio,
+ask which to start first). The selected row's pane launches everything from one
+registry (`web/src/routes/renewals/renewalActions.ts`): Ask Raffa bound to the
+contract (plan, draft email, market check, why ranked), Contract 360 / Savings /
+Portfolio / Quote check with the contract in context, and the operations not
+built yet (reminder, calendar, send notice, export), which open Ask so it can
+say so and file the request. A new capability is one registry entry.
+
+Portfolio's `?ids=` narrowing takes `&from=renewals|savings` so the notice names
+the screen that picked the contracts and links back to it.
+
 **Ask** binds to a supplier/contract when the chat was opened from Contract 360
 (`?scope=` → persisted `scopeContractId`) or when the question names a known
 supplier. A bound chat shows a chip and a title `Supplier — Contract type`.
@@ -71,9 +94,16 @@ a reminder, export a file, raise a PO) it says so in one sentence, offers the
 nearest alternative — a drafted negotiation email written from the contract's
 own facts, or the screen that already has the answer — and can file the gap
 as a GitHub issue for the team from a three-question card in the chat
-(ADR-030).
+(ADR-030). Beyond those five, Raffa recognises a missing feature by itself: a
+capability investigator agent checks each new question against everything
+Raffa can do, beside the answer so it adds no latency, and when the user asks
+for something no screen or Ask ability does (a report for management, a slide
+deck, …) a separate message after the answer offers to propose it as a new
+feature through the same interview. Every such issue opens as
+`awaiting-approval` and is built only after a maintainer approves it
+(ADR-031).
 
-The composer's **Web search** toggle (ADR-031, shown where the environment has
+The composer's **Web search** toggle (ADR-032, shown where the environment has
 web research and usable once the workspace Admin switched it on) sends a
 question to the public web and to the workspace's own data together, with the
 procurement-only filters lifted and no per-question consent: only the

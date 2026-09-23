@@ -3,6 +3,7 @@ using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Gate;
+using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Language;
 using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Reply;
@@ -21,7 +22,8 @@ namespace Raffa.Api;
 /// facts, lever calculations, clause evidence, playbook, plus what Ask's agentic flow adds: the
 /// market data check, the market researcher's notes and the council plays) by
 /// <see cref="NegotiationDraftingWorkflow"/>; for the other gaps it is a deep link into the screen
-/// that already holds the answer.
+/// that already holds the answer. (A gap the capability investigator finds, ADR-031, is never this
+/// turn's reply: it follows the answer as a separate message — <see cref="CapabilityCheckDispatcher"/>.)
 /// </summary>
 internal sealed partial class AskCopilotService
 {
@@ -91,6 +93,16 @@ internal sealed partial class AskCopilotService
 
         return CapabilityGapReplyBuilder.Redirect(gap, language, CapabilityGapCopy.Preface(gap, language), actions, []);
     }
+
+    /// <summary>A turn the capability investigator may look at (ADR-031): typed by the user, not
+    /// resolved by key from an earlier turn (an interview option, a web consent or a decline),
+    /// which continues a turn that was already investigated.</summary>
+    private static bool IsFreshTurn(AskTurnHints hints) =>
+        hints.ForcedIntent is null &&
+        hints.ForcedContractId is null &&
+        hints.ForcedSupplierName is null &&
+        hints.AuthorizedWebResearch is null &&
+        !hints.DeclinedWebResearch;
 
     /// <summary>The draft alternative with no contract to draft for: the preface plus "which
     /// contract?", one follow-up chip per supplier on file (each re-enters this same gap with the

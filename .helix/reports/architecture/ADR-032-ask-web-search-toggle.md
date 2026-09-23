@@ -1,4 +1,4 @@
-# ADR-031 — Ask Raffa: a web-search toggle in the composer — the web and Raffa's own data together, the procurement-only filters lifted
+# ADR-032 — Ask Raffa: a web-search toggle in the composer — the web and Raffa's own data together, the procurement-only filters lifted
 
 - **Status**: accepted
 - **Date**: 2026-09-23

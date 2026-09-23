@@ -339,6 +339,7 @@ public static class ConversationsEndpointExtensions
         HttpRequest httpRequest,
         ConversationService conversationService,
         Raffa.Api.AskCopilotService askCopilotService,
+        CapabilityCheckDispatcher capabilityCheckDispatcher,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -400,13 +401,13 @@ public static class ConversationsEndpointExtensions
         }
         else if (request.WebResearch == true)
         {
-            // ADR-031: the toggle is the consent for this question; the engine still checks the
+            // ADR-032: the toggle is the consent for this question; the engine still checks the
             // kill switch, the workspace opt-in and the budget.
             hints = hints with { WebMode = true };
         }
 
         var reply = await AskAndAppendAsync(
-                askCopilotService, conversationService, tenantId, userId, conversationId, conversation,
+                askCopilotService, conversationService, capabilityCheckDispatcher, tenantId, userId, conversationId, conversation,
                 request.Question, effectiveQuestion, hints, youInterviewJson, cancellationToken)
             .ConfigureAwait(false);
 
@@ -439,10 +440,22 @@ public static class ConversationsEndpointExtensions
     /// <c>AskCopilotService.AskAsync</c>/<c>BuildInDomainReplyAsync</c> — this file's own doc
     /// comment on that type is where the mechanism is documented.
     /// </para>
+    ///
+    /// <para>
+    /// <b>The capability follow-up (ADR-031)</b>: a fresh in-domain turn starts the capability
+    /// check beside the answer (<see cref="CapabilityCheckSlot"/>). Once the answer is persisted,
+    /// a check that already found an operation Raffa cannot perform appends its proposal as a
+    /// separate Raffa message, returned as <c>followUpMessage</c> (the stored-message shape of
+    /// <c>GET /api/conversations/{id}</c>); a check still running is handed to
+    /// <see cref="CapabilityCheckDispatcher.AppendWhenDone"/> and the reply says
+    /// <c>capabilityCheck: "pending"</c>, so the client looks for the follow-up in the
+    /// conversation. The answer never waits for the check.
+    /// </para>
     /// </summary>
     internal static async Task<object> AskAndAppendAsync(
         Raffa.Api.AskCopilotService askCopilotService,
         ConversationService conversationService,
+        CapabilityCheckDispatcher capabilityCheckDispatcher,
         TenantId tenantId,
         string userId,
         EntityId conversationId,
@@ -458,13 +471,17 @@ public static class ConversationsEndpointExtensions
             .Select(m => (Role: ToWireRole(m.Role), Markdown: m.Markdown))
             .ToList();
 
+        // A capability follow-up (ADR-031) sits after the turn it follows; it is never what a typed
+        // message answers, so an interview right before it still counts as the last Raffa turn.
         var previousRaffaTurnWasInterview =
-            conversation.Messages.LastOrDefault(m => m.Role == ConversationRole.Raffa)?.Kind == ConversationMessageKind.Interview;
+            conversation.Messages
+                .LastOrDefault(m => m.Role == ConversationRole.Raffa && !IsCapabilityFollowUp(m))?.Kind == ConversationMessageKind.Interview;
 
+        var capabilityCheck = new CapabilityCheckSlot();
         var reply = await askCopilotService
             .AskAsync(
                 tenantId, effectiveQuestion, recentTurns, userId, conversation.ScopeContractId, hints,
-                previousRaffaTurnWasInterview, cancellationToken)
+                previousRaffaTurnWasInterview, capabilityCheck, cancellationToken)
             .ConfigureAwait(false);
 
         await conversationService.AppendMessageAsync(
@@ -480,6 +497,27 @@ public static class ConversationsEndpointExtensions
             .ConfigureAwait(false);
 
         var messageId = raffaMessage?.MessageId ?? conversationId;
+
+        object? followUpMessage = null;
+        string? capabilityCheckState = null;
+        if (capabilityCheck.FollowUp is { } check && raffaMessage is not null)
+        {
+            if (check.IsCompleted)
+            {
+                if (await check.ConfigureAwait(false) is { } followUp)
+                {
+                    var appended = await capabilityCheckDispatcher
+                        .AppendAsync(tenantId, userId, conversationId, raffaMessage.MessageId, followUp, cancellationToken)
+                        .ConfigureAwait(false);
+                    followUpMessage = appended is null ? null : ToMessageResponse(appended, hasLaterTurn: false);
+                }
+            }
+            else
+            {
+                capabilityCheckDispatcher.AppendWhenDone(check, tenantId, userId, conversationId, raffaMessage.MessageId);
+                capabilityCheckState = "pending";
+            }
+        }
 
         return new
         {
@@ -500,14 +538,21 @@ public static class ConversationsEndpointExtensions
             followUps = reply.FollowUps,
             payload = reply.Payload is null ? (JsonElement?)null : ReplyPayloadJson.ToJsonElement(reply.Payload),
             interview = reply.Interview is null ? null : ToInterviewJson(reply.Interview, answered: false),
+            capabilityCheck = capabilityCheckState,
+            followUpMessage,
         };
     }
+
+    /// <summary>ADR-031: a Raffa message appended after an answer by the capability check.</summary>
+    private static bool IsCapabilityFollowUp(ConversationMessageResult message) =>
+        message.Role == ConversationRole.Raffa &&
+        ReplyPayloadJson.Deserialize(message.PayloadJson)?.CapabilityCheckFor is not null;
 
     /// <summary>The one mapping from a <see cref="CopilotReply"/> onto the persisted Raffa turn —
     /// shared by <see cref="AskAndAppendAsync"/> and the feedback confirmation
     /// (<see cref="PostConversationFeedbackAsync"/>), so the two never drift on how citations,
     /// actions and the ADR-030 payload are serialized.</summary>
-    private static AppendConversationMessageRequest ToAppendRequest(CopilotReply reply) =>
+    internal static AppendConversationMessageRequest ToAppendRequest(CopilotReply reply) =>
         new(
             ConversationRole.Raffa,
             ToMessageKind(reply.Kind),
@@ -920,7 +965,7 @@ public static class ConversationsEndpointExtensions
     /// nested type for the identical reason <see cref="CreateConversationRequest"/>'s own doc
     /// comment gives.
     /// </summary>
-    /// <param name="WebResearch">ADR-031: the composer's web-search toggle was on when this
+    /// <param name="WebResearch">ADR-032: the composer's web-search toggle was on when this
     /// question was sent. Ignored on an interview answer, which always runs its own resolution.</param>
     public sealed record PostConversationMessageRequest(
         string? Question, InterviewAnswerRequest? InterviewAnswer = null, bool? WebResearch = null);

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace Raffa.Chat.Application.WebResearch;
 
 /// <summary>
-/// The one filter left when the user switches Ask's web search on (ADR-031): a question that is
+/// The one filter left when the user switches Ask's web search on (ADR-032): a question that is
 /// plainly personal or leisure — a recipe, a match result, the weather, a joke, a film — is not
 /// Raffa's to research, and gets pointed at a general search engine or an AI search assistant
 /// instead. Everything else goes to the web and to Raffa's own store, whatever the procurement

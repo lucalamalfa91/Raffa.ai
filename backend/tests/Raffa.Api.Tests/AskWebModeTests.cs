@@ -18,7 +18,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace Raffa.Api.Tests;
 
 /// <summary>
-/// ADR-031 — the composer's web-search toggle over `POST /api/conversations/{id}/messages`
+/// ADR-032 — the composer's web-search toggle over `POST /api/conversations/{id}/messages`
 /// (<c>webResearch: true</c>): no per-question consent, the procurement-only filters lifted, one
 /// open-mode research call beside the contracts-only pipeline, a plainly personal question pointed
 /// at Google and Perplexity with zero model calls, and the kill switch, workspace opt-in and budget

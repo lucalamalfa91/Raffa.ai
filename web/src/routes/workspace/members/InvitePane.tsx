@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import {
   IDENTITY_ONE_TIME_CODE_LINE,
   INVITE_ROLE_LABEL,
@@ -73,11 +73,11 @@ export default function InvitePane({
   onRoleChange,
   onSubmit,
 }: InvitePaneProps) {
-  const [linkCopied, setLinkCopied] = useState(false);
-
-  useEffect(() => {
-    setLinkCopied(false);
-  }, [outcome]);
+  // "Copied" belongs to the outcome whose link was copied: a new invite (or none) reads "Copy link"
+  // again by construction. Derived rather than reset in an effect -- a passive effect for a fresh
+  // outcome could run after a quick click and wipe the confirmation it had just shown.
+  const [copiedOutcome, setCopiedOutcome] = useState<InviteOutcome | null>(null);
+  const linkCopied = outcome !== null && copiedOutcome === outcome;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -87,7 +87,8 @@ export default function InvitePane({
   const copyLink = (link: string) => {
     const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
     if (!clipboard) return;
-    void clipboard.writeText(link).then(() => setLinkCopied(true));
+    const copiedFor = outcome;
+    void clipboard.writeText(link).then(() => setCopiedOutcome(copiedFor));
   };
 
   return (

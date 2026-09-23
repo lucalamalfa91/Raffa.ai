@@ -633,6 +633,17 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(screen.getByRole("link", { name: "← Savings" })).toHaveAttribute("href", "/savings");
     });
 
+    it("returns to the exact Renewals row it came from, and never follows a returnTo off the origin's own path", async () => {
+      const { unmount } = renderContract360(populatedClient(), CONTRACT_ID, { from: "renewals", returnTo: `/renewals?select=${CONTRACT_ID}` });
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+      expect(screen.getByRole("link", { name: "← Renewals" })).toHaveAttribute("href", `/renewals?select=${CONTRACT_ID}`);
+      unmount();
+
+      renderContract360(populatedClient(), CONTRACT_ID, { from: "renewals", returnTo: "https://example.test/elsewhere" });
+      await screen.findByRole("heading", { level: 2, name: "MSA" });
+      expect(screen.getByRole("link", { name: "← Renewals" })).toHaveAttribute("href", "/renewals");
+    });
+
     it("shows a wire-provided supplierName instead of the id-fragment fallback", async () => {
       renderContract360(
         populatedClient({ getContract360: vi.fn().mockResolvedValue(ok(contract({ header: { ...contract().header, supplierName: "Salesforce" } }))) }),
@@ -659,6 +670,11 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(cells[0]).toHaveTextContent("Where you can save");
       expect(cells[0]).toHaveTextContent("Not yet available");
       expect(cells[0]).toHaveTextContent(/Benchmark Service/);
+      // The saving is tracked in Savings, focused on this contract.
+      expect(within(cells[0] as HTMLElement).getByRole("link", { name: "Track it in Savings →" })).toHaveAttribute(
+        "href",
+        `/savings?contract=${CONTRACT_ID}`,
+      );
 
       expect(cells[1]).toHaveTextContent("When you must move");
       expect(cells[1]).toHaveTextContent("Not yet available");
@@ -801,7 +817,8 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       await waitFor(() => expect(putNegotiationSteps).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, { steps: ["Notify"] }));
       expect(steps[0]).toHaveAttribute("aria-pressed", "true");
 
-      expect(within(tracker).getByRole("link", { name: "Track it in Renewals →" })).toHaveAttribute("href", "/renewals");
+      // Renewals opens with this contract selected, not at the top of its list.
+      expect(within(tracker).getByRole("link", { name: "Track it in Renewals →" })).toHaveAttribute("href", `/renewals?select=${CONTRACT_ID}`);
       expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
       expect(window.sessionStorage.getItem(`raffa.contract360.steps.${CONTRACT_ID}`)).toBeNull();
 
@@ -1123,7 +1140,7 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(within(outcome).getByText("Notice sent")).toHaveClass("tag-outline");
       expect(within(outcome).getByText("Contract ends")).toBeInTheDocument();
       expect(within(outcome).getByText("CHF 500,000 / yr")).toBeInTheDocument();
-      expect(within(outcome).getByRole("link", { name: "See it in Renewals →" })).toHaveAttribute("href", "/renewals");
+      expect(within(outcome).getByRole("link", { name: "See it in Renewals →" })).toHaveAttribute("href", `/renewals?select=${CONTRACT_ID}`);
       expect(screen.queryByText("Close the cycle")).toBeNull();
 
       fireEvent.click(within(outcome).getByRole("button", { name: "Reopen" }));

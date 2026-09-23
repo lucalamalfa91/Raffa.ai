@@ -1255,7 +1255,7 @@ export interface PostMessageRequest {
    * transcript shows (the option's label, or the typed text); the server runs the option's own
    * persisted rewrite. Either `optionKey` or `freeText: true`. */
   interviewAnswer?: InterviewAnswerRequest;
-  /** ADR-031: the composer's web-search toggle was on -- the question goes to the public web and
+  /** ADR-032: the composer's web-search toggle was on -- the question goes to the public web and
    * to the workspace's own data, the procurement-only filters lifted. Omitted when off; ignored by
    * the server on an interview answer. */
   webResearch?: boolean;

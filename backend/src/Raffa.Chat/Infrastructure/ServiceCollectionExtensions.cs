@@ -5,6 +5,7 @@ using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Feedback;
+using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
@@ -112,6 +113,12 @@ public static class ServiceCollectionExtensions
         // the council above; the host binds Chat:Drafting before calling this.
         services.TryAddSingleton(new DraftingOptions());
         services.AddScoped<NegotiationDraftingWorkflow>();
+
+        // The capability investigator (Application.Gaps, ADR-031): one analyst-role agent that
+        // decides whether a fresh turn asks for a feature Raffa does not have; the host binds
+        // Chat:GapInvestigation before calling this.
+        services.TryAddSingleton(new GapInvestigationOptions());
+        services.AddScoped<CapabilityInvestigator>();
 
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
         // GitHub publisher and binds Feedback:* before calling this when a token is configured;

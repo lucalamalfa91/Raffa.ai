@@ -73,7 +73,7 @@ public sealed class WorkspaceSettingsEndpointTests : IClassFixture<RaffaApiFacto
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.False(body.RootElement.GetProperty("webResearchEnabled").GetBoolean());
         Assert.False(body.RootElement.GetProperty("canEdit").GetBoolean());
-        // ADR-031: Program's default kill switch is off, so Ask shows no web-search toggle.
+        // ADR-032: Program's default kill switch is off, so Ask shows no web-search toggle.
         Assert.False(body.RootElement.GetProperty("webResearchAvailable").GetBoolean());
     }
 

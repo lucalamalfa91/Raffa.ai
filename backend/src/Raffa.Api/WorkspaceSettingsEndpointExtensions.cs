@@ -17,7 +17,7 @@ namespace Raffa.Api;
 /// read/write (ADR-009 w14 footer clause 7) -- the membership check opens its own narrow tenant
 /// scope and closes it before <see cref="WorkspaceSettingsService"/> opens the next. The body also
 /// carries <c>webResearchAvailable</c> — the environment's kill switch
-/// (<see cref="WebResearchOptions.Enabled"/>) — so Ask's web-search toggle (ADR-031) is shown only
+/// (<see cref="WebResearchOptions.Enabled"/>) — so Ask's web-search toggle (ADR-032) is shown only
 /// where the feature exists at all.
 /// </summary>
 public static class WorkspaceSettingsEndpointExtensions

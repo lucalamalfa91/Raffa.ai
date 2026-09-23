@@ -261,6 +261,11 @@
   color: var(--color-neutral-600);
 }
 
+.btn.contract360-answer-link {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+}
+
 /* ---- Close the cycle (inside the tracker) ---------------------------------------------
    border-top:2px solid text;margin-top:16px;padding-top:12px · kicker 11px .08em uppercase
    neutral-700 · note 12px neutral-700 margin:6px 0 10px · buttons btn-secondary / btn-ghost 12px ·

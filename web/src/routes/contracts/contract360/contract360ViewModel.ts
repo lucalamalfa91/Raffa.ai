@@ -56,10 +56,21 @@ const BACK_LINKS: Readonly<Record<string, BackLink>> = {
   savings: { label: "Savings", href: "/savings" },
 };
 
-export function resolveBackLink(from: unknown): BackLink | null {
+/**
+ * `returnTo` (optional, from the same `location.state`) lets the origin ask to be returned to a
+ * precise place -- Renewals sends `/renewals?select=<id>`, so "← Renewals" lands on the same row.
+ * It is honoured only when it stays on the origin's own path (`/renewals`, `/renewals?…`): never
+ * another screen, never an external URL.
+ */
+export function resolveBackLink(from: unknown, returnTo?: unknown): BackLink | null {
   if (typeof from !== "string") return null;
   const known = BACK_LINKS as Record<string, BackLink | undefined>;
-  return known[from] ?? null;
+  const link = known[from];
+  if (link === undefined) return null;
+  if (typeof returnTo === "string" && (returnTo === link.href || returnTo.startsWith(`${link.href}?`))) {
+    return { label: link.label, href: returnTo };
+  }
+  return link;
 }
 
 export interface SupplierLabel {

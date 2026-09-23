@@ -6342,7 +6342,7 @@
                                   "object",
                                   "null"
                                 ],
-                                "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                                "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
                                 "required": [
                                   "key",
                                   "title",
@@ -6351,7 +6351,7 @@
                                 "properties": {
                                   "key": {
                                     "type": "string",
-                                    "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                    "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
                                   },
                                   "title": {
                                     "type": "string"
@@ -6362,6 +6362,48 @@
                                       "it",
                                       "en"
                                     ]
+                                  },
+                                  "discovery": {
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
+                                    "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                                    "required": [
+                                      "titleEn",
+                                      "descriptionEn",
+                                      "nearestCapability",
+                                      "confidence",
+                                      "investigatorVersion"
+                                    ],
+                                    "properties": {
+                                      "titleEn": {
+                                        "type": "string",
+                                        "description": "The proposed feature's title -- the GitHub issue's title."
+                                      },
+                                      "descriptionEn": {
+                                        "type": "string",
+                                        "description": "One sentence: what Raffa should do."
+                                      },
+                                      "nearestCapability": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ],
+                                        "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                      },
+                                      "confidence": {
+                                        "type": "string",
+                                        "enum": [
+                                          "high",
+                                          "medium"
+                                        ]
+                                      },
+                                      "investigatorVersion": {
+                                        "type": "string",
+                                        "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                      }
+                                    }
                                   }
                                 }
                               },
@@ -6538,6 +6580,23 @@
                                     ]
                                   }
                                 }
+                              },
+                              "followUps": {
+                                "type": [
+                                  "array",
+                                  "null"
+                                ],
+                                "items": {
+                                  "type": "string"
+                                },
+                                "description": "ADR-031: the follow-up questions of a capability follow-up -- a turn that is appended to the conversation rather than returned as a live reply, so its chips are stored with it. Absent/null on every other turn."
+                              },
+                              "capabilityCheckFor": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "description": "ADR-031: on a capability follow-up only -- the id of the answer it was appended after. The client uses it to find the follow-up of a pending check, and a typed message still answers an interview that precedes a follow-up."
                               }
                             }
                           },
@@ -6845,7 +6904,7 @@
       "post": {
         "operationId": "postConversationMessage",
         "summary": "Asks a question in an existing conversation; runs the Ask engine and returns the reply.",
-        "description": "ADR-030: the request body is { question, interviewAnswer?: { messageId, questionKey, optionKey?, freeText? }, webResearch?: boolean } -- an answer to an interview turn by key, never by label (400 for an unknown message/question/option, 409 for a single-use consent option already taken). ADR-031: webResearch: true is the composer's web-search toggle -- the question goes to the public web (the user's own words, sanitised, never a pack) and to Raffa's own store with the procurement-only filters lifted and no per-question consent; a plainly personal question is a redirect with outbound Google/Perplexity actions. The kill switch, the workspace opt-in and the daily budget still apply; ignored on an interview answer. Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA), `draft` (payload.draft + payload.feedbackOffer) and `interview` (interview question(s)). `actions[].kind` includes `external` for server-authored https links. See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "description": "ADR-030: the request body is { question, interviewAnswer?: { messageId, questionKey, optionKey?, freeText? }, webResearch?: boolean } -- an answer to an interview turn by key, never by label (400 for an unknown message/question/option, 409 for a single-use consent option already taken). ADR-032: webResearch: true is the composer's web-search toggle -- the question goes to the public web (the user's own words, sanitised, never a pack) and to Raffa's own store with the procurement-only filters lifted and no per-question consent; a plainly personal question is a redirect with outbound Google/Perplexity actions. The kill switch, the workspace opt-in and the daily budget still apply; ignored on an interview answer. Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA), `draft` (payload.draft + payload.feedbackOffer) and `interview` (interview question(s)). `actions[].kind` includes `external` for server-authored https links. See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -7094,7 +7153,7 @@
                             "object",
                             "null"
                           ],
-                          "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                          "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
                           "required": [
                             "key",
                             "title",
@@ -7103,7 +7162,7 @@
                           "properties": {
                             "key": {
                               "type": "string",
-                              "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                              "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
                             },
                             "title": {
                               "type": "string"
@@ -7114,6 +7173,48 @@
                                 "it",
                                 "en"
                               ]
+                            },
+                            "discovery": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                              "required": [
+                                "titleEn",
+                                "descriptionEn",
+                                "nearestCapability",
+                                "confidence",
+                                "investigatorVersion"
+                              ],
+                              "properties": {
+                                "titleEn": {
+                                  "type": "string",
+                                  "description": "The proposed feature's title -- the GitHub issue's title."
+                                },
+                                "descriptionEn": {
+                                  "type": "string",
+                                  "description": "One sentence: what Raffa should do."
+                                },
+                                "nearestCapability": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                },
+                                "confidence": {
+                                  "type": "string",
+                                  "enum": [
+                                    "high",
+                                    "medium"
+                                  ]
+                                },
+                                "investigatorVersion": {
+                                  "type": "string",
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                }
+                              }
                             }
                           }
                         },
@@ -7290,6 +7391,23 @@
                               ]
                             }
                           }
+                        },
+                        "followUps": {
+                          "type": [
+                            "array",
+                            "null"
+                          ],
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "ADR-031: the follow-up questions of a capability follow-up -- a turn that is appended to the conversation rather than returned as a live reply, so its chips are stored with it. Absent/null on every other turn."
+                        },
+                        "capabilityCheckFor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "ADR-031: on a capability follow-up only -- the id of the answer it was appended after. The client uses it to find the follow-up of a pending check, and a typed message still answers an interview that precedes a follow-up."
                         }
                       }
                     },
@@ -7368,6 +7486,551 @@
                           "type": "boolean"
                         }
                       }
+                    },
+                    "capabilityCheck": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "pending",
+                        null
+                      ],
+                      "description": "ADR-031: 'pending' when the capability check that runs beside the answer was still running once the answer was stored -- its follow-up, if any, is appended to the conversation later and the client looks for it there (a Raffa message whose payload.capabilityCheckFor is this reply's messageId). null otherwise."
+                    },
+                    "followUpMessage": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "required": [
+                        "id",
+                        "role",
+                        "kind",
+                        "markdown",
+                        "citations",
+                        "actions",
+                        "modelId",
+                        "promptVersion",
+                        "inputHash",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "you",
+                            "raffa"
+                          ]
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "answer",
+                            "abstain",
+                            "redirect",
+                            "refusal",
+                            "draft",
+                            "interview"
+                          ],
+                          "description": "ADR-024 §6's four reply kinds -- answer | abstain | redirect | refusal -- plus, since ADR-030, 'draft' (a drafted negotiation email in payload.draft) and 'interview' (clarifying question(s) in interview)."
+                        },
+                        "markdown": {
+                          "type": "string",
+                          "description": "The caller's own question verbatim for a 'you' turn; Raffa's answerMarkdown for a 'raffa' turn."
+                        },
+                        "citations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "n",
+                              "corpus",
+                              "title",
+                              "subtitle",
+                              "snippet",
+                              "documentId",
+                              "contractId",
+                              "page",
+                              "section",
+                              "previewUrl",
+                              "href",
+                              "recordId"
+                            ],
+                            "properties": {
+                              "n": {
+                                "type": "integer"
+                              },
+                              "corpus": {
+                                "type": "string",
+                                "description": "Usually 'tenant' | 'market' | 'raffa' (requirements.md §6 / R-WEB-04's three-corpus citation-badge vocabulary). Backend truth (Raffa.Chat.Application.Reply.ReplyCitation.Corpus's own doc comment: 'Echoes PackItem.Corpus') admits a fourth internal value, 'calc' (a deterministic-calculator-derived fact -- a renewal date, a negotiation lever, a criticality score -- Raffa.Chat.Application.Pack.PackCorpus.Calc), with no remapping step anywhere before the wire; confirmed by reading backend/src/Raffa.Api/AskCopilotService.cs's own PackItem constructions for 'when-you-must-move'/lever/target/criticality items, which set a real /contracts/{id} Href despite PackItem.Href's own doc comment claiming Href is null for PackCorpus.Calc. Left a plain string (not `enum`) to stay honest about this observed gap rather than declare a fourth badge variant replyTypes.ts does not have; web/src/routes/ask/askViewModel.ts#toCitationCorpus folds an unrecognised value into 'tenant' (the closer honest bucket -- a calculator fact is always about this tenant's own contract, never a market/feature fact). ADR-030 adds a fifth value, 'web': a public web source the research role read after the user's per-question consent (Raffa.Chat.Application.Pack.PackCorpus.Web) -- href is the source URL (https only), the card renders it as an external link labelled unverified, and it never carries documentId/contractId/recordId."
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "subtitle": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "snippet": {
+                                "type": "string"
+                              },
+                              "documentId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "contractId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "format": "uuid"
+                              },
+                              "page": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "section": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "previewUrl": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "href": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "recordId": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "actions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "label",
+                              "href",
+                              "kind"
+                            ],
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "href": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "navigate",
+                                  "upload",
+                                  "external"
+                                ],
+                                "description": "'navigate' | 'upload' (Raffa.Chat.Application.Capabilities.CopilotActionKind), plus -- since ADR-030 D6 -- 'external': an absolute https URL the client opens in a new tab (today only the GitHub issue a feedback submission opened; server-authored from the publisher's own response, never model-authored and never a catalog route)."
+                              }
+                            }
+                          }
+                        },
+                        "modelId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "promptVersion": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "inputHash": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "payload": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "ADR-030 D2: the reply's structured half -- the drafted email, the capability gap, the feedback offer or the feedback result. null for every turn that carries none (every 'answer'/'abstain'/'refusal' and every non-gap 'redirect'). Each member is itself null when absent; the object is written with every member present so this required list is honest.",
+                          "required": [
+                            "gap",
+                            "draft",
+                            "feedbackOffer",
+                            "feedbackResult"
+                          ],
+                          "properties": {
+                            "gap": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
+                              "required": [
+                                "key",
+                                "title",
+                                "language"
+                              ],
+                              "properties": {
+                                "key": {
+                                  "type": "string",
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "language": {
+                                  "type": "string",
+                                  "enum": [
+                                    "it",
+                                    "en"
+                                  ]
+                                },
+                                "discovery": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                                  "required": [
+                                    "titleEn",
+                                    "descriptionEn",
+                                    "nearestCapability",
+                                    "confidence",
+                                    "investigatorVersion"
+                                  ],
+                                  "properties": {
+                                    "titleEn": {
+                                      "type": "string",
+                                      "description": "The proposed feature's title -- the GitHub issue's title."
+                                    },
+                                    "descriptionEn": {
+                                      "type": "string",
+                                      "description": "One sentence: what Raffa should do."
+                                    },
+                                    "nearestCapability": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                    },
+                                    "confidence": {
+                                      "type": "string",
+                                      "enum": [
+                                        "high",
+                                        "medium"
+                                      ]
+                                    },
+                                    "investigatorVersion": {
+                                      "type": "string",
+                                      "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "draft": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "The drafted negotiation email -- only on kind 'draft'.",
+                              "required": [
+                                "subject",
+                                "body"
+                              ],
+                              "properties": {
+                                "subject": {
+                                  "type": "string"
+                                },
+                                "body": {
+                                  "type": "string",
+                                  "description": "Plain text, verbatim: rendered in a pre-wrap block with a Copy email button, never through the markdown subset. Carries no inline [n] marker, no link, no identifier (Raffa.Chat.Application.Drafting.DraftGuard)."
+                                }
+                              }
+                            },
+                            "feedbackOffer": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "The in-chat feedback card, fully localised by the server in the question's language (ADR-030 D5); the client owns no copy of its own for it. Present on a capability-gap 'redirect' and on every 'draft'.",
+                              "required": [
+                                "prompt",
+                                "yesLabel",
+                                "noLabel",
+                                "nextLabel",
+                                "backLabel",
+                                "submitLabel",
+                                "sendingLabel",
+                                "thanksLabel",
+                                "errorLabel",
+                                "publicNotice",
+                                "questions"
+                              ],
+                              "properties": {
+                                "prompt": {
+                                  "type": "string"
+                                },
+                                "yesLabel": {
+                                  "type": "string"
+                                },
+                                "noLabel": {
+                                  "type": "string"
+                                },
+                                "nextLabel": {
+                                  "type": "string"
+                                },
+                                "backLabel": {
+                                  "type": "string"
+                                },
+                                "submitLabel": {
+                                  "type": "string"
+                                },
+                                "sendingLabel": {
+                                  "type": "string"
+                                },
+                                "thanksLabel": {
+                                  "type": "string"
+                                },
+                                "errorLabel": {
+                                  "type": "string"
+                                },
+                                "publicNotice": {
+                                  "type": "string",
+                                  "description": "Shown before the free-text question: the answers are published on a public GitHub repository."
+                                },
+                                "questions": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "key",
+                                      "kind",
+                                      "label",
+                                      "prefill",
+                                      "choices"
+                                    ],
+                                    "properties": {
+                                      "key": {
+                                        "type": "string",
+                                        "enum": [
+                                          "what",
+                                          "frequency",
+                                          "importance"
+                                        ]
+                                      },
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "text",
+                                          "choice"
+                                        ]
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "prefill": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ],
+                                        "description": "The editable default of a 'text' question (the gap's own one-line description); null for a 'choice'."
+                                      },
+                                      "choices": {
+                                        "type": [
+                                          "array",
+                                          "null"
+                                        ],
+                                        "items": {
+                                          "type": "object",
+                                          "required": [
+                                            "key",
+                                            "label"
+                                          ],
+                                          "properties": {
+                                            "key": {
+                                              "type": "string"
+                                            },
+                                            "label": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        },
+                                        "description": "The quick-choice chips of a 'choice' question; null for 'text'."
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "feedbackResult": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "Carried by the confirmation turn POST /api/conversations/{id}/feedback appends.",
+                              "required": [
+                                "forMessageId",
+                                "status",
+                                "issueNumber",
+                                "issueUrl"
+                              ],
+                              "properties": {
+                                "forMessageId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "description": "The id of the turn whose feedbackOffer was answered -- the client hides that offer on resume."
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "recorded",
+                                    "issue_opened"
+                                  ]
+                                },
+                                "issueNumber": {
+                                  "type": [
+                                    "integer",
+                                    "null"
+                                  ]
+                                },
+                                "issueUrl": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                }
+                              }
+                            },
+                            "followUps": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "ADR-031: the follow-up questions of a capability follow-up -- a turn that is appended to the conversation rather than returned as a live reply, so its chips are stored with it. Absent/null on every other turn."
+                            },
+                            "capabilityCheckFor": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "ADR-031: on a capability follow-up only -- the id of the answer it was appended after. The client uses it to find the follow-up of a pending check, and a typed message still answers an interview that precedes a follow-up."
+                            }
+                          }
+                        },
+                        "interview": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "ADR-030. Present when kind is 'interview': Raffa's clarifying question(s) with clickable options. Keys, labels and hints only -- an option's server-side resolution (the rewritten question, forced intent/contract, or the web-research query) never reaches the wire, so the client can neither learn nor alter it. Answer with POST .../messages { question: <label or free text>, interviewAnswer: { messageId, questionKey, optionKey? | freeText: true } }. 'answered' is true once a later turn exists or a single-use (consent) option was taken.",
+                          "required": [
+                            "prompt",
+                            "questions",
+                            "answered"
+                          ],
+                          "properties": {
+                            "prompt": {
+                              "type": "string"
+                            },
+                            "questions": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "key",
+                                  "prompt",
+                                  "presentation",
+                                  "allowFreeText",
+                                  "options"
+                                ],
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "prompt": {
+                                    "type": "string"
+                                  },
+                                  "presentation": {
+                                    "type": "string",
+                                    "enum": [
+                                      "choice",
+                                      "consent"
+                                    ]
+                                  },
+                                  "allowFreeText": {
+                                    "type": "boolean"
+                                  },
+                                  "options": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "key",
+                                        "label",
+                                        "hint"
+                                      ],
+                                      "properties": {
+                                        "key": {
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "hint": {
+                                          "type": [
+                                            "string",
+                                            "null"
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "answered": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      },
+                      "description": "ADR-031: the capability follow-up, when the check had already finished and found an operation Raffa cannot perform -- a separate Raffa message stored right after this answer, in the same shape as GET /api/conversations/{id}'s messages (payload.gap, payload.feedbackOffer, payload.followUps, payload.capabilityCheckFor). null otherwise."
                     }
                   }
                 }
@@ -8936,7 +9599,7 @@
                                 "object",
                                 "null"
                               ],
-                              "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                              "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
                               "required": [
                                 "key",
                                 "title",
@@ -8945,7 +9608,7 @@
                               "properties": {
                                 "key": {
                                   "type": "string",
-                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
                                 },
                                 "title": {
                                   "type": "string"
@@ -8956,6 +9619,48 @@
                                     "it",
                                     "en"
                                   ]
+                                },
+                                "discovery": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                                  "required": [
+                                    "titleEn",
+                                    "descriptionEn",
+                                    "nearestCapability",
+                                    "confidence",
+                                    "investigatorVersion"
+                                  ],
+                                  "properties": {
+                                    "titleEn": {
+                                      "type": "string",
+                                      "description": "The proposed feature's title -- the GitHub issue's title."
+                                    },
+                                    "descriptionEn": {
+                                      "type": "string",
+                                      "description": "One sentence: what Raffa should do."
+                                    },
+                                    "nearestCapability": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                    },
+                                    "confidence": {
+                                      "type": "string",
+                                      "enum": [
+                                        "high",
+                                        "medium"
+                                      ]
+                                    },
+                                    "investigatorVersion": {
+                                      "type": "string",
+                                      "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                    }
+                                  }
                                 }
                               }
                             },
@@ -9132,6 +9837,23 @@
                                   ]
                                 }
                               }
+                            },
+                            "followUps": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "ADR-031: the follow-up questions of a capability follow-up -- a turn that is appended to the conversation rather than returned as a live reply, so its chips are stored with it. Absent/null on every other turn."
+                            },
+                            "capabilityCheckFor": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "ADR-031: on a capability follow-up only -- the id of the answer it was appended after. The client uses it to find the follow-up of a pending check, and a typed message still answers an interview that precedes a follow-up."
                             }
                           }
                         }
@@ -9391,7 +10113,7 @@
                                 "object",
                                 "null"
                               ],
-                              "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                              "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
                               "required": [
                                 "key",
                                 "title",
@@ -9400,7 +10122,7 @@
                               "properties": {
                                 "key": {
                                   "type": "string",
-                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
                                 },
                                 "title": {
                                   "type": "string"
@@ -9411,6 +10133,48 @@
                                     "it",
                                     "en"
                                   ]
+                                },
+                                "discovery": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                                  "required": [
+                                    "titleEn",
+                                    "descriptionEn",
+                                    "nearestCapability",
+                                    "confidence",
+                                    "investigatorVersion"
+                                  ],
+                                  "properties": {
+                                    "titleEn": {
+                                      "type": "string",
+                                      "description": "The proposed feature's title -- the GitHub issue's title."
+                                    },
+                                    "descriptionEn": {
+                                      "type": "string",
+                                      "description": "One sentence: what Raffa should do."
+                                    },
+                                    "nearestCapability": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                    },
+                                    "confidence": {
+                                      "type": "string",
+                                      "enum": [
+                                        "high",
+                                        "medium"
+                                      ]
+                                    },
+                                    "investigatorVersion": {
+                                      "type": "string",
+                                      "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                    }
+                                  }
                                 }
                               }
                             },
@@ -9587,6 +10351,23 @@
                                   ]
                                 }
                               }
+                            },
+                            "followUps": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "string"
+                              },
+                              "description": "ADR-031: the follow-up questions of a capability follow-up -- a turn that is appended to the conversation rather than returned as a live reply, so its chips are stored with it. Absent/null on every other turn."
+                            },
+                            "capabilityCheckFor": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "description": "ADR-031: on a capability follow-up only -- the id of the answer it was appended after. The client uses it to find the follow-up of a pending check, and a typed message still answers an interview that precedes a follow-up."
                             }
                           }
                         }
@@ -9634,7 +10415,7 @@
                     },
                     "webResearchAvailable": {
                       "type": "boolean",
-                      "description": "ADR-031: the environment's web-research kill switch (Chat:WebResearch:Enabled). Ask shows its web-search toggle only when this is true; absent reads as false."
+                      "description": "ADR-032: the environment's web-research kill switch (Chat:WebResearch:Enabled). Ask shows its web-search toggle only when this is true; absent reads as false."
                     },
                     "canEdit": {
                       "type": "boolean",
@@ -9700,7 +10481,7 @@
                     },
                     "webResearchAvailable": {
                       "type": "boolean",
-                      "description": "ADR-031: the environment's web-research kill switch (Chat:WebResearch:Enabled). Ask shows its web-search toggle only when this is true; absent reads as false."
+                      "description": "ADR-032: the environment's web-research kill switch (Chat:WebResearch:Enabled). Ask shows its web-search toggle only when this is true; absent reads as false."
                     },
                     "canEdit": {
                       "type": "boolean"

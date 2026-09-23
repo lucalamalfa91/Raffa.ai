@@ -73,4 +73,18 @@ public sealed class DomainGateCapabilityGapTests
 
         Assert.Equal(GateLabel.InDomain, result.Label);
     }
+
+    /// <summary>ADR-031: the first turn of the owner's screenshot answered "No CFO contract has been
+    /// uploaded and validated" — a role written in capitals is not a supplier.</summary>
+    [Theory]
+    [InlineData("puoi scrivere un report per riportare l'anamento del 2026 al CFO?")]
+    [InlineData("Prepare a summary of our renewals for the Board")]
+    [InlineData("What should I tell the CEO about our KPIs?")]
+    public void A_role_or_a_metric_in_capitals_is_never_a_supplier(string question)
+    {
+        var result = _gate.Classify(question, KnownSalesforce);
+
+        Assert.NotEqual(GateLabel.NeedsDocument, result.Label);
+        Assert.Null(result.NamedSupplier);
+    }
 }

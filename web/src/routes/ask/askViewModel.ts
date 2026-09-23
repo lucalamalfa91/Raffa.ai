@@ -285,17 +285,19 @@ export function mapConversationReplyToReply(body: ConversationReplyBody): Reply 
 }
 
 /** Maps one stored `GET /api/conversations/{id}` message (resume) onto `Reply`. `followUps` is
- * always empty -- `ConversationMessage` has no such column (`ConversationsEndpointExtensions
+ * empty for an ordinary turn -- `ConversationMessage` has no such column (`ConversationsEndpointExtensions
  * .ToMessageResponse`'s own field list), so a resumed conversation's past Raffa turns render
  * without follow-up chips, an honest, real limitation (see that operation's own OpenAPI
- * description), not an oversight this function papers over. */
+ * description), not an oversight this function papers over. The one exception is ADR-031's
+ * capability follow-up, which is only ever read back from the conversation and so stores its
+ * chips in `payload.followUps`. */
 export function mapConversationMessageToReply(message: ConversationMessageBody): Reply {
   return buildReply({
     kind: message.kind,
     text: message.markdown,
     citations: message.citations,
     actions: message.actions,
-    followUps: [],
+    followUps: message.payload?.followUps ?? [],
     payload: message.payload,
     interview: message.interview ?? null,
     messageId: message.id,
@@ -310,8 +312,19 @@ export function mapConversationMessageToReply(message: ConversationMessageBody):
 /** The interview the next typed message answers, if the last Raffa turn is one still waiting:
  * its message id and the first question that accepts free text. Null otherwise -- a typed
  * question then posts as a plain question, exactly as before the interview existed. */
+/** The last turn a typed message could be answering: ADR-031's capability follow-ups sit after the
+ * turn they follow and are never what the user replies to, so trailing ones are skipped. */
+function lastAnswerableTurn(turns: readonly AskTurnView[]): AskTurnView | undefined {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (turn.role === "raffa" && turn.followsMessageId) continue;
+    return turn;
+  }
+  return undefined;
+}
+
 export function pendingInterview(turns: readonly AskTurnView[]): { messageId: string; questionKey: string } | null {
-  const last = turns[turns.length - 1];
+  const last = lastAnswerableTurn(turns);
   if (!last || last.role !== "raffa" || last.reply.kind !== "interview") return null;
   const { reply } = last;
   if (reply.answered || reply.messageId === null) return null;
@@ -325,7 +338,7 @@ export function pendingInterview(turns: readonly AskTurnView[]): { messageId: st
 export function pendingConsent(
   turns: readonly AskTurnView[],
 ): { reply: InterviewReply; question: InterviewQuestion } | null {
-  const last = turns[turns.length - 1];
+  const last = lastAnswerableTurn(turns);
   if (!last || last.role !== "raffa" || last.reply.kind !== "interview") return null;
   const { reply } = last;
   if (reply.answered || reply.messageId === null) return null;
@@ -369,7 +382,7 @@ export function markInterviewAnswered(turns: readonly AskTurnView[], messageId: 
  * looks the clicked citation's `n` back up in `wireCitations` to recover the one field it actually
  * needs to act (a market citation's `recordId`) -- see that function's own doc comment. */
 export type AskTurnView =
-  /** `web`: sent with the composer's web-search toggle on (ADR-031) -- live only; a resumed
+  /** `web`: sent with the composer's web-search toggle on (ADR-032) -- live only; a resumed
    * conversation shows the reply's own "Web · unverified" provenance instead. */
   | { id: string; role: "you"; text: string; web?: boolean }
   | {
@@ -380,6 +393,9 @@ export type AskTurnView =
       /** ADR-030 D5: the server's own message id (`messageId` on a live reply, `id` on a stored
        * message) -- what `POST …/feedback` names; `null` for a client-built error turn. */
       messageId: string | null;
+      /** ADR-031: set on a capability follow-up -- the id of the answer it was appended after
+       * (`payload.capabilityCheckFor`). Absent on every other turn. */
+      followsMessageId?: string | null;
     };
 
 let turnIdCounter = 0;
@@ -397,7 +413,7 @@ export function buildYouTurn(id: string, text: string, web = false): AskTurnView
   return web ? { id, role: "you", text, web: true } : { id, role: "you", text };
 }
 
-/** The body of one plain question -- `webResearch: true` only when the toggle was on (ADR-031). */
+/** The body of one plain question -- `webResearch: true` only when the toggle was on (ADR-032). */
 export function buildQuestionRequest(question: string, webResearch = false): PostMessageRequest {
   return webResearch ? { question, webResearch: true } : { question };
 }
@@ -407,13 +423,77 @@ export function buildRaffaTurnFromReply(id: string, body: ConversationReplyBody)
 }
 
 export function buildRaffaTurnFromMessage(message: ConversationMessageBody): AskTurnView {
+  const followsMessageId = message.payload?.capabilityCheckFor ?? null;
   return {
     id: message.id,
     role: "raffa",
     reply: mapConversationMessageToReply(message),
     wireCitations: message.citations,
     messageId: message.id,
+    ...(followsMessageId ? { followsMessageId } : {}),
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// ADR-031: the capability follow-up -- a separate message after the answer, never a delay in it
+// ---------------------------------------------------------------------------------------------
+
+/** Appends the capability follow-up as its own Raffa turn, once: a turn already carrying that
+ * message id (the inline copy, or an earlier poll) is never shown twice. */
+export function appendCapabilityFollowUp(
+  turns: readonly AskTurnView[],
+  message: ConversationMessageBody,
+): readonly AskTurnView[] {
+  if (turns.some((turn) => turn.role === "raffa" && turn.messageId === message.id)) return turns;
+  return [...turns, buildRaffaTurnFromMessage(message)];
+}
+
+/** The stored follow-up of the answer `answeredMessageId`, if the server has appended one. */
+export function findCapabilityFollowUp(
+  detail: ConversationDetailBody,
+  answeredMessageId: string,
+): ConversationMessageBody | null {
+  return (
+    detail.messages.find((message) => message.role === "raffa" && message.payload?.capabilityCheckFor === answeredMessageId) ??
+    null
+  );
+}
+
+/** How often, and for how long, the screen looks for a pending follow-up: a little longer than the
+ * server's own check budget (`Chat:GapInvestigation:TimeoutSeconds`, 12 s by default). */
+export const CAPABILITY_FOLLOW_UP_POLL_INTERVAL_MS = 2000;
+export const CAPABILITY_FOLLOW_UP_POLL_ATTEMPTS = 8;
+
+/**
+ * ADR-031: the reply said `capabilityCheck: "pending"` -- the check that runs beside the answer
+ * was still thinking when the answer was stored. Reads the conversation back a bounded number of
+ * times until the follow-up appears; `null` when none does (the check found nothing, failed, or
+ * the conversation moved on), or as soon as `shouldStop` says the screen no longer wants it (a new
+ * question, another conversation, an unmount). Transport errors just count as an attempt.
+ */
+export async function pollCapabilityFollowUp(
+  apiClient: ApiClient,
+  tenantId: string,
+  conversationId: string,
+  answeredMessageId: string,
+  shouldStop: () => boolean,
+  options: { attempts?: number; intervalMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<ConversationMessageBody | null> {
+  const attempts = options.attempts ?? CAPABILITY_FOLLOW_UP_POLL_ATTEMPTS;
+  const intervalMs = options.intervalMs ?? CAPABILITY_FOLLOW_UP_POLL_INTERVAL_MS;
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await sleep(intervalMs);
+    if (shouldStop()) return null;
+    const result = await apiClient.getConversation(tenantId, conversationId);
+    if (shouldStop()) return null;
+    if (result.ok && result.conversation) {
+      const followUp = findCapabilityFollowUp(result.conversation, answeredMessageId);
+      if (followUp) return followUp;
+    }
+  }
+  return null;
 }
 
 /** ADR-030 D5: the ids of every Raffa turn whose feedback offer was already answered -- read off
@@ -627,7 +707,7 @@ export const NEW_CHAT_INTRO =
 export const COMPOSER_NOTE = "Procurement only · cites its sources";
 
 // ---------------------------------------------------------------------------------------------
-// ADR-031: the composer's web-search toggle. On, a question goes to the public web and to the
+// ADR-032: the composer's web-search toggle. On, a question goes to the public web and to the
 // workspace's own data together, the procurement-only filters lifted; a plainly personal question
 // is pointed at a search engine. The toggle is the consent -- no per-question dialog.
 // ---------------------------------------------------------------------------------------------

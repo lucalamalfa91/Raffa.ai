@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { PortfolioListItem } from "../../../src/api/client";
 import {
   buildPortfolioHighlightHref,
+  buildPortfolioSelectionHref,
+  getSelectionSourceLink,
+  readSelectionSource,
   buildPortfolioRows,
   buildPortfolioSummary,
   filterRowsByContractIds,
@@ -274,5 +277,28 @@ describe("formatHighlightNotice", () => {
 
   it("explains an empty result instead of showing an empty table", () => {
     expect(formatHighlightNotice(0, 7)).toBe("None of the contracts highlighted in Ask is in the portfolio any more.");
+  });
+});
+
+describe("selection source (?from=): Ask, Renewals or Savings picked the contracts", () => {
+  it("adds ?from= for Renewals and Savings, never for Ask or an empty selection", () => {
+    expect(buildPortfolioSelectionHref(["a", "b"], "renewals")).toBe("/contracts?ids=a,b&from=renewals");
+    expect(buildPortfolioSelectionHref(["a"], "savings")).toBe("/contracts?ids=a&from=savings");
+    expect(buildPortfolioSelectionHref(["a"], "ask")).toBe("/contracts?ids=a");
+    expect(buildPortfolioSelectionHref([], "renewals")).toBe("/contracts");
+  });
+
+  it("reads the source, defaulting to Ask for a link without one or with an unknown one", () => {
+    expect(readSelectionSource(new URLSearchParams("ids=a&from=renewals"))).toBe("renewals");
+    expect(readSelectionSource(new URLSearchParams("ids=a&from=savings"))).toBe("savings");
+    expect(readSelectionSource(new URLSearchParams("ids=a"))).toBe("ask");
+    expect(readSelectionSource(new URLSearchParams("ids=a&from=elsewhere"))).toBe("ask");
+    expect(getSelectionSourceLink("renewals")).toEqual({ label: "Renewals", href: "/renewals" });
+  });
+
+  it("names the source in the notice", () => {
+    expect(formatHighlightNotice(2, 7, "renewals")).toBe("Showing 2 of 7 contracts — the ones selected in Renewals.");
+    expect(formatHighlightNotice(1, 7, "savings")).toBe("Showing 1 of 7 contracts — the ones picked out in Savings.");
+    expect(formatHighlightNotice(0, 7, "renewals")).toBe("None of the contracts selected in Renewals is in the portfolio any more.");
   });
 });

@@ -393,13 +393,13 @@
   white-space: nowrap;
 }
 
-/* ADR-031: where to switch web search on -- a sentence, so it may wrap. */
+/* ADR-032: where to switch web search on -- a sentence, so it may wrap. */
 .ask-composer-note.ask-composer-note-hint {
   white-space: normal;
   color: var(--color-text);
 }
 
-/* ---- Web search toggle (ADR-031) ---------------------------------------------
+/* ---- Web search toggle (ADR-032) ---------------------------------------------
  * A switch beside "Ask": square like every control, ink when on so it never reads as a second
  * primary button next to the accent "Ask". */
 .ask-web-toggle {

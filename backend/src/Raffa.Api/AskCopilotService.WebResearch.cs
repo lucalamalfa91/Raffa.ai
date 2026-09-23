@@ -32,7 +32,7 @@ internal sealed partial class AskCopilotService
         Budget,
         NoTopic,
 
-        /// <summary>ADR-031: a web-mode question with fewer than two searchable words.</summary>
+        /// <summary>ADR-032: a web-mode question with fewer than two searchable words.</summary>
         TooShort,
     }
 

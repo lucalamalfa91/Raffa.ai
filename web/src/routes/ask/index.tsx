@@ -137,7 +137,7 @@ function sidePanelFitsBesideChat(): boolean {
  * mark + underlined input + "Ask", the two suggestion chips and "Procurement only · cites or
  * abstains"). Every figure is quoted in `ask.css`'s header comment.
  *
- * **Web search toggle** (ADR-031): beside "Ask", shown only where the environment has web
+ * **Web search toggle** (ADR-032): beside "Ask", shown only where the environment has web
  * research (`GET /api/workspaces/{id}/settings` → `webResearchAvailable`), usable once the workspace
  * Admin opted in. On, every plain question is sent with `webResearch: true` -- the public web and
  * the workspace's own data together, no consent dialog; the placeholder, the note and the thinking
@@ -332,7 +332,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   const suggestions = scopeContractId !== undefined ? suggestionsFor(capabilities, scopedSupplierName) : suggestionsFor(capabilities);
 
-  // ADR-031: whether the web-search toggle exists here, and whether this workspace may use it.
+  // ADR-032: whether the web-search toggle exists here, and whether this workspace may use it.
   // Read once the chat surface is on; the server re-checks every gate on every question anyway.
   const [webSearchToggle, setWebSearchToggle] = useState<WebSearchToggleState>(WEB_SEARCH_UNKNOWN);
   const [webSearchOn, setWebSearchOn] = useState(false);
@@ -360,7 +360,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   // ADR-030: the interview a typed message answers, the create-then-ask sequence and the reply
   // itself are all the store's (`askSessions.ts#send`), so the reply lands in this session even if
-  // the user has moved on. A session still answering refuses a second question. ADR-031: with the
+  // the user has moved on. A session still answering refuses a second question. ADR-032: with the
   // web-search toggle on, a plain question is a web-mode one (an interview option never is).
   const ask = useCallback(
     (rawText: string, interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null }) => {
