@@ -123,6 +123,33 @@ asks three quick questions and `POST /api/conversations/{id}/feedback` stores
 the request and opens a GitHub issue for the team (public-safe body: gap,
 answers, language, environment, an opaque workspace hash).
 
+**Raffa discovers gaps by itself** (ADR-031). The catalog only knows five
+phrasings, so every fresh, typed in-domain turn also starts the **capability
+investigator** (`CapabilityInvestigator`, one `analyst`-role call, prompt
+`Prompts/gaps/v1.md`) — **beside the answer, never in front of it**: the user
+gets the standard reply at once. The investigator reads the message against
+Raffa's whole capability map (the screens, what Ask itself can do, the known
+gaps) and says `question`, `supported`, `known-gap` or `gap`. When it finds an
+operation Raffa cannot perform, a **separate Raffa message** is stored right
+after the answer ("Ho verificato cosa sa fare Raffa.ai per la tua
+richiesta. …"): the honest preface, the nearest screen, the questions Ask can
+already answer as chips, and a card to **propose** the feature (a known gap
+offers its own alternative instead). It comes back in the same response as
+`followUpMessage` when the check finished first; otherwise the reply says
+`capabilityCheck: "pending"` and the session reads the conversation back for a
+few seconds, landing it in the chat that asked. A late proposal is dropped once
+the user has asked something else.
+The feature texts are scrubbed server-side (`DiscoveredGapText`: no supplier,
+amount, date, e-mail or link) before anything shows or stores them. Every issue
+— catalog or discovered — opens with the `awaiting-approval` label and a
+"Human approval" section: a maintainer approves it with the `approved` label
+(the `feature-request-approval` workflow checks the permission), or closes it as
+not planned. Nothing is built before that. Greeting / off-domain / legal /
+capability / needs-document turns, catalog gaps and turns answered by key
+(interview options, consent) never call the investigator; a failure, a timeout
+or a low-confidence verdict adds nothing (`Chat:GapInvestigation:Enabled` is the
+kill switch).
+
 **Intent** is deterministic (`IntentPlanner`), not chosen by the model:
 
 | Intent | Typical question |

@@ -9,20 +9,53 @@ namespace Raffa.Chat.Application.Reply;
 /// none of them has a <see langword="null"/> payload altogether. Which members a kind carries:
 /// <see cref="ReplyKind.Draft"/> — <see cref="Gap"/> + <see cref="Draft"/> + <see cref="FeedbackOffer"/>;
 /// a capability-gap <see cref="ReplyKind.Redirect"/> — <see cref="Gap"/> + <see cref="FeedbackOffer"/>;
-/// the feedback confirmation (<see cref="ReplyKind.Answer"/>) — <see cref="FeedbackResult"/>.
+/// the feedback confirmation (<see cref="ReplyKind.Answer"/>) — <see cref="FeedbackResult"/>;
+/// the capability follow-up (ADR-031, a <see cref="ReplyKind.Redirect"/> appended after the
+/// answer) — <see cref="Gap"/> + <see cref="FeedbackOffer"/> + <see cref="FollowUps"/> +
+/// <see cref="CapabilityCheckFor"/>.
 /// </summary>
+/// <param name="FollowUps">ADR-031: the follow-up questions of a turn that is never returned as a
+/// live reply — the capability follow-up is appended to the conversation and read back from it, and
+/// a stored message has no follow-up column of its own.</param>
+/// <param name="CapabilityCheckFor">ADR-031: the id of the answer a capability follow-up was
+/// appended after — what tells the client (and the next turn's interview logic) that this turn is
+/// a follow-up, not a reply to a new question.</param>
 public sealed record ReplyPayload(
     GapInfo? Gap = null,
     EmailDraft? Draft = null,
     FeedbackOffer? FeedbackOffer = null,
-    FeedbackResult? FeedbackResult = null);
+    FeedbackResult? FeedbackResult = null,
+    IReadOnlyList<string>? FollowUps = null,
+    string? CapabilityCheckFor = null);
 
-/// <summary>Which catalog entry fired and in which language the deterministic copy was written.</summary>
-/// <param name="Key"><c>Gaps.CapabilityGap.Key</c>.</param>
+/// <summary>Which gap fired and in which language the deterministic copy was written.</summary>
+/// <param name="Key"><c>Gaps.CapabilityGap.Key</c> — a catalog key, or
+/// <c>discovered:&lt;slug&gt;</c> for a gap the capability investigator found (ADR-031).</param>
 /// <param name="Title">The gap's title in <paramref name="Language"/> — what the feedback card and
 /// the confirmation name.</param>
 /// <param name="Language"><c>Language.QuestionLanguage</c>'s "it" or "en".</param>
-public sealed record GapInfo(string Key, string Title, string Language);
+/// <param name="Discovery">Only for a discovered gap: what the investigator found. Rows stored
+/// before ADR-031 have no such member and read back as <see langword="null"/>.</param>
+public sealed record GapInfo(string Key, string Title, string Language, GapDiscovery? Discovery = null);
+
+/// <summary>
+/// What the capability investigator (<c>Gaps.CapabilityInvestigator</c>, ADR-031) found when a
+/// turn asked for an operation nothing in Raffa performs — the developer-facing half of a
+/// discovered gap, in English. Every text is already generic (<c>Gaps.DiscoveredGapText</c>: no
+/// supplier, amount, date, e-mail or link), because this record travels into a public GitHub issue.
+/// </summary>
+/// <param name="TitleEn">The proposed feature's title — the issue's title.</param>
+/// <param name="DescriptionEn">One sentence: what Raffa should do.</param>
+/// <param name="NearestCapability">The <c>Capabilities.CapabilityCatalog</c> key of the closest
+/// existing screen, or <see langword="null"/> when nothing comes close.</param>
+/// <param name="Confidence">The investigator's own "high" / "medium".</param>
+/// <param name="InvestigatorVersion">The prompt version that found it (<c>Gaps.CapabilityInvestigatorAgent.Version</c>).</param>
+public sealed record GapDiscovery(
+    string TitleEn,
+    string DescriptionEn,
+    string? NearestCapability,
+    string Confidence,
+    string InvestigatorVersion);
 
 /// <summary>The drafted email — plain text, verbatim, never rendered through the markdown subset
 /// (the client shows it in a pre-wrap block with a "Copy email" button). No inline <c>[n]</c>

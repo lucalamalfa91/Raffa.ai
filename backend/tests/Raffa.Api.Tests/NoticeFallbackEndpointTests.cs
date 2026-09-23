@@ -125,8 +125,10 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal("navigate", reviewAction.GetProperty("kind").GetString());
         Assert.Equal($"/contracts/{contract.Id}", reviewAction.GetProperty("href").GetString());
 
-        // NW-94: fully server-decided -- the AI gateway is never called for a notice question.
-        Assert.Empty(recordingGateway.Calls);
+        // NW-94: fully server-decided -- beyond ADR-031's one capability check on the typed turn,
+        // the AI gateway is never called for a notice question (no retrieval, no answer role).
+        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 
     /// <summary>Case 2 (AC-2): a known cancellation deadline but no matching clause at all -- answers
@@ -180,7 +182,8 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         var reviewAction = Assert.Single(actions);
         Assert.Equal($"/contracts/{contract.Id}", reviewAction.GetProperty("href").GetString());
 
-        Assert.Empty(recordingGateway.Calls);
+        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 
     /// <summary>Case 3 (AC-3 first clause): no known cancellation deadline, but a matching clause
@@ -246,7 +249,8 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         var reviewAction = Assert.Single(actions);
         Assert.Equal($"/contracts/{contract.Id}", reviewAction.GetProperty("href").GetString());
 
-        Assert.Empty(recordingGateway.Calls);
+        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 
     /// <summary>Case 4 (AC-3 second clause): neither a deadline nor a matching clause -- an honest
@@ -301,7 +305,8 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal("navigate", reviewAction.GetProperty("kind").GetString());
         Assert.Equal($"/contracts/{contract.Id}", reviewAction.GetProperty("href").GetString());
 
-        Assert.Empty(recordingGateway.Calls);
+        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 
     /// <summary>Case 5 (AC-3 third clause): no contract in scope at all (no conversation scope, no
@@ -373,7 +378,8 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         // which contract at all" case, not a guess dressed up as an answer.
         Assert.DoesNotContain(contract.Id.ToString(), rawBody, StringComparison.Ordinal);
 
-        Assert.Empty(recordingGateway.Calls);
+        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 
     private static async Task<Guid> CreateScopedConversationAsync(

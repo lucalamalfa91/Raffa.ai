@@ -200,7 +200,9 @@ public sealed class AskWebResearchConsentTests : IClassFixture<RaffaApiFactory>
         Assert.Equal(["allow", "decline"], keys);
         // The server-authored query is shown verbatim so the user knows exactly what leaves Raffa.
         Assert.Contains("typical uplift caps on saas renewals", question.GetProperty("prompt").GetString(), StringComparison.Ordinal);
-        Assert.Empty(gateway.Calls);
+        // Nothing searched yet: the one model call is ADR-031's capability check on the typed turn.
+        Assert.Equal(1, gateway.CapabilityChecks);
+        Assert.Empty(gateway.CallsBeyondCapabilityCheck);
         var interviewed = Assert.Single(audit.Entries, e => e.Action == "chat.interviewed");
         Assert.Contains("webConsent=True", interviewed.Detail, StringComparison.Ordinal);
     }
@@ -339,7 +341,9 @@ public sealed class AskWebResearchConsentTests : IClassFixture<RaffaApiFactory>
         // The menu option is not a consent: it leads to the consent question, never to a search.
         Assert.Equal("interview", consent.RootElement.GetProperty("kind").GetString());
         Assert.Equal("consent", consent.RootElement.GetProperty("interview").GetProperty("questions")[0].GetProperty("presentation").GetString());
-        Assert.Empty(gateway.Calls);
+        // One capability check for the typed menu turn; the option answered by key is not checked again.
+        Assert.Equal(1, gateway.CapabilityChecks);
+        Assert.Empty(gateway.CallsBeyondCapabilityCheck);
     }
 
     [Fact]

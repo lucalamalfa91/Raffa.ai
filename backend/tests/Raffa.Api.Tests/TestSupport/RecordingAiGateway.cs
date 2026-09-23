@@ -45,54 +45,105 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
 
     /// <summary>Every method name invoked on this instance, in call order (e.g. "EmbedAsync",
     /// "AnswerAsync").</summary>
-    public IReadOnlyList<string> Calls => _calls;
+    public IReadOnlyList<string> Calls
+    {
+        get
+        {
+            lock (_calls)
+            {
+                return [.. _calls];
+            }
+        }
+    }
+
+    // ADR-031: the capability check runs beside the answer, so two calls can be recorded at once.
+    private void Record(string call)
+    {
+        lock (_calls)
+        {
+            _calls.Add(call);
+        }
+    }
+
+    /// <summary>The agent name ADR-031's capability investigator calls
+    /// <see cref="AnalyzeAsync"/> with (<c>Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Name</c>).</summary>
+    public const string CapabilityInvestigatorAgent = "capability-investigator";
+
+    /// <summary>How many capability checks ran (ADR-031: at most one per fresh typed turn).</summary>
+    public int CapabilityChecks => Agents.Count(agent => agent == CapabilityInvestigatorAgent);
+
+    /// <summary><see cref="Calls"/> minus the capability investigator's checks — what "zero AI
+    /// Gateway calls" meant for a deterministic path before ADR-031, and still means: no
+    /// retrieval, no answer, no other agent.</summary>
+    public IReadOnlyList<string> CallsBeyondCapabilityCheck
+    {
+        get
+        {
+            // Agents is appended in AnalyzeAsync order; the investigator always runs alone, before
+            // any other agent of its turn, so its position in both lists is the same.
+            var agents = Agents;
+            var analyzeIndex = 0;
+            var calls = new List<string>();
+            foreach (var call in Calls)
+            {
+                if (call == nameof(AnalyzeAsync) && agents.ElementAtOrDefault(analyzeIndex++) == CapabilityInvestigatorAgent)
+                {
+                    continue;
+                }
+
+                calls.Add(call);
+            }
+
+            return calls;
+        }
+    }
 
     public Task<Result<AiClassificationResult>> ClassifyAsync(
         AiClassificationRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(ClassifyAsync));
+        Record(nameof(ClassifyAsync));
         return inner.ClassifyAsync(request, cancellationToken);
     }
 
     public Task<Result<AiExtractionResult>> ExtractAsync(
         AiExtractionRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(ExtractAsync));
+        Record(nameof(ExtractAsync));
         return inner.ExtractAsync(request, cancellationToken);
     }
 
     public Task<Result<AiEmbeddingResult>> EmbedAsync(
         AiEmbeddingRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(EmbedAsync));
+        Record(nameof(EmbedAsync));
         return inner.EmbedAsync(request, cancellationToken);
     }
 
     public Task<Result<AiResearchResult>> ResearchAsync(
         AiResearchRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(ResearchAsync));
+        Record(nameof(ResearchAsync));
         return inner.ResearchAsync(request, cancellationToken);
     }
 
     public Task<Result<AiAnswerResult>> AnswerAsync(
         AiAnswerRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(AnswerAsync));
+        Record(nameof(AnswerAsync));
         return inner.AnswerAsync(request, cancellationToken);
     }
 
     public Task<Result<AiOcrResult>> OcrAsync(
         AiOcrRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(OcrAsync));
+        Record(nameof(OcrAsync));
         return inner.OcrAsync(request, cancellationToken);
     }
 
     public Task<Result<AiAnalysisResult>> AnalyzeAsync(
         AiAnalysisRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(AnalyzeAsync));
+        Record(nameof(AnalyzeAsync));
         lock (_agents)
         {
             _agents.Add(request.AgentName);

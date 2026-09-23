@@ -287,3 +287,85 @@ describe("askSessions -- parallel Ask sessions", () => {
     });
   });
 });
+
+describe("askSessions -- ADR-031 capability follow-up", () => {
+  const followUp = (forMessageId: string, id = "msg-follow") => ({
+    id,
+    role: "raffa" as const,
+    kind: "redirect" as const,
+    markdown: "I checked what Raffa.ai can do for your request.",
+    citations: [],
+    actions: [],
+    modelId: null,
+    promptVersion: null,
+    inputHash: null,
+    createdAt: "2026-09-23T00:00:05Z",
+    payload: {
+      gap: { key: "discovered:management-report", title: "Management reports", language: "en" as const },
+      draft: null,
+      feedbackOffer: null,
+      feedbackResult: null,
+      followUps: ["What is our total annual spend across contracts?"],
+      capabilityCheckFor: forMessageId,
+    },
+  });
+
+  function conversation(messages: unknown[]) {
+    return { ok: true, statusCode: 200, conversation: { id: "conv-a", title: "t", scopeContractId: null, createdAt: "", updatedAt: "", messages }, error: null };
+  }
+
+  it("appends the follow-up the reply carried right after the answer", async () => {
+    const client = apiClient({
+      createConversation: vi.fn().mockResolvedValue(created("conv-a")),
+      postMessage: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, reply: { ...reply("conv-a", "Answer"), followUpMessage: followUp("msg-conv-a") }, error: null }),
+    });
+    const store = createAskSessionStore();
+
+    await store.send({ key: draftSessionKey("entry-1"), apiClient: client, tenantId: TENANT, text: "Write a report for my boss" });
+
+    const turns = store.getSnapshot().sessions.get("conv-a")!.turns;
+    expect(turns.map((turn) => turn.role)).toEqual(["you", "raffa", "raffa"]);
+    expect(mentions([turns[1]], "Answer")).toBe(true);
+    expect(turns[2].role === "raffa" && turns[2].followsMessageId).toBe("msg-conv-a");
+  });
+
+  it("reads a pending follow-up back into its own session, and a newer question stops the wait", async () => {
+    vi.useFakeTimers();
+    try {
+      const getConversation = vi.fn().mockResolvedValue(conversation([followUp("msg-conv-a")]));
+      const pendingReply = (messageId: string) => ({
+        ok: true,
+        statusCode: 200,
+        reply: { ...reply("conv-a", "Answer"), messageId, capabilityCheck: "pending", followUpMessage: null },
+        error: null,
+      });
+      const postMessage = vi
+        .fn()
+        .mockResolvedValueOnce(pendingReply("msg-conv-a"))
+        .mockResolvedValueOnce(pendingReply("msg-2"))
+        .mockResolvedValueOnce({ ok: true, statusCode: 200, reply: { ...reply("conv-a", "Savings"), messageId: "msg-3" }, error: null });
+      const client = { ...apiClient({ createConversation: vi.fn().mockResolvedValue(created("conv-a")), postMessage }), getConversation } as unknown as ApiClient;
+      const store = createAskSessionStore();
+
+      await store.send({ key: draftSessionKey("entry-1"), apiClient: client, tenantId: TENANT, text: "Write a report for my boss" });
+      expect(store.getSnapshot().sessions.get("conv-a")!.turns).toHaveLength(2);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      await vi.waitFor(() => expect(store.getSnapshot().sessions.get("conv-a")!.turns).toHaveLength(3));
+      expect(getConversation).toHaveBeenCalledWith(TENANT, "conv-a");
+
+      // A second pending answer, then a newer question before its follow-up is found: no late turn.
+      getConversation.mockClear();
+      getConversation.mockResolvedValue(conversation([followUp("msg-2", "msg-late")]));
+      await store.send({ key: "conv-a", apiClient: client, tenantId: TENANT, text: "And the renewals?" });
+      await store.send({ key: "conv-a", apiClient: client, tenantId: TENANT, text: "And the savings?" });
+      const before = store.getSnapshot().sessions.get("conv-a")!.turns.length;
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(store.getSnapshot().sessions.get("conv-a")!.turns.filter((turn) => turn.id === "msg-late")).toHaveLength(0);
+      expect(store.getSnapshot().sessions.get("conv-a")!.turns.length).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+

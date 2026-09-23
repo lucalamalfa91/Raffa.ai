@@ -401,6 +401,10 @@ public sealed class FixtureAiGateway(
                     : new[] { new { query = question.Trim(), scope = "similar-contracts" } };
             payload = JsonSerializer.Serialize(new { queries }, PackJsonOptions);
         }
+        else if (string.Equals(request.AgentName, CapabilityInvestigatorAgentName, StringComparison.OrdinalIgnoreCase))
+        {
+            payload = BuildFixtureInvestigation(input);
+        }
         else if (isPlanner)
         {
             payload = BuildFixtureOfferPlan(items);
@@ -595,6 +599,86 @@ public sealed class FixtureAiGateway(
     /// <summary>The Ask flow's market researcher (<c>Raffa.Chat.Application.Council.CouncilAgents
     /// .MarketResearcherName</c> — this project cannot reference it, ADR-002).</summary>
     private const string MarketResearcherAgentName = "market-researcher";
+
+    /// <summary>ADR-031's capability investigator (<c>Raffa.Chat.Application.Gaps
+    /// .CapabilityInvestigatorAgent.Name</c>).</summary>
+    private const string CapabilityInvestigatorAgentName = "capability-investigator";
+
+    // The investigator double's one discovered gap: a request (a verb or "can you") for a
+    // deliverable no screen produces — a report, a presentation, slides, a dashboard, a chart.
+    private static readonly Regex FixtureDeliverablePattern = new(
+        @"\b(report\w*|presentazion\w*|presentation\w*|slides?|deck|dashboard\w*|grafic[oi]|charts?|graphs?)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex FixtureRequestCuePattern = new(
+        @"\b(puoi|potresti|riesci|can\s+you|could\s+you|would\s+you|please|per\s+favore|scriv\w*|write|prepar\w*|" +
+        @"fammi|make|build|crea\w*|genera\w*|generate|produc\w*|produrre|mi\s+serve|ho\s+bisogno|i\s+need)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// The capability investigator's deterministic double (ADR-031): a request for a report-like
+    /// deliverable is the one discovered gap — generic texts with no name and no number, Portfolio
+    /// as the nearest screen, two questions Ask already answers in the question's language —
+    /// and every other message is an ordinary <c>question</c>. The real agent judges any phrasing;
+    /// this double only has to be stable for CI and the golden set.
+    /// </summary>
+    private static string BuildFixtureInvestigation(FixtureAnalysisInput? input)
+    {
+        var question = input?.Question ?? string.Empty;
+        var italian = string.Equals(input?.Language, "it", StringComparison.OrdinalIgnoreCase);
+        var isGap = FixtureDeliverablePattern.IsMatch(question) && FixtureRequestCuePattern.IsMatch(question);
+
+        var emptyFeature = new
+        {
+            key = string.Empty,
+            titleEn = string.Empty,
+            titleIt = string.Empty,
+            operationEn = string.Empty,
+            operationIt = string.Empty,
+            descriptionEn = string.Empty,
+            descriptionIt = string.Empty,
+        };
+
+        if (!isGap)
+        {
+            return JsonSerializer.Serialize(
+                new
+                {
+                    rationale = "The message asks for information Ask can give in the chat.",
+                    verdict = "question",
+                    confidence = "high",
+                    knownGapKey = string.Empty,
+                    nearestCapabilityKey = string.Empty,
+                    feature = emptyFeature,
+                    alternativeQuestions = Array.Empty<string>(),
+                },
+                PackJsonOptions);
+        }
+
+        return JsonSerializer.Serialize(
+            new
+            {
+                rationale = "The message asks for a formatted report, which no screen or Ask ability produces.",
+                verdict = "gap",
+                confidence = "high",
+                knownGapKey = string.Empty,
+                nearestCapabilityKey = "portfolio",
+                feature = new
+                {
+                    key = "management-report",
+                    titleEn = "Management reports",
+                    titleIt = "Report per il management",
+                    operationEn = "generate a report for management",
+                    operationIt = "generare un report per il management",
+                    descriptionEn = "Generate a periodic report on contracts, spend and savings, ready to share with management.",
+                    descriptionIt = "Generare un report periodico su contratti, spesa e risparmi, pronto da condividere con il management.",
+                },
+                alternativeQuestions = italian
+                    ? new[] { "Qual è la spesa annuale totale dei contratti?", "Quali sono i contratti più critici e dove possiamo risparmiare?" }
+                    : new[] { "What is our total annual spend across contracts?", "Which contracts are most critical and where can we save?" },
+            },
+            PackJsonOptions);
+    }
 
     private static readonly Regex CommercialWordPattern = new(
         @"\b(pric\w*|prezz\w*|cost\w*|spen[dt]\w*|spes\w*|save|saves|saving|savings|risparm\w*|renew\w*|rinnov\w*|" +

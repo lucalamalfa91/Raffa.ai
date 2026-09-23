@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ApiClient, ConversationCitationBody, ConversationMessageBody, ConversationReplyBody } from "../../../src/api/client";
 import {
   ASK_HELLO,
+  appendCapabilityFollowUp,
   buildErrorTurn,
   buildInterviewAnswerRequest,
   buildOffCopy,
@@ -18,6 +19,8 @@ import {
   mapConversationAction,
   mapConversationCitation,
   mapConversationMessageToReply,
+  findCapabilityFollowUp,
+  pollCapabilityFollowUp,
   mapConversationReplyToReply,
   markInterviewAnswered,
   nextTurnId,
@@ -923,5 +926,99 @@ describe("web research (ADR-030)", () => {
     );
     expect(pendingConsent([choice])).toBeNull();
     expect(pendingConsent([consent, choice])).toBeNull();
+  });
+});
+
+describe("capability follow-up (ADR-031)", () => {
+  function stored(overrides: Partial<ConversationMessageBody> = {}): ConversationMessageBody {
+    return {
+      id: "m-follow",
+      role: "raffa",
+      kind: "redirect",
+      markdown: "I checked what Raffa.ai can do for your request.",
+      citations: [],
+      actions: [],
+      modelId: null,
+      promptVersion: null,
+      inputHash: null,
+      createdAt: "2026-09-23T00:00:05Z",
+      payload: {
+        gap: { key: "discovered:management-report", title: "Management reports", language: "en" },
+        draft: null,
+        feedbackOffer: null,
+        feedbackResult: null,
+        followUps: ["What is our total annual spend across contracts?"],
+        capabilityCheckFor: "m-answer",
+      },
+      ...overrides,
+    };
+  }
+
+  const interviewTurn = {
+    id: "m-interview",
+    role: "raffa" as const,
+    wireCitations: [],
+    messageId: "m-interview",
+    reply: {
+      kind: "interview" as const,
+      prompt: "Before I answer, one quick check.",
+      questions: [{ key: "interpretation", prompt: "Which?", presentation: "choice" as const, allowFreeText: true, options: [] }],
+      answered: false,
+      messageId: "m-interview",
+    },
+  };
+
+  it("maps the stored chips and marks the turn as a follow-up of its answer", () => {
+    const [turn] = appendCapabilityFollowUp([], stored());
+    expect(turn.role).toBe("raffa");
+    if (turn.role !== "raffa") return;
+    expect(turn.followsMessageId).toBe("m-answer");
+    expect(turn.reply.kind).toBe("redirect");
+    if (turn.reply.kind !== "redirect") return;
+    expect(turn.reply.followUps).toEqual(["What is our total annual spend across contracts?"]);
+    expect(turn.reply.gap?.key).toBe("discovered:management-report");
+  });
+
+  it("never shows the same follow-up twice", () => {
+    const once = appendCapabilityFollowUp([], stored());
+    expect(appendCapabilityFollowUp(once, stored())).toBe(once);
+  });
+
+  it("finds the follow-up of one answer only", () => {
+    const detail = {
+      id: "c", title: "t", scopeContractId: null, createdAt: "", updatedAt: "",
+      messages: [stored({ id: "other", payload: { ...stored().payload!, capabilityCheckFor: "m-other" } }), stored()],
+    };
+    expect(findCapabilityFollowUp(detail, "m-answer")?.id).toBe("m-follow");
+    expect(findCapabilityFollowUp(detail, "m-missing")).toBeNull();
+  });
+
+  it("an interview followed by a follow-up is still the turn a typed message answers", () => {
+    const turns = appendCapabilityFollowUp([interviewTurn], stored({ payload: { ...stored().payload!, capabilityCheckFor: "m-interview" } }));
+    expect(pendingInterview(turns)).toEqual({ messageId: "m-interview", questionKey: "interpretation" });
+  });
+
+  it("polls until the follow-up is stored, and stops when the screen no longer wants it", async () => {
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const empty = { ok: true, statusCode: 200, conversation: { id: "c", title: "t", scopeContractId: null, createdAt: "", updatedAt: "", messages: [] }, error: null };
+    const ready = { ...empty, conversation: { ...empty.conversation, messages: [stored()] } };
+    const getConversation = vi.fn().mockResolvedValueOnce(empty).mockResolvedValueOnce({ ok: false, statusCode: null, conversation: null, error: "offline" }).mockResolvedValue(ready);
+    const apiClient = { getConversation } as unknown as ApiClient;
+
+    const found = await pollCapabilityFollowUp(apiClient, "t-1", "c", "m-answer", () => false, { sleep });
+    expect(found?.id).toBe("m-follow");
+    expect(getConversation).toHaveBeenCalledTimes(3);
+
+    const neverStored = vi.fn().mockResolvedValue(empty);
+    expect(
+      await pollCapabilityFollowUp({ getConversation: neverStored } as unknown as ApiClient, "t-1", "c", "m-answer", () => false, { sleep, attempts: 3 }),
+    ).toBeNull();
+    expect(neverStored).toHaveBeenCalledTimes(3);
+
+    const stopped = vi.fn().mockResolvedValue(ready);
+    expect(
+      await pollCapabilityFollowUp({ getConversation: stopped } as unknown as ApiClient, "t-1", "c", "m-answer", () => true, { sleep }),
+    ).toBeNull();
+    expect(stopped).not.toHaveBeenCalled();
   });
 });

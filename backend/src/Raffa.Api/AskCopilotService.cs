@@ -9,6 +9,7 @@ using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
+using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Pack;
@@ -200,6 +201,7 @@ internal sealed partial class AskCopilotService(
     IMarketDealLookup marketDealLookup,
     AskAgentFlow askAgentFlow,
     NegotiationDraftingWorkflow negotiationDraftingWorkflow,
+    CapabilityCheckDispatcher capabilityCheckDispatcher,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
     WebResearchOptions webResearchOptions,
@@ -266,6 +268,9 @@ internal sealed partial class AskCopilotService(
     /// method can tell "no scope" from "a scope that did not resolve" — this parameter alone, not
     /// the gate's already-resolved supplier name, is what lets a same-name portfolio hit lose to
     /// the real scoped id and an unseen id refuse (see this type's own doc comment).</param>
+    /// <param name="capabilityCheck">ADR-031: when given, a fresh in-domain turn starts the
+    /// capability check in it, beside the answer; the caller appends its follow-up after
+    /// persisting the answer. <see langword="null"/>: no check at all.</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="recentTurns"/> is <see langword="null"/>.</exception>
     public async Task<CopilotReply> AskAsync(
@@ -276,6 +281,7 @@ internal sealed partial class AskCopilotService(
         EntityId? scopeContractId = null,
         AskTurnHints? hints = null,
         bool previousRaffaTurnWasInterview = false,
+        CapabilityCheckSlot? capabilityCheck = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
@@ -365,6 +371,41 @@ internal sealed partial class AskCopilotService(
             };
         }
 
+        // ADR-031: Raffa's own judgement on whether this turn asks for an operation nothing in
+        // Raffa performs — started here, beside the answer, never in front of it: the answer below
+        // is computed while the investigator's model call is in flight, and the endpoint appends
+        // any proposal as a separate message after the answer (CapabilityCheckDispatcher). Only a
+        // fresh, typed InDomain turn is checked: the fixed catalog already had its say in the gate;
+        // Greeting/OffDomain/Legal/Capability/NeedsDocument make no AI Gateway call and stay that
+        // way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an interview
+        // option, a web consent) continues one that was already checked; and only a caller that
+        // will persist a follow-up (the conversation endpoints) passes a slot.
+        var gapInvestigation = "skipped";
+        if (capabilityCheck is not null && gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints))
+        {
+            if (!capabilityCheckDispatcher.Enabled)
+            {
+                gapInvestigation = "off";
+            }
+            else
+            {
+                var (namedItem, _, _) = ResolveNamedContractItem(scopedContractItem, gate.NamedSupplier, portfolio, supplierNames);
+                var namedSupplier = namedItem?.SupplierId is { } namedSupplierId &&
+                    supplierNames.TryGetValue(new EntityId(namedSupplierId), out var namedSupplierName)
+                        ? namedSupplierName
+                        : null;
+
+                capabilityCheck.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
+                    tenantId,
+                    question,
+                    supplierNames.Values.ToList(),
+                    portfolio.TotalCount,
+                    namedSupplier,
+                    namedItem?.ContractId));
+                gapInvestigation = "started";
+            }
+        }
+
         // AC-7 / R-ASK-09: the audit row must distinguish "guard caught a violation and downgraded
         // to abstain" from every other abstain path (empty pack, gateway call failed) — so every
         // branch here carries its own guardIntervened alongside the reply, rather than WriteAuditAsync
@@ -386,7 +427,7 @@ internal sealed partial class AskCopilotService(
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
 
-        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, actor, cancellationToken).ConfigureAwait(false);
+        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, gapInvestigation, actor, cancellationToken).ConfigureAwait(false);
 
         // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
         // answer above), so "asked, said no" is visible without the query ever being logged.
@@ -2918,7 +2959,13 @@ internal sealed partial class AskCopilotService(
             item.AutoRenewal);
 
     private async Task WriteAuditAsync(
-        TenantId tenantId, CopilotReply reply, bool guardIntervened, bool fallbackUsed, string actor, CancellationToken cancellationToken)
+        TenantId tenantId,
+        CopilotReply reply,
+        bool guardIntervened,
+        bool fallbackUsed,
+        string gapInvestigation,
+        string actor,
+        CancellationToken cancellationToken)
     {
         var action = reply.Kind switch
         {
@@ -2951,7 +2998,8 @@ internal sealed partial class AskCopilotService(
                 $"fallbackUsed={fallbackUsed} " +
                 $"interviewQuestions={reply.Interview?.Questions.Count ?? 0} " +
                 $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
-                $"unverified={reply.Provenance.Unverified}"),
+                $"unverified={reply.Provenance.Unverified} " +
+                $"gapInvestigation={gapInvestigation}"),
             cancellationToken).ConfigureAwait(false);
     }
 

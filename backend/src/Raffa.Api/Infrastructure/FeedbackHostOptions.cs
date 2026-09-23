@@ -35,7 +35,9 @@ internal sealed partial class FeedbackHostOptions
         public string? Token { get; set; }
 
         /// <summary>Comma-separated labels applied to every issue; missing labels are retried
-        /// without labels (GitHub answers 422 for an unknown label).</summary>
+        /// without labels (GitHub answers 422 for an unknown label). <c>awaiting-approval</c> is
+        /// always added and <c>approved</c> always removed, whatever this says (ADR-031:
+        /// <c>FeatureRequestIssueText.Labels</c>).</summary>
         public string Labels { get; set; } = "feedback,ask-raffa";
 
         public IReadOnlyList<string> LabelList =>
