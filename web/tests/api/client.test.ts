@@ -2157,6 +2157,68 @@ describe("createApiClient().getConversation (task E13/F09/US01/T04)", () => {
   });
 });
 
+describe("createApiClient().renameConversation (chat rename, PATCH /api/conversations/{id})", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const renamed = { id: "conv-1", title: "When does Salesforce expire?", customTitle: "Salesforce renewal", scopeContractId: null, updatedAt: "2026-09-08T00:05:00Z" };
+
+  it("PATCHes <baseUrl>/api/conversations/{id} with { title } and the X-Tenant-Id header", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(renamed), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createApiClient("https://api.dev.raffa.example").renameConversation("tenant-1", "conv-1", "Salesforce renewal");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/conversations/conv-1");
+    expect(init).toEqual({
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "X-Tenant-Id": "tenant-1" },
+      body: JSON.stringify({ title: "Salesforce renewal" }),
+      cache: "no-store",
+    });
+  });
+
+  it("sends title: null to clear the name", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...renamed, customTitle: null }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createApiClient("https://api.dev.raffa.example").renameConversation("tenant-1", "conv-1", null);
+
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify({ title: null }));
+    expect(result.conversation?.customTitle).toBeNull();
+  });
+
+  it("reports ok:true with the renamed summary on 200", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(renamed), { status: 200 })));
+
+    const result = await createApiClient("https://api.dev.raffa.example").renameConversation("tenant-1", "conv-1", "Salesforce renewal");
+
+    expect(result).toEqual({ ok: true, statusCode: 200, conversation: renamed, error: null });
+  });
+
+  it("reads the 400 body (too long) and names a 404 without parsing its empty body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify("'title' must be at most 48 characters."), { status: 400 })));
+    const tooLong = await createApiClient("https://api.dev.raffa.example").renameConversation("tenant-1", "conv-1", "x".repeat(49));
+    expect(tooLong).toEqual({ ok: false, statusCode: 400, conversation: null, error: "'title' must be at most 48 characters." });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    const missing = await createApiClient("https://api.dev.raffa.example").renameConversation("tenant-1", "missing", "x");
+    expect(missing).toEqual({ ok: false, statusCode: 404, conversation: null, error: "No conversation found for id missing." });
+  });
+
+  it("resolves (does not throw) with statusCode null when the network request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+
+    const result = await createApiClient("https://api.dev.raffa.example").renameConversation("tenant-1", "conv-1", "x");
+
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBeNull();
+    expect(result.error).toContain("network down");
+  });
+});
+
 describe("createApiClient().postConversationFeedback (ADR-030 D5)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -2543,6 +2605,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       postConversationFeedback: () =>
         client.postConversationFeedback("tenant-1", "conv-1", { messageId: "msg-1", answers: { what: "x", frequency: "weekly", importance: "blocking" } }),
       deleteConversation: () => client.deleteConversation("tenant-1", "conv-1"),
+      renameConversation: () => client.renameConversation("tenant-1", "conv-1", "Renewals"),
       getCapabilities: () => client.getCapabilities(),
       getMarketRecord: () => client.getMarketRecord("rec-1"),
     };

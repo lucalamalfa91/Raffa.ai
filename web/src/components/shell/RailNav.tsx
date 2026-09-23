@@ -18,6 +18,8 @@ import {
 } from "../../routes/ask/conversationTitle";
 import { loadCurrentWorkspace } from "../../routes/signin/workspaceStore";
 import { useAskSessionStore, useAskSessionsSnapshot } from "../../routes/ask/AskSessionsContext";
+import { customTitleFor } from "../../routes/ask/askSessions";
+import ConversationRenameField from "../../routes/ask/ConversationRenameField";
 import type { DocumentCountsBody } from "./useDocumentCounts";
 
 export interface RailNavProps {
@@ -73,9 +75,12 @@ export default function RailNav({
   const navigate = useNavigate();
   const workspace = loadCurrentWorkspace();
   const askSessions = useAskSessionStore();
-  const { sessions, listVersion } = useAskSessionsSnapshot(askSessions);
+  const askSnapshot = useAskSessionsSnapshot(askSessions);
+  const { sessions, listVersion } = askSnapshot;
   const { conversations, activeConversationId, reload } = useRecentConversations(apiClient, listVersion);
   const [chatQuery, setChatQuery] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameError, setRenameError] = useState<{ conversationId: string; message: string } | null>(null);
   const [portfolioItems, setPortfolioItems] = useState<readonly PortfolioListItem[]>([]);
 
   useEffect(() => {
@@ -89,8 +94,22 @@ export default function RailNav({
   }, [apiClient, workspace?.id, conversations]);
 
   const portfolioById = useMemo(() => indexPortfolioByContractId(portfolioItems), [portfolioItems]);
-  const titleOf = (conversation: (typeof conversations)[number]) => conversationDisplayTitle(conversation, portfolioById);
+  // A name given in this tab shows at once, ahead of the list's next reload.
+  const titleOf = (conversation: (typeof conversations)[number]) =>
+    conversationDisplayTitle(
+      { scopeContractId: conversation.scopeContractId, customTitle: customTitleFor(askSnapshot, conversation.id, conversation.customTitle) },
+      portfolioById,
+    );
   const visibleConversations = filterConversations(conversations, chatQuery, titleOf);
+
+  const renameChat = (conversationId: string, name: string) => {
+    setRenamingId(null);
+    setRenameError(null);
+    if (!workspace) return;
+    void askSessions.rename({ apiClient, tenantId: workspace.id, conversationId, name }).then((result) => {
+      if (!result.ok) setRenameError({ conversationId, message: "Could not rename this chat. Try again." });
+    });
+  };
 
   const deleteChat = (conversationId: string) => {
     if (!workspace) return;
@@ -150,26 +169,65 @@ export default function RailNav({
                   const session = sessions.get(conversation.id);
                   const pending = session?.pending === true;
                   const unread = !pending && session?.unread === true;
+                  const active = conversation.id === activeConversationId;
+                  if (renamingId === conversation.id) {
+                    return (
+                      <div key={conversation.id} className="shell-rail-conv-row is-renaming">
+                        <ConversationRenameField
+                          className="shell-rail-conv-rename"
+                          initialValue={title}
+                          label={`Rename ${title}`}
+                          onCommit={(name) => renameChat(conversation.id, name)}
+                          onCancel={() => setRenamingId(null)}
+                        />
+                      </div>
+                    );
+                  }
                   return (
-                    <div key={conversation.id} className={`shell-rail-conv-row${unread ? " is-unread" : ""}`}>
-                      <Link
-                        to={`/ask/${conversation.id}`}
-                        className={`shell-rail-conv-item${conversation.id === activeConversationId ? " is-active" : ""}${unread ? " is-unread" : ""}`}
-                      >
-                        <span className="shell-rail-conv-title">{title}</span>
-                        {pending && <span className="shell-rail-conv-status is-pending" aria-hidden="true" />}
-                        {unread && <span className="shell-rail-conv-status is-unread" aria-hidden="true" />}
-                        {pending && <span className="visually-hidden"> · Raffa is answering</span>}
-                        {unread && <span className="visually-hidden"> · new reply</span>}
-                      </Link>
-                      <button
-                        type="button"
-                        className="shell-rail-conv-delete"
-                        aria-label={`Delete ${title}`}
-                        onClick={() => deleteChat(conversation.id)}
-                      >
-                        Delete
-                      </button>
+                    <div key={conversation.id}>
+                      <div className={`shell-rail-conv-row${unread ? " is-unread" : ""}`}>
+                        <Link
+                          to={`/ask/${conversation.id}`}
+                          className={`shell-rail-conv-item${active ? " is-active" : ""}${unread ? " is-unread" : ""}`}
+                          onDoubleClick={(event) => {
+                            event.preventDefault();
+                            setRenamingId(conversation.id);
+                          }}
+                        >
+                          <span className="shell-rail-conv-title">{title}</span>
+                          {pending && <span className="shell-rail-conv-status is-pending" aria-hidden="true" />}
+                          {unread && <span className="shell-rail-conv-status is-unread" aria-hidden="true" />}
+                          {pending && <span className="visually-hidden"> · Raffa is answering</span>}
+                          {unread && <span className="visually-hidden"> · new reply</span>}
+                        </Link>
+                        {/* Shown on hover/focus (always on touch screens) -- see shell.css. */}
+                        <span className="shell-rail-conv-actions">
+                          <button
+                            type="button"
+                            className="shell-rail-conv-action"
+                            aria-label={`Rename ${title}`}
+                            onClick={() => {
+                              setRenameError(null);
+                              setRenamingId(conversation.id);
+                            }}
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            className="shell-rail-conv-action shell-rail-conv-delete"
+                            aria-label={`Delete ${title}`}
+                            onClick={() => deleteChat(conversation.id)}
+                          >
+                            Delete
+                          </button>
+                        </span>
+                      </div>
+                      {renameError?.conversationId === conversation.id && (
+                        <p className="shell-rail-conv-error" role="alert">
+                          {renameError.message}
+                        </p>
+                      )}
                     </div>
                   );
                 })}

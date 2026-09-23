@@ -5917,6 +5917,13 @@
                         "type": "string",
                         "description": "The first question, <=48 chars (ConversationService.TitleMaxLength), or the literal 'New chat' (ConversationService.DefaultTitle) until the first message lands."
                       },
+                      "customTitle": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
+                      },
                       "scopeContractId": {
                         "type": [
                           "string",
@@ -5991,6 +5998,13 @@
                     },
                     "title": {
                       "type": "string"
+                    },
+                    "customTitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
                     },
                     "scopeContractId": {
                       "type": [
@@ -6078,6 +6092,13 @@
                     },
                     "title": {
                       "type": "string"
+                    },
+                    "customTitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
                     },
                     "scopeContractId": {
                       "type": [
@@ -6575,6 +6596,101 @@
           },
           "400": {
             "description": "Missing/invalid X-Tenant-Id or X-User-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such conversation for this tenant and caller (unknown id, another tenant's, or another user's -- one honest outcome, see this operation's own description)."
+          }
+        }
+      },
+      "patch": {
+        "operationId": "renameConversation",
+        "summary": "Rename one of the caller's conversations.",
+        "description": "Maps to RenameConversationAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs, backed by ConversationService.RenameAsync. Request body `{ title }` (ConversationsEndpointExtensions.RenameConversationRequest, hand-written in web/src/api/client.ts -- the generator does not parse requestBody, see this document's own 'Codegen tool choice' paragraph): the chat's new name, whitespace collapsed to single spaces, at most 48 characters; a blank or null `title` clears the name so the automatic title shows again. Stored as `customTitle`, never over `title`. Never bumps `updatedAt` (a rename is not activity, so it does not reorder the rail). Writes a `conversation.renamed` audit row saying whether a name was set or cleared, never the name. Not Admin-gated. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "See GET /api/conversations above."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Conversation.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Renamed. The conversation's summary, carrying the new `customTitle`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "title",
+                    "scopeContractId",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "The first question, <=48 chars (ConversationService.TitleMaxLength), or the literal 'New chat' (ConversationService.DefaultTitle) until the first message lands."
+                    },
+                    "customTitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
+                    },
+                    "scopeContractId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "description": "Set when this conversation was opened from Contract 360 'Ask about it' (/ask?scope=); null for a plain new chat."
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, a non-GUID id in the route, or a `title` longer than 48 characters.",
             "content": {
               "application/json": {
                 "schema": {

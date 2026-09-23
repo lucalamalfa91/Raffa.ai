@@ -60,6 +60,11 @@ function parallelServer() {
     getContract360: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, contract: null, error: null }),
     getConversation: vi.fn(),
     deleteConversation: vi.fn(),
+    renameConversation: vi.fn(async (_tenant: string, id: string, title: string | null) => {
+      const row = created.find((conversation) => conversation.id === id)!;
+      row.customTitle = title;
+      return { ok: true, statusCode: 200, conversation: { ...row }, error: null };
+    }),
     listConversations: vi.fn(async () => ({ ok: true, statusCode: 200, conversations: [...created].reverse(), error: null })),
     createConversation: vi.fn(async () => {
       const id = ids.shift()!;
@@ -284,4 +289,29 @@ describe("parallel Ask sessions (two chats at once, reply-ready notices, rail hi
     expect(FakeNotification.instances).toHaveLength(0);
     expect(document.title).toBe("Raffa.ai");
   });
+
+  it("renaming a chat in the rail retitles it everywhere: its header, and the notice when it answers", async () => {
+    const { apiClient, answerA } = parallelServer();
+    const user = userEvent.setup();
+    const { container } = renderShell(apiClient);
+
+    await user.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "What is our liability cap with Atlassian?{Enter}");
+    await waitFor(() => expect(railRow(container, "conv-a")).not.toBeNull());
+
+    await user.click(screen.getByRole("button", { name: /^Rename Ask Raffa/ }));
+    const field = screen.getByRole("textbox", { name: /^Rename Ask Raffa/ });
+    await user.clear(field);
+    await user.type(field, "Atlassian cap{Enter}");
+
+    expect(screen.getByRole("heading", { name: "Atlassian cap" })).toBeInTheDocument();
+    expect(railRow(container, "conv-a")).toHaveTextContent("Atlassian cap");
+
+    await user.click(screen.getByRole("button", { name: "+ New chat" }));
+    await waitFor(() => expect(screen.getByTestId("path")).toHaveTextContent(/^\/ask$/));
+    answerA("Two times the fees paid.");
+
+    const notice = (await screen.findByText("Reply ready")).closest(".ask-reply-toast") as HTMLElement;
+    expect(within(notice).getByText("Atlassian cap")).toBeInTheDocument();
+  });
 });
+

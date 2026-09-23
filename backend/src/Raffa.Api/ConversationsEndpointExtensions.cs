@@ -13,7 +13,7 @@ using Raffa.SharedKernel;
 namespace Raffa.Api;
 
 /// <summary>
-/// Maps `GET /api/conversations`, `POST /api/conversations` and `GET /api/conversations/{id}`
+/// Maps `GET /api/conversations`, `POST /api/conversations`, `GET/PATCH/DELETE /api/conversations/{id}`
 /// (product spec §7; ADR-024 "Conversations (D5)"; story us-01-conversations AC-2/AC-3, task
 /// E13/F05/US01/T02). Thin composition per ADR-002 — the actual decisions (tenant + user scoping,
 /// title derivation, RLS-backstopped isolation) are made by
@@ -77,6 +77,7 @@ public static class ConversationsEndpointExtensions
         endpoints.MapGet("/api/conversations", GetConversationsAsync);
         endpoints.MapPost("/api/conversations", PostConversationAsync);
         endpoints.MapGet("/api/conversations/{id}", GetConversationAsync);
+        endpoints.MapPatch("/api/conversations/{id}", RenameConversationAsync);
         endpoints.MapDelete("/api/conversations/{id}", DeleteConversationAsync);
         endpoints.MapPost("/api/conversations/{id}/messages", PostConversationMessageAsync);
         endpoints.MapPost("/api/conversations/{id}/feedback", PostConversationFeedbackAsync);
@@ -211,6 +212,47 @@ public static class ConversationsEndpointExtensions
         }
 
         return Results.Ok(ToDetailResponse(conversation));
+    }
+
+    /// <summary>`PATCH /api/conversations/{id}` — renames the caller's own conversation:
+    /// `{ title }` sets its name (at most <see cref="ConversationService.TitleMaxLength"/>
+    /// characters once whitespace is collapsed), a blank or null `title` clears it so the automatic
+    /// title shows again. 200 with the summary (carrying `customTitle`). Same guard order and
+    /// 404-not-403 rule as <see cref="DeleteConversationAsync"/>; not Admin-gated.</summary>
+    private static async Task<IResult> RenameConversationAsync(
+        string id,
+        RenameConversationRequest? request,
+        HttpRequest httpRequest,
+        ConversationService conversationService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+        var userId = caller.Identity!;
+
+        if (!Guid.TryParse(id, out var conversationGuid))
+        {
+            return Results.BadRequest("The conversation id in the route must be a GUID.");
+        }
+
+        var name = ConversationService.NormalizeCustomTitle(request?.Title);
+        if (name is { Length: > ConversationService.TitleMaxLength })
+        {
+            return Results.BadRequest($"'title' must be at most {ConversationService.TitleMaxLength} characters.");
+        }
+
+        var renamed = await conversationService
+            .RenameAsync(tenantId, userId, new EntityId(conversationGuid), name, cancellationToken)
+            .ConfigureAwait(false);
+
+        return renamed is null ? Results.NotFound() : Results.Ok(ToSummaryResponse(renamed));
     }
 
     /// <summary>`DELETE /api/conversations/{id}` — the caller's own conversation, 204 on success.
@@ -696,6 +738,7 @@ public static class ConversationsEndpointExtensions
     {
         id = summary.ConversationId.Value,
         title = summary.Title,
+        customTitle = summary.CustomTitle,
         scopeContractId = summary.ScopeContractId?.Value,
         updatedAt = summary.UpdatedAt,
     };
@@ -704,6 +747,7 @@ public static class ConversationsEndpointExtensions
     {
         id = detail.ConversationId.Value,
         title = detail.Title,
+        customTitle = detail.CustomTitle,
         scopeContractId = detail.ScopeContractId?.Value,
         createdAt = detail.CreatedAt,
         updatedAt = detail.UpdatedAt,
@@ -790,6 +834,10 @@ public static class ConversationsEndpointExtensions
     /// failure for an un-parseable route/body <see cref="Guid"/>.
     /// </summary>
     public sealed record CreateConversationRequest(string? ScopeContractId = null);
+
+    /// <summary>`PATCH /api/conversations/{id}` request body: `{ title }`, the chat's new name;
+    /// blank or null clears it. Nested for the same reason as <see cref="CreateConversationRequest"/>.</summary>
+    public sealed record RenameConversationRequest(string? Title = null);
 
     /// <summary>`POST /api/conversations/{id}/feedback` request body (ADR-030 D5):
     /// `{ messageId, answers: { what, frequency, importance } }`. Strings, not typed keys, for the

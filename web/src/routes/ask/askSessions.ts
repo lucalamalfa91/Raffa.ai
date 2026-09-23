@@ -1,5 +1,6 @@
 import type { ApiClient } from "../../api/client";
 import type { FeedbackAnswers } from "./reply/replyTypes";
+import { CONVERSATION_NAME_MAX_LENGTH, normalizeConversationName } from "./conversationTitle";
 import {
   TRANSPORT_ERROR_REASON,
   buildErrorTurn,
@@ -38,6 +39,9 @@ export interface AskSession {
   conversationId: string | null;
   turns: readonly AskTurnView[];
   title: string | null;
+  /** The name the user gave the chat, as the server last reported it (`null`: automatic title).
+   * A rename made in this tab is read through `customTitleFor`, which prefers it. */
+  customTitle: string | null;
   /** The conversation's persisted `scopeContractId` (NW-78 binding chip), once known. */
   boundContractId: string | null;
   /** A question was sent and its reply has not landed yet. */
@@ -52,6 +56,8 @@ export interface AskSessionsSnapshot {
   sessions: ReadonlyMap<string, AskSession>;
   /** draft key -> the conversation id it was promoted to. */
   promotions: ReadonlyMap<string, string>;
+  /** conversation id -> the name given in this tab (`null`: cleared), ahead of any server read. */
+  customTitles: ReadonlyMap<string, string | null>;
   /** The session currently on screen, `null` when no Ask thread is mounted. */
   viewingKey: string | null;
   /** Bumped whenever the server-side conversation list may have changed (created, answered). */
@@ -86,12 +92,23 @@ export interface AskFeedbackInput {
   answers: FeedbackAnswers;
 }
 
+export interface AskRenameInput {
+  apiClient: ApiClient;
+  tenantId: string;
+  conversationId: string;
+  /** The new name; blank or `null` clears it back to the automatic title. */
+  name: string | null;
+}
+
 export interface AskSessionStore {
   getSnapshot(): AskSessionsSnapshot;
   subscribe(listener: () => void): () => void;
   onReply(listener: (event: AskReplyEvent) => void): () => void;
   /** Seeds a resumed conversation from `GET /api/conversations/{id}`; never overwrites a live one. */
-  hydrate(conversationId: string, seed: { turns: readonly AskTurnView[]; title: string | null; boundContractId: string | null }): void;
+  hydrate(
+    conversationId: string,
+    seed: { turns: readonly AskTurnView[]; title: string | null; boundContractId: string | null; customTitle?: string | null },
+  ): void;
   /** Which session is on screen; opening a session marks its reply read. */
   setViewing(key: string | null): void;
   /** The tab became visible again: the session on screen has been seen. */
@@ -99,6 +116,12 @@ export interface AskSessionStore {
   /** Sends one message. Returns `null` (and does nothing) while that session is still answering. */
   send(input: AskSendInput): Promise<void> | null;
   submitFeedback(input: AskFeedbackInput): Promise<{ ok: boolean }>;
+  /**
+   * Renames a chat -- any of the caller's, open in this tab or only listed in the rail. The name
+   * shows everywhere at once (rail, chat header, reply notices) and is rolled back if the server
+   * refuses it.
+   */
+  rename(input: AskRenameInput): Promise<{ ok: boolean; error: string | null }>;
   /** Drops a deleted conversation; a reply still in flight for it is discarded. */
   forget(conversationId: string): void;
   /** Unsent composer text, kept per session so switching chats never loses a half-typed question. */
@@ -115,6 +138,11 @@ export function resolveSessionKey(snapshot: AskSessionsSnapshot, key: string): s
   return snapshot.promotions.get(key) ?? key;
 }
 
+/** The chat's name as this tab knows it: a rename made here, else the server's `customTitle`. */
+export function customTitleFor(snapshot: AskSessionsSnapshot, conversationId: string, serverValue: string | null | undefined): string | null {
+  return snapshot.customTitles.has(conversationId) ? (snapshot.customTitles.get(conversationId) ?? null) : (serverValue ?? null);
+}
+
 export function unreadSessionCount(snapshot: AskSessionsSnapshot): number {
   let count = 0;
   for (const session of snapshot.sessions.values()) {
@@ -124,7 +152,17 @@ export function unreadSessionCount(snapshot: AskSessionsSnapshot): number {
 }
 
 function blankSession(key: string): AskSession {
-  return { key, conversationId: null, turns: [], title: null, boundContractId: null, pending: false, unread: false, feedbackDone: new Set() };
+  return {
+    key,
+    conversationId: null,
+    turns: [],
+    title: null,
+    customTitle: null,
+    boundContractId: null,
+    pending: false,
+    unread: false,
+    feedbackDone: new Set(),
+  };
 }
 
 function documentHidden(): boolean {
@@ -132,10 +170,12 @@ function documentHidden(): boolean {
 }
 
 export function createAskSessionStore(): AskSessionStore {
-  let snapshot: AskSessionsSnapshot = { sessions: new Map(), promotions: new Map(), viewingKey: null, listVersion: 0 };
+  let snapshot: AskSessionsSnapshot = { sessions: new Map(), promotions: new Map(), customTitles: new Map(), viewingKey: null, listVersion: 0 };
   const listeners = new Set<() => void>();
   const replyListeners = new Set<(event: AskReplyEvent) => void>();
   const composerDrafts = new Map<string, string>();
+  // The latest rename per chat: an older one settling late never overwrites a newer name.
+  const renameSeq = new Map<string, number>();
 
   function commit(next: Partial<AskSessionsSnapshot>) {
     snapshot = { ...snapshot, ...next };
@@ -180,7 +220,8 @@ export function createAskSessionStore(): AskSessionStore {
     withSession(key, (current) => ({ ...current, turns: [...current.turns, turn], pending: false, unread: !seen }), {
       listVersion: snapshot.listVersion + 1,
     });
-    const event: AskReplyEvent = { conversationId: session.conversationId, title: session.title, ok, seen };
+    const name = session.conversationId === null ? null : customTitleFor(snapshot, session.conversationId, session.customTitle);
+    const event: AskReplyEvent = { conversationId: session.conversationId, title: name ?? session.title, ok, seen };
     for (const listener of replyListeners) listener(event);
   }
 
@@ -200,7 +241,7 @@ export function createAskSessionStore(): AskSessionStore {
     hydrate(conversationId, seed) {
       if (snapshot.sessions.has(conversationId)) return;
       const sessions = new Map(snapshot.sessions);
-      sessions.set(conversationId, { ...blankSession(conversationId), conversationId, ...seed });
+      sessions.set(conversationId, { ...blankSession(conversationId), conversationId, ...seed, customTitle: seed.customTitle ?? null });
       commit({ sessions });
     },
 
@@ -295,7 +336,52 @@ export function createAskSessionStore(): AskSessionStore {
       return { ok: true };
     },
 
+    async rename({ apiClient, tenantId, conversationId, name }) {
+      const next = normalizeConversationName(name);
+      if (next !== null && next.length > CONVERSATION_NAME_MAX_LENGTH) {
+        return { ok: false, error: `A chat name is at most ${CONVERSATION_NAME_MAX_LENGTH} characters.` };
+      }
+
+      const hadOverride = snapshot.customTitles.has(conversationId);
+      const previous = snapshot.customTitles.get(conversationId) ?? null;
+      const seq = (renameSeq.get(conversationId) ?? 0) + 1;
+      renameSeq.set(conversationId, seq);
+
+      const optimistic = new Map(snapshot.customTitles);
+      optimistic.set(conversationId, next);
+      commit({ customTitles: optimistic });
+
+      let result: Awaited<ReturnType<ApiClient["renameConversation"]>>;
+      try {
+        result = await apiClient.renameConversation(tenantId, conversationId, next);
+      } catch {
+        result = { ok: false, statusCode: null, conversation: null, error: null };
+      }
+      if (renameSeq.get(conversationId) !== seq) return { ok: result.ok, error: result.ok ? null : result.error };
+
+      if (!result.ok || !result.conversation) {
+        const rolledBack = new Map(snapshot.customTitles);
+        if (hadOverride) rolledBack.set(conversationId, previous);
+        else rolledBack.delete(conversationId);
+        commit({ customTitles: rolledBack });
+        return { ok: false, error: result.error ?? "The chat could not be renamed." };
+      }
+
+      const saved = result.conversation.customTitle ?? null;
+      const customTitles = new Map(snapshot.customTitles);
+      customTitles.set(conversationId, saved);
+      const session = snapshot.sessions.get(conversationId);
+      const sessions = session ? new Map(snapshot.sessions).set(conversationId, { ...session, customTitle: saved }) : snapshot.sessions;
+      commit({ customTitles, sessions, listVersion: snapshot.listVersion + 1 });
+      return { ok: true, error: null };
+    },
+
     forget(conversationId) {
+      if (snapshot.customTitles.has(conversationId)) {
+        const customTitles = new Map(snapshot.customTitles);
+        customTitles.delete(conversationId);
+        commit({ customTitles });
+      }
       if (!snapshot.sessions.has(conversationId)) return;
       const sessions = new Map(snapshot.sessions);
       sessions.delete(conversationId);

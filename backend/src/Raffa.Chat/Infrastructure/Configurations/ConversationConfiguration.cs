@@ -25,6 +25,7 @@ public sealed class ConversationConfiguration : IEntityTypeConfiguration<Convers
         // backstop convention every other bounded field in this codebase already gets (e.g.
         // Raffa.Documents.Contracts.Domain.Contract.Currency's HasMaxLength(3)).
         builder.Property(e => e.Title).HasMaxLength(48);
+        builder.Property(e => e.CustomTitle).HasMaxLength(48);
 
         builder.HasIndex(e => e.TenantId);
 

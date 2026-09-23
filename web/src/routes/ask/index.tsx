@@ -12,7 +12,8 @@ import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
 import { useConversation } from "./useConversation";
 import { useAskSessionStore, useAskSessionsSnapshot } from "./AskSessionsContext";
-import { draftSessionKey, resolveSessionKey } from "./askSessions";
+import { customTitleFor, draftSessionKey, resolveSessionKey } from "./askSessions";
+import ConversationRenameField from "./ConversationRenameField";
 import { requestReplyNotificationPermission } from "./AskReplyNotifier";
 import { parseDocumentViewerHref } from "../documents/viewer/documentViewerViewModel";
 import { useDocumentViewerOverlay } from "../documents/viewer/DocumentViewerOverlay";
@@ -137,6 +138,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     store.hydrate(resumeState.conversation.id, {
       turns: resumeState.turns,
       title: resumeState.conversation.title,
+      customTitle: resumeState.conversation.customTitle ?? null,
       boundContractId: resumeState.conversation.scopeContractId,
     });
   }, [store, resumeState]);
@@ -174,6 +176,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [question, setQuestion] = useState(() => store.composerText(sessionKey));
   const [citationNotice, setCitationNotice] = useState<CitationNoticeState | null>(null);
   const [marketPanelRecordId, setMarketPanelRecordId] = useState<string | null>(null);
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [renameFailed, setRenameFailed] = useState(false);
 
   // Switching chats swaps the composer's unsent text for that chat's own, and drops the notice and
   // market panel opened on the previous thread.
@@ -187,6 +191,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setQuestion(store.composerText(sessionKey));
     setCitationNotice(null);
     setMarketPanelRecordId(null);
+    setRenamingTitle(false);
+    setRenameFailed(false);
   }, [store, sessionKey]);
   useEffect(() => () => store.saveComposerText(shownSessionKey.current, questionRef.current), [store]);
 
@@ -326,6 +332,19 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     [store, sessionKey, apiClient, workspace?.id],
   );
 
+  // A chat that exists on the server can be renamed from its header (the rail does the same).
+  const renameConversation = useCallback(
+    (name: string) => {
+      setRenamingTitle(false);
+      setRenameFailed(false);
+      if (!workspace || currentConversationId === null) return;
+      void store.rename({ apiClient, tenantId: workspace.id, conversationId: currentConversationId, name }).then((result) => {
+        if (!result.ok) setRenameFailed(true);
+      });
+    },
+    [store, apiClient, workspace?.id, currentConversationId],
+  );
+
   const feedbackDone = session?.feedbackDone ?? NO_FEEDBACK;
   const submittedFromThread = feedbackSubmittedMessageIds(turns);
 
@@ -453,7 +472,10 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   }
 
   const hasTurns = turns.length > 0;
-  const headerTitle = boundTitle ?? conversationTitle ?? ASK_NEW_CHAT_TITLE;
+  // A name the user gave the chat wins over the bound supplier + contract and the first question.
+  const conversationName = currentConversationId === null ? null : customTitleFor(sessions, currentConversationId, session?.customTitle);
+  const headerTitle = conversationName ?? boundTitle ?? conversationTitle ?? ASK_NEW_CHAT_TITLE;
+  const canRename = currentConversationId !== null;
   const scopeShort = buildScopeShort(validatedContractCount, supplierNames);
   const starterGroups = buildStarterGroups(supplierNames[0] ?? null);
 
@@ -465,7 +487,36 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       <div className="ask-conv-header">
         <div className="ask-conv-title">
           <span className="ask-conv-mark" aria-hidden="true" />
-          <h2 className="ask-conv-name">{headerTitle}</h2>
+          {renamingTitle && canRename ? (
+            <ConversationRenameField
+              className="ask-conv-rename"
+              initialValue={headerTitle}
+              label="Rename this chat"
+              onCommit={renameConversation}
+              onCancel={() => setRenamingTitle(false)}
+            />
+          ) : (
+            <h2 className="ask-conv-name" onDoubleClick={canRename ? () => setRenamingTitle(true) : undefined}>
+              {headerTitle}
+            </h2>
+          )}
+          {canRename && !renamingTitle && (
+            <button
+              type="button"
+              className="ask-conv-rename-button"
+              onClick={() => {
+                setRenameFailed(false);
+                setRenamingTitle(true);
+              }}
+            >
+              Rename
+            </button>
+          )}
+          {renameFailed && (
+            <span className="ask-conv-rename-error" role="alert">
+              Could not rename this chat. Try again.
+            </span>
+          )}
           {/* NW-78 (AC-1/AC-2/AC-3): beside the title, independent of hasTurns -- a just-scoped
               conversation is bound from the instant its create response resolves (already true by
               then, see the optimistic "you" bubble in ask() above), not only once it has been

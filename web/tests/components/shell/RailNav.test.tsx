@@ -60,6 +60,7 @@ function mockApiClient(listConversations: ApiClient["listConversations"] = vi.fn
     postMessage: vi.fn(),
     postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null }),
+    renameConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -406,4 +407,87 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
       expect(deleteConversation).toHaveBeenCalledWith(WORKSPACE_ID, "conv-1");
     });
   });
+
+  describe("rename a chat", () => {
+    function renamedResult(id: string, customTitle: string | null) {
+      return { ok: true, statusCode: 200, conversation: { id, title: "When does it expire?", customTitle, scopeContractId: null, updatedAt: "2026-09-08T00:00:00Z" }, error: null };
+    }
+
+    async function railWith(conversations: ConversationSummaryBody[], renameConversation = vi.fn()) {
+      const apiClient = mockApiClient(vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations, error: null }));
+      apiClient.renameConversation = renameConversation;
+      const view = renderRail({ apiClient });
+      await screen.findByRole("searchbox", { name: "Search chats" });
+      return { ...view, renameConversation };
+    }
+
+    it("shows the name the server stored for a renamed chat", async () => {
+      await railWith([conversation({ id: "conv-1", customTitle: "Atlassian renewal" }), conversation({ id: "conv-2" })]);
+
+      expect(screen.getByRole("link", { name: "Atlassian renewal" })).toHaveAttribute("href", "/ask/conv-1");
+      expect(screen.getByRole("link", { name: "Ask Raffa" })).toHaveAttribute("href", "/ask/conv-2");
+    });
+
+    it("Rename opens a field on the current title; Enter saves and the row shows the name at once", async () => {
+      const user = userEvent.setup();
+      const renameConversation = vi.fn().mockResolvedValue(renamedResult("conv-1", "Atlassian renewal"));
+      await railWith([conversation({ id: "conv-1" })], renameConversation);
+
+      await user.click(screen.getByRole("button", { name: "Rename Ask Raffa" }));
+      const field = screen.getByRole("textbox", { name: "Rename Ask Raffa" });
+      expect(field).toHaveValue("Ask Raffa");
+      expect(field).toHaveFocus();
+      expect(field).toHaveAttribute("maxLength", "48");
+
+      await user.clear(field);
+      await user.type(field, "Atlassian renewal{Enter}");
+
+      expect(renameConversation).toHaveBeenCalledWith(WORKSPACE_ID, "conv-1", "Atlassian renewal");
+      expect(screen.getByRole("link", { name: "Atlassian renewal" })).toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name: /^Rename/ })).not.toBeInTheDocument();
+    });
+
+    it("Escape and an unchanged name leave the chat as it was, without a request", async () => {
+      const user = userEvent.setup();
+      const { renameConversation } = await railWith([conversation({ id: "conv-1" })]);
+
+      await user.click(screen.getByRole("button", { name: "Rename Ask Raffa" }));
+      await user.type(screen.getByRole("textbox", { name: "Rename Ask Raffa" }), " edited{Escape}");
+      expect(screen.getByRole("link", { name: "Ask Raffa" })).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Rename Ask Raffa" }));
+      await user.type(screen.getByRole("textbox", { name: "Rename Ask Raffa" }), "{Enter}");
+
+      expect(renameConversation).not.toHaveBeenCalled();
+    });
+
+    it("a double-click on the title opens the same field, and clearing it restores the automatic title", async () => {
+      const user = userEvent.setup();
+      const renameConversation = vi.fn().mockResolvedValue(renamedResult("conv-1", null));
+      await railWith([conversation({ id: "conv-1", customTitle: "Old name" })], renameConversation);
+
+      await user.dblClick(screen.getByRole("link", { name: "Old name" }));
+      const field = screen.getByRole("textbox", { name: "Rename Old name" });
+      await user.clear(field);
+      await user.type(field, "{Enter}");
+
+      expect(renameConversation).toHaveBeenCalledWith(WORKSPACE_ID, "conv-1", null);
+      expect(await screen.findByRole("link", { name: "Ask Raffa" })).toBeInTheDocument();
+    });
+
+    it("puts the old name back and says so when the server refuses the rename", async () => {
+      const user = userEvent.setup();
+      const renameConversation = vi.fn().mockResolvedValue({ ok: false, statusCode: 404, conversation: null, error: "No conversation found for id conv-1." });
+      await railWith([conversation({ id: "conv-1", customTitle: "Old name" })], renameConversation);
+
+      await user.click(screen.getByRole("button", { name: "Rename Old name" }));
+      const field = screen.getByRole("textbox", { name: "Rename Old name" });
+      await user.clear(field);
+      await user.type(field, "New name{Enter}");
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not rename this chat. Try again.");
+      expect(screen.getByRole("link", { name: "Old name" })).toBeInTheDocument();
+    });
+  });
 });
+

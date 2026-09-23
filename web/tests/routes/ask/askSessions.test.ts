@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ApiClient, ConversationReplyBody, CreateConversationResult, PostMessageResult } from "../../../src/api/client";
 import type { AskTurnView } from "../../../src/routes/ask/askViewModel";
-import { createAskSessionStore, draftSessionKey, resolveSessionKey, unreadSessionCount, type AskReplyEvent } from "../../../src/routes/ask/askSessions";
+import type { RenameConversationResult } from "../../../src/api/client";
+import {
+  createAskSessionStore,
+  customTitleFor,
+  draftSessionKey,
+  resolveSessionKey,
+  unreadSessionCount,
+  type AskReplyEvent,
+} from "../../../src/routes/ask/askSessions";
 
 const TENANT = "tenant-1";
 
@@ -32,11 +40,14 @@ function deferred<T>() {
 }
 
 /** Only the two calls a send makes; the store never reaches anything else. */
-function apiClient(overrides: Partial<Pick<ApiClient, "createConversation" | "postMessage" | "postConversationFeedback">>): ApiClient {
+function apiClient(
+  overrides: Partial<Pick<ApiClient, "createConversation" | "postMessage" | "postConversationFeedback" | "renameConversation">>,
+): ApiClient {
   return {
     createConversation: vi.fn(),
     postMessage: vi.fn(),
     postConversationFeedback: vi.fn(),
+    renameConversation: vi.fn(),
     ...overrides,
   } as unknown as ApiClient;
 }
@@ -180,5 +191,98 @@ describe("askSessions -- parallel Ask sessions", () => {
     expect(store.composerText("conv-b")).toBe("half-typed");
     expect(store.composerText("conv-a")).toBe("follow-up");
     expect(store.composerText(draft)).toBe("follow-up");
+  });
+
+  describe("rename", () => {
+    function renamed(customTitle: string | null): RenameConversationResult {
+      return { ok: true, statusCode: 200, conversation: { id: "conv-a", title: "First question", customTitle, scopeContractId: null, updatedAt: "2026-09-08T00:00:00Z" }, error: null };
+    }
+
+    it("shows the new name at once, keeps the server's answer, and asks the rail to reload", async () => {
+      const rename = deferred<RenameConversationResult>();
+      const renameConversation = vi.fn().mockReturnValue(rename.promise);
+      const store = createAskSessionStore();
+      store.hydrate("conv-a", { turns: [], title: "First question", boundContractId: null });
+      const listVersion = store.getSnapshot().listVersion;
+
+      const done = store.rename({ apiClient: apiClient({ renameConversation }), tenantId: TENANT, conversationId: "conv-a", name: "  Atlassian   renewal " });
+
+      expect(renameConversation).toHaveBeenCalledWith(TENANT, "conv-a", "Atlassian renewal");
+      expect(customTitleFor(store.getSnapshot(), "conv-a", null)).toBe("Atlassian renewal");
+
+      rename.resolve(renamed("Atlassian renewal"));
+      expect(await done).toEqual({ ok: true, error: null });
+      expect(store.getSnapshot().sessions.get("conv-a")?.customTitle).toBe("Atlassian renewal");
+      expect(store.getSnapshot().listVersion).toBe(listVersion + 1);
+    });
+
+    it("renames a chat this tab never opened (a rail row), ahead of the server list", async () => {
+      const store = createAskSessionStore();
+      const client = apiClient({ renameConversation: vi.fn().mockResolvedValue(renamed("Renewals")) });
+
+      await store.rename({ apiClient: client, tenantId: TENANT, conversationId: "conv-z", name: "Renewals" });
+
+      expect(customTitleFor(store.getSnapshot(), "conv-z", "Old server name")).toBe("Renewals");
+      expect(store.getSnapshot().sessions.has("conv-z")).toBe(false);
+    });
+
+    it("rolls the name back when the server refuses it", async () => {
+      const store = createAskSessionStore();
+      const client = apiClient({
+        renameConversation: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, conversation: null, error: "No conversation found for id conv-a." }),
+      });
+
+      const result = await store.rename({ apiClient: client, tenantId: TENANT, conversationId: "conv-a", name: "Mine" });
+
+      expect(result.ok).toBe(false);
+      expect(customTitleFor(store.getSnapshot(), "conv-a", "Server name")).toBe("Server name");
+    });
+
+    it("clears the name with a blank one, and never sends one longer than 48 characters", async () => {
+      const renameConversation = vi.fn().mockResolvedValue(renamed(null));
+      const store = createAskSessionStore();
+      const client = apiClient({ renameConversation });
+
+      await store.rename({ apiClient: client, tenantId: TENANT, conversationId: "conv-a", name: "   " });
+      expect(renameConversation).toHaveBeenLastCalledWith(TENANT, "conv-a", null);
+      expect(customTitleFor(store.getSnapshot(), "conv-a", "Server name")).toBeNull();
+
+      const tooLong = await store.rename({ apiClient: client, tenantId: TENANT, conversationId: "conv-a", name: "x".repeat(49) });
+      expect(tooLong.ok).toBe(false);
+      expect(renameConversation).toHaveBeenCalledTimes(1);
+    });
+
+    it("an older rename settling late never overwrites a newer name", async () => {
+      const first = deferred<RenameConversationResult>();
+      const second = deferred<RenameConversationResult>();
+      const renameConversation = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+      const store = createAskSessionStore();
+      const client = apiClient({ renameConversation });
+
+      const one = store.rename({ apiClient: client, tenantId: TENANT, conversationId: "conv-a", name: "First" });
+      const two = store.rename({ apiClient: client, tenantId: TENANT, conversationId: "conv-a", name: "Second" });
+      second.resolve(renamed("Second"));
+      await two;
+      first.resolve({ ok: false, statusCode: null, conversation: null, error: "offline" });
+      await one;
+
+      expect(customTitleFor(store.getSnapshot(), "conv-a", null)).toBe("Second");
+    });
+
+    it("names a renamed chat by its name in the reply-ready event", async () => {
+      const store = createAskSessionStore();
+      const events: AskReplyEvent[] = [];
+      store.onReply((event) => events.push(event));
+      store.hydrate("conv-a", { turns: [], title: "First question", boundContractId: null, customTitle: "Atlassian renewal" });
+
+      await store.send({
+        key: "conv-a",
+        apiClient: apiClient({ postMessage: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, reply: reply("conv-a", "Ok"), error: null }) }),
+        tenantId: TENANT,
+        text: "And the cap?",
+      });
+
+      expect(events[0].title).toBe("Atlassian renewal");
+    });
   });
 });

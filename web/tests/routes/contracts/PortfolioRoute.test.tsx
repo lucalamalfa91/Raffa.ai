@@ -64,6 +64,7 @@ function mockApiClient(getPortfolio: ApiClient["getPortfolio"] = vi.fn()): ApiCl
     postMessage: vi.fn(),
     postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn(),
+    renameConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     // Task E25/F04/US01/T01 (quote-benchmark-backend) added this member to `ApiClient` after this

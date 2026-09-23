@@ -1302,6 +1302,20 @@ export interface PostConversationFeedbackResult {
   error: string | null;
 }
 
+type RenameConversationResponses = paths["/api/conversations/{id}"]["patch"]["responses"];
+export type RenamedConversationBody = RenameConversationResponses[200]["content"]["application/json"];
+
+export interface RenameConversationResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The renamed conversation's summary (its new `customTitle`), present only when `ok` is true. */
+  conversation: RenamedConversationBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
 export interface DeleteConversationResult {
   /** True only on `204 No Content`. */
   ok: boolean;
@@ -1789,6 +1803,13 @@ export interface ApiClient {
    * outcome. 204 on success.
    */
   deleteConversation(tenantId: string, conversationId: string): Promise<DeleteConversationResult>;
+  /**
+   * Calls `PATCH /api/conversations/{id}` (operationId `renameConversation`) with `{ title }` --
+   * names the caller's own conversation; `null` or a blank title clears the name so the automatic
+   * title shows again. Same never-throws shape; a `404` (unknown / other user / other tenant) and a
+   * `400` (longer than 48 characters) are normal, expected outcomes.
+   */
+  renameConversation(tenantId: string, conversationId: string, title: string | null): Promise<RenameConversationResult>;
   /**
    * Calls `GET /api/capabilities` (operationId `getCapabilities`) -- the versioned capability
    * catalog (R-SYS-01), the source of the Ask screen's own two suggestion chips
@@ -3683,6 +3704,44 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, result: null, error: feedbackError };
+    },
+
+    async renameConversation(tenantId, conversationId, title) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}`, baseUrl), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          body: JSON.stringify({ title }),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          conversation: null,
+          error: `Unable to reach ${baseUrl}/api/conversations/${conversationId}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const conversation = (await response.json()) as RenamedConversationBody;
+        return { ok: true, statusCode: 200, conversation, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, conversation: null, error: `No conversation found for id ${conversationId}.` };
+      }
+
+      let renameError: string;
+      try {
+        const errorBody: unknown = await response.json();
+        renameError = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        renameError = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, conversation: null, error: renameError };
     },
 
     async deleteConversation(tenantId, conversationId) {

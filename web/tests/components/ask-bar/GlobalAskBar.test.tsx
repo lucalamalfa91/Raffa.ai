@@ -69,6 +69,7 @@ function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() 
     postMessage: vi.fn(),
     postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn(),
+    renameConversation: vi.fn(),
     getCapabilities,
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),

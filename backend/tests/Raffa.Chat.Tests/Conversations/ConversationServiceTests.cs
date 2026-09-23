@@ -425,6 +425,110 @@ public sealed class ConversationServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RenameAsync_sets_a_custom_title_without_touching_the_derived_title_or_the_recency()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var t0 = new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero);
+        var t1 = t0.AddHours(3);
+
+        ConversationSummaryResult created;
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            created = await service.CreateAsync(tenantId, "alice@example.com", null);
+            await service.AppendMessageAsync(tenantId, "alice@example.com", created.ConversationId, YouMessage("What is our Atlassian liability cap?"));
+        }
+
+        ConversationSummaryResult? renamed;
+        {
+            var service = CreateService(tenantContext, new FixedClock(t1), auditWriter, out var db);
+            await using var _ = db;
+            renamed = await service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, "  Atlassian\n  renewal   prep ");
+        }
+
+        Assert.NotNull(renamed);
+        Assert.Equal("Atlassian renewal prep", renamed.CustomTitle);
+        Assert.Equal("What is our Atlassian liability cap?", renamed.Title);
+        Assert.Equal(t0, renamed.UpdatedAt);
+
+        var readService = CreateService(tenantContext, new FixedClock(t1), auditWriter, out var readDb);
+        await using var __ = readDb;
+        var detail = await readService.GetAsync(tenantId, "alice@example.com", created.ConversationId);
+        Assert.Equal("Atlassian renewal prep", detail!.CustomTitle);
+        var listed = Assert.Single(await readService.ListRecentAsync(tenantId, "alice@example.com"));
+        Assert.Equal("Atlassian renewal prep", listed.CustomTitle);
+
+        // ADR-011: the audit row says a name was set, never what it is.
+        var audit = Assert.Single(auditWriter.Written, e => e.Action == "conversation.renamed");
+        Assert.Equal(created.ConversationId.Value.ToString(), audit.ResourceId);
+        Assert.Equal("customTitle=set", audit.Detail);
+        Assert.DoesNotContain("Atlassian", audit.Detail!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RenameAsync_with_a_blank_name_clears_it_back_to_the_automatic_title()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var t0 = new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero);
+
+        var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+        await using var _ = db;
+        var created = await service.CreateAsync(tenantId, "alice@example.com", null);
+        await service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, "Renewals");
+
+        var cleared = await service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, "   ");
+
+        Assert.Null(cleared!.CustomTitle);
+        Assert.Equal(ConversationService.DefaultTitle, cleared.Title);
+        Assert.Equal("customTitle=cleared", auditWriter.Written[^1].Detail);
+    }
+
+    [Fact]
+    public async Task RenameAsync_returns_null_for_another_users_conversation_and_leaves_it_unnamed()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var t0 = new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero);
+
+        ConversationSummaryResult created;
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            created = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            Assert.Null(await service.RenameAsync(tenantId, "bob@example.com", created.ConversationId, "Mine now"));
+            Assert.Null(await service.RenameAsync(tenantId, "alice@example.com", EntityId.New(), "Unknown"));
+        }
+
+        var readService = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var readDb);
+        await using var __ = readDb;
+        Assert.Null((await readService.GetAsync(tenantId, "alice@example.com", created.ConversationId))!.CustomTitle);
+        Assert.DoesNotContain(auditWriter.Written, e => e.Action == "conversation.renamed");
+    }
+
+    [Fact]
+    public async Task RenameAsync_rejects_a_name_longer_than_48_characters()
+    {
+        var tenantId = TenantId.New();
+        var service = CreateService(new TenantContext(), new FixedClock(DateTimeOffset.UnixEpoch), new RecordingAuditWriter(), out var db);
+        await using var _ = db;
+        var created = await service.CreateAsync(tenantId, "alice@example.com", null);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, new string('x', 49)));
+        Assert.Equal(new string('x', 48), (await service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, new string('x', 48)))!.CustomTitle);
+    }
+
+    [Fact]
     public async Task DeleteAsync_removes_the_callers_conversation_and_its_messages()
     {
         var tenantId = TenantId.New();

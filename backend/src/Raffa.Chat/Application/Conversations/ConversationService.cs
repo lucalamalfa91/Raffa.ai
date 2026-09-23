@@ -70,6 +70,7 @@ public sealed class ConversationService(
     private const string AuditConversationCreatedAction = "conversation.created";
     private const string AuditMessageAppendedAction = "conversation.message.appended";
     private const string AuditConversationDeletedAction = "conversation.deleted";
+    private const string AuditConversationRenamedAction = "conversation.renamed";
     private const string AuditConversationResourceType = "conversation";
     private const string AuditConversationMessageResourceType = "conversation_message";
 
@@ -176,7 +177,8 @@ public sealed class ConversationService(
             conversation.ScopeContractId,
             conversation.CreatedAt,
             conversation.UpdatedAt,
-            messages.Select(ToMessageResult).ToList());
+            messages.Select(ToMessageResult).ToList(),
+            conversation.CustomTitle);
     }
 
     /// <summary><see langword="null"/> under the identical "not this user's conversation in this
@@ -355,6 +357,80 @@ public sealed class ConversationService(
         return InterviewConsumeOutcome.Consumed;
     }
 
+    /// <summary>
+    /// Renames the caller's own conversation: <paramref name="customTitle"/> becomes
+    /// <see cref="Conversation.CustomTitle"/> (whitespace collapsed, like <see cref="DeriveTitle"/>),
+    /// and a blank one clears it so the automatic title shows again. Never bumps
+    /// <see cref="Conversation.UpdatedAt"/> — a rename is not activity, and must not reorder the
+    /// rail. <see langword="null"/> under the identical "not this user's conversation in this
+    /// tenant" rule <see cref="GetAsync"/> documents. Writes one <c>conversation.renamed</c> audit
+    /// row, whose detail says whether a name was set or cleared — never the name itself (ADR-011:
+    /// a chat name can quote a supplier or a figure).
+    /// </summary>
+    /// <exception cref="ArgumentException">The name is longer than <see cref="TitleMaxLength"/>
+    /// once whitespace is collapsed (the endpoint answers 400 before calling).</exception>
+    public async Task<ConversationSummaryResult?> RenameAsync(
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        string? customTitle,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("A user id is required.", nameof(userId));
+        }
+
+        var name = NormalizeCustomTitle(customTitle);
+        if (name is { Length: > TitleMaxLength })
+        {
+            throw new ArgumentException(
+                $"A conversation name is at most {TitleMaxLength} characters.", nameof(customTitle));
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var conversation = await dbContext.Conversations
+            .SingleOrDefaultAsync(
+                c => c.TenantId == tenantId && c.UserId == userId && c.Id == conversationId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (conversation is null)
+        {
+            return null;
+        }
+
+        conversation.CustomTitle = name;
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId,
+                userId,
+                AuditConversationRenamedAction,
+                AuditConversationResourceType,
+                conversationId.Value.ToString(),
+                clock.UtcNow,
+                name is null ? "customTitle=cleared" : "customTitle=set"),
+            cancellationToken).ConfigureAwait(false);
+
+        return ToSummary(conversation);
+    }
+
+    /// <summary>A rename's name on one line: runs of whitespace (newlines included) collapse to a
+    /// single space, and a blank name is <see langword="null"/> — "no name, use the automatic
+    /// title".</summary>
+    public static string? NormalizeCustomTitle(string? customTitle)
+    {
+        if (string.IsNullOrWhiteSpace(customTitle))
+        {
+            return null;
+        }
+
+        return string.Join(' ', customTitle.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
     /// <summary>Deletes the caller's own conversation and its messages. Returns
     /// <see langword="false"/> under the identical "not this user's conversation in this tenant"
     /// rule <see cref="GetAsync"/> documents — the endpoint turns that into 404, never 403.</summary>
@@ -498,7 +574,7 @@ public sealed class ConversationService(
     }
 
     private static ConversationSummaryResult ToSummary(Conversation conversation) =>
-        new(conversation.Id, conversation.Title, conversation.ScopeContractId, conversation.UpdatedAt);
+        new(conversation.Id, conversation.Title, conversation.ScopeContractId, conversation.UpdatedAt, conversation.CustomTitle);
 
     private static ConversationMessageResult ToMessageResult(ConversationMessage message) =>
         new(
