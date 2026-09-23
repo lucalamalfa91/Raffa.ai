@@ -32,6 +32,7 @@ public sealed class ContractLineItemMarketPriceConfiguration : IEntityTypeConfig
         builder.Property(e => e.Geography).HasMaxLength(20);
         builder.Property(e => e.Currency).HasMaxLength(3);
         builder.Property(e => e.Provenance).HasMaxLength(300);
+        builder.Property(e => e.MatchKind).HasConversion<string>().HasMaxLength(20);
 
         builder.Property(e => e.UnitPriceP25).HasPrecision(18, 4);
         builder.Property(e => e.UnitPriceP50).HasPrecision(18, 4);

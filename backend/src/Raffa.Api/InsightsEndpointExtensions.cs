@@ -10,6 +10,7 @@ using Raffa.Renewals.Application;
 using Raffa.Renewals.Domain;
 using Raffa.Savings.Application;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Market;
 
 namespace Raffa.Api;
 
@@ -377,7 +378,7 @@ public static class InsightsEndpointExtensions
                 && stored is { Matched: true, UnitPriceP25: { } p25, UnitPriceP50: { } p50, UnitPriceP75: { } p75 })
             {
                 bands[i] = new LineBenchmark(
-                    new BenchmarkDistribution(p25, p50, p75), stored.SampleSize, StoredMarketSource, stored.MarketUpdatedAt);
+                    new BenchmarkDistribution(p25, p50, p75), stored.SampleSize, StoredMarketSourceFor(stored), stored.MarketUpdatedAt);
                 continue;
             }
 
@@ -413,6 +414,16 @@ public static class InsightsEndpointExtensions
     /// <summary>The adapter label a stored comparison carries into the strategy pack — the same
     /// corpus, and the same wording, <c>MarketFeedBenchmarkAdapter</c> reports as its source.</summary>
     private const string StoredMarketSource = "market-feed (representative, mock)";
+
+    /// <summary>The source a stored band carries into the pack: a band that is not the line's own
+    /// product says what it is, so neither the strategy nor Ask ever narrates a similar product's
+    /// price, or a bundle's summed price, as the line's own market price.</summary>
+    private static string StoredMarketSourceFor(LineItemMarketPrice stored) => stored.Kind switch
+    {
+        MarketMatchKind.Similar => $"market-feed, similar product {stored.Product} (representative, mock)",
+        MarketMatchKind.Bundle => $"market-feed, bundle {stored.Product} summed (representative, mock)",
+        _ => StoredMarketSource,
+    };
 
     private readonly record struct LineBenchmark(
         BenchmarkDistribution? Distribution,

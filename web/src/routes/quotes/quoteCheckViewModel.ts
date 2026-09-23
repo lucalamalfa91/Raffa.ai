@@ -328,7 +328,10 @@ export function buildQuoteLineRows(rows: readonly ExtractLineRow[], lines: reado
       vsP50: formatVersusP50(line?.unitPrice ?? null, distribution?.p50 ?? null),
       benchmark:
         confidence !== null
-          ? { variant: BENCHMARK_VARIANT_BY_LEVEL[confidence.level] ?? "neutral", label: `${confidence.level} · n=${confidence.sampleSize ?? "—"}` }
+          ? {
+              variant: BENCHMARK_VARIANT_BY_LEVEL[confidence.level] ?? "neutral",
+              label: confidence.sampleSize != null ? `${confidence.level} · ${confidence.sampleSize} deals compared` : `${confidence.level} · sample not reported`,
+            }
           : null,
       needsMapping: row.isUnmatched,
     };
