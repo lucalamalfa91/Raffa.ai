@@ -100,9 +100,10 @@ describe("DocumentStatusTable", () => {
   });
 
   // ADR-020 w15 footer 10 (task E16/F03/US02/T02, wave w15): a stored server row at `Uploaded`
-  // reads "Uploaded", not "Queued…" and not a bar -- the perceived-instant batch. Its filename
-  // still opens the progress panel (footer 11), which is where the real stage checklist lives.
-  it("reads 'Uploaded' with no bar for a server row at Uploaded, filename opens the progress panel", () => {
+  // reads "Uploaded", not "Queued…" -- the perceived-instant batch -- with an indeterminate
+  // "waiting" bar (no percentage) so the user can see work is pending. Its filename still opens the
+  // progress panel (footer 11), which is where the real stage checklist lives.
+  it("reads 'Uploaded' with an indeterminate bar for a server row at Uploaded, filename opens the progress panel", () => {
     renderTable({
       documents: [
         item({
@@ -118,7 +119,8 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByText("Uploaded")).toHaveClass("tag", "tag-neutral");
     expect(screen.getByText("Processing in the background")).toBeInTheDocument();
     expect(screen.queryByText("Queued…")).not.toBeInTheDocument();
-    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    const bar = screen.getByRole("progressbar", { name: "Waiting to start processing" });
+    expect(bar).not.toHaveAttribute("aria-valuenow");
     expect(screen.getByRole("link", { name: "Salesforce_MSA.pdf" })).toHaveAttribute("href", "/documents?progress=doc-1");
   });
 
@@ -146,7 +148,7 @@ describe("DocumentStatusTable", () => {
   });
 
   // Task E16/F03/US02/T02 (ADR-020 w15 footer 10, wave w15): the perceived-instant batch -- a row
-  // reads "Uploaded", never "Uploading…" and never a bar, from the moment a file is picked, before
+  // reads "Uploaded", never "Uploading…", with the indeterminate waiting bar, from the moment a file is picked, before
   // the POST has even resolved (R-DOC-01 AC-1). No `<Link>` either: a local entry has no server id
   // yet for the progress panel to look up.
   it("renders a local in-flight upload as its own 'Uploaded' row from the moment it is picked (R-DOC-01 AC-1)", () => {
@@ -159,7 +161,7 @@ describe("DocumentStatusTable", () => {
     expect(screen.getByText("Uploaded")).toHaveClass("tag", "tag-neutral");
     expect(screen.getByText("Processing in the background")).toBeInTheDocument();
     expect(screen.queryByText("Uploading…")).not.toBeInTheDocument();
-    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Waiting to start processing" })).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 

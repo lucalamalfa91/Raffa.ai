@@ -116,6 +116,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
         documentId={target.id}
         onBack={() => navigate("/documents")}
         onValidated={(contractId) => {
+          list.markValidated(target.id);
           setJustValidated({ contractId, displayName });
           navigate("/documents");
         }}

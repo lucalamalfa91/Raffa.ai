@@ -88,6 +88,28 @@ public static class ExtractionConfidencePolicy
         && !string.Equals(decision, HumanAccepted, StringComparison.Ordinal);
 
     /// <summary>
+    /// True when a persisted evidence row is a fact a human should still confirm — the one rule
+    /// behind the Documents row's "Review N fields" count and the auto-validation of a document
+    /// with nothing left to review. A human or automatic acceptance is never weak, even when the
+    /// model's score sits below the bar; an explicit <see cref="ReviewRequired"/> always is.
+    /// </summary>
+    public static bool IsWeakEvidence(double? confidence, string? decision)
+    {
+        if (string.Equals(decision, HumanAccepted, StringComparison.Ordinal)
+            || string.Equals(decision, AutoAccepted, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (string.Equals(decision, ReviewRequired, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return RequiresReview(confidence);
+    }
+
+    /// <summary>
     /// Derives contract status from the official start/end dates. Active when the UTC evaluation
     /// date falls inside the in-force window: started (no start, or start ≤ today) and not ended
     /// (no end, or end ≥ today). Otherwise <see cref="StatusExpired"/>. <see langword="null"/>
