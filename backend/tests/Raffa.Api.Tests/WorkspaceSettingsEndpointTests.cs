@@ -4,11 +4,14 @@ using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.Api.Tests.TestSupport;
+using Raffa.Chat.Application.WebResearch;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Raffa.Api.Tests;
 
@@ -70,6 +73,30 @@ public sealed class WorkspaceSettingsEndpointTests : IClassFixture<RaffaApiFacto
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.False(body.RootElement.GetProperty("webResearchEnabled").GetBoolean());
         Assert.False(body.RootElement.GetProperty("canEdit").GetBoolean());
+        // ADR-032: Program's default kill switch is off, so Ask shows no web-search toggle.
+        Assert.False(body.RootElement.GetProperty("webResearchAvailable").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_environments_kill_switch_is_published_as_web_research_available()
+    {
+        var factory = WithInMemoryIdentity(new RecordingAuditWriter()).WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<WebResearchOptions>();
+                services.AddSingleton(new WebResearchOptions { Enabled = true });
+            }));
+        var client = factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        await SeedWorkspaceAsync(factory, tenantId);
+        await SeedMemberAsync(factory, tenantId, "buyer@acme.example", WorkspaceRoleName.Procurement);
+
+        var response = await SendAsync(client, HttpMethod.Get, tenantId, "buyer@acme.example");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(body.RootElement.GetProperty("webResearchAvailable").GetBoolean());
+        Assert.False(body.RootElement.GetProperty("webResearchEnabled").GetBoolean());
     }
 
     [Fact]

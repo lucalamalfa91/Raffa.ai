@@ -31,6 +31,9 @@ internal sealed partial class AskCopilotService
         WorkspaceOptIn,
         Budget,
         NoTopic,
+
+        /// <summary>ADR-032: a web-mode question with fewer than two searchable words.</summary>
+        TooShort,
     }
 
     /// <summary>The offer the interpretation menu may carry, or <see langword="null"/> when any
@@ -169,6 +172,9 @@ internal sealed partial class AskCopilotService
             WebGate.Budget => italian
                 ? "Questo workspace ha esaurito le ricerche web di oggi. Riprova domani, oppure chiedimi dei tuoi contratti."
                 : "This workspace has used today's web research allowance. Try again tomorrow, or ask me about your contracts.",
+            WebGate.TooShort => italian
+                ? "Per cercare sul web mi servono un paio di parole in più, ad esempio «aumenti di prezzo Salesforce» oppure «nuove regole UE per i fornitori cloud»."
+                : "To search the web I need a few more words, for example “Salesforce price increases” or “new EU rules for cloud suppliers”.",
             WebGate.NoTopic => italian
                 ? "L'agente di ricerca web copre solo temi procurement: pratiche di mercato, notizie sui fornitori, range pubblici, tattiche di negoziazione. Chiedimi uno di questi, oppure dei tuoi contratti."
                 : "The web research agent only covers procurement topics: market practice, supplier news, public benchmark ranges, negotiation tactics. Ask about one of those, or about your contracts.",

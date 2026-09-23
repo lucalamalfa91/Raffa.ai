@@ -6904,7 +6904,7 @@
       "post": {
         "operationId": "postConversationMessage",
         "summary": "Asks a question in an existing conversation; runs the Ask engine and returns the reply.",
-        "description": "ADR-030: the request body is { question, interviewAnswer?: { messageId, questionKey, optionKey?, freeText? } } -- an answer to an interview turn by key, never by label (400 for an unknown message/question/option, 409 for a single-use consent option already taken). Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA), `draft` (payload.draft + payload.feedbackOffer) and `interview` (interview question(s)). `actions[].kind` includes `external` for server-authored https links. See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "description": "ADR-030: the request body is { question, interviewAnswer?: { messageId, questionKey, optionKey?, freeText? }, webResearch?: boolean } -- an answer to an interview turn by key, never by label (400 for an unknown message/question/option, 409 for a single-use consent option already taken). ADR-032: webResearch: true is the composer's web-search toggle -- the question goes to the public web (the user's own words, sanitised, never a pack) and to Raffa's own store with the procurement-only filters lifted and no per-question consent; a plainly personal question is a redirect with outbound Google/Perplexity actions. The kill switch, the workspace opt-in and the daily budget still apply; ignored on an interview answer. Maps to PostConversationMessageAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs -- the one endpoint that actually runs the Ask engine (Raffa.Api.AskCopilotService.AskAsync, task E13/F06/US01/T01), then persists both the caller's question and Raffa's reply (ConversationService.AppendMessageAsync) before wire-shaping the same object back (shared with POST /api/chat/query's own alias, ConversationsEndpointExtensions.AskAndAppendAsync). Request body `{ question }` (ConversationsEndpointExtensions.PostConversationMessageRequest, hand-written client-side, see this document's 'Codegen tool choice' paragraph). Reply shape is ADR-024 §6 / inputs/requirements.md §6, kind decides the layout: `answer` (markdown + citations + actions + followUps), `abstain` (a true-insufficiency reply, citations/actions/followUps empty), `redirect` (greeting/off-domain/needs_document, one CTA), `refusal` (legal, one CTA), `draft` (payload.draft + payload.feedbackOffer) and `interview` (interview question(s)). `actions[].kind` includes `external` for server-authored https links. See GET /api/conversations/{id} above for why `corpus` is a plain string, not a 3-value enum. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -10413,6 +10413,10 @@
                     "webResearchEnabled": {
                       "type": "boolean"
                     },
+                    "webResearchAvailable": {
+                      "type": "boolean",
+                      "description": "ADR-032: the environment's web-research kill switch (Chat:WebResearch:Enabled). Ask shows its web-search toggle only when this is true; absent reads as false."
+                    },
                     "canEdit": {
                       "type": "boolean",
                       "description": "True when the caller's own membership in this workspace is Admin -- the only role PATCH accepts."
@@ -10474,6 +10478,10 @@
                   "properties": {
                     "webResearchEnabled": {
                       "type": "boolean"
+                    },
+                    "webResearchAvailable": {
+                      "type": "boolean",
+                      "description": "ADR-032: the environment's web-research kill switch (Chat:WebResearch:Enabled). Ask shows its web-search toggle only when this is true; absent reads as false."
                     },
                     "canEdit": {
                       "type": "boolean"

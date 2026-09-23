@@ -927,7 +927,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { webResearchEnabled: boolean; canEdit: boolean };
+          "application/json": { webResearchEnabled: boolean; webResearchAvailable?: boolean; canEdit: boolean };
         };
       };
       401: {
@@ -944,7 +944,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { webResearchEnabled: boolean; canEdit: boolean };
+          "application/json": { webResearchEnabled: boolean; webResearchAvailable?: boolean; canEdit: boolean };
         };
       };
       400: {

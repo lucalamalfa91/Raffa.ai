@@ -77,7 +77,10 @@ public sealed record InterviewAnswer(EntityId MessageId, string QuestionKey, str
 /// a scoped conversation would (an id this tenant cannot see refuses, never silently widens).
 /// <see cref="AuthorizedWebResearch"/> is set only by a consumed consent option (ADR-030);
 /// <see cref="DeclinedWebResearch"/> only by the consent's "no" option, so the turn is audited as
-/// a decline while it runs the normal, contracts-only pipeline.
+/// a decline while it runs the normal, contracts-only pipeline. <see cref="WebMode"/> is the
+/// composer's web-search toggle (ADR-032): set by the endpoint from the request, never by an
+/// interview resolution, it sends the turn to the web and to Raffa's own store with the
+/// procurement-only filters lifted — the toggle itself is the consent.
 /// </summary>
 public sealed record AskTurnHints(
     AskIntent? ForcedIntent,
@@ -85,7 +88,8 @@ public sealed record AskTurnHints(
     string? ForcedSupplierName,
     bool SuppressInterview,
     WebResearchRequest? AuthorizedWebResearch = null,
-    bool DeclinedWebResearch = false)
+    bool DeclinedWebResearch = false,
+    bool WebMode = false)
 {
     public static AskTurnHints None { get; } = new(null, null, null, false);
 
