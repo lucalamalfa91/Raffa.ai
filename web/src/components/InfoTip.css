@@ -1,5 +1,6 @@
-/* InfoTip: a 14px ring "i" in neutral-500 that inks on hover/focus; the bubble is an ink block
-   (text on --color-text), square like every other surface, 12px body copy, never uppercase even
+/* InfoTip: a 14px ring "i" in neutral-500 that inks on hover/focus; the bubble is a light paper card
+   (neutral-100, a 1px neutral-300 edge, shadow-md) under the same 2px ink rule the answers band and
+   the tables open with, square like every other surface, 12px body copy in ink, never uppercase even
    under an uppercase kicker. Portalled and fixed-positioned by the component; hidden until open. */
 
 .info-tip {
@@ -40,9 +41,11 @@
   left: 0;
   width: max-content;
   max-width: 280px;
-  padding: 10px 12px;
-  background: var(--color-text);
-  color: var(--color-bg);
+  padding: 10px 12px 11px;
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
+  border: 1px solid var(--color-neutral-300);
+  border-top: 2px solid var(--color-text);
   box-shadow: var(--shadow-md);
   font-family: var(--font-body);
   font-size: 12px;
@@ -76,7 +79,10 @@
 }
 
 .info-tip-bubble .info-tip-meta {
-  color: var(--color-neutral-400);
+  padding-top: 6px;
+  border-top: 1px solid var(--color-neutral-300);
+  font-size: 11px;
+  color: var(--color-neutral-600);
 }
 
 @media (prefers-reduced-motion: reduce) {
