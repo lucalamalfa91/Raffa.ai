@@ -42,8 +42,8 @@ opens a GitHub issue on `lucalamalfa91/Raffa.ai` with a public-safe body.
 | # | What | How |
 |---|---|---|
 | 1 | Merge the PR into `main`; `dev` deploys (backend + web); CI applies `chat.sql` (ADR-021: `payload_json` column + `feature_request` table + RLS) | `backend.yml` "Verify schema applied" green |
-| 2 | Set the GitHub token in **both** HCP workspaces, `raffa-dev` and `raffa-demo`: sensitive variable `github_feedback_token` = a fine-grained PAT with **Issues: write on `lucalamalfa91/Raffa.ai` only** (no other repo, no other permission); one token per workspace, so either can be rotated alone | HCP UI → workspace variables |
-| 3 | HCP VCS apply of `infra/` on each workspace — creates `github-feedback-token`, the `gh-feedback` secret handle and `Feedback__GitHub__*` on the API app (`feedback_github_enabled` is `true` on `dev` **and** `demo`) | confirm the apply in the HCP UI, **then** the API revision restarts |
+| 2 | Set the GitHub token in **both** HCP workspaces, `raffa-dev` and `raffa-demo`: **+ Add variable**, category **Terraform variable** (not *Environment variable* like the `ARM_*` credentials already there — an env var named `github_feedback_token` is never read by Terraform), key `github_feedback_token`, **Sensitive** ticked, HCL unticked, value = a fine-grained PAT with **Issues: write on `lucalamalfa91/Raffa.ai` only** (no other repo, no other permission); one token per workspace, so either can be rotated alone | HCP UI → workspace → Variables → Workspace variables: the row reads category `terraform`, not `env` |
+| 3 | HCP apply of `infra/` on each workspace — creates `github-feedback-token`, the `gh-feedback` secret handle and `Feedback__GitHub__*` on the API app (`feedback_github_enabled` is `true` on `dev` **and** `demo`). Saving a variable queues **no** run: start one yourself (**Actions → Start new run → Plan and apply**) | the plan shows `module.keyvault.azurerm_key_vault_secret.github_feedback_token[0]` **to add** plus the API app update; confirm the apply, **then** the API revision restarts. `No changes` means Terraform does not see the token — check the variable's category (step 2) |
 | 4 | Without step 2 on a workspace: nothing to do — the switch is ANDed with the token's presence, so the API boots with the null publisher and every submission is `status: recorded` | `az containerapp show … --query "properties.template.containers[0].env[?name=='Feedback__GitHub__Enabled']"` → `false` |
 | 5 | **`demo` product switches** (owner's ruling 2026-09-22, ADR-016 w20 footer): the same apply as step 3 flips `Invitations__Mail__Enabled` and `Invitations__GuestProvisioning__Enabled` to `true` on `demo`'s API app — the one-line PR ADR-016's w15 clause 14 had reserved. Terraform writes nothing in Entra (`guest_role_assignment_managed` stays `false`), so **a Global Administrator grants `User.Invite.All` to `demo`'s workload identity out-of-band**, the `docs/waves/w15-acceptance.md` §0.3 step 2 command with `demo`'s principal id (`az identity show -g rg-raffa-demo -n id-raffa-demo-workload --query principalId -o tsv`). Skipping it is legitimate: invitations then run in the `NotConfigured` (link-only) shape | `az containerapp show … env[?name=='Invitations__Mail__Enabled']` → `true`; an invite from `demo` arrives by mail, and provisions a guest once the grant is written |
 
@@ -151,6 +151,11 @@ Pass on a workspace with no token, or with the publisher down: `201`, `status: "
 segnalazione … è stata registrata", no action; `feature_request.status` is `recorded` (or
 `issue_failed` with `publish_error` set — an operator's concern, never shown).
 
+A token saved in HCP as an **Environment** variable counts as *no token*: Terraform never reads
+it, the plan says "No changes" and the walk answers `recorded`. The first `demo` walk
+(2026-09-23) failed exactly this way — fix the category (§0.2 step 2), then start a run (step 3).
+A request already stored as `recorded` is never republished; file it again from a new gap turn.
+
 Automated: `Raffa.Api.Tests.ConversationFeedbackEndpointTests` (201 + external action, recorded
 without a publisher, publisher failure and exception, 409, 400 ×2, 404, audit never carries the
 answers), `Raffa.Chat.Tests.Feedback.FeatureRequestIssueTextTests` (the allow-list, on the text
@@ -203,11 +208,12 @@ ask-raffa-v2-data-flow.md` (§4 sequence, §5 five kinds, §8 provenance rows),
 ## Promotion sequence
 
 1. Merge → `dev` auto-deploys; schema apply lands the column and the table.
-2. Set `github_feedback_token` in `raffa-dev` (HCP, sensitive) → VCS apply → API revision restarts
+2. Set `github_feedback_token` in `raffa-dev` (HCP, sensitive, category **Terraform variable** — §0.2
+   step 2) → start a run and apply (§0.2 step 3) → API revision restarts
    with `Feedback__GitHub__Enabled=true`.
 3. Walk W20-1…W20-4 on `dev`; check the issue on GitHub.
-4. Set `github_feedback_token` in `raffa-demo`, confirm its HCP apply, then tag `demo-v*`; walk
-   W20-4 on `demo` too — the issue title reads `(demo)`. Until the token is set there, W20-4 reads
+4. Set `github_feedback_token` in `raffa-demo` (same category), start and confirm its HCP apply,
+   then tag `demo-v*`; walk W20-4 on `demo` too — the issue title reads `(demo)`. Until the token is set there, W20-4 reads
    `recorded` on `demo` with no flag change needed.
 5. The same `raffa-demo` apply carries `invitation_mail_enabled = true` and
    `guest_provisioning_enabled = true` (§0.2 step 5). After it, write the out-of-band Graph grant
@@ -225,3 +231,4 @@ ask-raffa-v2-data-flow.md` (§4 sequence, §5 five kinds, §8 provenance rows),
 | 4 | `terraform validate` could not run in this harness (provider registry blocked) | `infra.yml` on the PR is the validate/plan gate. |
 | 5 | No e2e case for the card (`web/e2e` runs only in the manual acceptance walk) | W20-4's click path is manual on `dev`. |
 | 6 | `demo`'s invitation switches are on from this apply, but its workload identity holds no `User.Invite.All` grant until a Global Administrator writes it (§0.2 step 5) | Mail goes out from `demo`; guest provisioning reads `NotConfigured` (link-only) until the grant lands — the same two-step `dev` went through at w15. |
+| 7 | The token's presence is checked by Terraform, not by the API: a token saved in HCP under the wrong category (*Environment* instead of *Terraform variable*) is silently ignored | W20-4 reads `recorded` with no error anywhere; the only signal is a plan with no `github_feedback_token[0]` to add (§0.2 steps 2–3) |
