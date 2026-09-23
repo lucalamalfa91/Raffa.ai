@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAskScopeTip,
   buildDocumentsFilterTip,
   buildRailContractsTip,
   buildReviewConfidenceTip,
@@ -27,6 +28,11 @@ describe("infoTipCopy", () => {
   it("says why the contract screens are dimmed until the first validated contract, and what the number means after", () => {
     expect(buildRailContractsTip(false).lines.join(" ")).toMatch(/dimmed until your first contract is validated/);
     expect(buildRailContractsTip(true).lines.join(" ")).toMatch(/how many validated contracts/);
+  });
+
+  it("says answers come only from validated contracts, unless Web search is on", () => {
+    expect(buildAskScopeTip(false).lines.join(" ")).toContain("only from your validated contracts");
+    expect(buildAskScopeTip(true).lines.join(" ")).toMatch(/public web.*not verified/);
   });
 
   it("explains the Not added chip only while it is on screen", () => {

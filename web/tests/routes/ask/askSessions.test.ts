@@ -288,6 +288,80 @@ describe("askSessions -- parallel Ask sessions", () => {
   });
 });
 
+describe("askSessions -- web search toggle (ADR-032)", () => {
+  function interviewReply(conversationId: string): ConversationReplyBody {
+    return {
+      ...reply(conversationId, "Which one did you mean?"),
+      kind: "interview",
+      messageId: "msg-interview",
+      interview: {
+        prompt: "Which one did you mean?",
+        answered: false,
+        questions: [
+          {
+            key: "interpretation",
+            prompt: "Which one did you mean?",
+            presentation: "choice",
+            allowFreeText: true,
+            options: [{ key: "renewals", label: "Upcoming renewals", hint: null }],
+          },
+        ],
+      },
+    } as ConversationReplyBody;
+  }
+
+  it("a new chat sent with the toggle on posts webResearch and marks the question as a web one", async () => {
+    const postMessage = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, reply: reply("conv-w", "Web and contracts."), error: null });
+    const client = apiClient({ createConversation: vi.fn().mockResolvedValue(created("conv-w")), postMessage });
+    const store = createAskSessionStore();
+    const draft = draftSessionKey("entry-web");
+
+    await store.send({ key: draft, apiClient: client, tenantId: TENANT, text: "Salesforce price news", webResearch: true });
+
+    expect(postMessage).toHaveBeenCalledWith(TENANT, "conv-w", { question: "Salesforce price news", webResearch: true });
+    const you = store.getSnapshot().sessions.get("conv-w")!.turns[0];
+    expect(you).toMatchObject({ role: "you", text: "Salesforce price news", web: true });
+  });
+
+  it("with the toggle on, a typed question is its own web search, never a free-text answer to a pending interview", async () => {
+    const postMessage = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, statusCode: 200, reply: interviewReply("conv-i"), error: null })
+      .mockResolvedValueOnce({ ok: true, statusCode: 200, reply: reply("conv-i", "From the web."), error: null });
+    const client = apiClient({ createConversation: vi.fn().mockResolvedValue(created("conv-i")), postMessage });
+    const store = createAskSessionStore();
+    const draft = draftSessionKey("entry-interview");
+
+    await store.send({ key: draft, apiClient: client, tenantId: TENANT, text: "Did you look at all my contracts?" });
+    await store.send({ key: "conv-i", apiClient: client, tenantId: TENANT, text: "EU rules for cloud suppliers", webResearch: true });
+
+    expect(postMessage).toHaveBeenLastCalledWith(TENANT, "conv-i", { question: "EU rules for cloud suppliers", webResearch: true });
+  });
+
+  it("an explicit interview option is never sent as a web search, even with the toggle on", async () => {
+    const postMessage = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, statusCode: 200, reply: interviewReply("conv-o"), error: null })
+      .mockResolvedValueOnce({ ok: true, statusCode: 200, reply: reply("conv-o", "Renewals."), error: null });
+    const client = apiClient({ createConversation: vi.fn().mockResolvedValue(created("conv-o")), postMessage });
+    const store = createAskSessionStore();
+
+    await store.send({ key: draftSessionKey("entry-option"), apiClient: client, tenantId: TENANT, text: "Did you look at all my contracts?" });
+    await store.send({
+      key: "conv-o",
+      apiClient: client,
+      tenantId: TENANT,
+      text: "Upcoming renewals",
+      interviewAnswer: { messageId: "msg-interview", questionKey: "interpretation", optionKey: "renewals" },
+      webResearch: true,
+    });
+
+    const request = postMessage.mock.calls[1][2];
+    expect(request).not.toHaveProperty("webResearch");
+    expect(request.interviewAnswer).toMatchObject({ messageId: "msg-interview", optionKey: "renewals" });
+  });
+});
+
 describe("askSessions -- ADR-031 capability follow-up", () => {
   const followUp = (forMessageId: string, id = "msg-follow") => ({
     id,

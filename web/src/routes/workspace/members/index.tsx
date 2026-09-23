@@ -346,9 +346,11 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
                 <span>
                   <span className="members-settings-label">{WEB_RESEARCH_SETTING_LABEL}</span>
                   <span className="micro-meta members-settings-hint">
-                    Off by default. When on, Raffa may offer a web search for market practice, supplier news or negotiation
-                    tactics -- and asks the person for permission on every single question before it searches. Nothing from
-                    your contracts leaves Raffa; results are labelled unverified.
+                    Off by default. When on, everyone here can switch on Web search in Ask Raffa&apos;s composer: questions then
+                    go to the public web and to your contracts together, and a personal question is pointed at Google or an AI
+                    search tool. With the toggle off, Raffa may still offer a web search for a procurement question and asks
+                    permission first. Only the question&apos;s words are searched -- nothing from your contracts leaves Raffa;
+                    web results are labelled unverified.
                   </span>
                 </span>
               </label>

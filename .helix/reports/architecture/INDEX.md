@@ -2055,3 +2055,12 @@ a follow-up after the answer), D5 (the issue allow-list gains the generic discov
 issue gains the human-approval gate) and the interview's "no model call" rule (one capability check
 runs beside it). Greeting, off-domain,
 legal, capability, needs-document and catalog-gap turns keep their zero gateway calls.
+
+## Post-w20 product feedback (2026-09-23) — Ask Raffa web-search toggle
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-032 | Ask Raffa: web-search toggle in the composer | software-architect (+ product-owner, security-architect, client-architect) | `webResearch: true` on a message is the user's consent for that question: the topic lexicon, the interview and the domain gate's off-domain/legal/needs-document redirects are lifted, an open research persona searches any work topic beside the normal contracts-only pipeline, and the two answers share one reply under their own headings without ever sharing a pack; a plainly personal question is a redirect with Google and Perplexity links and no model call; the kill switch, workspace opt-in, budget, sanitiser, guards and isolation of ADR-030 all stay. |
+
+ADR-032 narrows ADR-030 §B clauses 9–10 for toggle turns only, and lifts ADR-031's "zero gateway calls" for off-domain, legal and needs-document turns when the toggle is on; the consented path, clause 11's
+"never merged into an `answer`-role pack" and the isolation tests are unchanged.

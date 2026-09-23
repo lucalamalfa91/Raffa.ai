@@ -397,6 +397,82 @@
   white-space: nowrap;
 }
 
+/* ADR-032: where to switch web search on -- a sentence, so it may wrap. */
+.ask-composer-note.ask-composer-note-hint {
+  white-space: normal;
+  color: var(--color-text);
+}
+
+/* ---- Web search toggle (ADR-032) ---------------------------------------------
+ * A tool chip beside "Ask", in the chat's own quiet chrome (`reply/reply.css`'s --chat-* tokens):
+ * hairline border, 8px radius, 12px sentence-case label, tint on hover. On, it takes the accent
+ * tint the inline citation chips use on focus -- the way Claude.ai marks an enabled tool -- so it
+ * never reads as a second primary button next to the solid accent "Ask". */
+.ask-web-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.2;
+  color: var(--color-neutral-700);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.ask-web-toggle:hover:not([aria-disabled="true"]) {
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
+  color: var(--color-text);
+}
+
+.ask-web-toggle[aria-checked="true"],
+.ask-web-toggle[aria-checked="true"]:hover {
+  border-color: var(--color-accent-300);
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
+}
+
+.ask-web-toggle[aria-disabled="true"] {
+  opacity: var(--opacity-disabled);
+  cursor: help;
+}
+
+/* Under a question sent with the toggle on: a quiet meta line, the way the chat labels a tool it
+ * used -- no box, no caps. */
+.ask-message-web-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--chat-muted);
+}
+
+/* On a phone the composer row wraps: the input keeps the full width, the toggle and "Ask" share
+ * the line under it. */
+@media (max-width: 600px) {
+  .ask-composer-row:has(.ask-web-toggle) {
+    flex-wrap: wrap;
+  }
+
+  .ask-composer-row:has(.ask-web-toggle) .ask-composer-input {
+    flex-basis: calc(100% - 28px);
+  }
+
+  .ask-composer-row:has(.ask-web-toggle) .ask-web-toggle {
+    margin-left: 28px;
+  }
+}
+
 .ask-resume-skeleton-row {
   height: 48px;
   margin-top: var(--space-2);

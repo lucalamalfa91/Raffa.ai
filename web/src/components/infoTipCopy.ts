@@ -117,14 +117,6 @@ export const TIPS = {
   },
 
   // ---- Ask ------------------------------------------------------------------------------------
-  askScope: {
-    label: "What Raffa answers from",
-    lines: [
-      "Raffa answers only from your validated contracts and cites the page each fact comes from.",
-      "When your contracts do not say, it tells you and estimates from market data, labelled as such.",
-      "A new upload counts once it is validated in Documents.",
-    ],
-  },
   askBound: {
     label: "About a chat on one contract",
     lines: ["This chat is about one contract: every answer cites its pages. Click the contract to open it."],
@@ -332,6 +324,23 @@ export function buildRailContractsTip(kbReady: boolean): TipCopy {
         ? "The number beside a screen is how many validated contracts it draws on."
         : "Portfolio, Renewals and Quote check stay dimmed until your first contract is validated in Documents. Savings is open from the start.",
     ],
+  };
+}
+
+/** Ask: what the answers come from -- the public web joins only while Web search is on (ADR-032). */
+export function buildAskScopeTip(webSearch: boolean): TipCopy {
+  return {
+    label: "What Raffa answers from",
+    lines: webSearch
+      ? [
+          "Web search is on: Raffa searches the public web and your validated contracts together, beyond procurement topics.",
+          "Facts from your contracts cite their page; web results are labelled as not verified.",
+        ]
+      : [
+          "Raffa answers only from your validated contracts and cites the page each fact comes from.",
+          "When your contracts do not say, it tells you and estimates from market data, labelled as such.",
+          "A new upload counts once it is validated in Documents.",
+        ],
   };
 }
 

@@ -9,7 +9,7 @@ import ConsentDialog from "./reply/ConsentDialog";
 import type { FeedbackAnswers } from "./reply/replyTypes";
 import type { ReplyCitation } from "./reply/replyTypes";
 import { CopyTip } from "../../components/InfoTip";
-import { TIPS } from "../../components/infoTipCopy";
+import { buildAskScopeTip, TIPS } from "../../components/infoTipCopy";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
 import DraftPanel from "./DraftPanel";
@@ -25,9 +25,13 @@ import {
   ASK_INPUT_PLACEHOLDER,
   ASK_NEW_CHAT_TITLE,
   ASK_RAFFA_KICKER,
+  ASK_WEB_INPUT_PLACEHOLDER,
   COMPOSER_NOTE,
+  COMPOSER_WEB_NOTE,
   NEW_CHAT_INTRO,
   THINKING_COPY,
+  THINKING_WEB_COPY,
+  WEB_SEARCH_TOGGLE_LABEL,
   feedbackSubmittedMessageIds,
   buildOffCopy,
   buildScopedBrief,
@@ -38,9 +42,11 @@ import {
   parseScopeContractId,
   resolveAskOffReason,
   resolveCitationOpenAction,
+  resolveWebSearchToggle,
   suggestionsFor,
   type AskTurnView,
   type BoundContractChip,
+  type WebSearchToggleState,
 } from "./askViewModel";
 import { formatConversationTitle } from "./conversationTitle";
 import { useValidatedSuppliers } from "./useValidatedSuppliers";
@@ -53,6 +59,7 @@ export interface AskRouteProps {
 
 const NO_TURNS: readonly AskTurnView[] = [];
 const NO_FEEDBACK: ReadonlySet<string> = new Set();
+const WEB_SEARCH_UNKNOWN: WebSearchToggleState = resolveWebSearchToggle(null);
 
 interface CitationNoticeState {
   turnId: string;
@@ -131,6 +138,14 @@ function sidePanelFitsBesideChat(): boolean {
  * then one 72px-kicker grid per turn), and the screen's own composer pinned at the bottom (accent
  * mark + underlined input + "Ask", the two suggestion chips and "Procurement only · cites or
  * abstains"). Every figure is quoted in `ask.css`'s header comment.
+ *
+ * **Web search toggle** (ADR-032): beside "Ask", shown only where the environment has web
+ * research (`GET /api/workspaces/{id}/settings` → `webResearchAvailable`), usable once the workspace
+ * Admin opted in. On, every plain question is sent with `webResearch: true` -- the public web and
+ * the workspace's own data together, no consent dialog; the placeholder, the note and the thinking
+ * row say so, and the question carries a quiet "Web search" line. It is a tool chip in the chat's
+ * own chrome (`--chat-*` tokens, see `ask.css`), accent-tinted when on. Clicking it while the
+ * workspace has not opted in explains where to switch it on instead of toggling.
  *
  * **Side panel** (the Claude.ai artifact pattern): long, self-contained reply objects never render
  * in the middle of the thread. A drafted email is a one-line card in its turn and opens in the
@@ -320,6 +335,13 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   const suggestions = scopeContractId !== undefined ? suggestionsFor(capabilities, scopedSupplierName) : suggestionsFor(capabilities);
 
+  // ADR-032: whether the web-search toggle exists here, and whether this workspace may use it.
+  // Read once the chat surface is on; the server re-checks every gate on every question anyway.
+  const [webSearchToggle, setWebSearchToggle] = useState<WebSearchToggleState>(WEB_SEARCH_UNKNOWN);
+  const [webSearchOn, setWebSearchOn] = useState(false);
+  const [webSearchHintShown, setWebSearchHintShown] = useState(false);
+  const webSearch = webSearchOn && webSearchToggle.enabled;
+
   // NW-56: the brief that replaces ASK_HELLO + the generic scope line in the new-chat block below,
   // read only while scopeContractId !== undefined. Cheap and pure, so (like `suggestions` above)
   // this is recomputed every render rather than memoized.
@@ -341,13 +363,22 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   // ADR-030: the interview a typed message answers, the create-then-ask sequence and the reply
   // itself are all the store's (`askSessions.ts#send`), so the reply lands in this session even if
-  // the user has moved on. A session still answering refuses a second question.
+  // the user has moved on. A session still answering refuses a second question. ADR-032: with the
+  // web-search toggle on, a plain question is a web-mode one (an interview option never is).
   const ask = useCallback(
     (rawText: string, interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null }) => {
       const text = rawText.trim();
       if (text === "" || !workspace) return;
 
-      const sent = store.send({ key: sessionKey, apiClient, tenantId: workspace.id, text, interviewAnswer, scopeContractId });
+      const sent = store.send({
+        key: sessionKey,
+        apiClient,
+        tenantId: workspace.id,
+        text,
+        interviewAnswer,
+        scopeContractId,
+        webResearch: interviewAnswer === undefined && webSearch,
+      });
       if (sent === null) return;
 
       // Inside the click/Enter that sent the question -- the only moment a browser lets a page ask.
@@ -358,7 +389,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     // Depends on workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns
     // a fresh object every call, the same convention ../contracts/contract360/index.tsx#load already
     // establishes for this app.
-    [store, sessionKey, apiClient, workspace?.id, scopeContractId],
+    [store, sessionKey, apiClient, workspace?.id, scopeContractId, webSearch],
   );
 
   /**
@@ -459,6 +490,17 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     window.addEventListener("keydown", handleGlobalShortcut);
     return () => window.removeEventListener("keydown", handleGlobalShortcut);
   }, []);
+
+  useEffect(() => {
+    if (!kbReady || !workspace) return;
+    let current = true;
+    void apiClient.getWorkspaceSettings(workspace.id).then((result) => {
+      if (current) setWebSearchToggle(resolveWebSearchToggle(result.ok ? result.settings : null));
+    });
+    return () => {
+      current = false;
+    };
+  }, [apiClient, workspace?.id, kbReady]);
 
   if (!workspace) {
     return (
@@ -580,7 +622,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         <div className="ask-conv-meta">
           <span className="ask-conv-scope">
             {scopeShort}
-            <CopyTip tip={TIPS.askScope} align="end" />
+            <CopyTip tip={buildAskScopeTip(webSearch)} align="end" />
           </span>
           <button type="button" className="btn btn-ghost ask-new-chat-button" onClick={newChat}>
             + New chat
@@ -632,6 +674,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                     <div className="ask-message-who">You</div>
                     <div className="ask-message-content">
                       <div className="ask-message-text">{turn.text}</div>
+                      {turn.web && (
+                        <span className="ask-message-web-tag">
+                          <GlobeIcon size={12} />
+                          {WEB_SEARCH_TOGGLE_LABEL}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -682,7 +730,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                   <div className="ask-thinking-who">{ASK_RAFFA_KICKER}</div>
                   <div className="ask-thinking-copy">
                     <span className="ask-thinking-spinner" aria-hidden="true" />
-                    {THINKING_COPY}
+                    {lastYouTurnWasWeb(turns) ? THINKING_WEB_COPY : THINKING_COPY}
                   </div>
                 </div>
               )}
@@ -695,7 +743,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
               <input
                 ref={composerInputRef}
                 className="input ask-composer-input"
-                placeholder={ASK_INPUT_PLACEHOLDER}
+                placeholder={webSearch ? ASK_WEB_INPUT_PLACEHOLDER : ASK_INPUT_PLACEHOLDER}
                 aria-label="Ask Raffa a question"
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
@@ -705,6 +753,34 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                   }
                 }}
               />
+              {webSearchToggle.visible && (
+                <button
+                  type="button"
+                  role="switch"
+                  className="ask-web-toggle"
+                  aria-checked={webSearch}
+                  aria-disabled={webSearchToggle.enabled ? undefined : true}
+                  aria-describedby="ask-web-toggle-hint"
+                  title={webSearchToggle.hint}
+                  onClick={() => {
+                    if (!webSearchToggle.enabled) {
+                      setWebSearchHintShown(true);
+                      return;
+                    }
+                    setWebSearchHintShown(false);
+                    setWebSearchOn((on) => !on);
+                    composerInputRef.current?.focus();
+                  }}
+                >
+                  <GlobeIcon size={14} />
+                  {WEB_SEARCH_TOGGLE_LABEL}
+                </button>
+              )}
+              {webSearchToggle.visible && (
+                <span id="ask-web-toggle-hint" hidden>
+                  {webSearchToggle.hint}
+                </span>
+              )}
               <button type="button" className="btn btn-primary ask-composer-send" disabled={asking || question.trim() === ""} onClick={() => ask(question)}>
                 Ask
               </button>
@@ -715,10 +791,16 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                   {suggestion} →
                 </button>
               ))}
-              <span className="ask-composer-note">
-                {COMPOSER_NOTE}
-                <CopyTip tip={TIPS.askComposer} align="end" />
-              </span>
+              {webSearchHintShown && !webSearchToggle.enabled ? (
+                <span className="ask-composer-note ask-composer-note-hint" role="status">
+                  {webSearchToggle.hint}
+                </span>
+              ) : (
+                <span className="ask-composer-note">
+                  {webSearch ? COMPOSER_WEB_NOTE : COMPOSER_NOTE}
+                  <CopyTip tip={TIPS.askComposer} align="end" />
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -738,4 +820,23 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       </div>
     </div>
   );
+}
+
+/** The web-search glyph -- same stroke family as the chat's other icons (`EvidenceCard`, `ArtifactPanel`). */
+function GlobeIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9s1.3-6.4 3.8-9z" />
+    </svg>
+  );
+}
+
+/** The thinking row names the web while a web-mode question is being answered. */
+function lastYouTurnWasWeb(turns: readonly AskTurnView[]): boolean {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (turn.role === "you") return turn.web === true;
+  }
+  return false;
 }

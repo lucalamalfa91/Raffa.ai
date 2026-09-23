@@ -147,6 +147,35 @@ public sealed class WebResearchComposerTests
         Assert.Equal(3, gateway.Requests.Single().MaxSources);
     }
 
+    [Fact]
+    public async Task The_web_mode_purpose_runs_the_open_persona_under_its_own_version()
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(
+            "Public, unverified: a 5-10% uplift cap is common [1].", Sources, OffTopic: false, Metadata with { PromptVersion = WebResearchPrompt.OpenVersion }));
+
+        var outcome = await Compose(gateway).ComposeAsync("new EU rules for cloud suppliers", WebModeLexicon.Purpose, "en");
+
+        var request = Assert.Single(gateway.Requests);
+        Assert.Equal(WebModeLexicon.Purpose, request.Purpose);
+        Assert.Equal(WebResearchPrompt.OpenSystemPrompt, request.SystemPrompt);
+        Assert.Equal(WebResearchPrompt.OpenVersion, request.PromptVersion);
+        Assert.Equal(WebResearchOutcomeKind.Answered, outcome.Kind);
+        Assert.True(outcome.Provenance.Unverified);
+    }
+
+    [Fact]
+    public async Task An_off_topic_verdict_in_web_mode_points_at_a_search_engine_instead_of_the_procurement_scope()
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(string.Empty, [], OffTopic: true, Metadata));
+
+        var outcome = await Compose(gateway).ComposeAsync("ricetta della carbonara", WebModeLexicon.Purpose, "it");
+
+        Assert.Equal(WebResearchOutcomeKind.Refused, outcome.Kind);
+        Assert.Equal(WebModeReplyBuilder.OffContextMarkdown(italian: true), outcome.Markdown);
+        Assert.Contains("Google", outcome.Markdown, StringComparison.Ordinal);
+        Assert.Empty(outcome.Citations);
+    }
+
     private sealed class RecordingResearchGateway(Result<AiResearchResult> result) : IAiGateway
     {
         public List<AiResearchRequest> Requests { get; } = [];

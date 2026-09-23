@@ -139,7 +139,9 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     inviteWorkspaceMember: vi.fn(),
     listWorkspaces: vi.fn().mockResolvedValue(validatedWorkspace()),
     getWorkspaceMembers: vi.fn(),
-    getWorkspaceSettings: vi.fn(),
+    // ADR-032: the chat surface reads this once to decide whether the web-search toggle exists; the
+    // default is an environment without web research (no toggle), so every older test is unchanged.
+    getWorkspaceSettings: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, settings: { webResearchEnabled: false, canEdit: true }, error: null }),
     updateWorkspaceSettings: vi.fn(),
     revokeInvitation: vi.fn(),
     removeMember: vi.fn(),
@@ -1282,5 +1284,108 @@ describe("AskRoute web research consent (ADR-030)", () => {
     expect(postMessage).toHaveBeenCalledTimes(2);
     expect(await screen.findByText("15 January 2027")).toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+describe("AskRoute web search toggle (ADR-032)", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
+  });
+
+  function settings(webResearchAvailable: boolean, webResearchEnabled: boolean, canEdit = false) {
+    return vi.fn().mockResolvedValue({ ok: true, statusCode: 200, settings: { webResearchEnabled, webResearchAvailable, canEdit }, error: null });
+  }
+
+  it("is not rendered where the environment has no web research", async () => {
+    renderAsk(mockApiClient({ getWorkspaceSettings: settings(false, true) }));
+
+    await screen.findByRole("textbox", { name: /ask raffa a question/i });
+    await waitFor(() => expect(screen.queryByRole("switch", { name: /web search/i })).toBeNull());
+  });
+
+  it("switched on, sends webResearch with the question, tags the bubble and says what it searches", async () => {
+    const createConversation = vi.fn().mockResolvedValue(createdConversation());
+    const postMessage = vi.fn().mockResolvedValue(postedReply());
+    renderAsk(mockApiClient({ getWorkspaceSettings: settings(true, true), createConversation, postMessage }));
+
+    const toggle = await screen.findByRole("switch", { name: /web search/i });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    const input = screen.getByRole("textbox", { name: /ask raffa a question/i });
+    expect(input).toHaveAttribute("placeholder", "Search the web and your contracts…");
+    expect(screen.getByText("Web + your contracts · web results are not verified")).toBeInTheDocument();
+
+    await userEvent.type(input, "latest news on Salesforce price increases{Enter}");
+
+    await waitFor(() =>
+      expect(postMessage).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID, {
+        question: "latest news on Salesforce price increases",
+        webResearch: true,
+      }),
+    );
+    const bubble = document.querySelector<HTMLElement>('.ask-message[data-role="you"]')!;
+    expect(within(bubble).getByText("latest news on Salesforce price increases")).toBeInTheDocument();
+    expect(within(bubble).getByText("Web search")).toBeInTheDocument();
+  });
+
+  it("switched back off, a question is a plain one again", async () => {
+    const postMessage = vi.fn().mockResolvedValue(postedReply());
+    renderAsk(mockApiClient({ getWorkspaceSettings: settings(true, true), createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+    const toggle = await screen.findByRole("switch", { name: /web search/i });
+    await userEvent.click(toggle);
+    await userEvent.click(toggle);
+    await userEvent.type(screen.getByRole("textbox", { name: /ask raffa a question/i }), "Which contracts renew this quarter?{Enter}");
+
+    await waitFor(() => expect(postMessage).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID, { question: "Which contracts renew this quarter?" }));
+  });
+
+  it("before the workspace opted in, a click explains where to switch it on and never toggles", async () => {
+    const postMessage = vi.fn().mockResolvedValue(postedReply());
+    renderAsk(mockApiClient({ getWorkspaceSettings: settings(true, false, true), createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage }));
+
+    const toggle = await screen.findByRole("switch", { name: /web search/i });
+    expect(toggle).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    const note = screen.getAllByText(/Switch it on under Workspace & members/).find((element) => element.getAttribute("role") === "status");
+    expect(note).toBeDefined();
+
+    await userEvent.type(screen.getByRole("textbox", { name: /ask raffa a question/i }), "latest news on Salesforce{Enter}");
+    await waitFor(() => expect(postMessage).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID, { question: "latest news on Salesforce" }));
+  });
+
+  it("an off-context redirect shows both outbound searches as links in a new tab", async () => {
+    const offContext = answerReply({
+      kind: "redirect",
+      answerMarkdown: "This one is outside Raffa's scope: for recipes, a search engine like **Google** will serve you better.",
+      citations: [],
+      actions: [
+        { label: "Search on Google →", href: "https://www.google.com/search?q=carbonara+recipe", kind: "external" },
+        { label: "Ask Perplexity →", href: "https://www.perplexity.ai/search?q=carbonara+recipe", kind: "external" },
+      ],
+      followUps: [],
+      provenance: { sources: [], modelId: null, promptVersion: null, inputHash: null },
+    });
+    renderAsk(
+      mockApiClient({
+        getWorkspaceSettings: settings(true, true),
+        createConversation: vi.fn().mockResolvedValue(createdConversation()),
+        postMessage: vi.fn().mockResolvedValue(postedReply(offContext)),
+      }),
+    );
+
+    await userEvent.click(await screen.findByRole("switch", { name: /web search/i }));
+    await userEvent.type(screen.getByRole("textbox", { name: /ask raffa a question/i }), "carbonara recipe{Enter}");
+
+    const google = await screen.findByRole("link", { name: "Search on Google →" });
+    const perplexity = screen.getByRole("link", { name: "Ask Perplexity →" });
+    expect(google).toHaveAttribute("href", "https://www.google.com/search?q=carbonara+recipe");
+    expect(google).toHaveAttribute("target", "_blank");
+    expect(perplexity).toHaveAttribute("rel", "noopener noreferrer");
   });
 });
