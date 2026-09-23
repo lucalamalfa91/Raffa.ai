@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSavingsContractHref,
   EMPTY_SAVINGS_FILTERS,
   getCurrencyFilterOptions,
   getSupplierFilterOptions,
   matchesSavingsFilters,
+  readSavingsFiltersFromSearch,
   SAVINGS_STATUS_FILTER_OPTIONS,
   type SavingsFilterableOpportunity,
 } from "./savingsFilters";
@@ -43,7 +45,7 @@ describe("matchesSavingsFilters", () => {
 
   it("composes all three active dimensions with AND, not OR", () => {
     const filtered = ALL_ROWS.filter((row) =>
-      matchesSavingsFilters(row, { supplier: "Acme Corp", status: "Identified", currency: "CHF" }),
+      matchesSavingsFilters(row, { supplier: "Acme Corp", status: "Identified", currency: "CHF", contractId: null }),
     );
     expect(filtered).toEqual([IDENTIFIED_ACME_CHF]);
   });
@@ -81,5 +83,31 @@ describe("getSupplierFilterOptions", () => {
 describe("getCurrencyFilterOptions", () => {
   it("lists distinct currencies actually present, first-seen order", () => {
     expect(getCurrencyFilterOptions(ALL_ROWS)).toEqual(["CHF", "EUR"]);
+  });
+});
+
+describe("contract focus (?contract=, a deep link from Contract 360 or Renewals)", () => {
+  const ON_CONTRACT: SavingsFilterableOpportunity = { supplierLabel: "Acme Corp", currency: "CHF", statusValue: "Identified", contractId: "c-1" };
+  const ELSEWHERE: SavingsFilterableOpportunity = { supplierLabel: "Acme Corp", currency: "CHF", statusValue: "Identified", contractId: "c-2" };
+  const QUOTE_SOURCED: SavingsFilterableOpportunity = { supplierLabel: "Acme Corp", currency: "CHF", statusValue: "Identified", contractId: null };
+
+  it("restricts to the one contract, and composes with the other dimensions", () => {
+    const rows = [ON_CONTRACT, ELSEWHERE, QUOTE_SOURCED];
+    expect(rows.filter((row) => matchesSavingsFilters(row, { ...EMPTY_SAVINGS_FILTERS, contractId: "c-1" }))).toEqual([ON_CONTRACT]);
+    expect(rows.filter((row) => matchesSavingsFilters(row, { ...EMPTY_SAVINGS_FILTERS, contractId: "c-1", status: "Realized" }))).toEqual([]);
+  });
+
+  it("reads ?contract= and a known ?status= once, ignoring blanks and unknown statuses", () => {
+    expect(readSavingsFiltersFromSearch(new URLSearchParams("contract=c-1&status=InProgress"))).toEqual({
+      ...EMPTY_SAVINGS_FILTERS,
+      contractId: "c-1",
+      status: "InProgress",
+    });
+    expect(readSavingsFiltersFromSearch(new URLSearchParams("contract=%20&status=Bogus"))).toEqual(EMPTY_SAVINGS_FILTERS);
+    expect(readSavingsFiltersFromSearch(new URLSearchParams())).toEqual(EMPTY_SAVINGS_FILTERS);
+  });
+
+  it("builds the link other screens use", () => {
+    expect(buildSavingsContractHref("c-1")).toBe("/savings?contract=c-1");
   });
 });

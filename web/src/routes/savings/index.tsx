@@ -1,25 +1,49 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import type { ApiClient, SavingsOpportunityBody } from "../../api/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import type { ApiClient, PortfolioPageBody, SavingsOpportunityBody } from "../../api/client";
+import AskRaffaLink from "../../components/ask-bar/AskRaffaLink";
+import { ASK_PROMPTS } from "../../components/ask-bar/askLaunch";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import KpiRow from "./KpiRow";
+import ContextStrip from "./ContextStrip";
+import SavingsPipeline from "./SavingsPipeline";
+import SavingsTimeline from "./SavingsTimeline";
+import RecentVerified from "./RecentVerified";
+import SavingsBreakdown from "./SavingsBreakdown";
+import DeadlineQueue from "./DeadlineQueue";
 import OpportunitiesTable from "./OpportunitiesTable";
 import {
   EMPTY_SAVINGS_FILTERS,
   getCurrencyFilterOptions,
   getSupplierFilterOptions,
+  readSavingsFiltersFromSearch,
   SAVINGS_STATUS_FILTER_OPTIONS,
   type SavingsFilterState,
 } from "./savingsFilters";
 import {
+  buildContextCells,
+  buildOpportunitiesPortfolioHref,
   buildOpportunityRows,
   buildSupplierNameIndex,
   filterOpportunityRows,
+  findNoticeSoonContractIds,
   formatSavingsSummary,
   getSavingsStatusTag,
   reduceKpiFetch,
+  resolveOpportunitySupplier,
   type KpiFetchState,
 } from "./savingsViewModel";
+import {
+  buildDeadlineQueue,
+  buildMonthlySavings,
+  buildNoticeIndex,
+  buildRecentVerified,
+  buildSavingsBreakdown,
+  buildSavingsPipeline,
+  buildVerifiedStats,
+  listDashboardCurrencies,
+  type BreakdownDimension,
+} from "./savingsDashboard";
 import "./savings.css";
 
 export interface SavingsRouteProps {
@@ -31,29 +55,48 @@ type OpportunitiesFetchState =
   | { phase: "error"; statusCode: number | null; message: string }
   | { phase: "ready"; items: readonly SavingsOpportunityBody[] };
 
+/** Loading until the portfolio answers; `failed` falls back honestly -- id-fragment supplier labels, no notice dates. */
+type PortfolioState = { phase: "loading" } | { phase: "ready"; items: PortfolioPageBody["items"] } | { phase: "failed" };
+
 /**
- * Route `/savings` -- Savings, V2 (screens-v2.md #8; `app.jsx` `kpis` / `opps`). First-class rail
- * destination under "From your contracts" (`navItems.ts`), also reached from Ask actions, Renewals
- * and Contract 360.
- * Header ("Savings" + summary), the four-cell KPI band, the opportunities table (Supplier · Action
- * · Estimate · Status, rows open Contract 360), and the reroute state while nothing feeds it.
+ * Route `/savings` -- the Savings dashboard. A rail destination under "From your contracts", also
+ * reached from Ask actions, Renewals and Contract 360. Top to bottom:
+ *
+ * 1. **Header** -- "Savings" + summary, and "Ask Raffa where to save" (a new Ask chat asking it).
+ * 2. **Headline band** (`KpiRow`) -- Savings verified (the lead figure) · identified · in progress ·
+ *    potential as a share of spend, from `GET /api/savings/kpis`, stale-labelled if that call fails.
+ * 3. **Portfolio context** (`ContextStrip`) -- contracts and spend analyzed, upcoming renewals,
+ *    notice deadlines inside 45 days; each cell a link into Portfolio or Renewals.
+ * 4. **Charts** (`savingsDashboard.ts`), one currency at a time with a switch when there are more:
+ *    the identified → in progress → verified pipeline; "When you saved" (money verified per month,
+ *    with this year / last 90 days / last verified saving) beside the latest verified outcomes;
+ *    "Where the savings are" by supplier or lever; "Act before the notice deadline".
+ * 5. **Opportunities** -- filters and the table; a pipeline stage or a supplier bar filters it.
  *
  * **Three independent fetches, independent degrade states.** `getSavingsKpis` backs the band; its
  * failure degrades the band to a stale-labelled last-known state (`reduceKpiFetch`), never a blank.
- * `getSavingsOpportunities` backs the table; its failure renders the table section's own scoped
- * error + Retry. `getPortfolio` only supplies supplier *names* for the rows (`SavingsOpportunityResult` carries a
- * supplier id only); if it fails the rows fall back to the same id-fragment label the Portfolio
- * table uses -- never a fabricated name.
+ * `getSavingsOpportunities` backs the charts and the table; its failure renders the table section's
+ * own scoped error + Retry. `getPortfolio` supplies supplier *names* and notice dates; if it fails
+ * the rows fall back to the id-fragment label the Portfolio table uses and "Notice in" reads "—" --
+ * never a fabricated name or date.
+ *
+ * **Deep links.** `?contract=<id>` (Contract 360 "Track it in Savings", Renewals) focuses one
+ * contract's opportunities and `?status=` one stage -- read once on mount, like Renewals' `?select=`,
+ * so a later click is never fought by the URL.
  */
 export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
   const workspace = loadCurrentWorkspace();
+  const [searchParams] = useSearchParams();
   const [kpiState, setKpiState] = useState<KpiFetchState>({ phase: "loading" });
   const [opportunitiesState, setOpportunitiesState] = useState<OpportunitiesFetchState>({ phase: "loading" });
-  const [supplierNames, setSupplierNames] = useState<ReadonlyMap<string, string>>(new Map());
+  const [portfolioState, setPortfolioState] = useState<PortfolioState>({ phase: "loading" });
   // Supplier / status / currency (task-01-savings-filters, ADR-020: presentation only, no client
-  // store). Pure view state over the already-loaded rows below -- never written to storage, and
-  // never touched by the three fetches' own load/retry callbacks.
-  const [filters, setFilters] = useState<SavingsFilterState>(EMPTY_SAVINGS_FILTERS);
+  // store), plus the deep-linked contract focus. Pure view state over the already-loaded rows below
+  // -- never written to storage, and never touched by the three fetches' own load/retry callbacks.
+  const [filters, setFilters] = useState<SavingsFilterState>(() => readSavingsFiltersFromSearch(searchParams));
+  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
+  const [breakdownDimension, setBreakdownDimension] = useState<BreakdownDimension>("supplier");
+  const tableRef = useRef<HTMLElement>(null);
 
   const loadKpis = useCallback(() => {
     if (!workspace) return;
@@ -86,18 +129,42 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
     });
   }, [apiClient, workspace?.id]);
 
-  const loadSupplierNames = useCallback(() => {
+  const loadPortfolio = useCallback(() => {
     if (!workspace) return;
     void apiClient.getPortfolio(workspace.id, { pageSize: 100 }).then((result) => {
-      if (result.ok && result.portfolio) setSupplierNames(buildSupplierNameIndex(result.portfolio.items));
+      setPortfolioState(result.ok && result.portfolio ? { phase: "ready", items: result.portfolio.items } : { phase: "failed" });
     });
   }, [apiClient, workspace?.id]);
 
   useEffect(() => {
     loadKpis();
     loadOpportunities();
-    loadSupplierNames();
-  }, [loadKpis, loadOpportunities, loadSupplierNames]);
+    loadPortfolio();
+  }, [loadKpis, loadOpportunities, loadPortfolio]);
+
+  const portfolioItems = useMemo<PortfolioPageBody["items"]>(() => (portfolioState.phase === "ready" ? portfolioState.items : []), [portfolioState]);
+  const supplierNames = useMemo(() => buildSupplierNameIndex(portfolioItems), [portfolioItems]);
+  const noticeIndex = useMemo(() => buildNoticeIndex(portfolioItems), [portfolioItems]);
+  const opportunityItems = useMemo(() => (opportunitiesState.phase === "ready" ? opportunitiesState.items : []), [opportunitiesState]);
+  const rows = useMemo(() => buildOpportunityRows(opportunityItems, supplierNames, noticeIndex), [opportunityItems, supplierNames, noticeIndex]);
+
+  const supplierLabelOf = useCallback(
+    (item: SavingsOpportunityBody) => resolveOpportunitySupplier(item.contractId, item.supplierId, supplierNames).label,
+    [supplierNames],
+  );
+  const currencies = useMemo(() => listDashboardCurrencies(opportunityItems), [opportunityItems]);
+  const currency = selectedCurrency !== null && currencies.includes(selectedCurrency) ? selectedCurrency : (currencies[0] ?? null);
+  const dashboard = useMemo(() => {
+    if (currency === null) return null;
+    return {
+      pipeline: buildSavingsPipeline(opportunityItems, currency),
+      months: buildMonthlySavings(opportunityItems, currency),
+      stats: buildVerifiedStats(opportunityItems, currency, supplierLabelOf),
+      recent: buildRecentVerified(opportunityItems, currency, supplierLabelOf),
+      breakdown: buildSavingsBreakdown(opportunityItems, currency, breakdownDimension, supplierLabelOf),
+      deadlines: buildDeadlineQueue(opportunityItems, portfolioItems, supplierLabelOf),
+    };
+  }, [opportunityItems, portfolioItems, currency, breakdownDimension, supplierLabelOf]);
 
   if (!workspace) {
     return (
@@ -108,19 +175,29 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
     );
   }
 
-  const opportunityItems = opportunitiesState.phase === "ready" ? opportunitiesState.items : [];
-  const rows = buildOpportunityRows(opportunityItems, supplierNames);
   const kpis = kpiState.phase === "ready" ? kpiState.kpis : null;
   const summary =
     kpiState.phase === "loading" || opportunitiesState.phase === "loading" ? "Loading savings…" : formatSavingsSummary(kpis, rows.length);
+  const contextCells = buildContextCells(kpis, portfolioState.phase === "ready" ? findNoticeSoonContractIds(portfolioItems) : null);
 
   // Filter options always come from the full, unfiltered `rows` -- so picking a currency never
   // makes the supplier list (or vice versa) shrink out from under the user.
   const visibleRows = filterOpportunityRows(rows, filters);
   const supplierFilterOptions = getSupplierFilterOptions(rows);
   const currencyFilterOptions = getCurrencyFilterOptions(rows);
-  const filtersActive = filters.supplier !== null || filters.status !== null || filters.currency !== null;
+  const filtersActive = filters.supplier !== null || filters.status !== null || filters.currency !== null || filters.contractId !== null;
   const clearFilters = () => setFilters(EMPTY_SAVINGS_FILTERS);
+  const focusedRow = filters.contractId === null ? null : (rows.find((row) => row.contractId === filters.contractId) ?? null);
+  const portfolioHref = buildOpportunitiesPortfolioHref(visibleRows);
+
+  // A chart that filters the table brings the table into view, so the click visibly does something.
+  // Charts show one currency; with more than one, a chart filter also pins the table to it.
+  const filterFromChart = (next: Partial<SavingsFilterState>) => {
+    const selecting = next.status != null || next.supplier != null;
+    const pinCurrency = selecting && currencies.length > 1 ? { currency } : {};
+    setFilters((previous) => ({ ...previous, ...next, ...pinCurrency }));
+    tableRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <div className="savings-screen">
@@ -129,12 +206,65 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
           <h2 className="screen-title">Savings</h2>
           <p className="screen-header-summary">{summary}</p>
         </div>
+        <div className="screen-header-actions">
+          <AskRaffaLink question={ASK_PROMPTS.whereToSave} className="btn btn-primary savings-ask">
+            Ask Raffa where to save →
+          </AskRaffaLink>
+        </div>
       </header>
 
       <KpiRow kpiState={kpiState} onRetry={loadKpis} />
+      <ContextStrip cells={contextCells} />
 
-      <section className="savings-opportunities-section" aria-label="Opportunities">
-        <h6>Opportunities</h6>
+      {opportunitiesState.phase === "ready" && dashboard !== null && currency !== null && (
+        <div className="savings-dashboard">
+          {currencies.length > 1 && (
+            <div className="savings-currency-row">
+              <span className="micro-meta">Charts in</span>
+              <div className="seg" role="group" aria-label="Chart currency">
+                {currencies.map((code) => (
+                  <button key={code} type="button" aria-pressed={code === currency} onClick={() => setSelectedCurrency(code)}>
+                    {code}
+                  </button>
+                ))}
+              </div>
+              <span className="micro-meta">No conversion: each currency is shown on its own.</span>
+            </div>
+          )}
+
+          <SavingsPipeline
+            pipeline={dashboard.pipeline}
+            activeStatus={filters.status}
+            onSelectStatus={(status) => filterFromChart({ status })}
+          />
+
+          <div className="savings-grid savings-grid-wide">
+            <SavingsTimeline currency={currency} buckets={dashboard.months} stats={dashboard.stats} />
+            <RecentVerified rows={dashboard.recent} />
+          </div>
+
+          <div className="savings-grid">
+            <SavingsBreakdown
+              dimension={breakdownDimension}
+              onDimensionChange={setBreakdownDimension}
+              rows={dashboard.breakdown}
+              activeSupplier={filters.supplier}
+              onSelectSupplier={(supplier) => filterFromChart({ supplier })}
+            />
+            <DeadlineQueue rows={dashboard.deadlines} portfolioLoaded={portfolioState.phase !== "failed"} supplierNames={supplierNames} />
+          </div>
+        </div>
+      )}
+
+      <section className="savings-opportunities-section" aria-label="Opportunities" ref={tableRef}>
+        <div className="savings-opportunities-head">
+          <h6>Opportunities</h6>
+          {opportunitiesState.phase === "ready" && portfolioHref !== null && (
+            <Link to={portfolioHref} className="btn btn-ghost savings-panel-link">
+              Show these contracts in Portfolio →
+            </Link>
+          )}
+        </div>
 
         {opportunitiesState.phase === "loading" && (
           <div className="savings-opportunities-skeleton" role="status" aria-live="polite">
@@ -161,24 +291,43 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
           <div className="screen-reroute" role="status">
             <h3>No savings opportunities yet</h3>
             <p>Opportunities appear once a renewal is actioned or a saving is identified from validated contracts.</p>
-            <Link to="/renewals" className="btn btn-primary">
-              Open renewals
-            </Link>
+            <div className="screen-reroute-actions">
+              <Link to="/renewals" className="btn btn-primary">
+                Open renewals
+              </Link>
+              <AskRaffaLink question={ASK_PROMPTS.whereToSave} className="btn btn-secondary">
+                Ask Raffa where to save
+              </AskRaffaLink>
+            </div>
           </div>
         )}
 
         {opportunitiesState.phase === "ready" && rows.length > 0 && (
           <>
+            {filters.contractId !== null && (
+              <div className="savings-focus-notice" role="status">
+                <span>
+                  {focusedRow !== null
+                    ? `Showing the savings on one ${focusedRow.supplierLabel} contract.`
+                    : "This contract has no savings opportunity yet."}
+                </span>
+                <span className="savings-focus-links">
+                  <Link to={`/contracts/${filters.contractId}`} state={{ from: "savings" }} className="btn btn-ghost">
+                    Open the contract →
+                  </Link>
+                  <button type="button" className="btn btn-ghost" onClick={() => setFilters((previous) => ({ ...previous, contractId: null }))}>
+                    Show all opportunities
+                  </button>
+                </span>
+              </div>
+            )}
+
             {/* Anchored above the opportunities table (screens-v2.md #8; task-01-savings-filters,
                 ADR-020). Supplier / status / currency -- the council's exact filter set (AC-2);
                 "Estimate" stays a sort/numeric column, never a filter. Pure client-side view state:
                 filtering never re-fetches and never writes to storage (AC-3). */}
-            <div
-              role="group"
-              aria-label="Filter opportunities"
-              style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "var(--space-4)" }}
-            >
-              <div className="field" style={{ marginBottom: 0, minWidth: "160px" }}>
+            <div role="group" aria-label="Filter opportunities" className="savings-filters">
+              <div className="field savings-filter-field">
                 <label htmlFor="savings-filter-supplier">Supplier</label>
                 <select
                   id="savings-filter-supplier"
@@ -195,7 +344,7 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
                 </select>
               </div>
 
-              <div className="field" style={{ marginBottom: 0, minWidth: "160px" }}>
+              <div className="field savings-filter-field">
                 <label htmlFor="savings-filter-status">Status</label>
                 <select
                   id="savings-filter-status"
@@ -217,7 +366,7 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
                 </select>
               </div>
 
-              <div className="field" style={{ marginBottom: 0, minWidth: "160px" }}>
+              <div className="field savings-filter-field">
                 <label htmlFor="savings-filter-currency">Currency</label>
                 <select
                   id="savings-filter-currency"
@@ -226,9 +375,9 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
                   onChange={(event) => setFilters((previous) => ({ ...previous, currency: event.target.value === "" ? null : event.target.value }))}
                 >
                   <option value="">All currencies</option>
-                  {currencyFilterOptions.map((currency) => (
-                    <option key={currency} value={currency}>
-                      {currency}
+                  {currencyFilterOptions.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
                     </option>
                   ))}
                 </select>

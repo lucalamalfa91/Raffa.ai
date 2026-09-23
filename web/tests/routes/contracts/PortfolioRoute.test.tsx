@@ -161,6 +161,17 @@ describe("PortfolioRoute ?ids= highlight filter", () => {
     const notice = screen.getByTestId("portfolio-highlight-notice");
     expect(notice).toHaveTextContent("Showing 2 of 3 contracts — the ones highlighted in Ask.");
     expect(within(notice).getByRole("link", { name: "Show all contracts →" })).toHaveAttribute("href", "/contracts");
+    // An Ask highlight has no "back" link: Ask keeps its own history.
+    expect(within(notice).queryByRole("link", { name: /^←/ })).not.toBeInTheDocument();
+  });
+
+  it("names Renewals or Savings when they picked the contracts, with a way back", async () => {
+    renderPortfolio(mockApiClient(vi.fn().mockResolvedValue(ok(three))), "/contracts?ids=c-2&from=renewals");
+
+    const notice = await screen.findByTestId("portfolio-highlight-notice");
+    expect(notice).toHaveTextContent("Showing 1 of 3 contracts — the ones selected in Renewals.");
+    expect(within(notice).getByRole("link", { name: "← Renewals" })).toHaveAttribute("href", "/renewals");
+    expect(within(notice).getByRole("link", { name: "Show all contracts →" })).toHaveAttribute("href", "/contracts");
   });
 
   it("keeps the category filter on the Show all link", async () => {

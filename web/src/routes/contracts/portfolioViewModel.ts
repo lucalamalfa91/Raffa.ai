@@ -93,19 +93,53 @@ export function buildPortfolioHighlightHref(contractIds: readonly string[]): str
   return `/contracts?${PORTFOLIO_IDS_PARAM}=${ids.map(encodeURIComponent).join(",")}`;
 }
 
+/**
+ * `?from=` beside `?ids=`: which screen picked the contracts, so the notice above the narrowed table
+ * names it ("the ones selected in Renewals") and "Back to …" returns there. Absent or unknown reads
+ * as Ask -- the first screen that linked here, whose links carry no `from`.
+ */
+export const PORTFOLIO_FROM_PARAM = "from";
+
+export type PortfolioSelectionSource = "ask" | "renewals" | "savings";
+
+const SELECTION_SOURCES: Readonly<Record<PortfolioSelectionSource, { phrase: string; label: string; href: string }>> = {
+  ask: { phrase: "highlighted in Ask", label: "Ask Raffa", href: "/ask" },
+  renewals: { phrase: "selected in Renewals", label: "Renewals", href: "/renewals" },
+  savings: { phrase: "picked out in Savings", label: "Savings", href: "/savings" },
+};
+
+export function readSelectionSource(searchParams: URLSearchParams): PortfolioSelectionSource {
+  const raw = searchParams.get(PORTFOLIO_FROM_PARAM);
+  return raw === "renewals" || raw === "savings" ? raw : "ask";
+}
+
+/** The screen a narrowed Portfolio came from -- "← Renewals" beside "Show all contracts". */
+export function getSelectionSourceLink(source: PortfolioSelectionSource): { label: string; href: string } {
+  const { label, href } = SELECTION_SOURCES[source];
+  return { label, href };
+}
+
+/** `buildPortfolioHighlightHref` for another screen's selection: the same `?ids=` narrowing, plus `?from=` so the notice names that screen. */
+export function buildPortfolioSelectionHref(contractIds: readonly string[], source: PortfolioSelectionSource): string {
+  const href = buildPortfolioHighlightHref(contractIds);
+  if (href === "/contracts" || source === "ask") return href;
+  return `${href}&${PORTFOLIO_FROM_PARAM}=${source}`;
+}
+
 export function filterRowsByContractIds(rows: readonly PortfolioRow[], contractIds: readonly string[]): PortfolioRow[] {
   if (contractIds.length === 0) return [...rows];
   const wanted = new Set(contractIds);
   return rows.filter((row) => wanted.has(row.item.contractId));
 }
 
-/** The notice above a filtered table: how many of the highlighted contracts are still here. */
-export function formatHighlightNotice(shown: number, total: number): string {
+/** The notice above a filtered table: how many of the highlighted contracts are still here, and which screen picked them. */
+export function formatHighlightNotice(shown: number, total: number, source: PortfolioSelectionSource = "ask"): string {
+  const { phrase } = SELECTION_SOURCES[source];
   if (shown === 0) {
-    return "None of the contracts highlighted in Ask is in the portfolio any more.";
+    return `None of the contracts ${phrase} is in the portfolio any more.`;
   }
   const contracts = total === 1 ? "contract" : "contracts";
-  return `Showing ${shown} of ${total} ${contracts} — the ones highlighted in Ask.`;
+  return `Showing ${shown} of ${total} ${contracts} — the ones ${phrase}.`;
 }
 
 export interface PortfolioRow {

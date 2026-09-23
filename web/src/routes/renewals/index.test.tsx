@@ -99,6 +99,8 @@ function apiClientWith(overrides: Partial<ApiClient> = {}): ApiClient {
     // every test in this file, not just ones about the TODO list itself. None of the tests below
     // exercise the list's own content or the tick, so an honest empty list is enough.
     getRenewalNegotiationTodos: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, todos: [], error: null }),
+    // Read alongside the pipeline for contract type and currency only; unavailable here.
+    getPortfolio: vi.fn().mockResolvedValue({ ok: false, statusCode: 503, portfolio: null, error: "Service Unavailable" }),
     ...overrides,
   } as unknown as ApiClient;
 }

@@ -745,8 +745,9 @@ async function actOnFirstRenewal(page: Page): Promise<boolean> {
 
 /**
  * Savings (screens-v2.md #8; first-class rail destination at `/savings`, also reached from
- * Ask/Renewals/Contract 360 actions). The four real KPI cells (`savingsViewModel.ts#buildKpiCells`: Contracts
- * analyzed · Upcoming renewals · Savings identified · Savings verified) always render -- this is the
+ * Ask/Renewals/Contract 360 actions). The four real KPI cells (`savingsViewModel.ts#buildKpiCells`: Savings
+ * verified · Savings identified · Savings in progress · Savings potential) and the portfolio-context
+ * strip under them (Contracts analyzed · Upcoming renewals, `buildContextCells`) always render -- this is the
  * V2 replacement for the pre-V2 Home screen's own six-cell KPI row (Annual spend analyzed / Savings
  * identified / Savings realized / Savings in progress / Contracts analyzed / Upcoming renewals),
  * which does not exist on any screen any more. A tracked renewal action is not itself a
@@ -759,7 +760,7 @@ async function assertSavingsKpis(page: Page): Promise<void> {
   await page.goto("/savings");
   await expect(page.getByRole("heading", { name: "Savings", exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("group", { name: /savings kpis/i })).toBeVisible({ timeout: 30_000 });
-  for (const label of ["Contracts analyzed", "Upcoming renewals", "Savings identified", "Savings verified"]) {
+  for (const label of ["Savings verified", "Savings identified", "Savings in progress", "Savings potential", "Contracts analyzed", "Upcoming renewals"]) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
 

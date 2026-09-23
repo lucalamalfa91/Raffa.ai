@@ -58,6 +58,29 @@ Upload in Documents → Worker processes → Review weak facts → Validated con
    adds Start / Auto / Risk); Renewals defaults to **Ready**, with **To
    review** and **All** one click away.
 
+**Savings** is a dashboard: verified money leads (with its share of spend),
+then identified, in progress and savings potential; a portfolio-context strip
+links into Portfolio and Renewals; the identified → in progress → verified
+pipeline, "When you saved" (verified money per month, this year / last 90 days /
+last verified saving), where the savings are (by supplier or lever) and the open
+savings whose notice deadline is ahead. Pipeline stages and supplier bars filter
+the opportunities table; each row offers Renewals (`?select=`) and a scoped Ask.
+`/savings?contract=<id>` focuses one contract (Contract 360 "Track it in
+Savings").
+
+**Renewals** opens on a KPI strip (notice in 30 / 90 days, spend renewing inside
+90 days, not started / in negotiation / closed — each a filter), a search and
+status filter, and tick boxes for bulk actions (assign to me, show in Portfolio,
+ask which to start first). The selected row's pane launches everything from one
+registry (`web/src/routes/renewals/renewalActions.ts`): Ask Raffa bound to the
+contract (plan, draft email, market check, why ranked), Contract 360 / Savings /
+Portfolio / Quote check with the contract in context, and the operations not
+built yet (reminder, calendar, send notice, export), which open Ask so it can
+say so and file the request. A new capability is one registry entry.
+
+Portfolio's `?ids=` narrowing takes `&from=renewals|savings` so the notice names
+the screen that picked the contracts and links back to it.
+
 **Ask** binds to a supplier/contract when the chat was opened from Contract 360
 (`?scope=` → persisted `scopeContractId`) or when the question names a known
 supplier. A bound chat shows a chip and a title `Supplier — Contract type`.

@@ -1,7 +1,9 @@
-import type { RenewalActionRow, RenewalActionStatusValue, RenewalPipelineItemBody } from "../../api/client";
+import type { PortfolioPageBody, RenewalActionRow, RenewalActionStatusValue, RenewalPipelineItemBody } from "../../api/client";
 import type { SemanticTag } from "../../styles/semantics";
 import { isDeadlineCritical } from "../../styles/semantics";
 import { isContractReadyToUse } from "../contracts/contractStatus";
+import { formatAnnualSpend, formatPortfolioDate, getContractTypeLabel } from "../contracts/portfolioTableFormatters";
+import { formatCompactAmount } from "../contracts/portfolioViewModel";
 
 /**
  * Pure view-model helpers for the V2 Renewals screen (route `/renewals`; ADR-024 V2 IA amending
@@ -9,10 +11,12 @@ import { isContractReadyToUse } from "../contracts/contractStatus";
  * `renewals` / `rsel` / `rnSummary` / `rAct`). No React here -- every rule is unit-testable without
  * rendering (`renewalPipelineViewModel.test.ts`).
  *
- * The Day-1 screen's threshold strip (0-30 … 270-365 d window buckets, "click = filter") is not part
- * of the V2 design and was removed with it: V2 is one list "sorted by priority (`score`)" with the
- * selected row's own "Why it is here" pane beside it. Values below are quoted from `app.jsx`'s own
- * `renewals` builder (`scoreFg`, `cancelFg`/`cancelW`, `st`/`stTag`, `bg`/`bar`) and `rnSummary`.
+ * V2 is one list "sorted by priority (`score`)" with the selected row's own "Why it is here" pane
+ * beside it. Values below are quoted from `app.jsx`'s own `renewals` builder (`scoreFg`,
+ * `cancelFg`/`cancelW`, `st`/`stTag`, `bg`/`bar`) and `rnSummary`. Above the list sits a KPI strip
+ * (`buildRenewalKpis`): not the Day-1 threshold strip's eight window buckets, but the two notice
+ * windows that matter (30 / 90 days), the spend they carry and the team's own workflow, each cell a
+ * filter over the same list (`filterRenewalRows`).
  */
 
 /** One row of the priority list: the pipeline item, its own `GET /api/renewals/{id}/priority` score
@@ -22,6 +26,26 @@ export interface RenewalTableRow {
   item: RenewalPipelineItemBody;
   score: number | null;
   tracked: RenewalActionRow | null;
+  /** What the portfolio knows about the contract (type, currency), `null` while it has not loaded or has no row for it. */
+  contract: RenewalContractInfo | null;
+}
+
+/**
+ * `GET /api/renewals` carries no contract type and no currency; `GET /api/contracts` (the portfolio)
+ * does. Renewals reads the portfolio alongside the pipeline -- never blocking on it -- to name the
+ * contract ("MSA") instead of an id fragment and to put the currency on the spend.
+ */
+export interface RenewalContractInfo {
+  typeLabel: string;
+  currency: string | null;
+}
+
+export function buildRenewalContractIndex(items: PortfolioPageBody["items"]): ReadonlyMap<string, RenewalContractInfo> {
+  const index = new Map<string, RenewalContractInfo>();
+  for (const item of items) {
+    index.set(item.contractId, { typeLabel: getContractTypeLabel(item.type), currency: item.currency ?? null });
+  }
+  return index;
 }
 
 /** `NotStarted` is "no action taken" everywhere (ADR-012 w16 clause 22). */
@@ -48,12 +72,14 @@ export function isRenewalItemReady(item: RenewalPipelineItemBody): boolean {
 export function buildRenewalRows(
   items: readonly RenewalPipelineItemBody[],
   scores: Readonly<Record<string, number | null>>,
+  contracts: ReadonlyMap<string, RenewalContractInfo> = new Map(),
 ): RenewalTableRow[] {
   return items
     .map((item) => ({
       item,
       score: scores[item.contractId] ?? null,
       tracked: savedActionOnScreen(item.savedAction),
+      contract: contracts.get(item.contractId) ?? null,
     }))
     .sort(compareByPriority);
 }
@@ -113,8 +139,14 @@ export function isNoticeUrgent(daysUntilCancellationDeadline: number | null): bo
  * `../contracts/portfolioTableFormatters.ts#formatSupplier` established for the identical "no name
  * field" gap, applied to `contractId`.
  */
-export function formatContractRef(contractId: string): { label: string; title: string } {
+export function formatContractRef(contractId: string, contract: RenewalContractInfo | null = null): { label: string; title: string } {
+  if (contract !== null) return { label: contract.typeLabel, title: contractId };
   return { label: `Contract ${contractId.slice(0, 8)}`, title: contractId };
+}
+
+/** "Annual spend" column / pane fact: the portfolio's currency when known ("CHF 500k"), never a guessed one. */
+export function formatRenewalSpend(annualSpend: number | null, contract: RenewalContractInfo | null): string {
+  return formatAnnualSpend(annualSpend, contract?.currency ?? null);
 }
 
 /** Supplier half of the same column and of the pane's heading: the wire's own name (R-SUP-04), or an honest placeholder -- never an id fragment. */
@@ -180,4 +212,179 @@ export const RENEWAL_ACTION_KINDS: readonly RenewalActionKind[] = ["negotiate", 
 
 export function getRenewalActionPlan(kind: RenewalActionKind): RenewalActionPlan {
   return RENEWAL_ACTION_PLANS[kind];
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// Workflow state, KPI strip and list filters
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Where a renewal stands in the team's own workflow, read off the persisted `savedAction` the list
+ * already carries (`savedActionOnScreen`): no action yet (`open`; an "Assign to me" is still open --
+ * `NotStarted` is "no action taken", ADR-012 w16 clause 22), `negotiating` (`InProgress`) or `closed`
+ * (`Completed`, e.g. a notice sent from Contract 360).
+ */
+export type RenewalWorkflowState = "open" | "negotiating" | "closed";
+
+export function getRenewalWorkflowState(tracked: RenewalActionRow | null): RenewalWorkflowState {
+  if (tracked === null) return "open";
+  return tracked.status === "Completed" ? "closed" : "negotiating";
+}
+
+/** Who has claimed the renewal, even before work started: `savedAction.owner` on an "Assign to me" (`NotStarted`) row too. */
+export function getRenewalOwner(item: RenewalPipelineItemBody): string | null {
+  const owner = item.savedAction?.owner?.trim() ?? "";
+  return owner === "" ? null : owner;
+}
+
+export type RenewalWindowFilter = "all" | "30" | "90" | "passed";
+export type RenewalStateFilter = "all" | RenewalWorkflowState;
+
+export interface RenewalListFilters {
+  window: RenewalWindowFilter;
+  state: RenewalStateFilter;
+  /** Free text over supplier and contract type, case-insensitive. */
+  query: string;
+}
+
+export const EMPTY_RENEWAL_FILTERS: RenewalListFilters = { window: "all", state: "all", query: "" };
+
+export function isRenewalFilterActive(filters: RenewalListFilters): boolean {
+  return filters.window !== "all" || filters.state !== "all" || filters.query.trim() !== "";
+}
+
+function inWindow(days: number | null, window: RenewalWindowFilter): boolean {
+  switch (window) {
+    case "all":
+      return true;
+    case "passed":
+      return days !== null && days < 0;
+    case "30":
+      return days !== null && days >= 0 && days <= 30;
+    case "90":
+      return days !== null && days >= 0 && days <= 90;
+  }
+}
+
+export function matchesRenewalFilters(row: RenewalTableRow, filters: RenewalListFilters): boolean {
+  if (!inWindow(row.item.daysUntilCancellationDeadline, filters.window)) return false;
+  if (filters.state !== "all" && getRenewalWorkflowState(row.tracked) !== filters.state) return false;
+  const query = filters.query.trim().toLowerCase();
+  if (query !== "") {
+    const haystack = [row.item.supplierName ?? "", row.contract?.typeLabel ?? "", row.item.contractId].join(" ").toLowerCase();
+    if (!haystack.includes(query)) return false;
+  }
+  return true;
+}
+
+export function filterRenewalRows(rows: readonly RenewalTableRow[], filters: RenewalListFilters): RenewalTableRow[] {
+  return rows.filter((row) => matchesRenewalFilters(row, filters));
+}
+
+export interface RenewalKpiCellView {
+  key: "notice-30" | "notice-90" | "spend-90" | "open" | "negotiating" | "closed";
+  label: string;
+  value: string;
+  meta: string;
+  /** Accent number (always beside its label): a notice window that is not empty. */
+  urgent: boolean;
+  /** The list filter this cell applies -- the strip is a row of filters, like the design system's attention strip. */
+  filter: Partial<Pick<RenewalListFilters, "window" | "state">>;
+}
+
+/**
+ * The strip above the list: how much is due and who is on it. Counted over the rows the readiness
+ * filter lets through, so every number matches what one click on it shows. Spend with a notice date
+ * inside 90 days is summed per currency (the portfolio's), never across currencies; a row whose
+ * currency is unknown is summed on its own, without a code.
+ */
+export function buildRenewalKpis(rows: readonly RenewalTableRow[]): readonly RenewalKpiCellView[] {
+  const count = (predicate: (row: RenewalTableRow) => boolean) => rows.filter(predicate).length;
+  const within = (limit: number) => (row: RenewalTableRow) => {
+    const days = row.item.daysUntilCancellationDeadline;
+    return days !== null && days >= 0 && days <= limit;
+  };
+  const in30 = count(within(30));
+  const in90 = count(within(90));
+  const passed = count((row) => row.item.daysUntilCancellationDeadline !== null && row.item.daysUntilCancellationDeadline < 0);
+
+  const spendByCurrency = new Map<string | null, number>();
+  for (const row of rows.filter(within(90))) {
+    if (row.item.annualSpend === null) continue;
+    const currency = row.contract?.currency ?? null;
+    spendByCurrency.set(currency, (spendByCurrency.get(currency) ?? 0) + row.item.annualSpend);
+  }
+  const spendLines = Array.from(spendByCurrency.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([currency, total]) => formatCompactAmount(total, currency));
+
+  const open = count((row) => getRenewalWorkflowState(row.tracked) === "open");
+  const unowned = count((row) => getRenewalWorkflowState(row.tracked) === "open" && getRenewalOwner(row.item) === null);
+  const negotiating = count((row) => getRenewalWorkflowState(row.tracked) === "negotiating");
+  const closed = count((row) => getRenewalWorkflowState(row.tracked) === "closed");
+
+  return [
+    {
+      key: "notice-30",
+      label: "Notice in 30 days",
+      value: String(in30),
+      meta: passed > 0 ? `${passed} notice date${passed === 1 ? "" : "s"} already passed` : "act now or it renews",
+      urgent: in30 > 0,
+      filter: { window: "30" },
+    },
+    { key: "notice-90", label: "Notice in 90 days", value: String(in90), meta: "time to negotiate", urgent: false, filter: { window: "90" } },
+    {
+      key: "spend-90",
+      label: "Spend renewing in 90 days",
+      value: spendLines.length === 0 ? "—" : spendLines.join(" + "),
+      meta: spendLines.length === 0 ? "no spend recorded on these" : "annual spend with a notice date inside 90 days",
+      urgent: false,
+      filter: { window: "90" },
+    },
+    { key: "open", label: "Not started", value: String(open), meta: unowned > 0 ? `${unowned} with nobody assigned` : "every one has an owner", urgent: false, filter: { state: "open" } },
+    { key: "negotiating", label: "In negotiation", value: String(negotiating), meta: "work under way", urgent: false, filter: { state: "negotiating" } },
+    { key: "closed", label: "Closed", value: String(closed), meta: "renewed or notice sent", urgent: false, filter: { state: "closed" } },
+  ];
+}
+
+/**
+ * True when the cell's filter is the one applied now -- its button reads as pressed, and a second
+ * press clears it (`toggleKpiFilter`). The two 90-day cells share one filter, so they press together.
+ */
+export function isKpiFilterActive(cell: RenewalKpiCellView, filters: RenewalListFilters): boolean {
+  if (cell.filter.window !== undefined) return filters.window === cell.filter.window;
+  if (cell.filter.state !== undefined) return filters.state === cell.filter.state;
+  return false;
+}
+
+/** A KPI cell press: applies the cell's own dimension (window or state), or resets it when that cell is already the active one. The other dimension and the search text are kept. */
+export function toggleKpiFilter(cell: RenewalKpiCellView, filters: RenewalListFilters): RenewalListFilters {
+  const active = isKpiFilterActive(cell, filters);
+  if (cell.filter.window !== undefined) return { ...filters, window: active ? "all" : cell.filter.window };
+  if (cell.filter.state !== undefined) return { ...filters, state: active ? "all" : cell.filter.state };
+  return filters;
+}
+
+export interface RenewalFactView {
+  key: "notice" | "renews" | "spend" | "priority";
+  label: string;
+  value: string;
+  urgent: boolean;
+}
+
+/** The pane's four key facts: notice deadline, renewal date, annual spend, priority -- every value the wire's own, "—" where it has none. */
+export function buildRenewalFacts(row: RenewalTableRow): readonly RenewalFactView[] {
+  const { item } = row;
+  return [
+    {
+      key: "notice",
+      label: "Notice by",
+      value: item.cancellationDeadline === null ? "—" : formatPortfolioDate(item.cancellationDeadline),
+      urgent: isNoticeUrgent(item.daysUntilCancellationDeadline),
+    },
+    { key: "renews", label: "Renews", value: item.renewalDate === null ? "—" : formatPortfolioDate(item.renewalDate), urgent: false },
+    { key: "spend", label: "Annual spend", value: formatRenewalSpend(item.annualSpend, row.contract), urgent: false },
+    { key: "priority", label: "Priority", value: row.score === null ? "—" : `${Math.round(row.score)} / 100`, urgent: row.score !== null && isHighPriorityScore(row.score) },
+  ];
 }

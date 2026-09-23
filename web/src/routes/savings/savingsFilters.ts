@@ -19,18 +19,43 @@ export interface SavingsFilterableOpportunity {
   supplierLabel: string;
   currency: string;
   statusValue: SavingsOpportunityBody["status"];
+  /** Optional in this structural shape so plain fixtures stay minimal; `OpportunityRowView` always carries it. */
+  contractId?: string | null;
 }
 
 /** `null` in any field means "no restriction" -- the state a fresh page load and "Clear filters"
- * both produce. Never persisted to storage (AC-3). */
+ * both produce. Never persisted to storage (AC-3). `contractId` is the one dimension with no
+ * dropdown: it is set only by a deep link (`?contract=`, from Contract 360 or Renewals) and shown
+ * as a removable focus notice above the table. */
 export interface SavingsFilterState {
   supplier: string | null;
   status: SavingsOpportunityBody["status"] | null;
   currency: string | null;
+  contractId: string | null;
 }
 
 /** The cleared state: every dimension unrestricted, matching every row (AC-3). */
-export const EMPTY_SAVINGS_FILTERS: SavingsFilterState = { supplier: null, status: null, currency: null };
+export const EMPTY_SAVINGS_FILTERS: SavingsFilterState = { supplier: null, status: null, currency: null, contractId: null };
+
+/** Query keys a link into Savings may carry. Read once, on mount -- the same convention Renewals' `?select=` follows. */
+export const SAVINGS_CONTRACT_PARAM = "contract";
+export const SAVINGS_STATUS_PARAM = "status";
+
+/**
+ * The filter state a deep link asks for: `?contract=<id>` focuses one contract, `?status=` one of
+ * the three closed statuses. Anything else (blank, an unknown status) is ignored, never an error.
+ */
+export function readSavingsFiltersFromSearch(searchParams: URLSearchParams): SavingsFilterState {
+  const contractId = searchParams.get(SAVINGS_CONTRACT_PARAM)?.trim() ?? "";
+  const rawStatus = searchParams.get(SAVINGS_STATUS_PARAM)?.trim() ?? "";
+  const status = SAVINGS_STATUS_FILTER_OPTIONS.find((option) => option === rawStatus) ?? null;
+  return { ...EMPTY_SAVINGS_FILTERS, contractId: contractId === "" ? null : contractId, status };
+}
+
+/** Contract 360 / Renewals -> Savings with that contract's opportunities in focus. */
+export function buildSavingsContractHref(contractId: string): string {
+  return `/savings?${SAVINGS_CONTRACT_PARAM}=${encodeURIComponent(contractId)}`;
+}
 
 /** The council's closed three-value status set (AC-2), in the wire's own order -- the same three
  * values `savingsViewModel.ts#getSavingsStatusTag` switches on. The filter can never offer a
@@ -43,6 +68,7 @@ export function matchesSavingsFilters(row: SavingsFilterableOpportunity, filters
   if (filters.supplier !== null && row.supplierLabel !== filters.supplier) return false;
   if (filters.status !== null && row.statusValue !== filters.status) return false;
   if (filters.currency !== null && row.currency !== filters.currency) return false;
+  if (filters.contractId !== null && (row.contractId ?? null) !== filters.contractId) return false;
   return true;
 }
 
