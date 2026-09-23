@@ -131,9 +131,9 @@ export interface ReplyGap {
   discovery?: ReplyGapDiscovery | null;
 }
 
-/** `payload.draft`: the drafted negotiation email, plain text, rendered verbatim by `DraftCard`
- * (never through `ReplyMarkdown`/`humanizeReplyText`) so "Copy email" copies exactly what the
- * server wrote. */
+/** `payload.draft`: the drafted negotiation email, plain text, rendered verbatim by
+ * `../DraftPanel.tsx` (never through `ReplyMarkdown`/`humanizeReplyText`) so "Copy email" copies
+ * exactly what the server wrote. In the thread it is only an `ArtifactCard`. */
 export interface ReplyDraft {
   subject: string;
   body: string;

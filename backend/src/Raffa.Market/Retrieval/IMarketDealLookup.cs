@@ -17,6 +17,13 @@ public interface IMarketDealLookup
     /// (case-insensitive, punctuation-insensitive, legal suffix-insensitive), newest first. Empty
     /// when the supplier is unknown to the corpus — never an error.</summary>
     Task<IReadOnlyList<MarketDeal>> GetBySupplierAsync(string supplierName, CancellationToken cancellationToken = default);
+
+    /// <summary>Every deal of the corpus in <paramref name="category"/> (case-insensitive), newest
+    /// first — the wider market a similar product is looked for in when the supplier's own
+    /// catalogue has nothing close. Empty for an unknown category, and by default for a backing
+    /// that cannot list by category.</summary>
+    Task<IReadOnlyList<MarketDeal>> GetByCategoryAsync(string category, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<MarketDeal>>([]);
 }
 
 /// <summary>Supplier-name matching shared by both <see cref="IMarketDealLookup"/> backings.</summary>
@@ -68,6 +75,25 @@ public sealed class ProviderMarketDealLookup(IMarketIntelligenceProvider provide
 
         return feed.Value.Deals
             .Where(d => MarketSupplierMatch.Matches(d.Supplier, supplierName))
+            .OrderByDescending(d => d.UpdatedAt)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<MarketDeal>> GetByCategoryAsync(string category, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+        {
+            return [];
+        }
+
+        var feed = await provider.GetDealsAsync(feedVersion: null, cancellationToken).ConfigureAwait(false);
+        if (feed.IsFailure)
+        {
+            return [];
+        }
+
+        return feed.Value.Deals
+            .Where(d => string.Equals(d.Category, category.Trim(), StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(d => d.UpdatedAt)
             .ToList();
     }

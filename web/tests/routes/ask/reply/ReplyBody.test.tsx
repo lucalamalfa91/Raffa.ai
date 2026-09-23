@@ -3,11 +3,20 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import ReplyBody from "../../../../src/routes/ask/reply/ReplyBody";
-import type { FeedbackAnswers, Reply } from "../../../../src/routes/ask/reply/replyTypes";
+import type { FeedbackAnswers, Reply, ReplyDraft } from "../../../../src/routes/ask/reply/replyTypes";
 
 type SubmitFeedback = (messageId: string, answers: FeedbackAnswers) => Promise<{ ok: boolean }>;
 
-function renderReply(reply: Reply, extra: { messageId?: string | null; feedbackDone?: boolean; onSubmitFeedback?: SubmitFeedback } = {}) {
+interface RenderExtra {
+  messageId?: string | null;
+  feedbackDone?: boolean;
+  onSubmitFeedback?: SubmitFeedback;
+  onOpenDraft?: (draft: ReplyDraft) => void;
+  draftOpen?: boolean;
+  showFollowUps?: boolean;
+}
+
+function renderReply(reply: Reply, extra: RenderExtra = {}) {
   const onOpenCitation = vi.fn();
   const onFollowUp = vi.fn();
   const { container } = render(
@@ -19,6 +28,9 @@ function renderReply(reply: Reply, extra: { messageId?: string | null; feedbackD
         messageId={extra.messageId}
         onSubmitFeedback={extra.onSubmitFeedback}
         feedbackDone={extra.feedbackDone}
+        onOpenDraft={extra.onOpenDraft}
+        draftOpen={extra.draftOpen}
+        showFollowUps={extra.showFollowUps}
       />
     </MemoryRouter>,
   );
@@ -108,10 +120,27 @@ describe("ReplyBody (task E13/F09/US01/T02, AC-3)", () => {
     const user = userEvent.setup();
     const { onOpenCitation } = renderReply(ANSWER_REPLY);
 
+    await user.click(screen.getByRole("button", { name: /^2 sources/ }));
     await user.click(screen.getByRole("button", { name: "Open source 2" }));
 
     expect(onOpenCitation).toHaveBeenCalledTimes(1);
     expect(onOpenCitation).toHaveBeenCalledWith(ANSWER_REPLY.citations[1]);
+  });
+
+  it("answer: an inline [n] chip opens the same citation the sources list does", async () => {
+    const user = userEvent.setup();
+    const { onOpenCitation } = renderReply(ANSWER_REPLY);
+
+    await user.click(screen.getByRole("button", { name: "Source 2: Sales Cloud Enterprise · CH · 500-2 000 employees" }));
+
+    expect(onOpenCitation).toHaveBeenCalledWith(ANSWER_REPLY.citations[1]);
+  });
+
+  it("answer: follow-ups render only on the latest turn (showFollowUps)", () => {
+    const { container } = renderReply(ANSWER_REPLY, { showFollowUps: false });
+
+    expect(container.querySelector(".reply-followups")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Where can I push on the Salesforce renewal\?/ })).not.toBeInTheDocument();
   });
 
   it("answer: with no citations, the actions still render as a plain row", () => {
@@ -324,18 +353,42 @@ describe("ReplyBody abstain recovery action (task E25/F05/US02/T01)", () => {
 
 // ADR-030 D2/D5/D6: the fifth kind, the capability-gap redirect and the external action.
 describe("ReplyBody (ADR-030)", () => {
-  it("draft: renders preface, subject, verbatim body, copy button, cards, actions, follow-ups and the feedback card", () => {
-    const { container } = renderReply(DRAFT_REPLY, { messageId: "msg-1", onSubmitFeedback: vi.fn() });
+  it("draft: renders preface, the email as an artifact card (never inline), cards, actions, follow-ups and the feedback card", () => {
+    const { container } = renderReply(DRAFT_REPLY, { messageId: "msg-1", onSubmitFeedback: vi.fn(), onOpenDraft: vi.fn() });
 
     expect(container.querySelector('[data-reply-kind="draft"]')).not.toBeNull();
     expect(screen.getByText(/I can't create or send emails from Raffa.ai yet/)).toBeInTheDocument();
-    expect(container.querySelector("pre.reply-draft-body")!.textContent).toBe(DRAFT_REPLY.kind === "draft" ? DRAFT_REPLY.draft.body : "");
-    expect(screen.getByRole("button", { name: "Copy email" })).toBeInTheDocument();
+    // The email itself lives in the side panel; the thread only carries its one-line card.
+    const card = screen.getByRole("button", { name: "Open draft email: Salesforce renewal – request to revise the commercial terms" });
+    expect(card).toHaveAttribute("aria-expanded", "false");
+    expect(card).toHaveTextContent("Draft email · Click to open");
+    expect(container.textContent).not.toContain("We are writing about the renewal.");
+    expect(screen.queryByRole("button", { name: "Copy email" })).not.toBeInTheDocument();
     expect(screen.getByText("Your contracts")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Renewals →" })).toHaveAttribute("href", "/renewals?select=contract-1");
     expect(screen.getByRole("button", { name: /What levers do I have/ })).toBeInTheDocument();
     expect(screen.getByText(FEEDBACK_OFFER.prompt)).toBeInTheDocument();
     expect(container.querySelector(".abstain-block")).toBeNull();
+  });
+
+  it("draft: clicking the card asks the screen to open this draft; an open draft reads as open", async () => {
+    const user = userEvent.setup();
+    const onOpenDraft = vi.fn();
+    renderReply(DRAFT_REPLY, { onOpenDraft, draftOpen: true });
+
+    const card = screen.getByRole("button", { name: /^Open draft email:/ });
+    expect(card).toHaveAttribute("aria-expanded", "true");
+    expect(card).toHaveTextContent("Draft email · Open");
+    await user.click(card);
+
+    expect(onOpenDraft).toHaveBeenCalledWith(DRAFT_REPLY.kind === "draft" ? DRAFT_REPLY.draft : null);
+  });
+
+  it("draft: without a screen to open it in, the card is a static summary, not a dead button", () => {
+    const { container } = renderReply(DRAFT_REPLY);
+
+    expect(screen.queryByRole("button", { name: /^Open draft email:/ })).not.toBeInTheDocument();
+    expect(container.querySelector(".artifact-card")).toHaveTextContent("Salesforce renewal – request to revise the commercial terms");
   });
 
   it("draft: hides the feedback card once the offer was answered, or without a server message id", () => {

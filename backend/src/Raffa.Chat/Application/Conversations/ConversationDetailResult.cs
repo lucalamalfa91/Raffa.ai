@@ -5,7 +5,8 @@ namespace Raffa.Chat.Application.Conversations;
 /// <summary>
 /// <see cref="ConversationService.GetAsync"/>'s full result — the conversation's own fields plus
 /// every <see cref="ConversationMessageResult"/> in creation order (a later task's own
-/// `GET /api/conversations/{id}`, AC-2: "returns it with its messages").
+/// `GET /api/conversations/{id}`, AC-2: "returns it with its messages"). <see cref="CustomTitle"/>
+/// as on <see cref="ConversationSummaryResult"/>.
 /// </summary>
 public sealed record ConversationDetailResult(
     EntityId ConversationId,
@@ -13,4 +14,5 @@ public sealed record ConversationDetailResult(
     EntityId? ScopeContractId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    IReadOnlyList<ConversationMessageResult> Messages);
+    IReadOnlyList<ConversationMessageResult> Messages,
+    string? CustomTitle = null);

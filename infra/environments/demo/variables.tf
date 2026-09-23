@@ -64,12 +64,14 @@ variable "web_research_enabled" {
 # (docs/waves/w15-acceptance.md §0.3 step 2) -- until it is, invitations
 # on demo run in the NotConfigured (link-only) shape, never a failure.
 # ADR-030 D5 (Ask Raffa feedback loop): the GitHub token is a SENSITIVE
-# HCP workspace variable, never a .tf literal (ADR-011); empty means no
+# HCP workspace variable of category "Terraform variable" (not
+# "Environment variable" like ARM_*: Terraform never reads an env var of
+# this name), never a .tf literal (ADR-011); empty means no
 # secret and a stored-only feedback loop. Unlike invitation_mail_enabled,
 # the switch is on for demo too (owner's ruling 2026-09-22): a switch with
 # no token behind it is harmless, the token's presence is the real gate.
 variable "github_feedback_token" {
-  description = "Fine-grained GitHub PAT (Issues: write on lucalamalfa91/Raffa.ai) for Ask Raffa's feedback issues. Set as a sensitive HCP workspace variable; empty = no secret (ADR-030 D5)."
+  description = "Fine-grained GitHub PAT (Issues: write on lucalamalfa91/Raffa.ai) for Ask Raffa's feedback issues. Set as a sensitive HCP workspace variable of category Terraform (an Environment variable of this name is never read); empty = no secret (ADR-030 D5)."
   type        = string
   sensitive   = true
   default     = ""

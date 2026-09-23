@@ -54,6 +54,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     postMessage: vi.fn(),
     postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn(),
+    renameConversation: vi.fn(),
+    restoreConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -155,6 +157,7 @@ function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
             provenance: "representative market data · mock feed · updated 2026-07-01",
             marketUpdatedAt: "2026-07-01T00:00:00Z",
             checkedAt: "2026-09-22T08:00:00Z",
+            matchKind: "Exact",
           },
         },
       ],
@@ -303,11 +306,11 @@ function strategyPack(overrides: Partial<ContractStrategyBody> = {}): ContractSt
     targets: [
       {
         description: "Premium DBU",
-        openingTarget: 1500,
-        acceptableRangeLow: 1500,
-        acceptableRangeHigh: 1800,
-        walkAwayThreshold: 2100,
-        explanation: "Recommended target range [1500, 1800]. representative (source: A; n=214; as of 2026-01-01)",
+        openingTarget: 0.3,
+        acceptableRangeLow: 0.4,
+        acceptableRangeHigh: 0.5,
+        walkAwayThreshold: 0.55,
+        explanation: "Recommended target range [0.4, 0.5]. representative (source: A; n=214; as of 2026-01-01)",
       },
     ],
     nextSteps: [{ label: "Notify the supplier of intent to renegotiate", dueHint: "this week" }],
@@ -683,8 +686,12 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       const band = screen.getByRole("region", { name: "Answers" });
       const cells = band.querySelectorAll(".contract360-answer");
 
-      expect(cells[0]).toHaveTextContent("1,500–1,800");
-      expect(cells[0]).toHaveTextContent("representative · adapter A, n = 214");
+      // 120,000 DBU a year at CHF 0.55: 0.05 over the median, 0.15 over P25.
+      expect(within(cells[0] as HTMLElement).getByText("CHF 6–18k / yr")).toHaveClass("contract360-answer-value");
+      expect(cells[0]).toHaveTextContent("You pay CHF 0.55 per unit against a market median of CHF 0.5 (+10%).");
+      // Where the saving comes from sits behind the "i", not on the page.
+      const saveInfo = within(cells[0] as HTMLElement).getByRole("button", { name: "Where this saving comes from" });
+      expect(saveInfo).toHaveAccessibleDescription(/Representative market data from 214 comparable contracts · source A · as of 01\/01\/2026/);
       expect(cells[0]).not.toHaveTextContent("Not yet available");
 
       expect(within(cells[1] as HTMLElement).getByText(formatDateOnly(CANCEL_DEADLINE))).toHaveClass("deadline-critical");
@@ -1012,9 +1019,10 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(within(products).getByText("CHF 500k")).toBeInTheDocument();
       // The line's stored market comparison: P50 with its region · term · n, and the delta vs it.
       expect(within(products).getByText("CHF 0.5")).toBeInTheDocument();
-      expect(within(products).getByText("CH · 12 mo · n=40")).toBeInTheDocument();
+      expect(within(products).getByText("CH · 12 mo · 40 contracts")).toBeInTheDocument();
       expect(within(products).getByText("+10%")).toHaveClass("is-accent");
-      expect(within(products).getByText(/median \(P50\)/)).toBeInTheDocument();
+      expect(within(products).getByRole("button", { name: "What the market median is" })).toHaveAccessibleDescription(/half pay less, half pay more/);
+      expect(within(products).getByRole("button", { name: "How the saving is worked out" })).toHaveAccessibleDescription(/cheapest quarter of customers/);
 
       const obligations = screen.getByRole("region", { name: "Obligations" });
       expect(within(obligations).getByText("You must")).toBeInTheDocument();

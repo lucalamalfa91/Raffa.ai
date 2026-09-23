@@ -372,7 +372,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { contractId: string; readiness: { state: "ready" | "processing" | "unavailable"; stage: string | null; documentCount: number; completedDocumentCount: number }; header: { contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; status: string; annualSpend: number | null; totalContractValue: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; risk: string | null }; tabs: { overview: { currency: string; effectiveDate: string | null; renewalTermMonths: number | null; paymentTerms: string | null; governingLaw: string | null; parentContractId: string | null; version: number; createdAt: string }; commercials: { annualSpend: number | null; totalContractValue: number | null; currency: string; paymentTerms: string | null; autoRenewal: boolean; renewalTermMonths: number | null; lineItemCount: number; lineItemAnnualCostTotal: number | null; lineItemTotalCostTotal: number | null }; products: ({ lineItemId: string; productId: string | null; sku: string | null; description: string; quantity: number | null; unit: string | null; unitPrice: number | null; listPrice: number | null; discount: number | null; billingPeriod: string | null; annualCost: number | null; totalCost: number | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null; market: { matched: boolean; recordId: string | null; product: string | null; geography: string | null; currency: string | null; termMonths: number | null; unitPriceP25: number | null; unitPriceP50: number | null; unitPriceP75: number | null; sampleSize: number | null; provenance: string | null; marketUpdatedAt: string | null; checkedAt: string } | null })[]; clauses: ({ clauseId: string; clauseType: string; rawText: string; normalizedValue: string | null; riskLevel: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; obligations: ({ obligationId: string; party: string; obligationType: string; description: string; dueDate: string | null; recurrenceRule: string | null; criticality: string | null; status: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; risks: ({ riskId: string; riskType: string; severity: "Low" | "Medium" | "High" | "Critical"; description: string; status: string | null; clauseId: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; documents: ({ documentId: string; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; createdAt: string })[]; benchmark: ({ metric: string; status: string; position?: string | null; adapterName?: string | null; sampleSize?: number | null; asOf?: string | null })[]; renewal: { endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; renewalTermMonths: number | null }; activity: ({ occurredAt: string; action: string; actorLabel: string })[] } };
+          "application/json": { contractId: string; readiness: { state: "ready" | "processing" | "unavailable"; stage: string | null; documentCount: number; completedDocumentCount: number }; header: { contractId: string; supplierId: string | null; supplierName: string | null; type: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; status: string; annualSpend: number | null; totalContractValue: number | null; startDate: string | null; endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; risk: string | null }; tabs: { overview: { currency: string; effectiveDate: string | null; renewalTermMonths: number | null; paymentTerms: string | null; governingLaw: string | null; parentContractId: string | null; version: number; createdAt: string }; commercials: { annualSpend: number | null; totalContractValue: number | null; currency: string; paymentTerms: string | null; autoRenewal: boolean; renewalTermMonths: number | null; lineItemCount: number; lineItemAnnualCostTotal: number | null; lineItemTotalCostTotal: number | null }; products: ({ lineItemId: string; productId: string | null; sku: string | null; description: string; quantity: number | null; unit: string | null; unitPrice: number | null; listPrice: number | null; discount: number | null; billingPeriod: string | null; annualCost: number | null; totalCost: number | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null; market: { matched: boolean; recordId: string | null; product: string | null; geography: string | null; currency: string | null; termMonths: number | null; unitPriceP25: number | null; unitPriceP50: number | null; unitPriceP75: number | null; sampleSize: number | null; provenance: string | null; marketUpdatedAt: string | null; checkedAt: string; matchKind: "Exact" | "Bundle" | "Similar" | null } | null })[]; clauses: ({ clauseId: string; clauseType: string; rawText: string; normalizedValue: string | null; riskLevel: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; obligations: ({ obligationId: string; party: string; obligationType: string; description: string; dueDate: string | null; recurrenceRule: string | null; criticality: string | null; status: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; risks: ({ riskId: string; riskType: string; severity: "Low" | "Medium" | "High" | "Critical"; description: string; status: string | null; clauseId: string | null; sourceDocumentId: string | null; sourceSpan: string | null; sourcePage: number | null; confidence: number | null })[]; documents: ({ documentId: string; fileName: string; mimeType: string; documentType: "Msa" | "OrderForm" | "Amendment" | "Sow" | "RenewalLetter" | "Other"; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; createdAt: string })[]; benchmark: ({ metric: string; status: string; position?: string | null; adapterName?: string | null; sampleSize?: number | null; asOf?: string | null })[]; renewal: { endDate: string | null; renewalDate: string | null; cancellationDeadline: string | null; autoRenewal: boolean; renewalTermMonths: number | null }; activity: ({ occurredAt: string; action: string; actorLabel: string })[] } };
         };
       };
       400: {
@@ -665,7 +665,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": ({ id: string; title: string; scopeContractId: string | null; updatedAt: string })[];
+          "application/json": ({ id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean })[];
         };
       };
       400: {
@@ -679,7 +679,7 @@ export interface operations {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; title: string; scopeContractId: string | null; updatedAt: string };
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
         };
       };
       400: {
@@ -693,7 +693,43 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { id: string; title: string; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft" | "interview"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload?: { gap: { key: string; title: string; language: "it" | "en"; discovery?: { titleEn: string; descriptionEn: string; nearestCapability: string | null; confidence: "high" | "medium"; investigatorVersion: string } | null } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null; followUps?: (string)[] | null; capabilityCheckFor?: string | null } | null; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null })[] };
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft" | "interview"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload?: { gap: { key: string; title: string; language: "it" | "en"; discovery?: { titleEn: string; descriptionEn: string; nearestCapability: string | null; confidence: "high" | "medium"; investigatorVersion: string } | null } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null; followUps?: (string)[] | null; capabilityCheckFor?: string | null } | null; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null })[] };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  renameConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  restoreConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
         };
       };
       400: {
@@ -1035,6 +1071,10 @@ export interface paths {
   };
   "/api/conversations/{id}": {
     get: operations["getConversation"];
+    patch: operations["renameConversation"];
+  };
+  "/api/conversations/{id}/restore": {
+    post: operations["restoreConversation"];
   };
   "/api/conversations/{id}/messages": {
     post: operations["postConversationMessage"];

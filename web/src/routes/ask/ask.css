@@ -78,6 +78,43 @@
   white-space: nowrap;
 }
 
+/* Chat rename (ConversationRenameField): the header title turns into a field set in the title's
+   own type, and "Rename" sits beside it as muted text, the same weight as the rail's row actions. */
+.ask-conv-rename {
+  flex: none;
+  width: min(360px, 50vw);
+  height: 24px;
+  padding: 0 var(--space-2);
+  border-width: 1px;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.ask-conv-rename-button {
+  appearance: none;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.ask-conv-rename-button:hover {
+  color: var(--color-accent-700);
+  text-decoration: underline;
+}
+
+.ask-conv-rename-error {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-accent-700);
+}
+
 /* NW-78 binding chip: `.tag`/`.tag-neutral` (components.css) paint it; this only keeps the anchor
    from stretching and undoes its default underline. */
 .ask-bound-chip {
@@ -103,7 +140,7 @@
   white-space: nowrap;
 }
 
-/* ---- Body: thread + optional market panel ---------------------------------- */
+/* ---- Body: thread + optional side panel ------------------------------------ */
 
 .ask-screen-body {
   display: flex;
@@ -338,9 +375,15 @@
   cursor: pointer;
 }
 
-.ask-suggestion:hover {
+.ask-suggestion:hover:not(:disabled) {
   color: var(--color-accent);
   background: transparent;
+}
+
+/* This chat is still answering: a chip would be refused, so it reads as unavailable. */
+.ask-suggestion:disabled {
+  cursor: default;
+  opacity: var(--opacity-disabled);
 }
 
 .ask-composer-note {
@@ -383,33 +426,195 @@
   gap: var(--space-2);
 }
 
-/* ---- Market citation side panel (task text point (3); R-EVD-02) --------------------------- */
+/* ---- Side panel: one reply object at a time (`ArtifactPanel.tsx`) ------------------------
+   The Claude.ai artifact panel: the chat narrows to the left and keeps working, the panel holds a
+   drafted email (wide) or a market record (narrow) under one header anatomy. Below 900px it is a
+   full-screen sheet. Chat-local tokens (--chat-*) come from reply/reply.css. */
 
-.market-record-panel {
+.artifact-panel {
+  display: flex;
   flex: none;
-  width: 100%;
-  min-width: 320px;
-  max-width: 360px;
-  padding: 20px 24px;
-  border-left: 1px solid var(--color-divider);
-  overflow: auto;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--chat-hairline);
+  background: var(--color-bg);
+  outline: none;
+  animation: artifact-panel-in 220ms var(--chat-ease);
 }
 
-.market-record-panel-header {
+.artifact-panel[data-size="wide"] {
+  width: min(46vw, 640px);
+}
+
+.artifact-panel[data-size="narrow"] {
+  width: 360px;
+}
+
+.artifact-panel-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-3);
+  gap: 12px;
+  padding: 12px 16px 12px 20px;
+  border-bottom: 1px solid var(--chat-hairline);
 }
 
-.market-record-panel-close {
-  padding: 4px var(--space-2);
+.artifact-panel-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: var(--chat-paper);
+  color: var(--color-neutral-700);
 }
 
-.market-record-panel-title {
-  margin: 0 0 var(--space-1);
+.artifact-panel-heading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 
+.artifact-panel-title {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-panel-kicker {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chat-muted);
+}
+
+.artifact-panel-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.artifact-panel-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.2;
+  color: var(--color-text);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.artifact-panel-action:hover {
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
+}
+
+.artifact-panel-action[data-primary="true"] {
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.artifact-panel-action[data-primary="true"]:hover {
+  background: var(--color-neutral-800);
+}
+
+.artifact-panel-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--chat-radius-control);
+  background: transparent;
+  color: var(--color-neutral-700);
+  cursor: pointer;
+}
+
+.artifact-panel-close:hover {
+  background: var(--chat-tint);
+  color: var(--color-text);
+}
+
+.artifact-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+
+@keyframes artifact-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+/* The drafted email (`DraftPanel.tsx`): a document on paper in the reading font -- verbatim
+   (pre-wrap), never a monospace box. */
+.draft-document {
+  max-width: 68ch;
+  margin: 0 auto;
+  padding: 24px 28px 28px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-card);
+  background: var(--chat-paper);
+}
+
+.draft-document-subject {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--chat-hairline);
+  font-size: 15px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.4;
+}
+
+.draft-document-subject-label {
+  font-size: 11px;
+  font-weight: var(--weight-body);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--chat-muted);
+}
+
+.draft-document-body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+
+/* The market record (`MarketRecordPanel.tsx`, task text point (3); R-EVD-02). */
 .market-record-panel-meta {
   margin: 0 0 var(--space-3);
 }
@@ -424,13 +629,47 @@
 }
 
 @media (max-width: 900px) {
-  .ask-screen-body {
-    flex-direction: column;
+  .artifact-panel,
+  .artifact-panel[data-size="wide"],
+  .artifact-panel[data-size="narrow"] {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    width: auto;
+    border-left: 0;
+    animation-name: artifact-sheet-in;
   }
 
-  .market-record-panel {
-    max-width: none;
-    border-left: 0;
-    border-top: 1px solid var(--color-divider);
+  /* On a phone the object's actions move to their own row under the title and close button. */
+  .artifact-panel-header {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    padding: 12px 12px 12px 16px;
+  }
+
+  .artifact-panel-actions {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  .artifact-panel-body {
+    padding: 16px;
+  }
+
+  .draft-document {
+    padding: 18px 16px 20px;
+  }
+}
+
+@keyframes artifact-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artifact-panel {
+    animation: none;
   }
 }

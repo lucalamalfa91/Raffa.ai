@@ -32,6 +32,11 @@ namespace Raffa.Chat.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("CustomTitle")
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)")
+                        .HasColumnName("custom_title");
+
                     b.Property<Guid?>("ScopeContractId")
                         .HasColumnType("uuid")
                         .HasColumnName("scope_contract_id");
@@ -214,6 +219,7 @@ namespace Raffa.Chat.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");

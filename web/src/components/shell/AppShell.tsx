@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { Outlet, useLocation, useMatch } from "react-router-dom";
 import RailNav from "./RailNav";
+import RailResizeHandle from "./RailResizeHandle";
+import { useRailWidth } from "./useRailWidth";
 import GlobalAskBar from "../ask-bar/GlobalAskBar";
 import { useValidatedContractCount } from "./useValidatedContractCount";
 import { useDocumentCounts } from "./useDocumentCounts";
@@ -9,6 +11,8 @@ import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import { isAskRoute } from "./isAskRoute";
 import { DocumentViewerProvider } from "../../routes/documents/viewer/DocumentViewerOverlay";
+import { AskSessionsProvider } from "../../routes/ask/AskSessionsContext";
+import AskReplyNotifier from "../../routes/ask/AskReplyNotifier";
 import "./shell.css";
 
 export { isAskRoute } from "./isAskRoute";
@@ -66,6 +70,7 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
   const matchAskRelative = useMatch({ path: "ask", end: true });
   const matchAskConversationRelative = useMatch({ path: "ask/:conversationId", end: true });
   const [pollTick, setPollTick] = useState(0);
+  const railWidth = useRailWidth();
   const refreshKey = `${location.pathname}:${pollTick}`;
   const documentCounts = useDocumentCounts(apiClient, refreshKey);
   const { count, kbReady } = useValidatedContractCount(apiClient, refreshKey);
@@ -100,32 +105,39 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
 
   return (
     <DocumentViewerProvider apiClient={apiClient}>
-      <div className="shell-layout">
-        <RailNav
-          workspaceName={workspaceName}
-          role={role}
-          userLabel={userLabel}
-          onSignOut={onSignOut}
-          kbReady={kbReady}
-          validatedContractCount={count}
-          documentCounts={documentCounts}
-          apiClient={apiClient}
-        />
-        <main className="shell-main">
-          {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
-              below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
-              for a non-Admin -- never re-derived, never fetched a second time.
-              Task E25/F06/US01/T01 (AC-1/AC-3): suppressed on the Ask route itself (see
-              `showGlobalAskBar` above) -- that route renders its own composer instead. */}
-          {showGlobalAskBar && <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />}
-          <div className="shell-content">
-            {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
-                validated-count verdict the rail and the Ask bar already render, plus the same document
-                counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
-            <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
-          </div>
-        </main>
-      </div>
+      {/* Parallel Ask sessions (`routes/ask/askSessions.ts`): one store for the rail, the Ask screen
+          and the "reply ready" notices, so a chat keeps answering while the user is elsewhere. */}
+      <AskSessionsProvider>
+        {/* The rail is resizable (RailResizeHandle): its width is this one custom property. */}
+        <div className="shell-layout" style={{ "--shell-rail-width": `${railWidth.width}px` } as CSSProperties}>
+          <RailNav
+            workspaceName={workspaceName}
+            role={role}
+            userLabel={userLabel}
+            onSignOut={onSignOut}
+            kbReady={kbReady}
+            validatedContractCount={count}
+            documentCounts={documentCounts}
+            apiClient={apiClient}
+          />
+          <RailResizeHandle {...railWidth} />
+          <main className="shell-main">
+            {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
+                below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
+                for a non-Admin -- never re-derived, never fetched a second time.
+                Task E25/F06/US01/T01 (AC-1/AC-3): suppressed on the Ask route itself (see
+                `showGlobalAskBar` above) -- that route renders its own composer instead. */}
+            {showGlobalAskBar && <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />}
+            <div className="shell-content">
+              {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
+                  validated-count verdict the rail and the Ask bar already render, plus the same document
+                  counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
+              <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
+            </div>
+          </main>
+        </div>
+        <AskReplyNotifier />
+      </AskSessionsProvider>
     </DocumentViewerProvider>
   );
 }

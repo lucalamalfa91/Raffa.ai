@@ -13,7 +13,8 @@ using Raffa.SharedKernel;
 namespace Raffa.Api;
 
 /// <summary>
-/// Maps `GET /api/conversations`, `POST /api/conversations` and `GET /api/conversations/{id}`
+/// Maps `GET /api/conversations`, `POST /api/conversations`, `GET/PATCH/DELETE /api/conversations/{id}`,
+/// `POST /api/conversations/{id}/restore`
 /// (product spec §7; ADR-024 "Conversations (D5)"; story us-01-conversations AC-2/AC-3, task
 /// E13/F05/US01/T02). Thin composition per ADR-002 — the actual decisions (tenant + user scoping,
 /// title derivation, RLS-backstopped isolation) are made by
@@ -77,7 +78,9 @@ public static class ConversationsEndpointExtensions
         endpoints.MapGet("/api/conversations", GetConversationsAsync);
         endpoints.MapPost("/api/conversations", PostConversationAsync);
         endpoints.MapGet("/api/conversations/{id}", GetConversationAsync);
+        endpoints.MapPatch("/api/conversations/{id}", RenameConversationAsync);
         endpoints.MapDelete("/api/conversations/{id}", DeleteConversationAsync);
+        endpoints.MapPost("/api/conversations/{id}/restore", RestoreConversationAsync);
         endpoints.MapPost("/api/conversations/{id}/messages", PostConversationMessageAsync);
         endpoints.MapPost("/api/conversations/{id}/feedback", PostConversationFeedbackAsync);
         return endpoints;
@@ -113,8 +116,13 @@ public static class ConversationsEndpointExtensions
             return Results.BadRequest(takeError);
         }
 
+        if (!TryParseArchived(request.Query, out var archive, out var archivedError))
+        {
+            return Results.BadRequest(archivedError);
+        }
+
         var conversations = await conversationService
-            .ListRecentAsync(tenantId, userId, take, cancellationToken)
+            .ListRecentAsync(tenantId, userId, take, archive, cancellationToken)
             .ConfigureAwait(false);
 
         return Results.Ok(conversations.Select(ToSummaryResponse));
@@ -211,6 +219,80 @@ public static class ConversationsEndpointExtensions
         }
 
         return Results.Ok(ToDetailResponse(conversation));
+    }
+
+    /// <summary>`PATCH /api/conversations/{id}` — renames the caller's own conversation:
+    /// `{ title }` sets its name (at most <see cref="ConversationService.TitleMaxLength"/>
+    /// characters once whitespace is collapsed), a blank or null `title` clears it so the automatic
+    /// title shows again. 200 with the summary (carrying `customTitle`). Same guard order and
+    /// 404-not-403 rule as <see cref="DeleteConversationAsync"/>; not Admin-gated.</summary>
+    private static async Task<IResult> RenameConversationAsync(
+        string id,
+        RenameConversationRequest? request,
+        HttpRequest httpRequest,
+        ConversationService conversationService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(httpRequest, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+        var userId = caller.Identity!;
+
+        if (!Guid.TryParse(id, out var conversationGuid))
+        {
+            return Results.BadRequest("The conversation id in the route must be a GUID.");
+        }
+
+        var name = ConversationService.NormalizeCustomTitle(request?.Title);
+        if (name is { Length: > ConversationService.TitleMaxLength })
+        {
+            return Results.BadRequest($"'title' must be at most {ConversationService.TitleMaxLength} characters.");
+        }
+
+        var renamed = await conversationService
+            .RenameAsync(tenantId, userId, new EntityId(conversationGuid), name, cancellationToken)
+            .ConfigureAwait(false);
+
+        return renamed is null ? Results.NotFound() : Results.Ok(ToSummaryResponse(renamed));
+    }
+
+    /// <summary>`POST /api/conversations/{id}/restore` — takes the caller's own chat back out of the
+    /// archive (<see cref="ConversationService.RestoreAsync"/>): 200 with the summary, now
+    /// `archived: false`; a chat that was not archived comes back unchanged. No body. Same guard
+    /// order and 404-not-403 rule as <see cref="DeleteConversationAsync"/>; not Admin-gated.</summary>
+    private static async Task<IResult> RestoreConversationAsync(
+        string id,
+        HttpRequest request,
+        ConversationService conversationService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+        var userId = caller.Identity!;
+
+        if (!Guid.TryParse(id, out var conversationGuid))
+        {
+            return Results.BadRequest("The conversation id in the route must be a GUID.");
+        }
+
+        var restored = await conversationService
+            .RestoreAsync(tenantId, userId, new EntityId(conversationGuid), cancellationToken)
+            .ConfigureAwait(false);
+
+        return restored is null ? Results.NotFound() : Results.Ok(ToSummaryResponse(restored));
     }
 
     /// <summary>`DELETE /api/conversations/{id}` — the caller's own conversation, 204 on success.
@@ -717,6 +799,28 @@ public static class ConversationsEndpointExtensions
     };
     /// <summary>Same "reject, don't clamp" convention as
     /// <c>PortfolioEndpointExtensions.TryParsePage</c>.</summary>
+    /// <summary>`?archived=true` lists only archived chats, `?archived=false` only the ones in use
+    /// (<see cref="ConversationService.ArchiveAfter"/>); absent lists both.</summary>
+    private static bool TryParseArchived(IQueryCollection query, out ConversationArchiveFilter archive, out string error)
+    {
+        archive = ConversationArchiveFilter.All;
+        error = string.Empty;
+
+        if (!query.TryGetValue("archived", out var archivedValues))
+        {
+            return true;
+        }
+
+        if (!bool.TryParse(archivedValues.ToString(), out var archived))
+        {
+            error = "'archived' must be true or false.";
+            return false;
+        }
+
+        archive = archived ? ConversationArchiveFilter.Archived : ConversationArchiveFilter.Active;
+        return true;
+    }
+
     private static bool TryParseTake(IQueryCollection query, out int take, out string error)
     {
         take = ConversationService.DefaultRecentLimit;
@@ -741,14 +845,17 @@ public static class ConversationsEndpointExtensions
     {
         id = summary.ConversationId.Value,
         title = summary.Title,
+        customTitle = summary.CustomTitle,
         scopeContractId = summary.ScopeContractId?.Value,
         updatedAt = summary.UpdatedAt,
+        archived = summary.Archived,
     };
 
     private static object ToDetailResponse(ConversationDetailResult detail) => new
     {
         id = detail.ConversationId.Value,
         title = detail.Title,
+        customTitle = detail.CustomTitle,
         scopeContractId = detail.ScopeContractId?.Value,
         createdAt = detail.CreatedAt,
         updatedAt = detail.UpdatedAt,
@@ -835,6 +942,10 @@ public static class ConversationsEndpointExtensions
     /// failure for an un-parseable route/body <see cref="Guid"/>.
     /// </summary>
     public sealed record CreateConversationRequest(string? ScopeContractId = null);
+
+    /// <summary>`PATCH /api/conversations/{id}` request body: `{ title }`, the chat's new name;
+    /// blank or null clears it. Nested for the same reason as <see cref="CreateConversationRequest"/>.</summary>
+    public sealed record RenameConversationRequest(string? Title = null);
 
     /// <summary>`POST /api/conversations/{id}/feedback` request body (ADR-030 D5):
     /// `{ messageId, answers: { what, frequency, importance } }`. Strings, not typed keys, for the

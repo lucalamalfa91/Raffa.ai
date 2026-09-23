@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import type { ApiClient, MarketRecordBody } from "../../api/client";
+import ArtifactPanel from "./ArtifactPanel";
 
 export interface MarketRecordPanelProps {
   apiClient: ApiClient;
   recordId: string;
+  /** True when the user opened it (a citation click) -- see `ArtifactPanel#focusOnOpen`. */
+  focusOnOpen?: boolean;
   onClose: () => void;
 }
 
@@ -15,17 +18,16 @@ type FetchState =
 /**
  * The market citation side panel (task text point (3): "a market citation opens a side panel
  * loading `GET /api/market/records/{id}` (title, category, geography, band, provenance label,
- * updatedAt)"; R-EVD-02: "a market citation opens a side panel with the record"). Reuses the
- * shared `.detail-pane` composite (ADR-019 / `styles/components.css`: "340-400px, surface, 2px left
- * rule") -- the same primitive `../contracts/review/EvidencePane.tsx` already uses for an identical
- * "supporting detail beside the main content" shape, not a screen-specific panel invented here.
+ * updatedAt)"; R-EVD-02: "a market citation opens a side panel with the record"). Renders inside
+ * the screen's one side-panel frame (`ArtifactPanel.tsx`, the narrow size) -- the same header
+ * anatomy and slot the drafted email opens in, so every reply object opens the same way.
  *
  * `recordId` is a prop, not read from `AskTurnView.wireCitations` itself -- `index.tsx#openCitation`
  * already resolved it once (`askViewModel.ts#resolveCitationOpenAction`) before ever mounting this
  * component, so this component's own job is only "fetch and render one record", not "figure out
  * which one".
  */
-export default function MarketRecordPanel({ apiClient, recordId, onClose }: MarketRecordPanelProps) {
+export default function MarketRecordPanel({ apiClient, recordId, focusOnOpen, onClose }: MarketRecordPanelProps) {
   const [state, setState] = useState<FetchState>({ phase: "loading" });
 
   useEffect(() => {
@@ -52,15 +54,10 @@ export default function MarketRecordPanel({ apiClient, recordId, onClose }: Mark
     };
   }, [apiClient, recordId]);
 
-  return (
-    <aside className="detail-pane market-record-panel" aria-label="Market record">
-      <div className="market-record-panel-header">
-        <span className="tag tag-outline">Market · representative</span>
-        <button type="button" className="btn-ghost btn market-record-panel-close" onClick={onClose} aria-label="Close">
-          Close
-        </button>
-      </div>
+  const title = state.phase === "ready" ? state.record.title : "Market record";
 
+  return (
+    <ArtifactPanel label="Market record" kicker="Market · representative" title={title} size="narrow" focusOnOpen={focusOnOpen} onClose={onClose}>
       {state.phase === "loading" && (
         <div role="status" aria-live="polite">
           <div className="skeleton market-record-panel-skeleton" />
@@ -75,8 +72,7 @@ export default function MarketRecordPanel({ apiClient, recordId, onClose }: Mark
       )}
 
       {state.phase === "ready" && (
-        <div>
-          <h4 className="market-record-panel-title">{state.record.title}</h4>
+        <div className="market-record-panel">
           <p className="micro-meta market-record-panel-meta">
             {state.record.category} · {state.record.geography}
           </p>
@@ -107,6 +103,6 @@ export default function MarketRecordPanel({ apiClient, recordId, onClose }: Mark
           </p>
         </div>
       )}
-    </aside>
+    </ArtifactPanel>
   );
 }

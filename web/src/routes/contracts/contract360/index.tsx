@@ -269,7 +269,11 @@ export default function Contract360Route({ apiClient, userLabel }: Contract360Ro
       </div>
     );
   }
-  const answers = buildAnswers(header, tabs.renewal, renewals, { called: true, pack: strategy });
+  const answers = buildAnswers(header, tabs.renewal, renewals, { called: true, pack: strategy }, {
+    products: tabs.products,
+    currency: tabs.commercials.currency,
+    autoAcceptThreshold,
+  });
   const steps = buildNegotiationSteps(resolveSupplierLabel(header).label, answers.move.deadline);
 
   const postAction = (status: RenewalActionRow["status"], action: string, pending: Exclude<AnswersActionPending, null>) => {

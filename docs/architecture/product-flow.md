@@ -136,8 +136,9 @@ richiesta. …"): the honest preface, the nearest screen, the questions Ask can
 already answer as chips, and a card to **propose** the feature (a known gap
 offers its own alternative instead). It comes back in the same response as
 `followUpMessage` when the check finished first; otherwise the reply says
-`capabilityCheck: "pending"` and the screen reads the conversation back for a
-few seconds. A late proposal is dropped once the user has asked something else.
+`capabilityCheck: "pending"` and the session reads the conversation back for a
+few seconds, landing it in the chat that asked. A late proposal is dropped once
+the user has asked something else.
 The feature texts are scrubbed server-side (`DiscoveredGapText`: no supplier,
 amount, date, e-mail or link) before anything shows or stores them. Every issue
 — catalog or discovered — opens with the `awaiting-approval` label and a

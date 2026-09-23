@@ -2397,7 +2397,7 @@
                                   "object",
                                   "null"
                                 ],
-                                "description": "The line's stored market comparison (LineItemMarketPriceService): null when never compared, matched=false when no comparable market record exists (same supplier, a product the line names, the contract's own currency, n >= 5). Figures always carry their record, sample size, region/term and as-of date.",
+                                "description": "The line's stored market comparison (LineItemMarketPriceService): null when never compared, matched=false when nothing comparable exists (no product the line names and none similar, in the contract's own currency, n >= 5). Figures always carry their record, sample size, region/term and as-of date, and matchKind says whether they are the line's own product.",
                                 "required": [
                                   "matched",
                                   "recordId",
@@ -2411,7 +2411,8 @@
                                   "sampleSize",
                                   "provenance",
                                   "marketUpdatedAt",
-                                  "checkedAt"
+                                  "checkedAt",
+                                  "matchKind"
                                 ],
                                 "properties": {
                                   "matched": {
@@ -2488,6 +2489,19 @@
                                   "checkedAt": {
                                     "type": "string",
                                     "format": "date-time"
+                                  },
+                                  "matchKind": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "enum": [
+                                      "Exact",
+                                      "Bundle",
+                                      "Similar",
+                                      null
+                                    ],
+                                    "description": "MarketMatchKind: Exact -- the record is the line's own product (or SKU); Bundle -- the line names several products and the P25/P50/P75 are the sum of each product's own band (product lists them, recordId joins their ids with '+'); Similar -- no record for the line's own product, so the band is a similar product's (product names it) from customers of the same type where possible: a guide, never the line's own market price. null when matched is false."
                                   }
                                 }
                               }
@@ -5891,6 +5905,15 @@
               "type": "integer"
             },
             "description": "Overrides ConversationService.DefaultRecentLimit (5) when supplied; must be a positive integer."
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "true lists only archived conversations, false only the ones in use; absent lists both. Each is its own most-recent-first `take`. 400 for anything but true/false."
           }
         ],
         "responses": {
@@ -5917,6 +5940,13 @@
                         "type": "string",
                         "description": "The first question, <=48 chars (ConversationService.TitleMaxLength), or the literal 'New chat' (ConversationService.DefaultTitle) until the first message lands."
                       },
+                      "customTitle": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
+                      },
                       "scopeContractId": {
                         "type": [
                           "string",
@@ -5928,6 +5958,10 @@
                       "updatedAt": {
                         "type": "string",
                         "format": "date-time"
+                      },
+                      "archived": {
+                        "type": "boolean",
+                        "description": "Not used for a week (ConversationService.ArchiveAfter: no message, no restore) -- the rail files it under Archive. Derived from updatedAt on every read; POST /api/conversations/{id}/restore takes it back out."
                       }
                     }
                   }
@@ -5992,6 +6026,13 @@
                     "title": {
                       "type": "string"
                     },
+                    "customTitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
+                    },
                     "scopeContractId": {
                       "type": [
                         "string",
@@ -6002,6 +6043,10 @@
                     "updatedAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Not used for a week (ConversationService.ArchiveAfter: no message, no restore) -- the rail files it under Archive. Derived from updatedAt on every read; POST /api/conversations/{id}/restore takes it back out."
                     }
                   }
                 }
@@ -6078,6 +6123,13 @@
                     },
                     "title": {
                       "type": "string"
+                    },
+                    "customTitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
                     },
                     "scopeContractId": {
                       "type": [
@@ -6634,6 +6686,206 @@
           },
           "400": {
             "description": "Missing/invalid X-Tenant-Id or X-User-Id header, or a non-GUID id in the route.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such conversation for this tenant and caller (unknown id, another tenant's, or another user's -- one honest outcome, see this operation's own description)."
+          }
+        }
+      },
+      "patch": {
+        "operationId": "renameConversation",
+        "summary": "Rename one of the caller's conversations.",
+        "description": "Maps to RenameConversationAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs, backed by ConversationService.RenameAsync. Request body `{ title }` (ConversationsEndpointExtensions.RenameConversationRequest, hand-written in web/src/api/client.ts -- the generator does not parse requestBody, see this document's own 'Codegen tool choice' paragraph): the chat's new name, whitespace collapsed to single spaces, at most 48 characters; a blank or null `title` clears the name so the automatic title shows again. Stored as `customTitle`, never over `title`. Never bumps `updatedAt` (a rename is not activity, so it does not reorder the rail). Writes a `conversation.renamed` audit row saying whether a name was set or cleared, never the name. Not Admin-gated. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "See GET /api/conversations above."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Conversation.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Renamed. The conversation's summary, carrying the new `customTitle`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "title",
+                    "scopeContractId",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "The first question, <=48 chars (ConversationService.TitleMaxLength), or the literal 'New chat' (ConversationService.DefaultTitle) until the first message lands."
+                    },
+                    "customTitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
+                    },
+                    "scopeContractId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "description": "Set when this conversation was opened from Contract 360 'Ask about it' (/ask?scope=); null for a plain new chat."
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Not used for a week (ConversationService.ArchiveAfter: no message, no restore) -- the rail files it under Archive. Derived from updatedAt on every read; POST /api/conversations/{id}/restore takes it back out."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, a non-GUID id in the route, or a `title` longer than 48 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such conversation for this tenant and caller (unknown id, another tenant's, or another user's -- one honest outcome, see this operation's own description)."
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/restore": {
+      "post": {
+        "operationId": "restoreConversation",
+        "summary": "Take one of the caller's conversations back out of the archive.",
+        "description": "Maps to RestoreConversationAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs, backed by ConversationService.RestoreAsync. No request body. An archived conversation (unused for a week) gets `updatedAt` bumped to now, so it is in use again and at the top of the list; one that is not archived comes back unchanged (no write, no audit row). Writes a `conversation.restored` audit row when it did restore. Not Admin-gated. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "See GET /api/conversations above."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Conversation.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restored (or already in use). The conversation's summary, `archived: false`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "title",
+                    "scopeContractId",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "The first question, <=48 chars (ConversationService.TitleMaxLength), or the literal 'New chat' (ConversationService.DefaultTitle) until the first message lands."
+                    },
+                    "customTitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
+                    },
+                    "scopeContractId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "description": "Set when this conversation was opened from Contract 360 'Ask about it' (/ask?scope=); null for a plain new chat."
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Not used for a week (ConversationService.ArchiveAfter: no message, no restore) -- the rail files it under Archive. Derived from updatedAt on every read; POST /api/conversations/{id}/restore takes it back out."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
             "content": {
               "application/json": {
                 "schema": {

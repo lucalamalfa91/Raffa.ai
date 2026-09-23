@@ -1,6 +1,7 @@
 /**
  * App shell layout — the 232px rail + main column composite from
- * `raffa-v2/markup.html` (`grid-template-columns:232px 1fr`). ADR-019
+ * `raffa-v2/markup.html` (`grid-template-columns:232px 1fr`). 232px stays the default; the user
+ * can drag the rail wider or narrower (`RailResizeHandle.tsx`, `--shell-rail-width`). ADR-019
  * leaves the shell out of its locked component catalogue ("the global Ask
  * bar, the app shell ... belong to the app-shell/screen tasks that consume
  * this sheet"). Consumes the shared tokens (src/styles/tokens.css) — no new
@@ -8,11 +9,57 @@
  */
 
 .shell-layout {
+  position: relative;
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: var(--shell-rail-width, 232px) 1fr;
   height: 100vh;
   min-height: 100vh;
   overflow: hidden;
+}
+
+/* The rail's draggable right edge: an 8px hit area centred on the rail's 2px border, out of the
+   grid flow (absolutely positioned), that shows an ink line on hover, focus and while dragging. */
+.shell-rail-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--shell-rail-width, 232px) - 5px);
+  z-index: 2;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.shell-rail-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.shell-rail-resizer:hover::after,
+.shell-rail-resizer:focus-visible::after,
+.shell-rail-resizer.is-dragging::after {
+  background: var(--color-text);
+}
+
+.shell-rail-resizer:focus-visible {
+  outline: none;
+}
+
+body.is-resizing-rail {
+  cursor: col-resize;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-rail-resizer::after {
+    transition: none;
+  }
 }
 
 .shell-rail {
@@ -103,17 +150,169 @@
   overflow-y: auto;
 }
 
-/* Placement only. Height, padding, 2px ink border, radius and 14px type come from the shared
-   `.input` catalogue entry (components.css) — the previous 4px/12px squash made this look like a
-   different, unstyled control from every other field in the app. Left inset 28px matches
-   `.shell-rail-conv-item`'s own padding so the field lines up with the chat titles. */
+/* Chat search: a quiet field on the surface ground with a lens, a hairline that inks on hover
+   and a full ink edge on focus, 13px type one step above the 12px chat titles it filters. The
+   lens sits on the titles' own 28px column, so the rail keeps one left edge; the typed text
+   starts just after it. Its own clear button replaces the browser's (Escape clears too). */
+.shell-rail-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: var(--space-2) var(--space-3) var(--space-2) 20px;
+}
+
+.shell-rail-search-icon {
+  position: absolute;
+  left: var(--space-2);
+  width: 14px;
+  height: 14px;
+  color: var(--color-neutral-600);
+  pointer-events: none;
+}
+
 .shell-rail-conv-search {
-  display: block;
-  margin: var(--space-2) var(--space-3) var(--space-2) 28px;
-  width: calc(100% - 28px - var(--space-3));
+  width: 100%;
+  height: 32px;
+  padding: 0 28px 0 28px;
+  appearance: none;
+  border: 1px solid transparent;
+  border-bottom-color: var(--color-neutral-400);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.shell-rail-conv-search::placeholder {
+  color: var(--color-neutral-600);
+}
+
+.shell-rail-conv-search::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.shell-rail-conv-search:hover {
+  border-bottom-color: var(--color-text);
+}
+
+.shell-rail-conv-search:focus {
+  border-color: var(--color-text);
+  background: var(--color-neutral-100);
+  outline: none;
+}
+
+.shell-rail-search:focus-within .shell-rail-search-icon {
+  color: var(--color-text);
+}
+
+.shell-rail-search-clear {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.shell-rail-search-clear .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.shell-rail-search-clear:hover {
+  color: var(--color-text);
+}
+
+.shell-rail-search-empty {
+  margin: 0;
+  padding: 4px var(--space-3) 6px 28px;
+  font-size: 12px;
+  color: var(--color-neutral-600);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-rail-conv-search {
+    transition: none;
+  }
+}
+
+/* The archive: chats unused for a week, below "+ New chat". A quiet toggle row (chevron, label,
+   count) with the InfoTip that says where chats went; archived rows reuse the chat row, with the
+   day they were last used on the right. */
+.shell-rail-archive {
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--color-neutral-300);
+  margin-left: 28px;
+  margin-right: var(--space-3);
+}
+
+.shell-rail-archive-header {
+  display: flex;
+  align-items: center;
+  padding: 6px 0 2px;
+}
+
+.shell-rail-archive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.shell-rail-archive-toggle:hover {
+  color: var(--color-text);
+}
+
+.shell-rail-archive-chevron {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.shell-rail-archive-chevron.is-open {
+  transform: rotate(45deg);
+}
+
+.shell-rail-archive-count {
+  font-weight: var(--weight-body);
+  letter-spacing: normal;
+}
+
+/* Archived rows sit under the archive's own 28px inset, so they start on the same column. */
+.shell-rail-archive-list {
+  margin-left: -28px;
+  margin-right: calc(-1 * var(--space-3));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-rail-archive-chevron {
+    transition: none;
+  }
 }
 
 .shell-rail-conv-row {
+  position: relative;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -131,21 +330,82 @@
   flex: 1;
 }
 
-.shell-rail-conv-delete {
+/* Row actions (Rename, Delete): laid over the end of the row and transparent until the row is
+   hovered or focused, so a title reads in full the rest of the time. Transparent, not removed:
+   they stay in the accessibility tree and in the Tab order, and focusing one shows it. Always
+   visible on touch screens, where there is no hover. The fade takes the row's own ground. */
+.shell-rail-conv-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) 0 var(--space-4);
+  background: linear-gradient(to right, transparent, var(--color-bg) var(--space-3));
+  opacity: 0;
+}
+
+.shell-rail-conv-row.is-unread .shell-rail-conv-actions {
+  background: linear-gradient(to right, transparent, var(--color-accent-100) var(--space-3));
+}
+
+.shell-rail-conv-row:hover .shell-rail-conv-item {
+  background: var(--color-neutral-200);
+}
+
+.shell-rail-conv-row:hover .shell-rail-conv-actions {
+  background: linear-gradient(to right, transparent, var(--color-neutral-200) var(--space-3));
+}
+
+.shell-rail-conv-row:hover .shell-rail-conv-actions,
+.shell-rail-conv-row:focus-within .shell-rail-conv-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .shell-rail-conv-actions {
+    opacity: 1;
+  }
+}
+
+.shell-rail-conv-action {
   appearance: none;
   background: transparent;
   border: 0;
-  padding: 4px 12px 4px 0;
+  padding: 4px 0;
   font: inherit;
   font-size: 11px;
   color: var(--color-neutral-600);
   cursor: pointer;
-  flex: none;
 }
 
-.shell-rail-conv-delete:hover {
+.shell-rail-conv-action:hover {
   color: var(--color-accent-700);
   text-decoration: underline;
+}
+
+/* The rename field takes the row's place, lined up with the chat titles (28px inset, like the
+   search field above). Height/border come from the shared .input chrome, a size smaller. */
+.shell-rail-conv-row.is-renaming {
+  padding: 2px var(--space-3) 2px 20px;
+}
+
+.shell-rail-conv-rename {
+  width: 100%;
+  height: 25px;
+  padding: 0 var(--space-2);
+  border-width: 1px;
+  font-size: 12px;
+  line-height: 23px;
+}
+
+.shell-rail-conv-error {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-1) 28px;
+  font-size: 11px;
+  color: var(--color-accent-700);
 }
 
 .shell-rail-conv-item:hover {
@@ -155,6 +415,48 @@
 .shell-rail-conv-item.is-active {
   color: var(--color-accent);
   font-weight: var(--weight-body-strong);
+}
+
+/* Parallel Ask sessions: an unread reply tints the row (the "critical row tint") and marks it with
+   the rail's own 6px accent square; a chat still answering shows the Ask thinking spinner, small. */
+.shell-rail-conv-row.is-unread {
+  background: var(--color-accent-100);
+}
+
+.shell-rail-conv-item.is-unread {
+  font-weight: var(--weight-body-strong);
+}
+
+.shell-rail-conv-status {
+  flex: none;
+  margin-left: auto;
+}
+
+.shell-rail-conv-status.is-unread {
+  width: 6px;
+  height: 6px;
+  background: var(--color-accent);
+}
+
+.shell-rail-conv-status.is-pending {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-neutral-300);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: shell-rail-conv-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-rail-conv-status.is-pending {
+    animation: none;
+  }
+}
+
+@keyframes shell-rail-conv-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .shell-rail-conv-title {

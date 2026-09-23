@@ -233,3 +233,22 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260923125212_AddConversationCustomTitle') THEN
+    ALTER TABLE conversation ADD custom_title character varying(48);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260923125212_AddConversationCustomTitle') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260923125212_AddConversationCustomTitle', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

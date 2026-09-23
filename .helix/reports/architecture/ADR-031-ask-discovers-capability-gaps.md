@@ -108,9 +108,10 @@ before, then:
   `GET /api/conversations/{id}`); `capabilityCheck: null`;
 - the check is **still running** → the response says `capabilityCheck: "pending"`;
   `CapabilityCheckDispatcher.AppendWhenDone` stores the follow-up from the background when the
-  check completes, and the web client reads the conversation back every 2 s for up to 16 s until
-  a Raffa message whose `payload.capabilityCheckFor` is the answer's id appears. It stops at a new
-  question, another conversation or an unmount;
+  check completes, and the web session store reads the conversation back every 2 s for up to 16 s
+  until a Raffa message whose `payload.capabilityCheckFor` is the answer's id appears, landing it in
+  the session that asked (whichever chat is on screen). It stops when a newer question is sent in
+  that chat or the chat is deleted;
 - the check found nothing → nothing is stored, `capabilityCheck: null`.
 
 A follow-up is appended only while its answer is still the conversation's last message: when the
@@ -201,4 +202,5 @@ Every issue Raffa opens — catalog or discovered — is a **proposal**:
 - `Raffa.AiEval`: `seeded-capability_gap-discovered-report-it` (the golden set now also knows the
   `interview` kind).
 - Web: `askViewModel.test.ts` (follow-up mapping, dedupe, lookup, bounded polling, interview still
-  pending behind a follow-up) and `AskRoute.test.tsx` (inline and polled follow-up).
+  pending behind a follow-up), `askSessions.test.ts` (inline follow-up; a pending one read back into
+  its session; a newer question stops the wait) and `AskRoute.test.tsx` (inline and polled).

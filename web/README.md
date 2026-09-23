@@ -95,7 +95,7 @@ own rail destination. Pixel/behaviour reference: `inputs/design/prototypes/Raffa
 | `/signin` | Sign-in (Entra redirect, idle/redirecting states) -> workspace picker, server-driven (skeleton, error + Retry, list, create) | E06/F03/US01/T01; server-backed by E14/F03/US02/T01 |
 | `/invite/accept` | Public, reachable signed out and with no workspace, rendered outside `AppShell`. Ten states (no token / checking / offer with Join or the Entra CTA / joining / wrong account / expired-or-revoked sharing one first sentence / already joined / lookup unavailable + Retry); reads the token from the URL fragment on mount, holds it in memory for that one mount, clears the address bar before first paint, sends it only in `X-Invitation-Token`. See "Invitation accept" below. | E14/F03/US02/T01 |
 | `/` | Redirects to `/ask` (R-WEB-01) -- there is no standalone Home screen in V2. | E13/F09/US01/T01 |
-| `/ask` | Ask Raffa, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, one evidence card grouping every citation by supplier with the actions folded into its single action row, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`. See "Ask Raffa" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
+| `/ask` | Ask Raffa, V2 rebuild: off state below 1 validated contract (fixed headline + doc-count-dependent reason + one CTA to `/documents`); new chat (hello line, scope line naming the validated count, two capability-sourced suggestion chips, optional `?scope=<contractId>`); conversation view rendering the phase-2 reply contract (markdown, one evidence card grouping every citation by supplier with the actions folded into its single action row, follow-ups) via `ReplyBody`. Calls the real `GET/POST /api/conversations`, `POST /api/conversations/{id}/messages`, `GET /api/capabilities`, `GET /api/market/records/{id}`, `PATCH /api/conversations/{id}` (rename) and `POST /api/conversations/{id}/restore` (archive). See "Ask Raffa" below. | E07/F04/US01/T01; V2 rebuild E13/F09/US01/T04 |
 | `/ask/:conversationId` | Same `AskRoute` as `/ask`, resuming: `useConversation` loads the conversation (`GET /api/conversations/{id}`) and renders every past turn, oldest first, with the evidence card's rows and actions still clickable; a named "not found" state for an unknown/foreign/another-user's id. | E13/F09/US01/T01 (route only); resume wired by E13/F09/US01/T04 |
 | `/documents` | V2 rebuild (ADR-024 amendment to ADR-020 screen 3): onboarding empty state ("First your contracts. Then your questions.") -> a server-backed list (`GET /api/documents`, survives a reload) with a **Needs your attention · N** (default) / **All documents · N** / **Not added · K** (only while K > 0) filter whose numbers are the server's own tenant-wide `counts` (never the fetched page), multi-file drop (up to 20 files, <=3 uploads in flight, one row per file from the moment it is picked, a 120 s client-owned deadline per request), a stored row reading **Queued…** until the Worker picks it up and then its real stage text polled every 2 s — a poll that stops after five minutes without a change and offers **Check again** — a **Not added** *row* for a refused file (the server's `Rejected` row with the requirements' own reason sentence; a local row for an oversized/413/415 file), Admin-only Delete, and Review as a *state* of this same route (`?review=<id>`, reusing `routes/contracts/review/*` as-is). Calls the real `GET /api/documents`, `GET /api/documents/{id}/preview`, `POST /api/documents`, `POST /api/documents/{id}/reprocess` (202), `DELETE /api/documents/{id}`. See "Documents" below. | E06/F05/US01/T01, E06/F05/US02/T01; V2 rebuild E13/F09/US01/T03; truthful surfaces E16/F03/US01/T01 (wave w15) |
 | `/contracts` | Portfolio, V2: header ("Portfolio" + "N validated contracts · CHF 4.2M annual · K notice deadlines within 45 days", or "Lights up from validated contracts"), one table sorted by notice deadline (Supplier · Contract · Annual spend · Ends · Give notice by · Status; **More columns** adds Start · Auto · Risk; rows inside the 45-day window tinted + accent bar; rows open Contract 360), and the reroute state ("Nothing to triage yet" → Upload a contract) while nothing is validated. Calls the real `GET /api/contracts` (now carrying `currency`). See "Portfolio" below. | E07/F01/US01/T01; V2 design alignment (Sept 2026) |
@@ -790,8 +790,9 @@ per-user conversations.
   pair while the catalog has not loaded. Asking (typed, a chip, or the seed query the global Ask bar
   carries in router state, `newChat: true`) runs `createConversationAndAsk`:
   `POST /api/conversations` (with `scopeContractId` when `?scope=` is present) then
-  `POST /api/conversations/{id}/messages`, then the URL becomes `/ask/<conversationId>`
-  (`navigate(..., { replace: true })`). `?scope=<contractId>` (Contract 360's "Ask about it") templates
+  `POST /api/conversations/{id}/messages`; the URL becomes `/ask/<conversationId>`
+  (`navigate(..., { replace: true })`) as soon as the conversation exists, while the reply is still
+  being written (see "Parallel sessions" below). `?scope=<contractId>` (Contract 360's "Ask about it") templates
   the two chips with the real supplier name instead (`buildScopedSuggestions`, read off
   `GET /api/contracts/{id}`'s typed `supplierName`; "this supplier" when it is null or blank) **and**
   briefs the contract instead of rendering the generic hello/scope line (task E25/F03/US02/T01,
@@ -840,12 +841,32 @@ per-user conversations.
   citation still navigates to its own `href`. A `calc` citation with no contract (an aggregate such as
   "Annual spend total") sits under Raffa as a plain row -- no dead "View source" control. Follow-up chips post as a new message in
   the same conversation, the same `ask()` path a typed question uses.
+- **Non-prose content, the Claude.ai way** -- the reply stays prose-first and everything else is
+  quiet chrome (chat-local `--chat-*` tokens in `reply/reply.css`: hairline borders, 8px controls,
+  12px cards, flat surfaces; the app-wide square tokens are untouched outside the conversation):
+  - **Artifacts in a side panel.** A long, self-contained object never renders mid-thread: its turn
+    carries a one-line card (`reply/ArtifactCard.tsx`: icon tile, title, "Draft email · Click to
+    open") and the object opens in the screen's one right-hand slot (`ArtifactPanel.tsx`: icon,
+    title, type line, the object's own actions, close; Escape closes; a full-screen sheet below
+    900px). A draft that arrives live opens itself there on a wide screen without taking focus; a
+    click reopens it (and focuses it). A market citation opens its record (`MarketRecordPanel.tsx`)
+    in the same slot -- one object at a time.
+  - **Sources behind one row.** The evidence card starts collapsed to "N sources · Supplier · 2
+    contracts · …" (`aria-expanded`); the detail is `hidden`, not unmounted, and the reply's action
+    row stays visible under it. Inline `[n]` markers are small number chips (`ReplyMarkdown.tsx
+    #CitationChip`) that preview the source on hover/focus (kind, title, location, the first 160
+    characters of the passage; Escape dismisses) and open it on click.
+  - **Suggestions on the latest turn only.** Follow-up questions render as quiet one-liners (↗) on
+    the last turn, never on history (`ReplyBody`'s `showFollowUps`).
 - **Draft and the feedback card** (ADR-030, wave w20) -- a fifth `kind`, `draft`, renders the honest
   preface as markdown ("I can't create or send emails from Raffa.ai yet, but I can help you write the
-  renewal email…"), then `reply/DraftCard.tsx`: the subject and the body **verbatim** in a pre-wrap
-  block (never through `ReplyMarkdown`/`humanizeReplyText`) with a **Copy email** button
+  renewal email…"), then the email's artifact card; the email itself opens in `DraftPanel.tsx`: the
+  subject and the body **verbatim** in a pre-wrap block in the reading font (never through
+  `ReplyMarkdown`/`humanizeReplyText`) with a **Copy email** button
   (`navigator.clipboard.writeText(subject + blank line + body)`, the `InvitePane.tsx` "Copy link"
-  pattern, flips to "Copied"), then citation cards, actions, follow-ups, and `reply/FeedbackCard.tsx`.
+  pattern, flips to "Copied" for two seconds) and **Open in mail** (a recipient-less `mailto:` with
+  the same subject and body). The turn then carries citation cards, actions, follow-ups, and
+  `reply/FeedbackCard.tsx`.
   The card ("Vuoi segnalarlo al team Raffa.ai perché lo implementi?" [Sì] [No]) shows the three
   interview questions **one at a time** -- a prefilled free-text field with the public-GitHub notice,
   then two rows of quick-choice chips -- and submits once through `apiClient.postConversationFeedback`
@@ -862,11 +883,13 @@ per-user conversations.
   wire's `payload` (`ConversationPayloadBody`), mapped by `askViewModel.ts#buildReply`; a stored
   `draft` whose payload lost its email degrades to a plain `answer`, never an empty turn.
   ADR-031's **capability follow-up** is a separate Raffa turn after the answer, built from the
-  stored-message shape (`askViewModel.ts#appendCapabilityFollowUp`, deduplicated by message id): the
-  reply carries it as `followUpMessage` when the server's check finished first; when the reply says
-  `capabilityCheck: "pending"`, `pollCapabilityFollowUp` reads the conversation back every 2 s for
-  up to 16 s until a message whose `payload.capabilityCheckFor` is the answer's id appears, and stops
-  at a new question, another conversation or an unmount. Its chips come from `payload.followUps`
+  stored-message shape (`askViewModel.ts#appendCapabilityFollowUp`, deduplicated by message id),
+  landed by the session store (`askSessions.ts#receiveCapabilityFollowUp`) in the session that asked,
+  whichever chat is on screen: the reply carries it as `followUpMessage` when the server's check
+  finished first; when the reply says `capabilityCheck: "pending"`, `pollCapabilityFollowUp` reads
+  the conversation back every 2 s for up to 16 s until a message whose `payload.capabilityCheckFor`
+  is the answer's id appears, and stops when a newer question is sent in that chat or the chat is
+  deleted. Its chips come from `payload.followUps`
   (so a resumed follow-up keeps them); it renders as the existing capability-gap `redirect` (key
   `discovered:<slug>` or a catalog key) with the card that asks to *propose* the feature; and it is
   never "the last Raffa turn" a typed message answers (`pendingInterview` skips it).
@@ -880,6 +903,45 @@ per-user conversations.
   found" state with a "+ New chat" link, never a generic error.
 - **Rail** -- the shell's nested conversations slot (see "App shell" above); `RailNav.tsx` consumes
   `useRecentConversations.ts` itself, not threaded through as a prop from a fetch-once parent.
+- **Parallel sessions** (`askSessions.ts`, `AskSessionsContext.tsx`, `AskReplyNotifier.tsx`) -- every
+  chat's thread, "answering" flag and unread flag live in one store the shell (`AppShell.tsx`)
+  provides, keyed by conversation id (a new chat by a draft key per `/ask` history entry, promoted
+  to its id the moment `POST /api/conversations` returns). A question keeps running when the user
+  leaves its chat -- for "+ New chat", another chat or another screen -- and its reply lands in the
+  chat that asked it, so two chats can answer side by side; a chat still answering refuses a
+  second question. The rail spins a chat still answering and highlights (`is-unread`) one whose
+  reply landed off screen; the notifier adds a top-right "Reply ready" notice with "Open chat", a
+  system notification when the tab is hidden (permission is asked once, on the first send), and an
+  unread count in the tab title (`(2) Raffa.ai`). Opening the chat clears all three. A chat this tab
+  already holds reopens from the store, never re-fetched; composer text is kept per chat.
+- **Archive** (`RailNav.tsx`, `useRecentConversations.ts`) -- chats not used for a week (server
+  rule, `?archived=`) leave the recent list for a collapsed **Archive** group below "+ New chat",
+  shown only when it holds something: a count, each chat with the day it was last used, and an
+  `InfoTip` (`components/InfoTip.tsx`, the same component and style as
+  `claude/happy-newton-hfqzem`, byte-for-byte) saying chats unused for a week move there and that a
+  click brings one back. Clicking an archived chat opens it and calls
+  `POST /api/conversations/{id}/restore`; it moves back to the top of the recent list at once
+  (rolled back if the server refuses). A chat opened any other way (a link, a reload) stays
+  archived until a message is written in it -- that alone brings it back, no restore call. The
+  week is fixed in code (`ConversationService.ArchiveAfter`), by decision, not configuration.
+  The rail loads the two lists separately, each its own 50.
+- **Search** -- a lighter field (lens, hairline that inks on hover, ink edge on focus, its own
+  clear button; Escape clears) that filters both lists; a match in the archive opens it, and
+  "No chats match “…”." says when nothing does.
+- **Resizable rail** (`RailResizeHandle.tsx`, `useRailWidth.ts`) -- the rail's right edge drags
+  between 200 and 440px (232px, the mockup's width, by default), or resizes from the keyboard
+  (arrows ±16px, Home/End) as a WAI-ARIA window splitter; double-click resets it. The width is
+  `--shell-rail-width` on `.shell-layout` and is remembered per browser (`localStorage`).
+- **Rename** (`ConversationRenameField.tsx`, `askSessions.ts#rename`) -- from the rail ("Rename"
+  beside "Delete", shown on hover/focus and always on touch screens, or a double-click on the title)
+  or from the chat header ("Rename" beside the title, or a double-click on it). An inline field opens
+  on the current title, selected; Enter or leaving the field saves, Escape cancels, an unchanged
+  name sends nothing, an empty one clears the name so the automatic title comes back; at most 48
+  characters. `PATCH /api/conversations/{id}` stores it as `customTitle`, which wins over every
+  automatic title (`conversationTitle.ts#conversationDisplayTitle`: name, else supplier + contract,
+  else "Ask Raffa"; the header: name, else supplier + contract, else the first question). The new
+  name shows at once in the rail, the header and the reply-ready notices, and is rolled back with
+  "Could not rename this chat. Try again." if the server refuses it.
 - **No raw ids, no route line, no V1 copy anywhere** (R-ASK-08) -- `Reply`
   (`routes/ask/reply/replyTypes.ts`) carries no `route`/raw-id field for any variant to leak; a
   tenant citation's deep link is built client-side from `contractId`/`page` only. `"Structured

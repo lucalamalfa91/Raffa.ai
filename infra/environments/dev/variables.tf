@@ -59,11 +59,13 @@ variable "web_research_enabled" {
 # footer clause 14): mirrors ai_gateway_wired's own per-environment
 # lifecycle. dev flips both true from this apply.
 # ADR-030 D5 (Ask Raffa feedback loop): the GitHub token is a SENSITIVE
-# HCP workspace variable, never a .tf literal (ADR-011); empty means no
+# HCP workspace variable of category "Terraform variable" (not
+# "Environment variable" like ARM_*: Terraform never reads an env var of
+# this name), never a .tf literal (ADR-011); empty means no
 # secret and a stored-only feedback loop. The switch mirrors
 # invitation_mail_enabled's per-environment lifecycle.
 variable "github_feedback_token" {
-  description = "Fine-grained GitHub PAT (Issues: write on lucalamalfa91/Raffa.ai) for Ask Raffa's feedback issues. Set as a sensitive HCP workspace variable; empty = no secret (ADR-030 D5)."
+  description = "Fine-grained GitHub PAT (Issues: write on lucalamalfa91/Raffa.ai) for Ask Raffa's feedback issues. Set as a sensitive HCP workspace variable of category Terraform (an Environment variable of this name is never read); empty = no secret (ADR-030 D5)."
   type        = string
   sensitive   = true
   default     = ""

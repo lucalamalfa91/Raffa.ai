@@ -6,7 +6,8 @@ import { test, expect, type BrowserContext, type Page } from "@playwright/test";
  *
  * On a validated contract, **Where you can save** and **When you must move** render
  * the server's `/strategy` pack — a figure + lever, or a representative band with
- * Ask provenance (`adapter A, n = 214`) on the detail line — and
+ * its provenance in plain words ("Representative market data from 214 comparable
+ * contracts · source A · as of …") on the small-print line — and
  * `SAVINGS_NOT_YET_AVAILABLE` / `LEVER_NOT_YET_AVAILABLE` ("Not yet available" /
  * Benchmark Service) appear **only** where that fetch was made and the source
  * genuinely had nothing. A spec that only greps for the constant's absence would
@@ -178,7 +179,7 @@ test.describe("N16 — Contract 360 answers band (w17)", () => {
       expect(saveText).toMatch(LEVER_NOT_YET_AVAILABLE);
     } else if (representative) {
       expect(saveText).toMatch(/representative/i);
-      expect(saveText).toMatch(/adapter /);
+      expect(saveText).toMatch(/comparable contracts? · source |· source /);
       expect(saveText).not.toContain(SAVINGS_NOT_YET_AVAILABLE);
     } else {
       expect(saveText).toMatch(/\d/);

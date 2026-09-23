@@ -96,6 +96,91 @@ public sealed class ConversationsCrossTenantIsolationTests : IClassFixture<Conve
     }
 
     [Fact]
+    public async Task The_owner_renames_a_conversation_and_another_user_of_the_tenant_cannot()
+    {
+        var client = _fixture.CreateClient();
+        var tenantId = Guid.NewGuid();
+        const string owner = "alice@example.com";
+        const string other = "bob@example.com";
+
+        var conversationId = await CreateConversationAsync(client, tenantId, owner);
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(_fixture.Services, new TenantId(tenantId), other, WorkspaceRoleName.Admin);
+
+        // Another member of the same workspace: 404, and the chat keeps no name.
+        var foreignRename = await PatchTitleAsync(client, tenantId, other, conversationId, "Hijacked");
+        Assert.Equal(HttpStatusCode.NotFound, foreignRename.StatusCode);
+
+        var ownRename = await PatchTitleAsync(client, tenantId, owner, conversationId, "Atlassian renewal");
+        Assert.Equal(HttpStatusCode.OK, ownRename.StatusCode);
+        using (var renamed = JsonDocument.Parse(await ownRename.Content.ReadAsStringAsync()))
+        {
+            Assert.Equal("Atlassian renewal", renamed.RootElement.GetProperty("customTitle").GetString());
+        }
+
+        using var list = new HttpRequestMessage(HttpMethod.Get, "/api/conversations");
+        list.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        list.Headers.Add("X-User-Id", owner);
+        using var listed = JsonDocument.Parse(await (await client.SendAsync(list)).Content.ReadAsStringAsync());
+        var item = Assert.Single(listed.RootElement.EnumerateArray().ToList());
+        Assert.Equal("Atlassian renewal", item.GetProperty("customTitle").GetString());
+
+        // A blank name clears it again.
+        var cleared = await PatchTitleAsync(client, tenantId, owner, conversationId, "");
+        using var clearedBody = JsonDocument.Parse(await cleared.Content.ReadAsStringAsync());
+        Assert.Equal(JsonValueKind.Null, clearedBody.RootElement.GetProperty("customTitle").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_chat_in_use_lists_as_not_archived_and_only_its_owner_can_restore_it()
+    {
+        var client = _fixture.CreateClient();
+        var tenantId = Guid.NewGuid();
+        const string owner = "alice@example.com";
+        const string other = "bob@example.com";
+
+        var conversationId = await CreateConversationAsync(client, tenantId, owner);
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(_fixture.Services, new TenantId(tenantId), other, WorkspaceRoleName.Admin);
+
+        async Task<List<JsonElement>> ListAsync(string query)
+        {
+            using var list = new HttpRequestMessage(HttpMethod.Get, $"/api/conversations{query}");
+            list.Headers.Add("X-Tenant-Id", tenantId.ToString());
+            list.Headers.Add("X-User-Id", owner);
+            using var body = JsonDocument.Parse(await (await client.SendAsync(list)).Content.ReadAsStringAsync());
+            return body.RootElement.EnumerateArray().Select(item => item.Clone()).ToList();
+        }
+
+        var inUse = Assert.Single(await ListAsync("?archived=false"));
+        Assert.False(inUse.GetProperty("archived").GetBoolean());
+        Assert.Empty(await ListAsync("?archived=true"));
+
+        async Task<HttpResponseMessage> RestoreAsync(string userId)
+        {
+            using var restore = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/restore");
+            restore.Headers.Add("X-Tenant-Id", tenantId.ToString());
+            restore.Headers.Add("X-User-Id", userId);
+            return await client.SendAsync(restore);
+        }
+
+        Assert.Equal(HttpStatusCode.NotFound, (await RestoreAsync(other)).StatusCode);
+        var restored = await RestoreAsync(owner);
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        using var restoredBody = JsonDocument.Parse(await restored.Content.ReadAsStringAsync());
+        Assert.False(restoredBody.RootElement.GetProperty("archived").GetBoolean());
+    }
+
+    private static Task<HttpResponseMessage> PatchTitleAsync(HttpClient client, Guid tenantId, string userId, Guid conversationId, string title)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/conversations/{conversationId}")
+        {
+            Content = JsonContent.Create(new { title }),
+        };
+        request.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        request.Headers.Add("X-User-Id", userId);
+        return client.SendAsync(request);
+    }
+
+    [Fact]
     public async Task Each_tenant_only_lists_its_own_conversations()
     {
         var client = _fixture.CreateClient();

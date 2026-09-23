@@ -354,6 +354,11 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("market_updated_at");
 
+                    b.Property<string>("MatchKind")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("match_kind");
+
                     b.Property<string>("Product")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)")

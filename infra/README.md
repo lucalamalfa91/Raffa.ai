@@ -300,8 +300,17 @@ carries a `count`-gated secret, `github-feedback-token` (handle
 `gh-feedback`, API app only): a fine-grained GitHub personal access token
 with **Issues: write on `lucalamalfa91/Raffa.ai` only**, so the API can open
 one issue per feature request users file from Ask's in-chat feedback card.
-The token is a **sensitive HCP workspace variable** (`github_feedback_token`)
-in each workspace, never a `.tf` literal (ADR-011); empty — the default —
+The token is a **sensitive HCP workspace variable of category *Terraform
+variable*** (`github_feedback_token`) in each workspace, never a `.tf`
+literal (ADR-011). Mind the category: the `ARM_*` credentials next to it
+are *Environment* variables, but an Environment variable named
+`github_feedback_token` is never read by Terraform (only
+`TF_VAR_github_feedback_token` would be), so the plan says "No changes", no
+secret is created and the API stays stored-only without any error. Saving
+the variable queues no run: start one (**Actions → Start new run → Plan and
+apply**); the plan must show
+`module.keyvault.azurerm_key_vault_secret.github_feedback_token[0]` to add
+plus the API app update. Empty — the default —
 creates no secret, publishes an empty `Feedback__GitHub__Token` the API never
 reads, and the API keeps every request stored-only. `Feedback__GitHub__Enabled` is published as
 `var.feedback_github_enabled && <a token secret exists>`, so an environment
@@ -311,8 +320,9 @@ carries the environment name into every issue body. Per-environment switch:
 ruling 2026-09-22 — unlike `invitation_mail_enabled`, a switch with no token
 behind it is harmless, so the token's presence in each HCP workspace is the
 real gate: set `github_feedback_token` in `raffa-demo` as well to get issues
-from `demo`). Rotation is an operator act: change the HCP variable, apply —
-no code change, no image rebuild.
+from `demo`). Rotation is an operator act: a sensitive HCP variable cannot
+be edited, so delete it, add it again (same key, same *Terraform variable*
+category), start a run and apply — no code change, no image rebuild.
 
 **Guest provisioning (NW-67).** `modules/identity` carries a `count`-gated
 `azuread_app_role_assignment` granting the workload identity the Microsoft

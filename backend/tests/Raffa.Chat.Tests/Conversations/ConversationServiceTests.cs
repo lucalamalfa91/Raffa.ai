@@ -425,6 +425,226 @@ public sealed class ConversationServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RenameAsync_sets_a_custom_title_without_touching_the_derived_title_or_the_recency()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var t0 = new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero);
+        var t1 = t0.AddHours(3);
+
+        ConversationSummaryResult created;
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            created = await service.CreateAsync(tenantId, "alice@example.com", null);
+            await service.AppendMessageAsync(tenantId, "alice@example.com", created.ConversationId, YouMessage("What is our Atlassian liability cap?"));
+        }
+
+        ConversationSummaryResult? renamed;
+        {
+            var service = CreateService(tenantContext, new FixedClock(t1), auditWriter, out var db);
+            await using var _ = db;
+            renamed = await service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, "  Atlassian\n  renewal   prep ");
+        }
+
+        Assert.NotNull(renamed);
+        Assert.Equal("Atlassian renewal prep", renamed.CustomTitle);
+        Assert.Equal("What is our Atlassian liability cap?", renamed.Title);
+        Assert.Equal(t0, renamed.UpdatedAt);
+
+        var readService = CreateService(tenantContext, new FixedClock(t1), auditWriter, out var readDb);
+        await using var __ = readDb;
+        var detail = await readService.GetAsync(tenantId, "alice@example.com", created.ConversationId);
+        Assert.Equal("Atlassian renewal prep", detail!.CustomTitle);
+        var listed = Assert.Single(await readService.ListRecentAsync(tenantId, "alice@example.com"));
+        Assert.Equal("Atlassian renewal prep", listed.CustomTitle);
+
+        // ADR-011: the audit row says a name was set, never what it is.
+        var audit = Assert.Single(auditWriter.Written, e => e.Action == "conversation.renamed");
+        Assert.Equal(created.ConversationId.Value.ToString(), audit.ResourceId);
+        Assert.Equal("customTitle=set", audit.Detail);
+        Assert.DoesNotContain("Atlassian", audit.Detail!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RenameAsync_with_a_blank_name_clears_it_back_to_the_automatic_title()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var t0 = new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero);
+
+        var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+        await using var _ = db;
+        var created = await service.CreateAsync(tenantId, "alice@example.com", null);
+        await service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, "Renewals");
+
+        var cleared = await service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, "   ");
+
+        Assert.Null(cleared!.CustomTitle);
+        Assert.Equal(ConversationService.DefaultTitle, cleared.Title);
+        Assert.Equal("customTitle=cleared", auditWriter.Written[^1].Detail);
+    }
+
+    [Fact]
+    public async Task RenameAsync_returns_null_for_another_users_conversation_and_leaves_it_unnamed()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var t0 = new DateTimeOffset(2026, 9, 8, 9, 0, 0, TimeSpan.Zero);
+
+        ConversationSummaryResult created;
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            created = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+
+        {
+            var service = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var db);
+            await using var _ = db;
+            Assert.Null(await service.RenameAsync(tenantId, "bob@example.com", created.ConversationId, "Mine now"));
+            Assert.Null(await service.RenameAsync(tenantId, "alice@example.com", EntityId.New(), "Unknown"));
+        }
+
+        var readService = CreateService(tenantContext, new FixedClock(t0), auditWriter, out var readDb);
+        await using var __ = readDb;
+        Assert.Null((await readService.GetAsync(tenantId, "alice@example.com", created.ConversationId))!.CustomTitle);
+        Assert.DoesNotContain(auditWriter.Written, e => e.Action == "conversation.renamed");
+    }
+
+    [Fact]
+    public async Task RenameAsync_rejects_a_name_longer_than_48_characters()
+    {
+        var tenantId = TenantId.New();
+        var service = CreateService(new TenantContext(), new FixedClock(DateTimeOffset.UnixEpoch), new RecordingAuditWriter(), out var db);
+        await using var _ = db;
+        var created = await service.CreateAsync(tenantId, "alice@example.com", null);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, new string('x', 49)));
+        Assert.Equal(new string('x', 48), (await service.RenameAsync(tenantId, "alice@example.com", created.ConversationId, new string('x', 48)))!.CustomTitle);
+    }
+
+    [Fact]
+    public async Task ListRecentAsync_files_chats_unused_for_a_week_as_archived_and_filters_by_it()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var now = new DateTimeOffset(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
+
+        ConversationSummaryResult old, edge, fresh;
+        {
+            var service = CreateService(tenantContext, new FixedClock(now.AddDays(-30)), auditWriter, out var db);
+            await using var _ = db;
+            old = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+        {
+            // Exactly a week: still in use (archived only once it is *older* than ArchiveAfter).
+            var service = CreateService(tenantContext, new FixedClock(now - ConversationService.ArchiveAfter), auditWriter, out var db);
+            await using var _ = db;
+            edge = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+        {
+            var service = CreateService(tenantContext, new FixedClock(now.AddHours(-1)), auditWriter, out var db);
+            await using var _ = db;
+            fresh = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+
+        var readService = CreateService(tenantContext, new FixedClock(now), auditWriter, out var readDb);
+        await using var __ = readDb;
+
+        var all = await readService.ListRecentAsync(tenantId, "alice@example.com");
+        Assert.Equal([fresh.ConversationId, edge.ConversationId, old.ConversationId], all.Select(c => c.ConversationId));
+        Assert.Equal([false, false, true], all.Select(c => c.Archived));
+
+        var active = await readService.ListRecentAsync(tenantId, "alice@example.com", archive: ConversationArchiveFilter.Active);
+        Assert.Equal([fresh.ConversationId, edge.ConversationId], active.Select(c => c.ConversationId));
+
+        var archived = Assert.Single(await readService.ListRecentAsync(tenantId, "alice@example.com", archive: ConversationArchiveFilter.Archived));
+        Assert.Equal(old.ConversationId, archived.ConversationId);
+        Assert.True(archived.Archived);
+    }
+
+    [Fact]
+    public async Task AppendMessageAsync_takes_an_archived_chat_out_of_the_archive()
+    {
+        // Product decision: a chat opened any way other than the rail's Archive (a link, a reload)
+        // stays archived until the user writes in it -- then it is in use again, no restore call.
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var now = new DateTimeOffset(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
+
+        ConversationSummaryResult old;
+        {
+            var service = CreateService(tenantContext, new FixedClock(now.AddDays(-10)), auditWriter, out var db);
+            await using var _ = db;
+            old = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+
+        var service2 = CreateService(tenantContext, new FixedClock(now), auditWriter, out var db2);
+        await using var __ = db2;
+        Assert.True(Assert.Single(await service2.ListRecentAsync(tenantId, "alice@example.com")).Archived);
+
+        await service2.AppendMessageAsync(tenantId, "alice@example.com", old.ConversationId, YouMessage("Is the notice period still 90 days?"));
+
+        var listService = CreateService(tenantContext, new FixedClock(now), auditWriter, out var listDb);
+        await using var ___ = listDb;
+        var inUse = Assert.Single(await listService.ListRecentAsync(tenantId, "alice@example.com", archive: ConversationArchiveFilter.Active));
+        Assert.Equal(old.ConversationId, inUse.ConversationId);
+        Assert.False(inUse.Archived);
+        Assert.Empty(await listService.ListRecentAsync(tenantId, "alice@example.com", archive: ConversationArchiveFilter.Archived));
+        Assert.DoesNotContain(auditWriter.Written, e => e.Action == "conversation.restored");
+    }
+
+    [Fact]
+    public async Task RestoreAsync_brings_an_archived_chat_back_to_the_top_and_leaves_a_chat_in_use_alone()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var now = new DateTimeOffset(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
+
+        ConversationSummaryResult old, fresh;
+        {
+            var service = CreateService(tenantContext, new FixedClock(now.AddDays(-10)), auditWriter, out var db);
+            await using var _ = db;
+            old = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+        {
+            var service = CreateService(tenantContext, new FixedClock(now.AddDays(-1)), auditWriter, out var db);
+            await using var _ = db;
+            fresh = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+
+        var service2 = CreateService(tenantContext, new FixedClock(now), auditWriter, out var db2);
+        await using var __ = db2;
+
+        Assert.Null(await service2.RestoreAsync(tenantId, "bob@example.com", old.ConversationId));
+
+        var restored = await service2.RestoreAsync(tenantId, "alice@example.com", old.ConversationId);
+        Assert.NotNull(restored);
+        Assert.False(restored.Archived);
+        Assert.Equal(now, restored.UpdatedAt);
+
+        var untouched = await service2.RestoreAsync(tenantId, "alice@example.com", fresh.ConversationId);
+        Assert.Equal(now.AddDays(-1), untouched!.UpdatedAt);
+
+        var restoredAudit = Assert.Single(auditWriter.Written, e => e.Action == "conversation.restored");
+        Assert.Equal(old.ConversationId.Value.ToString(), restoredAudit.ResourceId);
+        Assert.Equal("idleDays=10", restoredAudit.Detail);
+
+        var listService = CreateService(tenantContext, new FixedClock(now), auditWriter, out var listDb);
+        await using var ___ = listDb;
+        var list = await listService.ListRecentAsync(tenantId, "alice@example.com", archive: ConversationArchiveFilter.Active);
+        Assert.Equal([old.ConversationId, fresh.ConversationId], list.Select(c => c.ConversationId));
+    }
+
+    [Fact]
     public async Task DeleteAsync_removes_the_callers_conversation_and_its_messages()
     {
         var tenantId = TenantId.New();
