@@ -889,7 +889,10 @@ per-user conversations.
   `claude/happy-newton-hfqzem`, byte-for-byte) saying chats unused for a week move there and that a
   click brings one back. Clicking an archived chat opens it and calls
   `POST /api/conversations/{id}/restore`; it moves back to the top of the recent list at once
-  (rolled back if the server refuses). The rail loads the two lists separately, each its own 50.
+  (rolled back if the server refuses). A chat opened any other way (a link, a reload) stays
+  archived until a message is written in it -- that alone brings it back, no restore call. The
+  week is fixed in code (`ConversationService.ArchiveAfter`), by decision, not configuration.
+  The rail loads the two lists separately, each its own 50.
 - **Search** -- a lighter field (lens, hairline that inks on hover, ink edge on focus, its own
   clear button; Escape clears) that filters both lists; a match in the archive opens it, and
   "No chats match “…”." says when nothing does.

@@ -71,7 +71,7 @@ public sealed class ConversationService(
     /// A chat not used for this long — no message, no restore — is archived: listed apart, so the
     /// rail's recent list stays short. Nothing is moved or deleted; it is a reading of
     /// <see cref="Conversation.UpdatedAt"/>, so the next message (or <see cref="RestoreAsync"/>)
-    /// brings the chat back at once.
+    /// brings the chat back at once. Fixed here on purpose (a product decision, not configuration).
     /// </summary>
     public static readonly TimeSpan ArchiveAfter = TimeSpan.FromDays(7);
 

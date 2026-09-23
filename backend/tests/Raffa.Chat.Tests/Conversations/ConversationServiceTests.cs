@@ -570,6 +570,38 @@ public sealed class ConversationServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AppendMessageAsync_takes_an_archived_chat_out_of_the_archive()
+    {
+        // Product decision: a chat opened any way other than the rail's Archive (a link, a reload)
+        // stays archived until the user writes in it -- then it is in use again, no restore call.
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var auditWriter = new RecordingAuditWriter();
+        var now = new DateTimeOffset(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
+
+        ConversationSummaryResult old;
+        {
+            var service = CreateService(tenantContext, new FixedClock(now.AddDays(-10)), auditWriter, out var db);
+            await using var _ = db;
+            old = await service.CreateAsync(tenantId, "alice@example.com", null);
+        }
+
+        var service2 = CreateService(tenantContext, new FixedClock(now), auditWriter, out var db2);
+        await using var __ = db2;
+        Assert.True(Assert.Single(await service2.ListRecentAsync(tenantId, "alice@example.com")).Archived);
+
+        await service2.AppendMessageAsync(tenantId, "alice@example.com", old.ConversationId, YouMessage("Is the notice period still 90 days?"));
+
+        var listService = CreateService(tenantContext, new FixedClock(now), auditWriter, out var listDb);
+        await using var ___ = listDb;
+        var inUse = Assert.Single(await listService.ListRecentAsync(tenantId, "alice@example.com", archive: ConversationArchiveFilter.Active));
+        Assert.Equal(old.ConversationId, inUse.ConversationId);
+        Assert.False(inUse.Archived);
+        Assert.Empty(await listService.ListRecentAsync(tenantId, "alice@example.com", archive: ConversationArchiveFilter.Archived));
+        Assert.DoesNotContain(auditWriter.Written, e => e.Action == "conversation.restored");
+    }
+
+    [Fact]
     public async Task RestoreAsync_brings_an_archived_chat_back_to_the_top_and_leaves_a_chat_in_use_alone()
     {
         var tenantId = TenantId.New();
