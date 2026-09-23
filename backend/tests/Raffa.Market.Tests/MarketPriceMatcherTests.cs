@@ -34,6 +34,7 @@ public sealed class MarketPriceMatcherTests
         Assert.Equal("Sales Cloud Unlimited", match.Product);
         Assert.Equal(240m, match.UnitPriceP50);
         Assert.Equal("representative market data · mock feed · updated 2026-06-20", match.Provenance);
+        Assert.Equal(MarketMatchKind.Exact, match.Kind);
     }
 
     [Fact]
@@ -129,6 +130,154 @@ public sealed class MarketPriceMatcherTests
         Assert.Equal("UK", unlimited.Geography);
         Assert.True(unlimited.SampleSize >= MarketPriceMatcher.MinimumSampleSize);
         Assert.True(unlimited.UnitPriceP25 <= unlimited.UnitPriceP50 && unlimited.UnitPriceP50 <= unlimited.UnitPriceP75);
+        Assert.Null(matches[1]);
+    }
+
+    [Fact]
+    public void A_line_naming_two_products_is_priced_as_their_bundle_not_as_one_of_them()
+    {
+        var deals = new[]
+        {
+            SampleDeal.Create(recordId: "JIRA", supplier: "Atlassian", product: "Jira Software Premium", geography: "UK", currency: "GBP",
+                unitPriceP25: 109m, unitPriceP50: 120m, unitPriceP75: 131m, sampleSize: 6),
+            SampleDeal.Create(recordId: "CONF", supplier: "Atlassian", product: "Confluence Premium", geography: "UK", currency: "GBP",
+                unitPriceP25: 76.3m, unitPriceP50: 85m, unitPriceP75: 94m, sampleSize: 48),
+        };
+
+        var match = MarketPriceMatcher.Match(
+            new("Atlassian", "GBP", 12),
+            [new MarketPriceLine("Jira Software Premium + Confluence Premium", "named users / licenses")],
+            deals)[0];
+
+        Assert.NotNull(match);
+        Assert.Equal(MarketMatchKind.Bundle, match.Kind);
+        Assert.Equal("Jira Software Premium + Confluence Premium", match.Product);
+        Assert.Equal("JIRA+CONF", match.RecordId);
+        Assert.Equal(185.3m, match.UnitPriceP25);
+        Assert.Equal(205m, match.UnitPriceP50);
+        Assert.Equal(225m, match.UnitPriceP75);
+        Assert.Equal(6, match.SampleSize);
+    }
+
+    [Fact]
+    public void Two_editions_of_one_product_or_a_family_and_its_edition_are_never_a_bundle()
+    {
+        var editions = new[]
+        {
+            SampleDeal.Create(recordId: "E3", supplier: "Microsoft", product: "Microsoft 365 E3", geography: "UK", currency: "GBP"),
+            SampleDeal.Create(recordId: "E5", supplier: "Microsoft", product: "Microsoft 365 E5", geography: "UK", currency: "GBP"),
+        };
+        var mixed = MarketPriceMatcher.Match(
+            new("Microsoft", "GBP", 12), [new MarketPriceLine("Microsoft 365 E3 and E5 seats", null)], editions)[0];
+        Assert.Equal(MarketMatchKind.Exact, mixed?.Kind);
+
+        var family = new[]
+        {
+            SampleDeal.Create(recordId: "FAMILY", product: "Sales Cloud", geography: "UK", currency: "GBP"),
+            SampleDeal.Create(recordId: "UNL", product: "Sales Cloud Unlimited", geography: "UK", currency: "GBP"),
+        };
+        var edition = MarketPriceMatcher.Match(SalesforceGbp12, [new MarketPriceLine("Sales Cloud Unlimited", null)], family)[0];
+        Assert.Equal("UNL", edition?.RecordId);
+        Assert.Equal(MarketMatchKind.Exact, edition?.Kind);
+    }
+
+    [Fact]
+    public void With_no_record_for_its_own_product_a_line_gets_a_similar_product_from_customers_of_the_same_type()
+    {
+        var deals = new[]
+        {
+            SampleDeal.Create(recordId: "BIG-BUYER", supplier: "Atlassian", product: "Confluence Premium", geography: "UK", currency: "GBP",
+                annualValueBand: "1m-5m", sampleSize: 400),
+            SampleDeal.Create(recordId: "SAME-TYPE", supplier: "Atlassian", product: "Confluence Premium", geography: "UK", currency: "GBP",
+                annualValueBand: "100k-250k", sampleSize: 48),
+            SampleDeal.Create(recordId: "JIRA", supplier: "Atlassian", product: "Jira Software Enterprise", geography: "UK", currency: "GBP"),
+        };
+
+        var match = MarketPriceMatcher.Match(
+            new("Atlassian", "GBP", 12, AnnualValue: 167_000m),
+            [new MarketPriceLine("Confluence Enterprise named users", null)],
+            deals)[0];
+
+        Assert.NotNull(match);
+        Assert.Equal(MarketMatchKind.Similar, match.Kind);
+        Assert.Equal("SAME-TYPE", match.RecordId);
+        Assert.Equal("Confluence Premium", match.Product);
+    }
+
+    [Fact]
+    public void A_similar_product_may_come_from_another_supplier_in_the_same_market_but_the_suppliers_own_comes_first()
+    {
+        var salesforce = new[] { SampleDeal.Create(recordId: "SFDC", product: "Sales Cloud Enterprise", geography: "UK", currency: "GBP") };
+        var market = new[]
+        {
+            SampleDeal.Create(recordId: "SLACK", supplier: "Slack", product: "Enterprise Grid", geography: "UK", currency: "GBP"),
+            SampleDeal.Create(recordId: "SFDC", product: "Sales Cloud Enterprise", geography: "UK", currency: "GBP"),
+        };
+
+        var fromMarket = MarketPriceMatcher.Match(
+            SalesforceGbp12, [new MarketPriceLine("Slack Enterprise Grid seats", null)], salesforce, market)[0];
+        Assert.Equal("SLACK", fromMarket?.RecordId);
+        Assert.Equal(MarketMatchKind.Similar, fromMarket?.Kind);
+
+        var ownCatalogue = MarketPriceMatcher.Match(
+            SalesforceGbp12, [new MarketPriceLine("Sales Cloud Performance", null)], salesforce, market)[0];
+        Assert.Equal("SFDC", ownCatalogue?.RecordId);
+        Assert.Equal(MarketMatchKind.Similar, ownCatalogue?.Kind);
+    }
+
+    [Fact]
+    public void Edition_and_packaging_words_alone_never_make_a_product_similar()
+    {
+        var deals = new[]
+        {
+            SampleDeal.Create(recordId: "JSM", supplier: "Atlassian", product: "Jira Service Management Premium", geography: "UK", currency: "GBP"),
+            SampleDeal.Create(recordId: "SC", supplier: "Atlassian", product: "Service Cloud Enterprise", geography: "UK", currency: "GBP"),
+            SampleDeal.Create(recordId: "JSP", supplier: "Atlassian", product: "Jira Software Premium", geography: "UK", currency: "GBP"),
+        };
+
+        var match = MarketPriceMatcher.Match(
+            new("Atlassian", "GBP", 12),
+            [new MarketPriceLine("Premium Support annual support service", "enterprise package")],
+            deals,
+            deals)[0];
+
+        Assert.Null(match);
+    }
+
+    [Theory]
+    [InlineData("<100k", 99_000, true)]
+    [InlineData("<100k", 100_000, false)]
+    [InlineData("100k-250k", 167_000, true)]
+    [InlineData("1m-5m", 5_000_000, false)]
+    [InlineData("5m+", 6_000_000, true)]
+    [InlineData("unknown", 1_000, false)]
+    public void A_customer_of_the_same_type_is_one_whose_annual_value_falls_in_the_records_band(string band, double value, bool expected) =>
+        Assert.Equal(expected, MarketPriceMatcher.IsInValueBand(band, (decimal)value));
+
+    [Fact]
+    public void An_unknown_annual_value_is_never_the_same_type() =>
+        Assert.False(MarketPriceMatcher.IsInValueBand("100k-250k", null));
+
+    [Fact]
+    public async Task Against_the_checked_in_feed_a_jira_and_confluence_line_is_their_uk_bundle()
+    {
+        var matcher = new MarketPriceMatcher(new ProviderMarketDealLookup(new MockMarketIntelligenceProvider()));
+
+        var matches = await matcher.MatchAsync(
+            new MarketPriceContext("Atlassian Pty Ltd", "GBP", 12, AnnualValue: 167_000m),
+            [
+                new MarketPriceLine("Jira Software Premium + Confluence Premium", "named users / licenses"),
+                new MarketPriceLine("Premium Support annual support service", "enterprise package"),
+            ],
+            CancellationToken.None);
+
+        var bundle = matches[0];
+        Assert.NotNull(bundle);
+        Assert.Equal(MarketMatchKind.Bundle, bundle.Kind);
+        Assert.Equal("Jira Software Premium + Confluence Premium", bundle.Product);
+        Assert.Equal("GBP", bundle.Currency);
+        Assert.Equal("UK", bundle.Geography);
+        Assert.True(bundle.UnitPriceP25 <= bundle.UnitPriceP50 && bundle.UnitPriceP50 <= bundle.UnitPriceP75);
         Assert.Null(matches[1]);
     }
 

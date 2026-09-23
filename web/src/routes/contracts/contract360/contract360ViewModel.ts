@@ -128,10 +128,12 @@ export function buildRecommendation(header: Contract360HeaderBody, renewals: rea
 }
 
 export interface SaveAnswer {
-  /** A figure, a representative band, or an honest "Not yet available" after a real strategy call. */
+  /** The yearly saving ("GBP 55–64k / yr"), "At market price", the target unit price when the yearly figure cannot be sized, or an honest "Not yet available". */
   estimate: string;
-  /** The lever sentence, never-bare representative provenance, or why the estimate is not yet there. */
+  /** What you pay against what the market pays, the lever sentence, or why the estimate is not yet there. */
   lever: string;
+  /** Never-bare representative provenance (`adapter A, n = 214`), the small print under the lever; empty when no market band backs the estimate. */
+  source: string;
 }
 
 export interface MoveAnswer {
@@ -166,7 +168,7 @@ export const ADD_THE_END_DATE = "Add the end date";
  */
 export type StrategySource = { called: false } | { called: true; pack: ContractStrategyBody | null };
 
-const EMPTY_SAVE: SaveAnswer = { estimate: "", lever: "" };
+const EMPTY_SAVE: SaveAnswer = { estimate: "", lever: "", source: "" };
 const EMPTY_MOVE: MoveAnswer = { termEnd: null, deadline: "", deadlineHref: null, cancelDays: null, isUrgent: false, detail: "" };
 const FAILED_MOVE: MoveAnswer = {
   termEnd: null,
@@ -177,18 +179,32 @@ const FAILED_MOVE: MoveAnswer = {
   detail: "The renewal strategy could not be loaded. Retry the page to try again.",
 };
 
+/** The contract's own priced lines, for sizing the strategy's target band into a yearly saving. */
+export interface PricingContext {
+  products: readonly Contract360ProductBody[];
+  currency: string;
+  autoAcceptThreshold?: number;
+}
+
+const NO_PRICING: PricingContext = { products: [], currency: "" };
+
 /**
  * The three answers (`markup.html` "CONTRACT 360 — three answers"). `Where you can save` and
  * `When you must move` **map** `GET /api/contracts/{id}/strategy` (ADR-012 w17 clause 35) — they
  * never compute a second figure from the pipeline. Three states per cell (ADR-020 w17 §14(f)):
- * a figure and its lever; a representative band with Ask provenance (`adapter A, n = 214`) on the
- * detail line; or no answer yet, naming what is missing and the way to get it.
+ * a figure and its lever; a representative band with Ask provenance (`adapter A, n = 214`) on its
+ * own small-print line; or no answer yet, naming what is missing and the way to get it.
+ *
+ * "Where you can save" reads like the mock's `CHF 80–120k / yr` over "You pay CHF 156 per user
+ * against a market median of 132": the strategy's target band (P25–median, clamped to today's
+ * price) sized over each line's own annual cost (`computeLineSaving`), never the bare band.
  */
 export function buildAnswers(
   header: Contract360HeaderBody,
   renewal: Contract360Body["tabs"]["renewal"],
   renewals: readonly RenewalPipelineItemBody[],
   strategy: StrategySource,
+  pricing: PricingContext = NO_PRICING,
 ): AnswersBand {
   const act = buildRecommendation(header, renewals);
 
@@ -198,40 +214,118 @@ export function buildAnswers(
 
   if (strategy.pack === null) {
     return {
-      save: { estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE },
+      save: { estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE, source: "" },
       move: FAILED_MOVE,
       act,
     };
   }
 
   return {
-    save: mapSave(strategy.pack),
+    save: mapSave(strategy.pack, pricing),
     move: mapMove(header, renewal, strategy.pack),
     act,
   };
 }
 
-function mapSave(pack: ContractStrategyBody): SaveAnswer {
-  const target = pack.targets[0];
-  const lever = pack.whereYouCanPush[0];
+type StrategyTarget = ContractStrategyBody["targets"][number];
 
-  if (
-    target !== undefined &&
-    target.explanation.toLowerCase().includes("representative") &&
-    target.acceptableRangeLow !== null &&
-    target.acceptableRangeHigh !== null
-  ) {
+interface SizedTarget {
+  low: number;
+  high: number;
+  /** The contract line the target prices, when it is on screen with a unit price (officialized). */
+  product: Contract360ProductBody | null;
+  saving: SavingRange | null;
+}
+
+/** "representative" targets with a band, each paired with its contract line (same order: one target per product line). */
+function sizeTargets(pack: ContractStrategyBody, pricing: PricingContext): SizedTarget[] {
+  const threshold = pricing.autoAcceptThreshold ?? AUTO_ACCEPT_THRESHOLD;
+  const sized: SizedTarget[] = [];
+  pack.targets.forEach((target: StrategyTarget, index) => {
+    const low = target.acceptableRangeLow;
+    const high = target.acceptableRangeHigh;
+    if (!target.explanation.toLowerCase().includes("representative") || low === null || high === null) return;
+    const candidate = pricing.products[index] ?? null;
+    const product =
+      candidate !== null && candidate.description === target.description && isExtractedRowShown(candidate, threshold) && candidate.unitPrice !== null
+        ? candidate
+        : null;
+    sized.push({ low, high, product, saving: product === null ? null : computeLineSaving(product.unitPrice, product.annualCost, low, high) });
+  });
+  return sized;
+}
+
+function mapSave(pack: ContractStrategyBody, pricing: PricingContext): SaveAnswer {
+  const targets = sizeTargets(pack, pricing);
+
+  if (targets.length > 0) {
+    const source = formatRepresentativeProvenance(pack.targets.find((t) => t.explanation.toLowerCase().includes("representative"))!.explanation);
+    const withSaving = targets.filter((t): t is SizedTarget & { saving: SavingRange } => t.saving !== null);
+    const named = pricing.products.length > 1;
+
+    if (withSaving.length > 0) {
+      const total = withSaving.reduce<SavingRange>((sum, t) => ({ low: sum.low + t.saving.low, high: sum.high + t.saving.high }), { low: 0, high: 0 });
+      const lead = withSaving.reduce((best, t) => (t.saving.high > best.saving.high ? t : best));
+      const estimate = formatSavingRange(total, pricing.currency);
+      if (estimate === null) return { estimate: AT_MARKET_PRICE, lever: formatYouPay(lead, pricing.currency, named, true), source };
+      // A similar product's median in the total is a guide, not the line's own market price: "≈", as in the table.
+      const similar = withSaving.some((t) => t.saving.high > 0 && t.product?.market?.matchKind === "Similar");
+      const lever = formatYouPay(lead, pricing.currency, named, false);
+      return similar
+        ? { estimate: `≈ ${upperFirst(estimate)} / yr`, lever: `${lever} ${SIMILAR_IN_TOTAL}`, source }
+        : { estimate: `${upperFirst(estimate)} / yr`, lever, source };
+    }
+
+    // The band is known but the line carries no annual cost: the target unit price, in its currency.
+    const first = targets[0];
     return {
-      estimate: `${formatPlainNumber(target.acceptableRangeLow)}–${formatPlainNumber(target.acceptableRangeHigh)}`,
-      lever: formatRepresentativeProvenance(target.explanation),
+      estimate: `${pricing.currency === "" ? "" : `${pricing.currency} `}${formatPlainNumber(first.low)}–${formatPlainNumber(first.high)} / unit`,
+      lever: TARGET_PRICE_ONLY,
+      source,
     };
   }
 
+  const target = pack.targets[0];
+  const lever = pack.whereYouCanPush[0];
   if (target !== undefined && target.openingTarget !== null && lever !== undefined) {
-    return { estimate: formatPlainNumber(target.openingTarget), lever: lever.rationale };
+    return { estimate: formatPlainNumber(target.openingTarget), lever: lever.rationale, source: "" };
   }
 
-  return { estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE };
+  return { estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE, source: "" };
+}
+
+export const AT_MARKET_PRICE = "At market price";
+export const SIMILAR_IN_TOTAL = "≈: part of this comes from a similar product's median, not your exact product's.";
+export const TARGET_PRICE_ONLY =
+  "Target unit price: from the market's P25 to its median. The line's annual cost is not recorded, so the yearly saving cannot be sized yet.";
+
+function upperFirst(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * The lever line under the saving: what you pay per unit against what the market pays, saying
+ * plainly when that market figure is a bundle's summed medians or only a similar product's.
+ */
+function formatYouPay(lead: SizedTarget, currency: string, named: boolean, atMarket: boolean): string {
+  const product = lead.product!;
+  const price = formatMoney(product.unitPrice, currency);
+  const subject = named ? `${product.description}: you pay` : "You pay";
+  const market = product.market;
+  if (market === null || !market.matched || market.unitPriceP50 === null) {
+    return `${subject} ${price} per unit against a market target of ${formatMoney(lead.low, currency)}–${formatPlainNumber(lead.high)}.`;
+  }
+  const median = formatMoney(market.unitPriceP50, market.currency ?? currency);
+  const delta = formatVersusMarket(product.unitPrice!, market.unitPriceP50);
+  const against =
+    market.matchKind === "Bundle"
+      ? `${median}, each product's market median added up`
+      : market.matchKind === "Similar"
+        ? `${median}, the median of a similar product (${market.product ?? "not named"}), not your exact one`
+        : `a market median of ${median}`;
+  return atMarket
+    ? `${subject} ${price} per unit, at or below ${against} (${delta}) — price is not where the saving is.`
+    : `${subject} ${price} per unit against ${against} (${delta}).`;
 }
 
 /** Ask vocabulary (`ia-v2.md:110`): `adapter A, n = 214` — never a second phrase for the same idea. */
@@ -334,7 +428,7 @@ export function buildNegotiationSteps(supplierLabel: string, deadlineLabel: stri
 
 /** `markup.html`: "target {{ cur.saving }} · close by {{ cur.cancel }}". */
 export function formatTrackerMeta(save: SaveAnswer, move: MoveAnswer): string {
-  return `target ${save.estimate} · close by ${move.deadline}`;
+  return `target ${save.estimate.replace(/^(≈ )?Up to /, "$1up to ")} · close by ${move.deadline}`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -834,11 +928,13 @@ export interface ProductLine {
   name: string;
   /** "SKU · unit", the 11px line under the name; empty when the wire carries neither. */
   meta: string;
+  /** What the market figure is when it is not this line's own product: a bundle's summed medians, or a similar product's; `null` for an exact match. */
+  marketBasis: string | null;
   qty: string;
   price: string;
-  /** The matched market record's median (P50) unit price, or an em dash. */
+  /** The market median (P50) unit price -- "≈"-prefixed when it is a similar product's -- or an em dash. */
   market: string;
-  /** "UK · 12 mo · n=14" under the market figure; "no match" for a line compared with nothing comparable; empty before any comparison. */
+  /** "UK · 12 mo · n=14" under the market figure (led by "similar" / "sum" for a similar product or a bundle); "no match" for a line compared with nothing comparable; empty before any comparison. */
   marketMeta: string;
   /** Hover detail: the market product, its P25–P75 band and the corpus's own provenance label. */
   marketTitle: string | null;
@@ -849,6 +945,9 @@ export interface ProductLine {
   /** Bar widths, `Math.round(value/max(price, market)*100)%` -- pay is the full bar while no market price exists. */
   payWidth: string;
   marketWidth: string;
+  /** The yearly saving of paying the market median–P25 ("GBP 55–64k", "up to GBP 4k"), "none" at or below the market, or an em dash when it cannot be sized. */
+  saving: string;
+  savingAccent: boolean;
   annual: string;
 }
 
@@ -857,14 +956,104 @@ type ProductMarketBody = NonNullable<Contract360ProductBody["market"]>;
 export const PRODUCT_NOTE_UNCHECKED =
   "Prices are the negotiated rate on the validated document; the market column fills once the lines have been compared with the market data.";
 export const PRODUCT_NOTE_NO_MATCH =
-  "No comparable market record for these lines yet — a match needs the same supplier, a product the line names and the contract's own currency.";
+  "No comparable market record for these lines yet — not your product, and nothing similar, from customers paying in the contract's own currency.";
+export const PRODUCT_NOTE_SIMILAR =
+  "≈ marks the median of a similar product, not of your exact product — a guide for the negotiation, not your market price.";
 
-/** The foot note under the table: what the market column is, and where its figures come from. */
+/** The foot note under the table: what the market and saving columns are, and where their figures come from. */
 export function buildProductNote(products: readonly Contract360ProductBody[]): string {
   const markets = products.map((p) => p.market).filter((m): m is ProductMarketBody => m !== null);
   if (markets.length === 0) return PRODUCT_NOTE_UNCHECKED;
   if (!markets.some((m) => m.matched)) return PRODUCT_NOTE_NO_MATCH;
-  return "Market is the median (P50) unit price of the closest market record for the same supplier, product and currency — representative market data (mock feed), never converted between currencies. Hover a figure for its range and date.";
+  const base =
+    "Market median is the median (P50) unit price paid for the same product in your currency, by customers with a contract of your size where the market data has them — representative market data (mock feed). Could save is what paying between that median and the cheaper quarter of the market (P25) would save over a year.";
+  return markets.some((m) => m.matched && m.matchKind === "Similar") ? `${base} ${PRODUCT_NOTE_SIMILAR}` : base;
+}
+
+// ---- Savings arithmetic shared by the answers band and the table --------------------------------
+
+export interface SavingRange {
+  /** Yearly saving at the top of the target band (the market median, clamped to today's price). */
+  low: number;
+  /** Yearly saving at the bottom of the target band (P25, clamped to today's price). */
+  high: number;
+}
+
+/**
+ * The yearly saving of moving one line's unit price into a target band: the line's own annual cost
+ * scaled by the per-unit gap (`annualCost × (price − target) / price`), so a line billed monthly
+ * still reads per year. `null` when the line carries no unit price or annual cost -- never sized
+ * from a guessed volume. Plain arithmetic on figures the server sent, like the "vs market" percent.
+ */
+export function computeLineSaving(
+  unitPrice: number | null,
+  annualCost: number | null,
+  targetLow: number,
+  targetHigh: number,
+): SavingRange | null {
+  if (unitPrice === null || unitPrice <= 0 || annualCost === null || annualCost <= 0) return null;
+  const unitsPerYear = annualCost / unitPrice;
+  return {
+    low: Math.max(0, unitPrice - Math.max(targetLow, targetHigh)) * unitsPerYear,
+    high: Math.max(0, unitPrice - Math.min(targetLow, targetHigh)) * unitsPerYear,
+  };
+}
+
+function compactFigure(value: number, divisor: number, digits: number): string {
+  const text = (value / divisor).toFixed(digits);
+  return text.endsWith(".0") ? text.slice(0, -2) : text;
+}
+
+/**
+ * `app.jsx`'s `saving: 'CHF 80–120k / yr'` shape, without the "/ yr": both ends on the scale of the
+ * higher one ("GBP 55–64k", "GBP 1.2–2.5M", "GBP 800–950"), "up to …" when the low end is nothing,
+ * `null` when there is nothing to save.
+ */
+export function formatSavingRange(range: SavingRange, currency: string): string | null {
+  if (range.high < 0.5) return null;
+  const [divisor, digits, suffix] =
+    range.high >= 1_000_000 ? [1_000_000, 1, "M"] : range.high >= 10_000 ? [1_000, 0, "k"] : range.high >= 1_000 ? [1_000, 1, "k"] : [1, 0, ""];
+  const high = compactFigure(range.high, divisor, digits);
+  const low = compactFigure(range.low, divisor, digits);
+  const code = currency === "" ? "" : `${currency} `;
+  if (Number(low) === 0) return `up to ${code}${high}${suffix}`;
+  if (low === high) return `${code}${high}${suffix}`;
+  return `${code}${low}–${high}${suffix}`;
+}
+
+/** One line's saving against its own market band: P25–median, each clamped to today's price. */
+function marketLineSaving(p: Contract360ProductBody, price: number | null, annual: number | null): SavingRange | null {
+  const market = p.market;
+  if (price === null || market === null || !market.matched || market.unitPriceP50 === null) return null;
+  const p50 = market.unitPriceP50;
+  const p25 = market.unitPriceP25 ?? p50;
+  return computeLineSaving(price, annual, Math.min(p25, price), Math.min(p50, price));
+}
+
+/**
+ * The table foot's "Could save … / yr": every line's own saving added up (same contract currency),
+ * "≈"-prefixed when a similar product's median is part of it; `null` when no line can be sized.
+ */
+export function buildProductSavingTotal(
+  products: readonly Contract360ProductBody[],
+  currency: string,
+  autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
+): string | null {
+  const total: SavingRange = { low: 0, high: 0 };
+  let sized = false;
+  let similar = false;
+  for (const p of products) {
+    const saving = isExtractedRowShown(p, autoAcceptThreshold) ? marketLineSaving(p, p.unitPrice, p.annualCost) : null;
+    if (saving === null) continue;
+    sized = true;
+    total.low += saving.low;
+    total.high += saving.high;
+    similar ||= saving.high > 0 && p.market?.matchKind === "Similar";
+  }
+  if (!sized) return null;
+  const figure = formatSavingRange(total, currency);
+  if (figure === null) return "none";
+  return similar ? `≈ ${figure}` : figure;
 }
 
 /** `(price / P50 - 1)`, rounded to a whole percent: "+14%", "-8%", "0%". */
@@ -881,10 +1070,11 @@ function percentOf(value: number, max: number): string {
  * `d.products`: one row per line item. The market figures are the line's own stored comparison
  * (`products[].market`, written when the document was extracted and refreshed when stale): the
  * matched record's P50 with its region, term and sample size, the delta of the line's unit price
- * against it, and both bars scaled to the larger of the two. A line compared with nothing
- * comparable, or not compared yet, keeps an honest em dash and a full pay bar (`mktW:'0%'`,
- * `payW:'100%'` in the mock's own no-market branch). An unofficialized line keeps its row with
- * dashed figures.
+ * against it, both bars scaled to the larger of the two, and the yearly saving of paying between
+ * that median and P25. A bundle's summed medians and a similar product's median say so on the row
+ * (`marketBasis`, "≈"). A line compared with nothing comparable, or not compared yet, keeps an
+ * honest em dash and a full pay bar (`mktW:'0%'`, `payW:'100%'` in the mock's own no-market
+ * branch). An unofficialized line keeps its row with dashed figures.
  */
 export function buildProductLines(
   products: readonly Contract360ProductBody[],
@@ -900,26 +1090,46 @@ export function buildProductLines(
     const marketCurrency = market?.currency ?? currency;
     const compared = price !== null && p50 !== null && p50 > 0;
     const max = compared ? Math.max(price, p50) : 0;
+    const similar = p50 !== null && market?.matchKind === "Similar";
+    const approx = similar ? "≈ " : "";
+    const saving = compared ? marketLineSaving(p, price, officialized ? p.annualCost : null) : null;
+    const savingText = saving === null ? null : formatSavingRange(saving, currency);
     return {
       key: p.lineItemId,
       name: p.description !== "" ? p.description : (p.sku ?? "Line item"),
       meta,
+      marketBasis: p50 !== null && market !== null ? formatMarketBasis(market) : null,
       qty: officialized && p.quantity !== null ? formatPlainNumber(p.quantity) : UNOFFICIALIZED_PLACEHOLDER,
       price: officialized ? formatMoney(p.unitPrice, currency) : UNOFFICIALIZED_PLACEHOLDER,
-      market: p50 !== null ? formatMoney(p50, marketCurrency) : UNOFFICIALIZED_PLACEHOLDER,
+      market: p50 !== null ? `${approx}${formatMoney(p50, marketCurrency)}` : UNOFFICIALIZED_PLACEHOLDER,
       marketMeta: market === null ? "" : p50 !== null ? formatMarketMeta(market) : "no match",
       marketTitle: p50 !== null && market !== null ? formatMarketTitle(market, marketCurrency) : null,
-      delta: compared ? formatVersusMarket(price, p50) : UNOFFICIALIZED_PLACEHOLDER,
+      delta: compared ? `${approx}${formatVersusMarket(price, p50)}` : UNOFFICIALIZED_PLACEHOLDER,
       deltaAccent: compared && price > p50,
       payWidth: compared ? percentOf(price, max) : price !== null ? "100%" : "0%",
       marketWidth: compared ? percentOf(p50, max) : "0%",
+      saving: saving === null ? UNOFFICIALIZED_PLACEHOLDER : savingText === null ? "none" : `${approx}${savingText}`,
+      savingAccent: savingText !== null,
       annual: officialized ? formatMoney(p.annualCost, currency) : UNOFFICIALIZED_PLACEHOLDER,
     };
   });
 }
 
+/** Under the product name, when the market figure is not this line's own product. */
+function formatMarketBasis(market: ProductMarketBody): string | null {
+  if (market.matchKind === "Similar") {
+    return `Market: a similar product, not yours — ${market.product ?? "unnamed"}`;
+  }
+  if (market.matchKind === "Bundle") {
+    return `Market: ${market.product ?? "its products"}, priced one by one and added up`;
+  }
+  return null;
+}
+
 function formatMarketMeta(market: ProductMarketBody): string {
+  const kind = market.matchKind === "Similar" ? "similar" : market.matchKind === "Bundle" ? "sum" : null;
   return [
+    kind,
     market.geography,
     market.termMonths !== null ? `${market.termMonths} mo` : null,
     market.sampleSize !== null ? `n=${market.sampleSize}` : null,

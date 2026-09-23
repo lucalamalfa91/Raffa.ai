@@ -2397,7 +2397,7 @@
                                   "object",
                                   "null"
                                 ],
-                                "description": "The line's stored market comparison (LineItemMarketPriceService): null when never compared, matched=false when no comparable market record exists (same supplier, a product the line names, the contract's own currency, n >= 5). Figures always carry their record, sample size, region/term and as-of date.",
+                                "description": "The line's stored market comparison (LineItemMarketPriceService): null when never compared, matched=false when nothing comparable exists (no product the line names and none similar, in the contract's own currency, n >= 5). Figures always carry their record, sample size, region/term and as-of date, and matchKind says whether they are the line's own product.",
                                 "required": [
                                   "matched",
                                   "recordId",
@@ -2411,7 +2411,8 @@
                                   "sampleSize",
                                   "provenance",
                                   "marketUpdatedAt",
-                                  "checkedAt"
+                                  "checkedAt",
+                                  "matchKind"
                                 ],
                                 "properties": {
                                   "matched": {
@@ -2488,6 +2489,19 @@
                                   "checkedAt": {
                                     "type": "string",
                                     "format": "date-time"
+                                  },
+                                  "matchKind": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "enum": [
+                                      "Exact",
+                                      "Bundle",
+                                      "Similar",
+                                      null
+                                    ],
+                                    "description": "MarketMatchKind: Exact -- the record is the line's own product (or SKU); Bundle -- the line names several products and the P25/P50/P75 are the sum of each product's own band (product lists them, recordId joins their ids with '+'); Similar -- no record for the line's own product, so the band is a similar product's (product names it) from customers of the same type where possible: a guide, never the line's own market price. null when matched is false."
                                   }
                                 }
                               }

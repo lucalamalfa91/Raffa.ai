@@ -155,6 +155,7 @@ function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
             provenance: "representative market data · mock feed · updated 2026-07-01",
             marketUpdatedAt: "2026-07-01T00:00:00Z",
             checkedAt: "2026-09-22T08:00:00Z",
+            matchKind: "Exact",
           },
         },
       ],
@@ -303,11 +304,11 @@ function strategyPack(overrides: Partial<ContractStrategyBody> = {}): ContractSt
     targets: [
       {
         description: "Premium DBU",
-        openingTarget: 1500,
-        acceptableRangeLow: 1500,
-        acceptableRangeHigh: 1800,
-        walkAwayThreshold: 2100,
-        explanation: "Recommended target range [1500, 1800]. representative (source: A; n=214; as of 2026-01-01)",
+        openingTarget: 0.3,
+        acceptableRangeLow: 0.4,
+        acceptableRangeHigh: 0.5,
+        walkAwayThreshold: 0.55,
+        explanation: "Recommended target range [0.4, 0.5]. representative (source: A; n=214; as of 2026-01-01)",
       },
     ],
     nextSteps: [{ label: "Notify the supplier of intent to renegotiate", dueHint: "this week" }],
@@ -683,8 +684,10 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       const band = screen.getByRole("region", { name: "Answers" });
       const cells = band.querySelectorAll(".contract360-answer");
 
-      expect(cells[0]).toHaveTextContent("1,500–1,800");
-      expect(cells[0]).toHaveTextContent("representative · adapter A, n = 214");
+      // 120,000 DBU a year at CHF 0.55: 0.05 over the median, 0.15 over P25.
+      expect(within(cells[0] as HTMLElement).getByText("CHF 6–18k / yr")).toHaveClass("contract360-answer-value");
+      expect(cells[0]).toHaveTextContent("You pay CHF 0.55 per unit against a market median of CHF 0.5 (+10%).");
+      expect(within(cells[0] as HTMLElement).getByText("representative · adapter A, n = 214 · as of 2026-01-01")).toHaveClass("contract360-answer-source");
       expect(cells[0]).not.toHaveTextContent("Not yet available");
 
       expect(within(cells[1] as HTMLElement).getByText(formatDateOnly(CANCEL_DEADLINE))).toHaveClass("deadline-critical");

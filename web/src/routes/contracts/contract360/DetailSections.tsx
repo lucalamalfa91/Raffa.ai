@@ -14,6 +14,7 @@ import {
   buildKeyTerms,
   buildLeverCards,
   buildProductNote,
+  buildProductSavingTotal,
   buildObligationColumns,
   buildProductLines,
   buildRiskItems,
@@ -92,6 +93,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
   const currency = contract.tabs.commercials.currency;
   const lines = buildProductLines(contract.tabs.products, currency, autoAcceptThreshold);
   const total = contract.header.annualSpend === null ? "—" : formatCompactAmount(contract.header.annualSpend, currency);
+  const saving = buildProductSavingTotal(contract.tabs.products, currency, autoAcceptThreshold);
   return (
     <SectionFrame copy={SECTION_COPY.products} label="Products & pricing">
       {lines.length === 0 ? (
@@ -102,9 +104,10 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
             <div className="contract360-products-head" role="row">
               <span>Product</span>
               <span className="is-right">Qty</span>
-              <span className="is-right">You pay</span>
-              <span className="is-right">Market</span>
+              <span className="is-right">You pay / unit</span>
+              <span className="is-right">Market median / unit</span>
               <span>vs market</span>
+              <span className="is-right">Could save / yr</span>
               <span className="is-right">Annual</span>
             </div>
             {lines.map((line) => (
@@ -112,6 +115,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
                 <div>
                   <div className="contract360-product-name">{line.name}</div>
                   {line.meta !== "" && <div className="contract360-product-meta">{line.meta}</div>}
+                  {line.marketBasis !== null && <div className="contract360-product-basis">{line.marketBasis}</div>}
                 </div>
                 <div className="is-right">{line.qty}</div>
                 <div className="is-right contract360-product-price">{line.price}</div>
@@ -126,12 +130,22 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
                   </div>
                   <span className={`contract360-product-delta-value${line.deltaAccent ? " is-accent" : ""}`}>{line.delta}</span>
                 </div>
+                <div className={`is-right contract360-product-saving${line.savingAccent ? " is-accent" : ""}`}>{line.saving}</div>
                 <div className="is-right contract360-product-annual">{line.annual}</div>
               </div>
             ))}
             <div className="contract360-products-foot">
               <span className="contract360-products-note">{buildProductNote(contract.tabs.products)}</span>
-              <span className="contract360-products-total">{total}</span>
+              {saving !== null && (
+                <span className="contract360-products-total contract360-products-total-saving">
+                  <span className="contract360-products-total-label">Could save / yr</span>
+                  {saving}
+                </span>
+              )}
+              <span className="contract360-products-total">
+                <span className="contract360-products-total-label">Spend / yr</span>
+                {total}
+              </span>
             </div>
           </div>
         </div>

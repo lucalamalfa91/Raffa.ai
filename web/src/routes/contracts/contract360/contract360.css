@@ -159,6 +159,13 @@
   text-wrap: pretty;
 }
 
+.contract360-answer-source {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+  overflow-wrap: break-word;
+}
+
 .contract360-answer-act .contract360-answer-detail {
   margin-bottom: 14px;
 }
@@ -506,25 +513,27 @@
 }
 
 /* ---- 03 Products & pricing ------------------------------------------------------------------
-   min-width:650px grid minmax(150px,2.2fr) minmax(44px,.6fr) minmax(84px,1fr) minmax(84px,1fr)
-   minmax(96px,1.2fr) minmax(112px,1fr);gap:0 14px · head 11px uppercase under a 2px text rule ·
-   rows padding:14px 0, 1px divider, 13px tabular · 6px bar track (neutral-200) with a neutral-500
-   market bar and a text/accent pay bar at .85 (accent when paying above the market P50; both bars
-   scaled to the larger of price and P50) · market cell: P50 over an 11px "region · term · n" line ·
-   foot: note 13px neutral-600 + total heading 16px. */
+   min-width:780px grid minmax(150px,2.2fr) minmax(44px,.5fr) minmax(84px,1fr) minmax(96px,1fr)
+   minmax(96px,1.2fr) minmax(96px,1fr) minmax(104px,1fr);gap:0 14px · head 11px uppercase under a
+   2px text rule · rows padding:14px 0, 1px divider, 13px tabular · 6px bar track (neutral-200) with
+   a neutral-500 market bar and a text/accent pay bar at .85 (accent when paying above the market
+   P50; both bars scaled to the larger of price and P50) · market cell: P50 over an 11px "region ·
+   term · n" line · an 11px accent-700 basis line under the product name when the market figure is a
+   bundle's or a similar product's · "could save" in accent-700 · foot: note 13px neutral-600 + the
+   saving and spend totals, heading 16px under an 11px kicker. */
 
 .contract360-products-scroll {
   overflow-x: auto;
 }
 
 .contract360-products {
-  min-width: 650px;
+  min-width: 780px;
 }
 
 .contract360-products-head,
 .contract360-product {
   display: grid;
-  grid-template-columns: minmax(150px, 2.2fr) minmax(44px, 0.6fr) minmax(84px, 1fr) minmax(84px, 1fr) minmax(96px, 1.2fr) minmax(112px, 1fr);
+  grid-template-columns: minmax(150px, 2.2fr) minmax(44px, 0.5fr) minmax(84px, 1fr) minmax(96px, 1fr) minmax(96px, 1.2fr) minmax(96px, 1fr) minmax(104px, 1fr);
   gap: 0 14px;
 }
 
@@ -564,8 +573,23 @@
   font-weight: var(--weight-body-strong);
 }
 
+.contract360-product-basis {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--color-accent-700);
+}
+
 .contract360-product-market {
   color: var(--color-neutral-700);
+}
+
+.contract360-product-saving {
+  font-weight: var(--weight-body-strong);
+  color: var(--color-neutral-600);
+}
+
+.contract360-product-saving.is-accent {
+  color: var(--color-accent-700);
 }
 
 .contract360-product-market-meta {
@@ -622,8 +646,8 @@
 
 .contract360-products-foot {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 16px;
+  grid-template-columns: 1fr auto auto;
+  gap: 24px;
   padding: 12px 0 0;
   font-size: 13px;
 }
@@ -637,6 +661,22 @@
   font-family: var(--font-heading);
   font-weight: var(--weight-heading);
   font-size: 16px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.contract360-products-total-saving {
+  color: var(--color-accent-700);
+}
+
+.contract360-products-total-label {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: normal;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
 }
 
 /* ---- 04 Clauses that matter -----------------------------------------------------------------
