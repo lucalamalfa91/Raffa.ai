@@ -138,6 +138,41 @@ public sealed class DocumentsListCountsTests : IClassFixture<RaffaApiFactory>
             order);
     }
 
+    /// <summary>"Review 0 fields" is never a state the list shows: a NeedsReview document whose
+    /// contract has no weak field left (a weak line item/clause, or a failed stage, parked it there)
+    /// is validated automatically on the next list read, with its own audit trail; one that still
+    /// has a weak field stays in review.</summary>
+    [Fact]
+    public async Task A_needs_review_document_with_zero_weak_fields_is_auto_validated_on_list()
+    {
+        var tenantId = TenantId.New();
+        var weakContract = EntityId.New();
+        var cleanContract = EntityId.New();
+
+        var stillWeak = NewDocument(tenantId, DocumentProcessingStatus.NeedsReview, "still-weak.pdf");
+        stillWeak.ContractId = weakContract;
+        var nothingToReview = NewDocument(tenantId, DocumentProcessingStatus.NeedsReview, "nothing-to-review.pdf");
+        nothingToReview.ContractId = cleanContract;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
+            dbContext.Documents.AddRange(stillWeak, nothingToReview);
+            dbContext.ExtractionEvidences.AddRange(
+                Evidence(tenantId, weakContract, "endDate", 0.4, "review_required"),
+                Evidence(tenantId, cleanContract, "endDate", 0.95, "auto_accepted"));
+            await dbContext.SaveChangesAsync();
+        }
+
+        using var body = await GetAsync("/api/documents", tenantId);
+        var statusByFile = body.RootElement.GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("fileName").GetString()!, i => i.GetProperty("processingStatus").GetString());
+
+        Assert.Equal("NeedsReview", statusByFile["still-weak.pdf"]);
+        Assert.Equal("Completed", statusByFile["nothing-to-review.pdf"]);
+        AssertCounts(body.RootElement, all: 2, needsAttention: 1, needsReview: 1, processing: 0, rejected: 0);
+    }
+
     [Fact]
     public async Task An_empty_tenant_reports_five_zeros_present_not_absent()
     {
@@ -188,6 +223,19 @@ public sealed class DocumentsListCountsTests : IClassFixture<RaffaApiFactory>
             StoragePath = $"{tenantId.Value}/{fileName}",
             Checksum = $"sha256:{fileName}",
             ProcessingStatus = status,
+            CreatedAt = Now,
+        };
+
+    private static ExtractionEvidence Evidence(
+        TenantId tenantId, EntityId contractId, string fieldName, double confidence, string decision) =>
+        new()
+        {
+            TenantId = tenantId,
+            ContractId = contractId,
+            FieldName = fieldName,
+            Value = "2027-01-01",
+            Confidence = confidence,
+            Decision = decision,
             CreatedAt = Now,
         };
 

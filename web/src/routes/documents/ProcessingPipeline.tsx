@@ -25,3 +25,21 @@ export default function ProcessingPipeline({ stage }: ProcessingPipelineProps) {
     </div>
   );
 }
+
+/**
+ * The same 4px bar for a row that is `Uploaded` but not yet claimed by the Worker: there is no real
+ * stage to size the fill from, so the fill sweeps indefinitely instead -- the user sees work is
+ * pending without the bar claiming a percentage nobody has measured.
+ */
+export function PendingPipeline() {
+  return (
+    <div className="document-row-progress document-row-progress-pending" role="progressbar" aria-label="Waiting to start processing">
+      <div className="document-row-progress-fill" />
+    </div>
+  );
+}
+
+/** Small spinning ring shown beside the "Processing in the background" next-step copy. */
+export function PendingSpinner() {
+  return <span className="document-row-spinner" aria-hidden="true" />;
+}

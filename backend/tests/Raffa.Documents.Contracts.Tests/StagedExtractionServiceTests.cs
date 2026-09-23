@@ -545,7 +545,45 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Metadata].Status);
         Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Risk].Status);
 
-        Assert.Equal(DocumentProcessingStatus.NeedsReview, result.Value.DocumentProcessingStatus);
+        // Every field that was found cleared the bar, so there is no field a reviewer could decide
+        // on: the document completes instead of asking anyone to "Review 0 fields".
+        Assert.Equal(DocumentProcessingStatus.Completed, result.Value.DocumentProcessingStatus);
+    }
+
+    [Fact]
+    public async Task A_weak_line_item_alone_never_parks_the_document_on_review_0_fields()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var payloads = HighConfidencePayloads();
+        payloads["LineItems"] = """
+            {"items":[
+                {"sku":"SKU-1","description":"Enterprise seats","quantity":100,"unit":"seat","unitPrice":10.5,"sourcePage":1,"sourceSpan":"100 seats","confidence":0.4}
+            ]}
+            """;
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(
+            runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
+
+        Assert.True(result.IsSuccess);
+        // The stage itself still records the weak item...
+        Assert.Equal(
+            ExtractionJobStatus.NeedsReview,
+            result.Value.Stages.Single(s => s.Stage == ExtractionStage.LineItems).Status);
+        // ...but a line item is not a reviewable field, so the document is validated automatically.
+        Assert.Equal(DocumentProcessingStatus.Completed, result.Value.DocumentProcessingStatus);
+
+        await using var readDb = CreateContext(tenantContext);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var stored = await readDb.Documents.SingleAsync(d => d.Id == document.Id);
+        Assert.Equal(DocumentProcessingStatus.Completed, stored.ProcessingStatus);
     }
 
     [Fact]
@@ -890,7 +928,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     /// supplier does not compensate for absent data, so the document still needs review.
     /// </summary>
     [Fact]
-    public async Task B2_strong_supplier_still_needs_review_when_a_stage_fails()
+    public async Task B2_a_failed_stage_with_no_weak_field_completes_instead_of_review_0_fields()
     {
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
@@ -917,8 +955,9 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.True(result.IsSuccess);
         var summary = result.Value;
 
-        // Stage failure = missing signal: NeedsReview even though supplier was accepted.
-        Assert.Equal(DocumentProcessingStatus.NeedsReview, summary.DocumentProcessingStatus);
+        // A failed stage with every found field above the bar leaves nothing a reviewer could
+        // decide on: the document completes; the failed stage itself stays recorded as Failed.
+        Assert.Equal(DocumentProcessingStatus.Completed, summary.DocumentProcessingStatus);
         Assert.Equal(SupplierLegalName, summary.AcceptedSupplierName);
 
         var commercialStage = summary.Stages.Single(s => s.Stage == ExtractionStage.CommercialTerms);
