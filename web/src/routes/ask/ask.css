@@ -122,6 +122,10 @@
   text-decoration: none;
 }
 
+.ask-conv-title > .info-tip {
+  margin-left: -6px;
+}
+
 .ask-conv-meta {
   display: flex;
   gap: 18px;

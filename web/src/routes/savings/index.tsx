@@ -4,6 +4,7 @@ import type { ApiClient, PortfolioPageBody, SavingsOpportunityBody } from "../..
 import AskRaffaLink from "../../components/ask-bar/AskRaffaLink";
 import { ASK_PROMPTS } from "../../components/ask-bar/askLaunch";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
+import ScreenTitle from "../../components/ScreenTitle";
 import KpiRow from "./KpiRow";
 import ContextStrip from "./ContextStrip";
 import SavingsPipeline from "./SavingsPipeline";
@@ -203,7 +204,7 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
     <div className="savings-screen">
       <header className="screen-header">
         <div>
-          <h2 className="screen-title">Savings</h2>
+          <ScreenTitle guide="savings">Savings</ScreenTitle>
           <p className="screen-header-summary">{summary}</p>
         </div>
         <div className="screen-header-actions">

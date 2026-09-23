@@ -12,6 +12,9 @@ import ReviewState from "./ReviewState";
 import DocumentProgressPanel from "./DocumentProgressPanel";
 import { createSampleDocumentFile, type SampleDocumentKey } from "./sampleDocument";
 import { buildKbSummary, getDocumentTypeLabel } from "./documentTable";
+import ScreenTitle from "../../components/ScreenTitle";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import "./documents.css";
 
 export interface DocumentsRouteProps {
@@ -236,7 +239,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     <div className="documents-screen documents-screen--list">
       <header className="screen-header">
         <div>
-          <h2 className="screen-title">Documents</h2>
+          <ScreenTitle guide="documents">Documents</ScreenTitle>
           <p className="screen-header-summary">{buildKbSummary(list.counts)}</p>
         </div>
         {role === "admin" && (
@@ -259,6 +262,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
                 Delete all documents
               </button>
             )}
+            <CopyTip tip={TIPS.documentsDeleteAll} align="end" />
           </div>
         )}
       </header>

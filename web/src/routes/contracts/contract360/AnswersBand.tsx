@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { Contract360HeaderBody, RenewalActionRow } from "../../../api/client";
-import InfoTip from "../../../components/InfoTip";
+import InfoTip, { CopyTip } from "../../../components/InfoTip";
+import { TIPS } from "../../../components/infoTipCopy";
 import { getRenewalActionPlan, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
 import { buildSavingsContractHref } from "../../savings/savingsFilters";
 import {
@@ -108,7 +109,10 @@ export default function AnswersBand({
       </div>
 
       <div className="contract360-answer">
-        <p className="contract360-answer-label">When you must move</p>
+        <p className="contract360-answer-label">
+          When you must move
+          <CopyTip tip={TIPS.contractMove} />
+        </p>
         <p className={answerDisplayClass("contract360-answer-value", move.deadline, move.isUrgent ? " deadline-critical" : "")}>
           {move.deadlineHref !== null ? <Link to={move.deadlineHref}>{move.deadline}</Link> : move.deadline}
         </p>
@@ -125,7 +129,10 @@ export default function AnswersBand({
       </div>
 
       <div className="contract360-answer contract360-answer-act">
-        <p className="contract360-answer-label contract360-answer-label-accent">What to do</p>
+        <p className="contract360-answer-label contract360-answer-label-accent">
+          What to do
+          <CopyTip tip={TIPS.contractAct} align="end" />
+        </p>
         <p className={answerDisplayClass("contract360-answer-action", act.statement)}>{act.statement}</p>
         <p className="contract360-answer-detail">{act.rationale}</p>
 

@@ -11,7 +11,8 @@ import {
   type WorkspaceRole,
 } from "./navItems";
 import { CONVERSATION_LIST_TAKE, useRecentConversations } from "../../routes/ask/useRecentConversations";
-import InfoTip from "../InfoTip";
+import InfoTip, { CopyTip } from "../InfoTip";
+import { buildRailContractsTip, TIPS } from "../infoTipCopy";
 import {
   conversationDisplayTitle,
   filterConversations,
@@ -261,7 +262,10 @@ export default function RailNav({
   return (
     <nav className="shell-rail" aria-label="Primary">
       <div className="shell-rail-header">
-        <span className="shell-rail-kicker">Workspace</span>
+        <span className="shell-rail-kicker">
+          Workspace
+          <CopyTip tip={TIPS.railWorkspace} />
+        </span>
         <div className="shell-rail-workspace-name">{workspaceName}</div>
       </div>
 
@@ -353,6 +357,7 @@ export default function RailNav({
       <div className="shell-rail-section-kicker">
         From your contracts
         <span className={`shell-rail-kb-dot${kbReady ? " is-ready" : ""}`} aria-hidden="true" />
+        <CopyTip tip={buildRailContractsTip(kbReady)} />
       </div>
 
       <div className="shell-rail-secondary-nav">

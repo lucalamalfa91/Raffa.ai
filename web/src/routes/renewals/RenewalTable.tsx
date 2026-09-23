@@ -1,3 +1,5 @@
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import TablePager from "../../components/table/TablePager";
 import { usePagedRows } from "../../components/table/pager";
 import {
@@ -59,6 +61,7 @@ export default function RenewalTable({ rows, selectedContractId, onSelect, check
             </th>
             <th scope="col" className="renewal-col-score">
               Score
+              <CopyTip tip={TIPS.renewalsScore} />
             </th>
             <th scope="col">Supplier · contract</th>
             <th scope="col" className="renewal-table-numeric renewal-col-spend">
@@ -69,9 +72,11 @@ export default function RenewalTable({ rows, selectedContractId, onSelect, check
             </th>
             <th scope="col" className="renewal-table-numeric renewal-col-days">
               Notice in
+              <CopyTip tip={TIPS.renewalsDays} align="end" />
             </th>
             <th scope="col" className="renewal-col-status">
               Status
+              <CopyTip tip={TIPS.renewalsStatus} align="end" />
             </th>
           </tr>
         </thead>

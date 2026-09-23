@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import type { Contract360HeaderBody } from "../../../api/client";
+import ScreenTitle from "../../../components/ScreenTitle";
 import { getContractTypeLabel } from "../portfolioTableFormatters";
 import { formatHeaderMeta, resolveSupplierLabel, type BackLink } from "./contract360ViewModel";
 
@@ -41,7 +42,7 @@ export default function Contract360Header({ header, currency, docCount, backLink
           <p className="screen-kicker" title={supplier.title}>
             {supplier.label}
           </p>
-          <h2 className="screen-title">{getContractTypeLabel(header.type)}</h2>
+          <ScreenTitle guide="contract360">{getContractTypeLabel(header.type)}</ScreenTitle>
         </div>
         <div className="contract360-header-side">
           <p className="contract360-header-meta">{formatHeaderMeta(header, currency, docCount)}</p>

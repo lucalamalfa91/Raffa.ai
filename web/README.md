@@ -1593,6 +1593,24 @@ consumed by `App.tsx`'s always-on `/health` probe status (see "API client"
 above) so it keeps running and stays in the accessibility tree without
 painting the prototype's absent `API: ...` line onto the canvas.
 
+### Tooltips and screen guides
+
+Explanations live behind a quiet "i" (`components/InfoTip.tsx`), never as
+extra copy on the page. Every tooltip's words are in one catalogue,
+`components/infoTipCopy.ts`, so the whole app explains itself in one voice:
+
+| Kind | Where | Words |
+|------|-------|-------|
+| Screen guide | Beside each screen title, via `components/ScreenTitle.tsx` (Documents, Review, Portfolio, Contract 360, Renewals, Savings, Quote check, Workspace & members) | `SCREEN_GUIDES`: what the screen is for, how to use it, where it leads |
+| Field tip | Beside a column header or a label, via `CopyTip` | `TIPS`, plus the `build…Tip` functions for words that depend on data (the rail's dimmed tier, the Review auto-accept bar, the Not added chip) |
+
+A screen guide's "i" stays accent-inked until it has been opened once in this
+browser (`localStorage` key `raffa.tips.seenGuides`, a per-browser
+convenience only), so a newcomer sees where to start on every screen. The
+"i" glyph is CSS content, so a header's text stays its own words; a tip goes
+beside a heading, never inside it, so the heading's accessible name stays the
+screen's. The bubble opens on hover, keyboard focus or tap.
+
 ## End-to-end (Day-1 browser walk) -- task E08/F04/US01/T01, us-01-final-integration
 
 `e2e/day1.spec.ts` (Playwright, config at `playwright.config.ts`) is the

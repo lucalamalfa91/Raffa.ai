@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiClient, RenewalNegotiationTodoRow, RenewalNegotiationTodoStatusValue } from "../../api/client";
 import type { SemanticTag } from "../../styles/semantics";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 
 export interface NegotiationTodoListProps {
   apiClient: ApiClient;
@@ -154,7 +156,10 @@ export default function NegotiationTodoList({ apiClient, tenantId, contractId }:
 
   return (
     <section className="renewal-pane-todos" aria-label="Negotiation TODOs">
-      <p className="card-kicker">Negotiation TODOs</p>
+      <p className="card-kicker">
+        Negotiation TODOs
+        <CopyTip tip={TIPS.renewalsTodos} align="end" />
+      </p>
 
       {visibleTodos.length === 0 ? (
         <p className="micro-meta">No negotiation points yet.</p>

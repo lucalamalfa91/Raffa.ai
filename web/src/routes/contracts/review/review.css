@@ -42,6 +42,11 @@
   text-align: right;
 }
 
+.review-header-cta-row {
+  display: inline-flex;
+  align-items: center;
+}
+
 .review-header-summary {
   margin-top: var(--space-1);
 }

@@ -485,6 +485,23 @@
   letter-spacing: var(--tracking-display);
 }
 
+/* ScreenTitle.tsx: the heading and its guide "i" on one line. */
+.screen-title-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* A smaller heading with an InfoTip beside it -- a sibling, so the heading's name stays its own. */
+.heading-with-tip {
+  display: flex;
+  align-items: center;
+}
+
+.heading-with-tip > :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+}
+
 .kpi-number {
   font-family: var(--font-heading);
   font-size: 26px;

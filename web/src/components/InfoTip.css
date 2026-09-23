@@ -1,4 +1,4 @@
-/* InfoTip: a 14px ring "i" in neutral-500 that inks on hover/focus; the bubble is a light paper card
+/* InfoTip: a 14px ring "i" in neutral-500 that inks on hover/focus/tap; the bubble is a light paper card
    (neutral-100, a 1px neutral-300 edge, shadow-md) under the same 2px ink rule the answers band and
    the tables open with, square like every other surface, 12px body copy in ink, never uppercase even
    under an uppercase kicker. Portalled and fixed-positioned by the component; hidden until open. */
@@ -27,11 +27,40 @@
   transition: color 120ms ease, border-color 120ms ease;
 }
 
+/* The glyph is CSS content, so a header's text stays its own words ("Status", never "Statusi"). */
+.info-tip-trigger::before {
+  content: "i";
+}
+
 .info-tip-trigger:hover,
 .info-tip-trigger:focus-visible {
   border-color: var(--color-text);
   color: var(--color-text);
   outline: none;
+}
+
+/* Screen guide (ScreenTitle.tsx): an 18px "i" on the title's baseline row; accent-700 until it has
+   been opened once in this browser, then the same quiet neutral as every other "i". */
+.info-tip--guide {
+  margin-left: 10px;
+}
+
+.info-tip--guide .info-tip-trigger {
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+}
+
+.info-tip-trigger.is-unseen {
+  border-color: var(--color-accent-700);
+  color: var(--color-accent-700);
+  box-shadow: 0 0 0 3px var(--color-accent-100);
+}
+
+.info-tip-trigger.is-unseen:hover,
+.info-tip-trigger.is-unseen:focus-visible {
+  border-color: var(--color-accent-800);
+  color: var(--color-accent-800);
 }
 
 .info-tip-bubble {
@@ -61,6 +90,10 @@
   transform: translateY(-2px);
   transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
   pointer-events: none;
+}
+
+.info-tip-bubble--guide {
+  max-width: 320px;
 }
 
 .info-tip-bubble.is-open {

@@ -1,6 +1,8 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { getContractTypeLabel } from "../portfolioTableFormatters";
-import { CONTRACT_TYPE_OPTIONS, fieldTag, isFieldBlocking, type CorrectableFieldName, type ReviewFieldRow } from "./reviewViewModel";
+import { CopyTip } from "../../../components/InfoTip";
+import { buildReviewConfidenceTip, TIPS } from "../../../components/infoTipCopy";
+import { CONTRACT_TYPE_OPTIONS, fieldTag, isFieldBlocking, legendThresholdPct, type CorrectableFieldName, type ReviewFieldRow } from "./reviewViewModel";
 
 export interface ReviewFieldListProps {
   rows: readonly ReviewFieldRow[];
@@ -12,6 +14,8 @@ export interface ReviewFieldListProps {
   submitting?: boolean;
   /** Shown in the unrecovered section when the last fill failed and no recovered row is selected. */
   error?: string | null;
+  /** The response's auto-accept bar (0..1), named in the Confidence header's tip; `null` until known. */
+  autoAcceptThreshold?: number | null;
 }
 
 /**
@@ -41,6 +45,7 @@ export default function ReviewFieldList({
   onCorrect,
   submitting = false,
   error = null,
+  autoAcceptThreshold = null,
 }: ReviewFieldListProps) {
   const recovered = rows.filter((row) => !row.missing);
   const missing = rows.filter((row) => row.missing);
@@ -52,8 +57,14 @@ export default function ReviewFieldList({
           <tr>
             <th>Field</th>
             <th>Extracted value</th>
-            <th>Confidence</th>
-            <th>Decision</th>
+            <th>
+              Confidence
+              <CopyTip tip={buildReviewConfidenceTip(autoAcceptThreshold === null ? null : legendThresholdPct(autoAcceptThreshold))} />
+            </th>
+            <th>
+              Decision
+              <CopyTip tip={TIPS.reviewDecision} align="end" />
+            </th>
           </tr>
         </thead>
         <tbody>

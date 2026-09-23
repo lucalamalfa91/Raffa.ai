@@ -1,4 +1,14 @@
-import { buildKpiCells, type KpiFetchState } from "./savingsViewModel";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS, type TipCopy } from "../../components/infoTipCopy";
+import { buildKpiCells, type KpiCellView, type KpiFetchState } from "./savingsViewModel";
+
+/** What each headline figure means, beside its label. */
+const KPI_TIPS: Record<KpiCellView["key"], TipCopy> = {
+  "savings-verified": TIPS.savingsVerified,
+  "savings-identified": TIPS.savingsIdentified,
+  "savings-in-progress": TIPS.savingsInProgress,
+  "savings-potential": TIPS.savingsPotential,
+};
 
 export interface KpiRowProps {
   kpiState: KpiFetchState;
@@ -47,7 +57,10 @@ export default function KpiRow({ kpiState, onRetry }: KpiRowProps) {
       <div className="savings-kpi-row" role="group" aria-label="Savings KPIs">
         {cells.map((cell) => (
           <div key={cell.key} className={`savings-kpi-cell${cell.hero ? " is-hero" : ""}`} data-kpi={cell.key}>
-            <span className="savings-kpi-label">{cell.label}</span>
+            <span className="savings-kpi-label">
+              {cell.label}
+              <CopyTip tip={KPI_TIPS[cell.key]} align={cell.key === "savings-potential" ? "end" : "start"} />
+            </span>
             <div className="savings-kpi-value">
               {cell.lines.length === 0 ? <span>—</span> : cell.lines.map((line, index) => <span key={index}>{line}</span>)}
             </div>

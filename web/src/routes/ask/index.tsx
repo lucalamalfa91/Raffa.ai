@@ -8,6 +8,8 @@ import ReplyBody from "./reply/ReplyBody";
 import ConsentDialog from "./reply/ConsentDialog";
 import type { FeedbackAnswers } from "./reply/replyTypes";
 import type { ReplyCitation } from "./reply/replyTypes";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
 import DraftPanel from "./DraftPanel";
@@ -567,13 +569,19 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
               then, see the optimistic "you" bubble in ask() above), not only once it has been
               resumed with a full history. */}
           {boundContractChip !== null && (
-            <Link to={boundContractChip.href} className="ask-bound-chip">
-              <span className="tag tag-neutral">{boundContractChip.label}</span>
-            </Link>
+            <>
+              <Link to={boundContractChip.href} className="ask-bound-chip">
+                <span className="tag tag-neutral">{boundContractChip.label}</span>
+              </Link>
+              <CopyTip tip={TIPS.askBound} />
+            </>
           )}
         </div>
         <div className="ask-conv-meta">
-          <span className="ask-conv-scope">{scopeShort}</span>
+          <span className="ask-conv-scope">
+            {scopeShort}
+            <CopyTip tip={TIPS.askScope} align="end" />
+          </span>
           <button type="button" className="btn btn-ghost ask-new-chat-button" onClick={newChat}>
             + New chat
           </button>
@@ -707,7 +715,10 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                   {suggestion} →
                 </button>
               ))}
-              <span className="ask-composer-note">{COMPOSER_NOTE}</span>
+              <span className="ask-composer-note">
+                {COMPOSER_NOTE}
+                <CopyTip tip={TIPS.askComposer} align="end" />
+              </span>
             </div>
           </div>
         </div>

@@ -3,6 +3,9 @@ import { Link, useSearchParams } from "react-router-dom";
 import type { ApiClient, DocumentListPageBody, GetPortfolioResult, PortfolioListItem } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE, usePollBudget } from "../../components/shell/usePollBudget";
+import ScreenTitle from "../../components/ScreenTitle";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import PortfolioTable from "./PortfolioTable";
 import {
   buildPortfolioRows,
@@ -214,7 +217,7 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
     <div className="portfolio-screen">
       <header className="screen-header">
         <div>
-          <h2 className="screen-title">Portfolio</h2>
+          <ScreenTitle guide="portfolio">Portfolio</ScreenTitle>
           <p className="screen-header-summary">
             {ready ? formatPortfolioSummary(summary) : fetchState.phase === "loading" ? "Loading portfolio…" : PORTFOLIO_SUMMARY_OFF}
           </p>
@@ -255,7 +258,10 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
         // ADR-020 w15 §2.2's three, selected by the server's counts.
         <div className="screen-reroute" role="status">
           <h3>Nothing to triage yet</h3>
-          <p>{zeroCopy.sentence}</p>
+          <p>
+            {zeroCopy.sentence}
+            <CopyTip tip={TIPS.validated} />
+          </p>
           {updatesPaused && <p className="hint">{UPDATES_PAUSED_NOTICE}</p>}
           <div className="screen-reroute-actions">
             <Link to="/documents" className="btn btn-primary">

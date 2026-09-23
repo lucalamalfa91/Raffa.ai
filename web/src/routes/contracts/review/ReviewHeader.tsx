@@ -1,4 +1,7 @@
 import type { Contract360HeaderBody } from "../../../api/client";
+import { CopyTip } from "../../../components/InfoTip";
+import { TIPS } from "../../../components/infoTipCopy";
+import ScreenTitle from "../../../components/ScreenTitle";
 import { formatSupplier, getContractTypeLabel } from "../portfolioTableFormatters";
 import {
   blockedReason,
@@ -66,15 +69,18 @@ export default function ReviewHeader({
       <div className="review-header-top">
         <div>
           <p className="screen-kicker">R1 · Human validation</p>
-          <h2 className="screen-title">{reviewTitle(progress.blockingCount)}</h2>
+          <ScreenTitle guide="review">{reviewTitle(progress.blockingCount)}</ScreenTitle>
           <p className="micro-meta review-header-summary" title={header.supplierName ?? supplier.title}>
             {supplierLabel} · {typeLabel}
           </p>
         </div>
         <div className="review-header-cta">
-          <button type="button" className="btn btn-primary" disabled={disabled} onClick={onMarkValidated}>
-            {ctaLabel}
-          </button>
+          <span className="review-header-cta-row">
+            <button type="button" className="btn btn-primary" disabled={disabled} onClick={onMarkValidated}>
+              {ctaLabel}
+            </button>
+            <CopyTip tip={TIPS.reviewValidate} align="end" />
+          </span>
           {hint !== null && <span className="hint">{hint}</span>}
           {validationError !== null && (
             <span className="hint" role="alert">

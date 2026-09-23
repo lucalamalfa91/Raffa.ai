@@ -1,5 +1,7 @@
 import type { DocumentCountsBody } from "../../components/shell/useDocumentCounts";
 import { getFilterHint, type AttentionFilterValue } from "./documentTable";
+import { CopyTip } from "../../components/InfoTip";
+import { buildDocumentsFilterTip } from "../../components/infoTipCopy";
 
 export interface AttentionFilterProps {
   value: AttentionFilterValue;
@@ -36,7 +38,10 @@ export default function AttentionFilter({ value, onChange, counts }: AttentionFi
           </button>
         )}
       </div>
-      <span className="micro-meta">{getFilterHint(value)}</span>
+      <span className="micro-meta">
+        {getFilterHint(value)}
+        <CopyTip tip={buildDocumentsFilterTip(counts.rejected > 0)} />
+      </span>
     </div>
   );
 }
