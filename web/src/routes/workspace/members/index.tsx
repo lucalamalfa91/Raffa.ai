@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ApiClient, WorkspaceMemberBody, WorkspaceSettingsBody } from "../../../api/client";
 import { useShellContext } from "../../../components/shell/shellContext";
 import { canManageMembers, type WorkspaceRole } from "../../../components/shell/navItems";
+import ScreenTitle from "../../../components/ScreenTitle";
 import InvitePane, { type InviteFailure } from "./InvitePane";
 import MembersTable, { type MembersActionError } from "./MembersTable";
 import {
@@ -282,7 +283,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
       <header className="screen-header">
         <div>
           <p className="screen-kicker">Setup</p>
-          <h2 className="screen-title">Workspace &amp; members</h2>
+          <ScreenTitle guide="members">Workspace &amp; members</ScreenTitle>
           <p className="screen-header-summary">{formatWorkspaceLine(workspaceId, workspaceName)}</p>
         </div>
       </header>

@@ -1,3 +1,5 @@
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import { formatMoney, formatMoneyInputValue, type QuoteAggregate } from "./quoteCheckViewModel";
 
 export interface TargetStepProps {
@@ -59,7 +61,10 @@ export default function TargetStep({ aggregate, targetPrice, onChangeTargetPrice
         </tbody>
       </table>
 
-      <h6>Adjust target</h6>
+      <div className="heading-with-tip">
+        <h6>Adjust target</h6>
+        <CopyTip tip={TIPS.quotesTarget} />
+      </div>
       <div className="field">
         <label htmlFor="quote-target-price">Your target ({aggregate.currency ?? "amount"})</label>
         <input id="quote-target-price" className="input" type="number" step="1" value={targetPrice} onChange={(event) => onChangeTargetPrice(event.target.value)} />

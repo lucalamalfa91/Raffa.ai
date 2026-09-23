@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { ACCEPTED_EXTENSIONS } from "./uploadPipeline";
 import { SAMPLE_DOCUMENTS, type SampleDocumentKey } from "./sampleDocument";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 
 export interface UploadDropzoneProps {
   /** `"onboarding"` (bigger box, `raffa-v2/markup.html` `docsEmpty`) vs `"list"` (compact inline
@@ -67,6 +69,7 @@ export default function UploadDropzone({ variant, onFilesSelected, onUseSampleFi
       </button>
       <span className="upload-dropzone-hint">
         {variant === "onboarding" ? "or drop files anywhere in this box" : "or drop PDF · DOCX · XLSX · PNG · JPG here — you can leave while they process"}
+        {variant === "list" && <CopyTip tip={TIPS.documentsUpload} />}
       </span>
       <div className="upload-dropzone-samples" role="group" aria-label="Sample contracts">
         {variant === "onboarding" && <span className="micro-meta">Or try a sample:</span>}

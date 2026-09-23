@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { WorkspaceMemberBody } from "../../../api/client";
+import { CopyTip } from "../../../components/InfoTip";
+import { TIPS } from "../../../components/infoTipCopy";
 import { getMemberStatusTag, isLastActiveAdmin, memberRoleLabel, reissueConsequence, removeConsequence, revokeConsequence } from "./memberViewModel";
 
 export interface MembersActionError {
@@ -53,9 +55,11 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
           <th scope="col">Member</th>
           <th scope="col" className="members-col-role">
             Role
+            <CopyTip tip={TIPS.membersRole} />
           </th>
           <th scope="col" className="members-col-status">
             Status
+            <CopyTip tip={TIPS.membersStatus} />
           </th>
           {canManage && (
             <th scope="col" className="members-col-actions">

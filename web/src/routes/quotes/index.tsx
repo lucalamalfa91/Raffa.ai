@@ -11,6 +11,7 @@ import type {
   UploadedQuote,
   UploadQuoteFields,
 } from "../../api/client";
+import ScreenTitle from "../../components/ScreenTitle";
 import UploadQuoteForm from "./UploadQuoteForm";
 import MappingBlock, { type MapDraft } from "./MappingBlock";
 import TargetStep, { defaultTargetPrice, defaultWalkAway } from "./TargetStep";
@@ -224,7 +225,7 @@ export default function QuoteCheckRoute({ apiClient }: QuoteCheckRouteProps) {
   const header = (metaLine: string | null) => (
     <header className="quote-header">
       <p className="screen-kicker">Optional · new purchase</p>
-      <h2 className="screen-title">Quote check</h2>
+      <ScreenTitle guide="quotes">Quote check</ScreenTitle>
       <p className="quote-header-intro">{QUOTE_INTRO}</p>
       {metaLine !== null && <p className="micro-meta quote-header-meta">{metaLine}</p>}
     </header>

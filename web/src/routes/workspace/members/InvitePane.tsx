@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { CopyTip } from "../../../components/InfoTip";
+import { TIPS } from "../../../components/infoTipCopy";
 import {
   IDENTITY_ONE_TIME_CODE_LINE,
   INVITE_ROLE_LABEL,
@@ -93,7 +95,10 @@ export default function InvitePane({
 
   return (
     <aside className="members-invite-pane" aria-label="Invite a colleague">
-      <h4>Invite a colleague</h4>
+      <div className="heading-with-tip members-invite-title">
+        <h4>Invite a colleague</h4>
+        <CopyTip tip={TIPS.membersInvite} align="end" />
+      </div>
 
       <form onSubmit={handleSubmit} noValidate>
         <div className="field members-invite-field">

@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE } from "../../components/shell/usePollBudget";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import type { AskOffCopy } from "./askViewModel";
 
 export interface AskOffStateProps {
@@ -25,7 +27,10 @@ export default function AskOffState({ copy, updatesPaused = false, onCheckAgain 
     <div className="ask-off">
       <p className="screen-kicker">Ask Raffa.ai</p>
       <h2 className="screen-title ask-off-title">Ask needs at least one validated contract.</h2>
-      <p className="micro-meta ask-off-reason">{copy.reason}</p>
+      <p className="micro-meta ask-off-reason">
+        {copy.reason}
+        <CopyTip tip={TIPS.validated} />
+      </p>
       {updatesPaused && (
         <p className="hint" role="status">
           {UPDATES_PAUSED_NOTICE}

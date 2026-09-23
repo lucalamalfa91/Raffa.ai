@@ -1,3 +1,5 @@
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import type { QuoteLineRow } from "./quoteCheckViewModel";
 
 export interface QuoteLinesTableProps {
@@ -32,8 +34,12 @@ export default function QuoteLinesTable({ rows }: QuoteLinesTableProps) {
           </th>
           <th scope="col" className="quote-table-numeric">
             P50
+            <CopyTip tip={TIPS.quotesP50} align="end" />
           </th>
-          <th scope="col">Position</th>
+          <th scope="col">
+            Position
+            <CopyTip tip={TIPS.quotesPosition} />
+          </th>
           <th scope="col" className="quote-col-benchmark">
             Benchmark
           </th>

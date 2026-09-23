@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { DocumentListItemBody } from "../../api/client";
 import TablePager from "../../components/table/TablePager";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import { usePagedRows } from "../../components/table/pager";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE } from "../../components/shell/usePollBudget";
 import { getRejectionReasonCopy, type LocalUploadEntry } from "./uploadPipeline";
@@ -125,8 +127,14 @@ export default function DocumentStatusTable({
             <tr>
               <th scope="col">Document</th>
               <th scope="col">Supplier · type</th>
-              <th scope="col">Status</th>
-              <th scope="col">Next step</th>
+              <th scope="col">
+                Status
+                <CopyTip tip={TIPS.documentsStatus} />
+              </th>
+              <th scope="col">
+                Next step
+                <CopyTip tip={TIPS.documentsNextStep} />
+              </th>
               {isAdmin && <th scope="col">Delete</th>}
             </tr>
           </thead>

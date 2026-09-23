@@ -126,6 +126,7 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
           onCorrect={(name, value, reason) => void session.correct(name, value, reason)}
           submitting={session.submitting}
           error={session.correctionError}
+          autoAcceptThreshold={session.autoAcceptThreshold}
         />
         <EvidencePane
           row={session.selectedRow}

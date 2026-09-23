@@ -1,4 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import TablePager from "../../components/table/TablePager";
 import { usePagedRows } from "../../components/table/pager";
 import { formatAnnualSpend, formatAutoRenewal, formatPortfolioDate, formatRisk, getContractTypeLabel, getPortfolioStatusTag } from "./portfolioTableFormatters";
@@ -50,6 +52,7 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
             </th>
             <th scope="col" className="portfolio-col-notice">
               Give notice by
+              <CopyTip tip={TIPS.portfolioNotice} />
             </th>
             {moreColumns && (
               <>
@@ -58,14 +61,17 @@ export default function PortfolioTable({ rows, moreColumns }: PortfolioTableProp
                 </th>
                 <th scope="col" className="portfolio-col-auto">
                   Auto
+                  <CopyTip tip={TIPS.portfolioAuto} />
                 </th>
                 <th scope="col" className="portfolio-col-risk">
                   Risk
+                  <CopyTip tip={TIPS.portfolioRisk} />
                 </th>
               </>
             )}
             <th scope="col" className="portfolio-col-status">
               Status
+              <CopyTip tip={TIPS.portfolioStatus} align="end" />
             </th>
           </tr>
         </thead>

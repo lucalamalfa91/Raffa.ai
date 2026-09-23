@@ -4,6 +4,9 @@ import type { ApiClient, RenewalPipelineItemBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import AskRaffaLink from "../../components/ask-bar/AskRaffaLink";
 import { ASK_PROMPTS } from "../../components/ask-bar/askLaunch";
+import ScreenTitle from "../../components/ScreenTitle";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import RenewalTable from "./RenewalTable";
 import InsightCard from "./InsightCard";
 import RenewalKpiStrip from "./RenewalKpiStrip";
@@ -248,7 +251,7 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
     <div className="renewal-screen">
       <header className="screen-header">
         <div>
-          <h2 className="screen-title">Renewals</h2>
+          <ScreenTitle guide="renewals">Renewals</ScreenTitle>
           <p className="screen-header-summary">
             {ready ? formatRenewalsSummary(readinessCounts.ok) : fetchState.phase === "loading" ? "Loading renewals…" : RENEWALS_SUMMARY_OFF}
           </p>
@@ -291,7 +294,10 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
         // markup.html `kbOff`: the tier's reroute state -- copy verbatim.
         <div className="screen-reroute" role="status">
           <h3>No renewal dates yet</h3>
-          <p>Renewals are computed from validated end dates and notice periods. Upload a contract to start.</p>
+          <p>
+            Renewals are computed from validated end dates and notice periods. Upload a contract to start.
+            <CopyTip tip={TIPS.validated} />
+          </p>
           <Link to="/documents" className="btn btn-primary">
             Upload a contract
           </Link>

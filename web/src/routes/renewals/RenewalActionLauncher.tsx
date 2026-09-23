@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import AskRaffaLink from "../../components/ask-bar/AskRaffaLink";
+import { CopyTip } from "../../components/InfoTip";
+import { TIPS } from "../../components/infoTipCopy";
 import type { RenewalActionGroupView, RenewalActionTarget } from "./renewalActions";
 
 export interface RenewalActionLinkProps {
@@ -39,7 +41,10 @@ export interface RenewalActionLauncherProps {
 export default function RenewalActionLauncher({ groups }: RenewalActionLauncherProps) {
   return (
     <section className="renewal-launcher" aria-label="What you can do from here">
-      <p className="card-kicker">What you can do from here</p>
+      <p className="card-kicker">
+        What you can do from here
+        <CopyTip tip={TIPS.renewalsLauncher} align="end" />
+      </p>
       {groups.map((group) => (
         <div key={group.key} className={`renewal-launcher-group is-${group.key}`}>
           <p className="renewal-launcher-title">{group.title}</p>

@@ -511,6 +511,10 @@ body.is-resizing-rail {
   background: var(--color-accent);
 }
 
+.shell-rail-section-kicker .info-tip {
+  margin-left: 0;
+}
+
 .shell-rail-secondary-nav {
   display: flex;
   flex-direction: column;
