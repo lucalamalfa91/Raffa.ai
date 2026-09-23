@@ -50,7 +50,12 @@ export function activeConversationIdFromPathname(pathname: string): string | nul
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-export function useRecentConversations(apiClient: ApiClient): RecentConversationsState {
+/**
+ * `refreshKey` is the second reload signal: `askSessions.ts#listVersion`, bumped when a chat is
+ * created or answered in the background -- a new chat the user already left (so no navigation
+ * happened) still appears in the rail, and an answered one moves to the top.
+ */
+export function useRecentConversations(apiClient: ApiClient, refreshKey: number = 0): RecentConversationsState {
   const location = useLocation();
   const workspace = loadCurrentWorkspace();
   const [conversations, setConversations] = useState<readonly ConversationSummaryBody[]>(EMPTY_STATE);
@@ -73,7 +78,7 @@ export function useRecentConversations(apiClient: ApiClient): RecentConversation
     load();
     // See this module's own header comment for why `location.pathname` is a deliberate dependency
     // here, unlike useValidatedContractCount's identical-shaped effect.
-  }, [load, location.pathname]);
+  }, [load, location.pathname, refreshKey]);
 
   return {
     conversations,

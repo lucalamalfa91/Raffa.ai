@@ -338,9 +338,15 @@
   cursor: pointer;
 }
 
-.ask-suggestion:hover {
+.ask-suggestion:hover:not(:disabled) {
   color: var(--color-accent);
   background: transparent;
+}
+
+/* This chat is still answering: a chip would be refused, so it reads as unavailable. */
+.ask-suggestion:disabled {
+  cursor: default;
+  opacity: var(--opacity-disabled);
 }
 
 .ask-composer-note {

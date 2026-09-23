@@ -17,6 +17,7 @@ import {
   indexPortfolioByContractId,
 } from "../../routes/ask/conversationTitle";
 import { loadCurrentWorkspace } from "../../routes/signin/workspaceStore";
+import { useAskSessionStore, useAskSessionsSnapshot } from "../../routes/ask/AskSessionsContext";
 import type { DocumentCountsBody } from "./useDocumentCounts";
 
 export interface RailNavProps {
@@ -71,7 +72,9 @@ export default function RailNav({
 }: RailNavProps) {
   const navigate = useNavigate();
   const workspace = loadCurrentWorkspace();
-  const { conversations, activeConversationId, reload } = useRecentConversations(apiClient);
+  const askSessions = useAskSessionStore();
+  const { sessions, listVersion } = useAskSessionsSnapshot(askSessions);
+  const { conversations, activeConversationId, reload } = useRecentConversations(apiClient, listVersion);
   const [chatQuery, setChatQuery] = useState("");
   const [portfolioItems, setPortfolioItems] = useState<readonly PortfolioListItem[]>([]);
 
@@ -93,6 +96,7 @@ export default function RailNav({
     if (!workspace) return;
     void apiClient.deleteConversation(workspace.id, conversationId).then((result) => {
       if (!result.ok) return;
+      askSessions.forget(conversationId);
       if (activeConversationId === conversationId) {
         navigate("/ask", { state: { newChat: true } });
       }
@@ -140,13 +144,23 @@ export default function RailNav({
                 )}
                 {visibleConversations.map((conversation) => {
                   const title = titleOf(conversation);
+                  // Parallel Ask sessions (`askSessions.ts`): a chat still answering in the
+                  // background spins; one whose reply landed while it was not on screen is
+                  // highlighted until it is opened.
+                  const session = sessions.get(conversation.id);
+                  const pending = session?.pending === true;
+                  const unread = !pending && session?.unread === true;
                   return (
-                    <div key={conversation.id} className="shell-rail-conv-row">
+                    <div key={conversation.id} className={`shell-rail-conv-row${unread ? " is-unread" : ""}`}>
                       <Link
                         to={`/ask/${conversation.id}`}
-                        className={`shell-rail-conv-item${conversation.id === activeConversationId ? " is-active" : ""}`}
+                        className={`shell-rail-conv-item${conversation.id === activeConversationId ? " is-active" : ""}${unread ? " is-unread" : ""}`}
                       >
                         <span className="shell-rail-conv-title">{title}</span>
+                        {pending && <span className="shell-rail-conv-status is-pending" aria-hidden="true" />}
+                        {unread && <span className="shell-rail-conv-status is-unread" aria-hidden="true" />}
+                        {pending && <span className="visually-hidden"> · Raffa is answering</span>}
+                        {unread && <span className="visually-hidden"> · new reply</span>}
                       </Link>
                       <button
                         type="button"

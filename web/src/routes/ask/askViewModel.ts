@@ -841,12 +841,17 @@ export function parseScopeContractId(rawScope: string | null): string | undefine
  * `currentConversationId === null ? parseScopeContractId(...) : undefined`, and
  * `createdConversationId.current` is set synchronously before this promise's caller ever sees this
  * value), so it is gone before a second render could read it -- exactly the "never the transient
- * `?scope=` query" rule this same field's own doc comment on `BoundContractChip` above states. */
+ * `?scope=` query" rule this same field's own doc comment on `BoundContractChip` above states.
+ *
+ * `onCreated` runs between the two calls, as soon as the conversation exists: `askSessions.ts`
+ * uses it to move a new chat to its real id while the (slow) reply is still being written, so the
+ * rail lists it and the user can open another chat in parallel. */
 export async function createConversationAndAsk(
   apiClient: ApiClient,
   tenantId: string,
   question: string,
   scopeContractId: string | undefined,
+  onCreated?: (conversation: { id: string; scopeContractId: string | null }) => void,
 ): Promise<
   | { ok: true; conversationId: string; reply: ConversationReplyBody; scopeContractId: string | null }
   | { ok: false; conversationId: string | null; reason: string }
@@ -857,6 +862,7 @@ export async function createConversationAndAsk(
   }
 
   const conversationId = created.conversation.id;
+  onCreated?.({ id: conversationId, scopeContractId: created.conversation.scopeContractId });
   const posted = await apiClient.postMessage(tenantId, conversationId, { question });
   if (!posted.ok || !posted.reply) {
     return { ok: false, conversationId, reason: posted.error ?? TRANSPORT_ERROR_REASON };

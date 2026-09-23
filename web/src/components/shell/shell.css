@@ -157,6 +157,48 @@
   font-weight: var(--weight-body-strong);
 }
 
+/* Parallel Ask sessions: an unread reply tints the row (the "critical row tint") and marks it with
+   the rail's own 6px accent square; a chat still answering shows the Ask thinking spinner, small. */
+.shell-rail-conv-row.is-unread {
+  background: var(--color-accent-100);
+}
+
+.shell-rail-conv-item.is-unread {
+  font-weight: var(--weight-body-strong);
+}
+
+.shell-rail-conv-status {
+  flex: none;
+  margin-left: auto;
+}
+
+.shell-rail-conv-status.is-unread {
+  width: 6px;
+  height: 6px;
+  background: var(--color-accent);
+}
+
+.shell-rail-conv-status.is-pending {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-neutral-300);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: shell-rail-conv-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-rail-conv-status.is-pending {
+    animation: none;
+  }
+}
+
+@keyframes shell-rail-conv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .shell-rail-conv-title {
   overflow: hidden;
   text-overflow: ellipsis;

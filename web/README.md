@@ -790,8 +790,9 @@ per-user conversations.
   pair while the catalog has not loaded. Asking (typed, a chip, or the seed query the global Ask bar
   carries in router state, `newChat: true`) runs `createConversationAndAsk`:
   `POST /api/conversations` (with `scopeContractId` when `?scope=` is present) then
-  `POST /api/conversations/{id}/messages`, then the URL becomes `/ask/<conversationId>`
-  (`navigate(..., { replace: true })`). `?scope=<contractId>` (Contract 360's "Ask about it") templates
+  `POST /api/conversations/{id}/messages`; the URL becomes `/ask/<conversationId>`
+  (`navigate(..., { replace: true })`) as soon as the conversation exists, while the reply is still
+  being written (see "Parallel sessions" below). `?scope=<contractId>` (Contract 360's "Ask about it") templates
   the two chips with the real supplier name instead (`buildScopedSuggestions`, read off
   `GET /api/contracts/{id}`'s typed `supplierName`; "this supplier" when it is null or blank) **and**
   briefs the contract instead of rendering the generic hello/scope line (task E25/F03/US02/T01,
@@ -870,6 +871,17 @@ per-user conversations.
   found" state with a "+ New chat" link, never a generic error.
 - **Rail** -- the shell's nested conversations slot (see "App shell" above); `RailNav.tsx` consumes
   `useRecentConversations.ts` itself, not threaded through as a prop from a fetch-once parent.
+- **Parallel sessions** (`askSessions.ts`, `AskSessionsContext.tsx`, `AskReplyNotifier.tsx`) -- every
+  chat's thread, "answering" flag and unread flag live in one store the shell (`AppShell.tsx`)
+  provides, keyed by conversation id (a new chat by a draft key per `/ask` history entry, promoted
+  to its id the moment `POST /api/conversations` returns). A question keeps running when the user
+  leaves its chat -- for "+ New chat", another chat or another screen -- and its reply lands in the
+  chat that asked it, so two chats can answer side by side; a chat still answering refuses a
+  second question. The rail spins a chat still answering and highlights (`is-unread`) one whose
+  reply landed off screen; the notifier adds a top-right "Reply ready" notice with "Open chat", a
+  system notification when the tab is hidden (permission is asked once, on the first send), and an
+  unread count in the tab title (`(2) Raffa.ai`). Opening the chat clears all three. A chat this tab
+  already holds reopens from the store, never re-fetched; composer text is kept per chat.
 - **No raw ids, no route line, no V1 copy anywhere** (R-ASK-08) -- `Reply`
   (`routes/ask/reply/replyTypes.ts`) carries no `route`/raw-id field for any variant to leak; a
   tenant citation's deep link is built client-side from `contractId`/`page` only. `"Structured
