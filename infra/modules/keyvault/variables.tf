@@ -64,8 +64,10 @@ variable "acs_connection_string" {
 # ADR-030 D5 (Ask Raffa feedback loop): a fine-grained GitHub personal
 # access token with Issues: write on the one product repository, so the API
 # can open an issue for every feature request users file from the in-chat
-# feedback card. Set as a SENSITIVE workspace variable in each HCP
-# workspace, never in a .tf file (ADR-011). Empty (the default) means "no
+# feedback card. Set as a SENSITIVE workspace variable of category
+# "Terraform variable" in each HCP workspace, never in a .tf file
+# (ADR-011) -- an "Environment variable" of the same name is never read,
+# so the secret silently stays uncreated. Empty (the default) means "no
 # token in this environment": the secret is not created at all (Key Vault
 # refuses an empty value) and the API keeps every request stored-only.
 variable "github_feedback_token" {
