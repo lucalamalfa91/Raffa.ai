@@ -1,4 +1,5 @@
 using Raffa.Api.Infrastructure;
+using Raffa.Chat.Application.WebResearch;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Identity.Workspace.Infrastructure;
 using Raffa.SharedKernel;
@@ -14,7 +15,10 @@ namespace Raffa.Api;
 /// the route value, never a header; a non-member -> 404 (never 403, a tenant-existence oracle);
 /// any live member reads; only an Admin writes (403 otherwise). Verify, then scope, then
 /// read/write (ADR-009 w14 footer clause 7) -- the membership check opens its own narrow tenant
-/// scope and closes it before <see cref="WorkspaceSettingsService"/> opens the next.
+/// scope and closes it before <see cref="WorkspaceSettingsService"/> opens the next. The body also
+/// carries <c>webResearchAvailable</c> — the environment's kill switch
+/// (<see cref="WebResearchOptions.Enabled"/>) — so Ask's web-search toggle (ADR-031) is shown only
+/// where the feature exists at all.
 /// </summary>
 public static class WorkspaceSettingsEndpointExtensions
 {
@@ -31,6 +35,7 @@ public static class WorkspaceSettingsEndpointExtensions
         IdentityWorkspaceDbContext dbContext,
         ITenantContext tenantContext,
         WorkspaceSettingsService settingsService,
+        WebResearchOptions webResearchOptions,
         CancellationToken cancellationToken)
     {
         var identity = callerIdentity.Resolve();
@@ -54,7 +59,7 @@ public static class WorkspaceSettingsEndpointExtensions
         }
 
         var settings = await settingsService.GetAsync(routeTenantId, cancellationToken).ConfigureAwait(false);
-        return settings is null ? Results.NotFound() : Results.Ok(ToJson(settings, callerRole.Value));
+        return settings is null ? Results.NotFound() : Results.Ok(ToJson(settings, callerRole.Value, webResearchOptions));
     }
 
     private static async Task<IResult> PatchSettingsAsync(
@@ -64,6 +69,7 @@ public static class WorkspaceSettingsEndpointExtensions
         IdentityWorkspaceDbContext dbContext,
         ITenantContext tenantContext,
         WorkspaceSettingsService settingsService,
+        WebResearchOptions webResearchOptions,
         CancellationToken cancellationToken)
     {
         var identity = callerIdentity.Resolve();
@@ -100,12 +106,13 @@ public static class WorkspaceSettingsEndpointExtensions
             .SetWebResearchEnabledAsync(routeTenantId, webResearchEnabled, identity, cancellationToken)
             .ConfigureAwait(false);
 
-        return settings is null ? Results.NotFound() : Results.Ok(ToJson(settings, callerRole.Value));
+        return settings is null ? Results.NotFound() : Results.Ok(ToJson(settings, callerRole.Value, webResearchOptions));
     }
 
-    private static object ToJson(WorkspaceSettingsResult settings, WorkspaceRoleName callerRole) => new
+    private static object ToJson(WorkspaceSettingsResult settings, WorkspaceRoleName callerRole, WebResearchOptions webResearchOptions) => new
     {
         webResearchEnabled = settings.WebResearchEnabled,
+        webResearchAvailable = webResearchOptions.Enabled,
         // The client shows the toggle only to a caller who can flip it; the role is the caller's
         // own membership, never a header.
         canEdit = callerRole == WorkspaceRoleName.Admin,

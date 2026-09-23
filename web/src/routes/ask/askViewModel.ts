@@ -12,6 +12,7 @@ import type {
   ConversationReplyKind,
   DocumentListPageBody,
   PostMessageRequest,
+  WorkspaceSettingsBody,
 } from "../../api/client";
 import type {
   CitationCorpus,
@@ -368,7 +369,9 @@ export function markInterviewAnswered(turns: readonly AskTurnView[], messageId: 
  * looks the clicked citation's `n` back up in `wireCitations` to recover the one field it actually
  * needs to act (a market citation's `recordId`) -- see that function's own doc comment. */
 export type AskTurnView =
-  | { id: string; role: "you"; text: string }
+  /** `web`: sent with the composer's web-search toggle on (ADR-031) -- live only; a resumed
+   * conversation shows the reply's own "Web · unverified" provenance instead. */
+  | { id: string; role: "you"; text: string; web?: boolean }
   | {
       id: string;
       role: "raffa";
@@ -390,8 +393,13 @@ export function nextTurnId(): string {
   return `ask-turn-${turnIdCounter}`;
 }
 
-export function buildYouTurn(id: string, text: string): AskTurnView {
-  return { id, role: "you", text };
+export function buildYouTurn(id: string, text: string, web = false): AskTurnView {
+  return web ? { id, role: "you", text, web: true } : { id, role: "you", text };
+}
+
+/** The body of one plain question -- `webResearch: true` only when the toggle was on (ADR-031). */
+export function buildQuestionRequest(question: string, webResearch = false): PostMessageRequest {
+  return webResearch ? { question, webResearch: true } : { question };
 }
 
 export function buildRaffaTurnFromReply(id: string, body: ConversationReplyBody): AskTurnView {
@@ -617,6 +625,56 @@ export const NEW_CHAT_INTRO =
 /** The composer's right-hand note -- the prototype's "cites or abstains", now "cites its sources"
  * (persona v2.5: Ask never abstains). */
 export const COMPOSER_NOTE = "Procurement only · cites its sources";
+
+// ---------------------------------------------------------------------------------------------
+// ADR-031: the composer's web-search toggle. On, a question goes to the public web and to the
+// workspace's own data together, the procurement-only filters lifted; a plainly personal question
+// is pointed at a search engine. The toggle is the consent -- no per-question dialog.
+// ---------------------------------------------------------------------------------------------
+
+export const WEB_SEARCH_TOGGLE_LABEL = "Web search";
+
+/** Placeholder while the toggle is on. */
+export const ASK_WEB_INPUT_PLACEHOLDER = "Search the web and your contracts…";
+
+/** The composer note while the toggle is on. */
+export const COMPOSER_WEB_NOTE = "Web + your contracts · web results are not verified";
+
+/** The thinking row while a web-mode question is being answered. */
+export const THINKING_WEB_COPY = "Searching the public web → reading your contracts → checking every source";
+
+/** What the toggle does, shown as its tooltip and read by screen readers. */
+export const WEB_SEARCH_ON_HINT =
+  "Searches the public web and your contracts together, beyond procurement topics. Only your question's words are searched — nothing from your contracts leaves Raffa. Web results are not verified.";
+
+export interface WebSearchToggleState {
+  /** `false`: the environment has no web research at all -- the toggle is not rendered. */
+  visible: boolean;
+  /** `false`: the workspace Admin has not switched web research on; the toggle explains why. */
+  enabled: boolean;
+  hint: string;
+}
+
+const WEB_SEARCH_HIDDEN: WebSearchToggleState = { visible: false, enabled: false, hint: "" };
+
+/**
+ * The toggle's state from `GET /api/workspaces/{id}/settings`: hidden unless the environment's kill
+ * switch is on (`webResearchAvailable`), usable only once the workspace opted in
+ * (`webResearchEnabled`). The server re-checks both, and the daily budget, on every question.
+ */
+export function resolveWebSearchToggle(settings: WorkspaceSettingsBody | null | undefined): WebSearchToggleState {
+  if (!settings || settings.webResearchAvailable !== true) return WEB_SEARCH_HIDDEN;
+  if (!settings.webResearchEnabled) {
+    return {
+      visible: true,
+      enabled: false,
+      hint: settings.canEdit
+        ? "Web search is off for this workspace. Switch it on under Workspace & members → Web research."
+        : "Web search is off for this workspace. Your workspace Admin can switch it on under Workspace & members.",
+    };
+  }
+  return { visible: true, enabled: true, hint: WEB_SEARCH_ON_HINT };
+}
 
 /**
  * `askScopeShort`: `askable + ' validated contract(s)' + ' · ' + kbNames.join(', ')`. The supplier
@@ -853,6 +911,7 @@ export async function createConversationAndAsk(
   question: string,
   scopeContractId: string | undefined,
   onCreated?: (conversation: { id: string; scopeContractId: string | null }) => void,
+  webResearch = false,
 ): Promise<
   | { ok: true; conversationId: string; reply: ConversationReplyBody; scopeContractId: string | null }
   | { ok: false; conversationId: string | null; reason: string }
@@ -864,7 +923,7 @@ export async function createConversationAndAsk(
 
   const conversationId = created.conversation.id;
   onCreated?.({ id: conversationId, scopeContractId: created.conversation.scopeContractId });
-  const posted = await apiClient.postMessage(tenantId, conversationId, { question });
+  const posted = await apiClient.postMessage(tenantId, conversationId, buildQuestionRequest(question, webResearch));
   if (!posted.ok || !posted.reply) {
     return { ok: false, conversationId, reason: posted.error ?? TRANSPORT_ERROR_REASON };
   }

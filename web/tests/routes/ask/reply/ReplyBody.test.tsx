@@ -465,6 +465,24 @@ describe("ReplyBody web research answer (ADR-030)", () => {
     expect(container.querySelector('[data-section="web"]')).not.toBeNull();
   });
 
+  it("says only the web part is unverified when a web-search answer also cites the contracts (ADR-031)", () => {
+    const { container } = renderReply({
+      kind: "answer",
+      answerMarkdown: "**From your contracts and Raffa's data**\n\nYour cap is 5% [1].\n\n**From the public web · unverified**\n\nPublic, unverified: 5-10% is common [2].",
+      citations: [
+        { n: 1, corpus: "tenant", title: "Salesforce MSA", subtitle: null, snippet: "uplift capped at 5%" },
+        { n: 2, corpus: "web", title: "example.com · SaaS renewals", subtitle: null, snippet: "5-10% uplift cap", href: "https://example.com/a" },
+      ],
+      actions: [],
+      followUps: [],
+      unverifiedWeb: true,
+    });
+
+    expect(screen.getByRole("note")).toHaveTextContent("Includes public web findings · not verified.");
+    expect(screen.getByRole("note")).toHaveTextContent("The web part comes from public sources");
+    expect(container.querySelector('[data-section="web"]')).not.toBeNull();
+  });
+
   it("shows no banner on an ordinary answer", () => {
     const { container } = renderReply(ANSWER_REPLY);
 

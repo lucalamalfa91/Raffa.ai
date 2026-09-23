@@ -32,8 +32,16 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
         var italian = string.Equals(language, "it", StringComparison.OrdinalIgnoreCase);
         var lang = italian ? "it" : "en";
 
+        // ADR-031: a web-mode turn (the composer toggle) runs the open persona; every other
+        // purpose is one of the four procurement purposes of ADR-030.
+        var open = string.Equals(purpose, WebModeLexicon.Purpose, StringComparison.Ordinal);
         var request = new AiResearchRequest(
-            query.Trim(), purpose, lang, options.EffectiveMaxSources, WebResearchPrompt.SystemPrompt, WebResearchPrompt.Version);
+            query.Trim(),
+            purpose,
+            lang,
+            options.EffectiveMaxSources,
+            open ? WebResearchPrompt.OpenSystemPrompt : WebResearchPrompt.SystemPrompt,
+            open ? WebResearchPrompt.OpenVersion : WebResearchPrompt.Version);
 
         var result = await aiGateway.ResearchAsync(request, cancellationToken).ConfigureAwait(false);
         if (result.IsFailure)
@@ -59,9 +67,11 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
         {
             return new WebResearchOutcome(
                 WebResearchOutcomeKind.Refused,
-                italian
-                    ? "L'agente di ricerca web copre solo temi procurement (pratiche di mercato, notizie sui fornitori, range pubblici, tattiche di negoziazione) e ha rifiutato questa ricerca."
-                    : "The web research agent only covers procurement topics (market practice, supplier news, public benchmark ranges, negotiation tactics) and declined this search.",
+                open
+                    ? WebModeReplyBuilder.OffContextMarkdown(italian)
+                    : italian
+                        ? "L'agente di ricerca web copre solo temi procurement (pratiche di mercato, notizie sui fornitori, range pubblici, tattiche di negoziazione) e ha rifiutato questa ricerca."
+                        : "The web research agent only covers procurement topics (market practice, supplier news, public benchmark ranges, negotiation tactics) and declined this search.",
                 [],
                 provenanceBase with { Sources = [] },
                 SourceCount: 0,

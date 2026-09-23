@@ -608,9 +608,20 @@ public sealed class FixtureAiGateway(
         @"benchmark\w*|market|mercato|tender|gara|sla|subscription|insurance|assicura\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>The web-mode purpose (ADR-031, <c>Raffa.Chat.Application.WebResearch.WebModeLexicon
+    /// .Purpose</c> — this project cannot reference it, ADR-002).</summary>
+    private const string OpenResearchPurpose = "Open";
+
+    // The open persona refuses only the plainly personal or leisure (ADR-031).
+    private static readonly Regex LeisureWordPattern = new(
+        @"\b(ricett[ae]|recipes?|carbonara|lasagn[ae]|scudetto|champions\s+league|meteo|weather|oroscopo|horoscope|" +
+        @"barzellett[ae]|joke|lyrics)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>ADR-030: the CI double of the research role. Two fixed public sources with snippets
     /// that carry every figure the summary quotes (so <c>NumericGuard</c> grounds them), an
-    /// off-topic refusal when the query has no procurement word, never a real HTTP call.</summary>
+    /// off-topic refusal when the query has no procurement word — or, for the open web-mode purpose
+    /// (ADR-031), only when it is plainly leisure — never a real HTTP call.</summary>
     public Task<Result<AiResearchResult>> ResearchAsync(
         AiResearchRequest request, CancellationToken cancellationToken = default)
     {
@@ -620,7 +631,9 @@ public sealed class FixtureAiGateway(
         }
 
         var model = modelOptions.Research ?? new AiModelSelection("fixture-research", "fixture");
-        var offTopic = !ProcurementWordPattern.IsMatch(request.Query);
+        var offTopic = string.Equals(request.Purpose, OpenResearchPurpose, StringComparison.Ordinal)
+            ? LeisureWordPattern.IsMatch(request.Query)
+            : !ProcurementWordPattern.IsMatch(request.Query);
 
         IReadOnlyList<AiWebSource> sources = offTopic
             ? []

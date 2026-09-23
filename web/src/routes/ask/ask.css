@@ -393,6 +393,110 @@
   white-space: nowrap;
 }
 
+/* ADR-031: where to switch web search on -- a sentence, so it may wrap. */
+.ask-composer-note.ask-composer-note-hint {
+  white-space: normal;
+  color: var(--color-text);
+}
+
+/* ---- Web search toggle (ADR-031) ---------------------------------------------
+ * A switch beside "Ask": square like every control, ink when on so it never reads as a second
+ * primary button next to the accent "Ask". */
+.ask-web-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 2px solid var(--color-text);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ask-web-toggle:hover:not([aria-disabled="true"]) {
+  background: var(--color-neutral-200);
+}
+
+.ask-web-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.ask-web-toggle[aria-checked="true"] {
+  background: var(--color-text);
+  color: #fff;
+}
+
+.ask-web-toggle[aria-checked="true"]:hover {
+  background: var(--color-neutral-800);
+}
+
+.ask-web-toggle[aria-disabled="true"] {
+  opacity: var(--opacity-disabled);
+  cursor: help;
+}
+
+.ask-web-toggle-track {
+  position: relative;
+  width: 22px;
+  height: 12px;
+  flex: none;
+  border: 2px solid currentColor;
+}
+
+.ask-web-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  transition: transform 120ms ease;
+}
+
+.ask-web-toggle[aria-checked="true"] .ask-web-toggle-track::after {
+  transform: translateX(10px);
+}
+
+/* The "Web" tag under a question sent with the toggle on. */
+.ask-message-web-tag {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-web-toggle-track::after {
+    transition: none;
+  }
+}
+
+/* On a phone the composer row wraps: the input keeps the full width, the toggle and "Ask" share
+ * the line under it. */
+@media (max-width: 600px) {
+  .ask-composer-row:has(.ask-web-toggle) {
+    flex-wrap: wrap;
+  }
+
+  .ask-composer-row:has(.ask-web-toggle) .ask-composer-input {
+    flex-basis: calc(100% - 28px);
+  }
+
+  .ask-composer-row:has(.ask-web-toggle) .ask-web-toggle {
+    margin-left: 28px;
+  }
+}
+
 .ask-resume-skeleton-row {
   height: 48px;
   margin-top: var(--space-2);

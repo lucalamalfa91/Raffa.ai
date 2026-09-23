@@ -7,6 +7,7 @@ import {
   buildInterviewAnswerRequest,
   buildRaffaTurnFromMessage,
   buildRaffaTurnFromReply,
+  buildQuestionRequest,
   buildYouTurn,
   createConversationAndAsk,
   deriveConversationTitle,
@@ -82,6 +83,9 @@ export interface AskSendInput {
   interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null };
   /** `/ask?scope=<contractId>`: only read when this send creates the conversation. */
   scopeContractId?: string;
+  /** ADR-031: the composer's web-search toggle was on. A typed question then starts a web search
+   * of its own rather than answering a pending interview as free text. */
+  webResearch?: boolean;
 }
 
 export interface AskFeedbackInput {
@@ -262,7 +266,7 @@ export function createAskSessionStore(): AskSessionStore {
       withSession(key, (current) => (current.unread ? { ...current, unread: false } : null));
     },
 
-    send({ key, apiClient, tenantId, text, interviewAnswer, scopeContractId }) {
+    send({ key, apiClient, tenantId, text, interviewAnswer, scopeContractId, webResearch = false }) {
       const sessionKey = resolveSessionKey(snapshot, key);
       const existing = snapshot.sessions.get(sessionKey) ?? blankSession(sessionKey);
       if (existing.pending) return null;
@@ -270,15 +274,18 @@ export function createAskSessionStore(): AskSessionStore {
       const pending =
         interviewAnswer ??
         (() => {
+          if (webResearch) return null;
           const found = pendingInterview(existing.turns);
           return found ? { ...found, optionKey: null } : null;
         })();
+      // An interview answer always runs its own server-side resolution: never a web-mode turn.
+      const web = webResearch && pending === null;
 
       const turns = pending === null ? existing.turns : markInterviewAnswered(existing.turns, pending.messageId);
       const sessions = new Map(snapshot.sessions);
       sessions.set(sessionKey, {
         ...existing,
-        turns: [...turns, buildYouTurn(nextTurnId(), text)],
+        turns: [...turns, buildYouTurn(nextTurnId(), text, web)],
         title: existing.title ?? deriveConversationTitle(text),
         pending: true,
         unread: false,
@@ -292,10 +299,17 @@ export function createAskSessionStore(): AskSessionStore {
             // AC-1: "a question creates a conversation ... then posts the message". The session
             // moves to the new id as soon as it exists, so the rail lists it (still answering) and
             // the user can leave for another chat while the reply is being written.
-            const result = await createConversationAndAsk(apiClient, tenantId, text, scopeContractId, (created) => {
-              promote(sessionKey, created.id, created.scopeContractId);
-              landingKey = created.id;
-            });
+            const result = await createConversationAndAsk(
+              apiClient,
+              tenantId,
+              text,
+              scopeContractId,
+              (created) => {
+                promote(sessionKey, created.id, created.scopeContractId);
+                landingKey = created.id;
+              },
+              web,
+            );
             land(
               landingKey,
               result.ok ? buildRaffaTurnFromReply(nextTurnId(), result.reply) : buildErrorTurn(nextTurnId(), result.reason),
@@ -304,7 +318,8 @@ export function createAskSessionStore(): AskSessionStore {
             return;
           }
 
-          const request = pending === null ? { question: text } : buildInterviewAnswerRequest(text, pending.messageId, pending.questionKey, pending.optionKey);
+          const request =
+            pending === null ? buildQuestionRequest(text, web) : buildInterviewAnswerRequest(text, pending.messageId, pending.questionKey, pending.optionKey);
           const result = await apiClient.postMessage(tenantId, existing.conversationId, request);
           const ok = result.ok && result.reply !== null && result.reply !== undefined;
           land(

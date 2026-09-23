@@ -398,6 +398,12 @@ public static class ConversationsEndpointExtensions
             effectiveQuestion = resolution.EffectiveQuestion;
             youInterviewJson = resolution.YouInterviewJson;
         }
+        else if (request.WebResearch == true)
+        {
+            // ADR-031: the toggle is the consent for this question; the engine still checks the
+            // kill switch, the workspace opt-in and the budget.
+            hints = hints with { WebMode = true };
+        }
 
         var reply = await AskAndAppendAsync(
                 askCopilotService, conversationService, tenantId, userId, conversationId, conversation,
@@ -914,7 +920,10 @@ public static class ConversationsEndpointExtensions
     /// nested type for the identical reason <see cref="CreateConversationRequest"/>'s own doc
     /// comment gives.
     /// </summary>
-    public sealed record PostConversationMessageRequest(string? Question, InterviewAnswerRequest? InterviewAnswer = null);
+    /// <param name="WebResearch">ADR-031: the composer's web-search toggle was on when this
+    /// question was sent. Ignored on an interview answer, which always runs its own resolution.</param>
+    public sealed record PostConversationMessageRequest(
+        string? Question, InterviewAnswerRequest? InterviewAnswer = null, bool? WebResearch = null);
 
     public sealed record InterviewAnswerRequest(string? MessageId, string? QuestionKey, string? OptionKey = null, bool? FreeText = null);
 }

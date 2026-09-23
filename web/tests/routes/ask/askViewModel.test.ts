@@ -5,6 +5,7 @@ import {
   buildErrorTurn,
   buildInterviewAnswerRequest,
   buildOffCopy,
+  buildQuestionRequest,
   buildRaffaTurnFromReply,
   buildScopeLine,
   buildScopedBrief,
@@ -26,8 +27,10 @@ import {
   pendingInterview,
   resolveAskOffReason,
   resolveCitationOpenAction,
+  resolveWebSearchToggle,
   suggestionsFor,
   toCitationCorpus,
+  WEB_SEARCH_ON_HINT,
 } from "../../../src/routes/ask/askViewModel";
 
 function citation(overrides: Partial<ConversationCitationBody> = {}): ConversationCitationBody {
@@ -923,5 +926,37 @@ describe("web research (ADR-030)", () => {
     );
     expect(pendingConsent([choice])).toBeNull();
     expect(pendingConsent([consent, choice])).toBeNull();
+  });
+});
+
+describe("web search toggle (ADR-031)", () => {
+  it("is hidden until the environment publishes web research as available", () => {
+    expect(resolveWebSearchToggle(null).visible).toBe(false);
+    expect(resolveWebSearchToggle({ webResearchEnabled: true, canEdit: true }).visible).toBe(false);
+    expect(resolveWebSearchToggle({ webResearchEnabled: true, webResearchAvailable: false, canEdit: true }).visible).toBe(false);
+  });
+
+  it("is shown but unusable until the workspace opts in, pointing an Admin at the switch", () => {
+    const admin = resolveWebSearchToggle({ webResearchEnabled: false, webResearchAvailable: true, canEdit: true });
+    const member = resolveWebSearchToggle({ webResearchEnabled: false, webResearchAvailable: true, canEdit: false });
+
+    expect(admin).toMatchObject({ visible: true, enabled: false });
+    expect(admin.hint).toContain("Switch it on under Workspace & members");
+    expect(member.hint).toContain("Your workspace Admin can switch it on");
+  });
+
+  it("is usable once both the environment and the workspace say yes", () => {
+    expect(resolveWebSearchToggle({ webResearchEnabled: true, webResearchAvailable: true, canEdit: false })).toEqual({
+      visible: true,
+      enabled: true,
+      hint: WEB_SEARCH_ON_HINT,
+    });
+  });
+
+  it("adds webResearch to a plain question only when the toggle is on, and tags the bubble", () => {
+    expect(buildQuestionRequest("q")).toEqual({ question: "q" });
+    expect(buildQuestionRequest("q", true)).toEqual({ question: "q", webResearch: true });
+    expect(buildYouTurn("t-1", "q", true)).toEqual({ id: "t-1", role: "you", text: "q", web: true });
+    expect(buildYouTurn("t-2", "q")).toEqual({ id: "t-2", role: "you", text: "q" });
   });
 });

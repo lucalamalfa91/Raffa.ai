@@ -73,6 +73,14 @@ own facts, or the screen that already has the answer — and can file the gap
 as a GitHub issue for the team from a three-question card in the chat
 (ADR-030).
 
+The composer's **Web search** toggle (ADR-031, shown where the environment has
+web research and usable once the workspace Admin switched it on) sends a
+question to the public web and to the workspace's own data together, with the
+procurement-only filters lifted and no per-question consent: only the
+question's words are searched, and the web part of the reply is labelled
+unverified. A plainly personal question ("dimmi la ricetta della carbonara")
+gets Google and Perplexity links instead.
+
 Quote check is only for a **new** supplier proposal. "Which of *my* contracts
 are off-market?" stays in Ask (today that intent routes correctly, then
 abstains — pack not built yet).

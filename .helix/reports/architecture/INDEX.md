@@ -2043,3 +2043,12 @@ guard / `chat.drafted` / `chat.interviewed` audit consequences, and keeps web
 research a narrow exception to R-AI-03 (separate role, no pack slot, explicit
 consent, `WebGuard`, always unverified). ADR-016 also gains the w20 footer for
 the demo invitation / guest-provisioning flip and the feedback token gate.
+
+## Post-w20 product feedback (2026-09-23) — Ask Raffa web-search toggle
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-031 | Ask Raffa: web-search toggle in the composer | software-architect (+ product-owner, security-architect, client-architect) | `webResearch: true` on a message is the user's consent for that question: the topic lexicon, the interview and the domain gate's off-domain/legal/needs-document redirects are lifted, an open research persona searches any work topic beside the normal contracts-only pipeline, and the two answers share one reply under their own headings without ever sharing a pack; a plainly personal question is a redirect with Google and Perplexity links and no model call; the kill switch, workspace opt-in, budget, sanitiser, guards and isolation of ADR-030 all stay. |
+
+ADR-031 narrows ADR-030 §B clauses 9–10 for toggle turns only; the consented path, clause 11's
+"never merged into an `answer`-role pack" and the isolation tests are unchanged.

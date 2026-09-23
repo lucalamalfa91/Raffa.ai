@@ -7,6 +7,9 @@ Buyer screens and the upload → review → validated path:
 > Postgres tables and the two vector indexes that live in the same database —
 > plus its deterministic calculators. Microsoft Foundry on Azure reads,
 > classifies, embeds and narrates; it carries **no tools and no web access**.
+> The one exception is the isolated `research` role (ADR-030, and the
+> composer's web-search toggle of ADR-031): it sees only the user's sanitised
+> words, never a pack, and its answer is always labelled unverified.
 > The market-intelligence source (a mock feed today, a third-party API
 > tomorrow) is read **only by the ingestion job**, never while a user is
 > asking.
@@ -273,6 +276,15 @@ sequenceDiagram
       U->>SPA: Allow (single-use) / Decline
       SPA->>API: POST … { interviewAnswer: { optionKey: "allow" | "decline" } }
     end
+    opt web-search toggle on (ADR-031) — POST … { question, webResearch: true }
+      alt plainly personal (recipe, match, weather, joke)
+        API-->>SPA: kind redirect · Google + Perplexity external actions · no retrieval, no model call
+      else any work question
+        Note over API: no consent dialog, no interview, no topic lexicon · same gates, sanitiser and guards
+        API->>API: contracts-only pipeline (below) + one open-mode research call — two halves, two packs
+        API-->>SPA: one reply: "From your contracts" [1..k] · "From the public web · unverified" [k+1..]
+      end
+    end
     opt notice question
       API-->>SPA: fallback answer from the bound contract — Foundry is not called
     end
@@ -353,6 +365,10 @@ stateDiagram-v2
   InDomain --> Planner
   Planner --> Interview: ambiguous (ADR-030)
   Interview --> Planner: option resolved by key, forced intent
+  Gate --> WebMode: web-search toggle on (ADR-031)
+  WebMode --> Redirect: plainly personal — Google / Perplexity links
+  WebMode --> Planner: contracts-only half, interview suppressed
+  WebMode --> Research: open persona, gates open, no consent
   Planner --> Consent: WebResearch intent, gates open
   Consent --> Research: allow, single-use
   Consent --> Planner: decline, same words without the web phrase
@@ -381,6 +397,15 @@ on) and `interview` (ADR-030: one clarifying question with clickable options,
 or the consent alert when the option is "search the public web"). Every reply
 also carries `payload` when it needs structured content — the drafted email,
 the gap, the feedback offer or result — and `null` otherwise.
+
+**Web-search toggle (ADR-031).** The composer's toggle sends `webResearch: true`: the toggle is
+the consent, so there is no dialog, and the procurement-only filters (topic lexicon, interview,
+off-domain/legal/unknown-supplier redirects) are lifted for that question. The same three gates,
+the sanitiser, the isolated research role and its guards still apply. A plainly personal question
+(`WebModeLexicon`, then the open persona's `offTopic`) is a redirect with Google and Perplexity
+links. Any other question runs the contracts-only pipeline and one open-mode research call side
+by side; the two guarded answers share one reply under their own headings, the web half always
+unverified, and never share a pack.
 
 Web research (ADR-030) is a side path, never the main one: it needs the
 environment's kill switch, the workspace Admin's opt-in and a daily budget
@@ -561,4 +586,6 @@ and no Foundry project (ADR-006, ADR-008, ADR-011).
 | The drafted email's numbers, dates and asks (ADR-030) | The same pack — copied by the negotiation writer, or by the template | offer planner + writer (analyst role), guarded by `DraftGuard`/`NumericGuard`; template on failure | yes |
 | "I can't send an email from Raffa.ai yet, but…" and the feedback card | Capability-gap catalog — `Raffa.Chat` (IT/EN, versioned in code) | deterministic, in the question's language | yes |
 | "Open issue #123 →" | GitHub's own response to the feedback submission | server-authored `external` action, never the model | yes |
-| Anything else — the web, the model's memory | — | — | **never**: the guards abstain |
+| "From the public web · unverified" and its `web` citations (ADR-030 consent, or the ADR-031 toggle) | Public web sources the research role's `web_search` tool returned for the sanitised question | research role (no pack), guarded by `WebGuard`/`NumericGuard`/`GroundingGuard` | yes, only after consent or with the toggle on |
+| "Search on Google →" / "Ask Perplexity →" (ADR-031) | The question's own sanitised words | server-authored `external` actions, no model call | yes, with the toggle on |
+| Anything else — the model's memory, a web page the research tool did not return | — | — | **never**: the guards abstain |

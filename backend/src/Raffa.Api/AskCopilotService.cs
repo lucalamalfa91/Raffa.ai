@@ -370,23 +370,29 @@ internal sealed partial class AskCopilotService(
         // branch here carries its own guardIntervened alongside the reply, rather than WriteAuditAsync
         // inferring it from ReplyKind alone (which cannot tell the two apart; see
         // BuildInDomainReplyAsync's own doc comment on its tuple return).
-        var (reply, guardIntervened, fallbackUsed) = gate.Label switch
-        {
-            GateLabel.Greeting or GateLabel.OffDomain => (BuildGreetingReply(portfolio, supplierNames), false, false),
-            GateLabel.Legal => (BuildLegalReply(portfolio, supplierNames, gate.NamedSupplier), false, false),
-            GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false, false),
-            GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
-            GateLabel.CapabilityGap => await BuildCapabilityGapReplyAsync(
-                tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor, cancellationToken)
-                .ConfigureAwait(false),
-            GateLabel.InDomain => await BuildInDomainReplyAsync(
-                tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
-                scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken)
-                .ConfigureAwait(false),
-            _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
-        };
+        // ADR-031: the composer's web-search toggle takes every question that is a search (see
+        // IsWebModeTurn) to the web and to the store, the procurement-only filters lifted.
+        var (reply, guardIntervened, fallbackUsed) = IsWebModeTurn(turnHints, gate, question)
+            ? await BuildWebModeReplyAsync(
+                tenantId, question, gate, portfolio, supplierNames, recentTurns, scopeContractId, scopedContractItem, actor, cancellationToken)
+                .ConfigureAwait(false)
+            : gate.Label switch
+            {
+                GateLabel.Greeting or GateLabel.OffDomain => (BuildGreetingReply(portfolio, supplierNames), false, false),
+                GateLabel.Legal => (BuildLegalReply(portfolio, supplierNames, gate.NamedSupplier), false, false),
+                GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false, false),
+                GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
+                GateLabel.CapabilityGap => await BuildCapabilityGapReplyAsync(
+                    tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor, cancellationToken)
+                    .ConfigureAwait(false),
+                GateLabel.InDomain => await BuildInDomainReplyAsync(
+                    tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
+                    scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken)
+                    .ConfigureAwait(false),
+                _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
+            };
 
-        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, actor, cancellationToken).ConfigureAwait(false);
+        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, turnHints.WebMode, actor, cancellationToken).ConfigureAwait(false);
 
         // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
         // answer above), so "asked, said no" is visible without the query ever being logged.
@@ -2918,7 +2924,7 @@ internal sealed partial class AskCopilotService(
             item.AutoRenewal);
 
     private async Task WriteAuditAsync(
-        TenantId tenantId, CopilotReply reply, bool guardIntervened, bool fallbackUsed, string actor, CancellationToken cancellationToken)
+        TenantId tenantId, CopilotReply reply, bool guardIntervened, bool fallbackUsed, bool webMode, string actor, CancellationToken cancellationToken)
     {
         var action = reply.Kind switch
         {
@@ -2951,7 +2957,8 @@ internal sealed partial class AskCopilotService(
                 $"fallbackUsed={fallbackUsed} " +
                 $"interviewQuestions={reply.Interview?.Questions.Count ?? 0} " +
                 $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
-                $"unverified={reply.Provenance.Unverified}"),
+                $"unverified={reply.Provenance.Unverified} " +
+                $"webMode={webMode}"),
             cancellationToken).ConfigureAwait(false);
     }
 

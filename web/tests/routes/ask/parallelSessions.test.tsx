@@ -57,6 +57,7 @@ function parallelServer() {
     }),
     getPortfolio: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, portfolio: { items: [], page: 1, pageSize: 100, totalCount: 0 }, error: null }),
     getCapabilities: vi.fn().mockResolvedValue({ ok: false, statusCode: 503, catalog: null, error: null }),
+    getWorkspaceSettings: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, settings: null, error: null }),
     getContract360: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, contract: null, error: null }),
     getConversation: vi.fn(),
     deleteConversation: vi.fn(),
