@@ -9,13 +9,24 @@ namespace Raffa.Chat.Application.Reply;
 /// none of them has a <see langword="null"/> payload altogether. Which members a kind carries:
 /// <see cref="ReplyKind.Draft"/> — <see cref="Gap"/> + <see cref="Draft"/> + <see cref="FeedbackOffer"/>;
 /// a capability-gap <see cref="ReplyKind.Redirect"/> — <see cref="Gap"/> + <see cref="FeedbackOffer"/>;
-/// the feedback confirmation (<see cref="ReplyKind.Answer"/>) — <see cref="FeedbackResult"/>.
+/// the feedback confirmation (<see cref="ReplyKind.Answer"/>) — <see cref="FeedbackResult"/>;
+/// the capability follow-up (ADR-031, a <see cref="ReplyKind.Redirect"/> appended after the
+/// answer) — <see cref="Gap"/> + <see cref="FeedbackOffer"/> + <see cref="FollowUps"/> +
+/// <see cref="CapabilityCheckFor"/>.
 /// </summary>
+/// <param name="FollowUps">ADR-031: the follow-up questions of a turn that is never returned as a
+/// live reply — the capability follow-up is appended to the conversation and read back from it, and
+/// a stored message has no follow-up column of its own.</param>
+/// <param name="CapabilityCheckFor">ADR-031: the id of the answer a capability follow-up was
+/// appended after — what tells the client (and the next turn's interview logic) that this turn is
+/// a follow-up, not a reply to a new question.</param>
 public sealed record ReplyPayload(
     GapInfo? Gap = null,
     EmailDraft? Draft = null,
     FeedbackOffer? FeedbackOffer = null,
-    FeedbackResult? FeedbackResult = null);
+    FeedbackResult? FeedbackResult = null,
+    IReadOnlyList<string>? FollowUps = null,
+    string? CapabilityCheckFor = null);
 
 /// <summary>Which gap fired and in which language the deterministic copy was written.</summary>
 /// <param name="Key"><c>Gaps.CapabilityGap.Key</c> — a catalog key, or

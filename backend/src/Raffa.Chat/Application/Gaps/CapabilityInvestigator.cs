@@ -49,14 +49,14 @@ public sealed record GapInvestigation(
 /// every other one — "puoi scrivere un report per il CFO?" was answered as a portfolio question.
 /// This agent reads the turn beside the whole capability map (<see cref="CapabilityCatalog"/>,
 /// <see cref="CapabilityInvestigatorAgent.AskAbilities"/>, the known gaps) and returns one of
-/// four verdicts; a <c>gap</c> verdict becomes a discovered <see cref="CapabilityGap"/> the
-/// composition root answers exactly like a catalog gap — the honest preface, the nearest real
-/// alternative and the offer to propose the feature, which a person approves on GitHub before
-/// anything is built.
+/// four verdicts; a <c>gap</c> verdict becomes a discovered <see cref="CapabilityGap"/>. The host
+/// runs this beside the answer and, when it finds a gap, appends a separate follow-up message after
+/// the answer — the honest preface, the nearest real alternative and the offer to propose the
+/// feature, which a person approves on GitHub before anything is built.
 ///
 /// <para><b>Fail-open, always.</b> A disabled switch, a gateway failure, a timeout, an unparseable
 /// payload, a low-confidence verdict or texts that do not survive <see cref="DiscoveredGapText"/>
-/// all return <see cref="GapVerdict.None"/>: the turn is answered as it was before ADR-031. The
+/// all return <see cref="GapVerdict.None"/>: no follow-up, and the answer never waited for it. The
 /// investigator never answers, never retrieves and never sees tenant data beyond the supplier
 /// names it is handed to scrub.</para>
 /// </summary>

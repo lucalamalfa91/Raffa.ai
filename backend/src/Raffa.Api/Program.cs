@@ -241,6 +241,7 @@ builder.Services.AddSingleton(draftingOptions);
 var gapInvestigationOptions = new Raffa.Chat.Application.Gaps.GapInvestigationOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName).Bind(gapInvestigationOptions);
 builder.Services.AddSingleton(gapInvestigationOptions);
+builder.Services.AddSingleton<Raffa.Api.CapabilityCheckDispatcher>();
 
 // ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
 // council/drafting options above so a configured value wins over the module's TryAdd default.

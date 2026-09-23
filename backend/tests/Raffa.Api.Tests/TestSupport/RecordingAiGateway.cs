@@ -45,7 +45,25 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
 
     /// <summary>Every method name invoked on this instance, in call order (e.g. "EmbedAsync",
     /// "AnswerAsync").</summary>
-    public IReadOnlyList<string> Calls => _calls;
+    public IReadOnlyList<string> Calls
+    {
+        get
+        {
+            lock (_calls)
+            {
+                return [.. _calls];
+            }
+        }
+    }
+
+    // ADR-031: the capability check runs beside the answer, so two calls can be recorded at once.
+    private void Record(string call)
+    {
+        lock (_calls)
+        {
+            _calls.Add(call);
+        }
+    }
 
     /// <summary>The agent name ADR-031's capability investigator calls
     /// <see cref="AnalyzeAsync"/> with (<c>Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Name</c>).</summary>
@@ -66,7 +84,7 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
             var agents = Agents;
             var analyzeIndex = 0;
             var calls = new List<string>();
-            foreach (var call in _calls.ToList())
+            foreach (var call in Calls)
             {
                 if (call == nameof(AnalyzeAsync) && agents.ElementAtOrDefault(analyzeIndex++) == CapabilityInvestigatorAgent)
                 {
@@ -83,49 +101,49 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
     public Task<Result<AiClassificationResult>> ClassifyAsync(
         AiClassificationRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(ClassifyAsync));
+        Record(nameof(ClassifyAsync));
         return inner.ClassifyAsync(request, cancellationToken);
     }
 
     public Task<Result<AiExtractionResult>> ExtractAsync(
         AiExtractionRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(ExtractAsync));
+        Record(nameof(ExtractAsync));
         return inner.ExtractAsync(request, cancellationToken);
     }
 
     public Task<Result<AiEmbeddingResult>> EmbedAsync(
         AiEmbeddingRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(EmbedAsync));
+        Record(nameof(EmbedAsync));
         return inner.EmbedAsync(request, cancellationToken);
     }
 
     public Task<Result<AiResearchResult>> ResearchAsync(
         AiResearchRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(ResearchAsync));
+        Record(nameof(ResearchAsync));
         return inner.ResearchAsync(request, cancellationToken);
     }
 
     public Task<Result<AiAnswerResult>> AnswerAsync(
         AiAnswerRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(AnswerAsync));
+        Record(nameof(AnswerAsync));
         return inner.AnswerAsync(request, cancellationToken);
     }
 
     public Task<Result<AiOcrResult>> OcrAsync(
         AiOcrRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(OcrAsync));
+        Record(nameof(OcrAsync));
         return inner.OcrAsync(request, cancellationToken);
     }
 
     public Task<Result<AiAnalysisResult>> AnalyzeAsync(
         AiAnalysisRequest request, CancellationToken cancellationToken = default)
     {
-        _calls.Add(nameof(AnalyzeAsync));
+        Record(nameof(AnalyzeAsync));
         lock (_agents)
         {
             _agents.Add(request.AgentName);

@@ -7,15 +7,16 @@ public sealed class GapInvestigationOptions
     public const string SectionName = "Chat:GapInvestigation";
 
     /// <summary>Off, and only the fixed <see cref="CapabilityGapCatalog"/> recognises a gap — no
-    /// investigator call on any turn (the pre-ADR-031 behaviour, exactly).</summary>
+    /// investigator call and no follow-up on any turn (the pre-ADR-031 behaviour, exactly).</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>The lowest verdict confidence that turns a turn into a gap reply: <c>medium</c>
+    /// <summary>The lowest verdict confidence that appends a capability follow-up: <c>medium</c>
     /// (default) accepts medium and high, <c>high</c> accepts high only. A low-confidence verdict
-    /// never hijacks a turn.</summary>
+    /// adds nothing.</summary>
     public string MinConfidence { get; set; } = CapabilityInvestigatorAgent.ConfidenceMedium;
 
-    /// <summary>The investigator runs before the turn is answered, so a slow call must not hold
-    /// the answer: past this budget the turn goes on as if nothing was found.</summary>
-    public int TimeoutSeconds { get; set; } = 8;
+    /// <summary>The investigator runs beside the answer and never delays it; past this budget
+    /// the check ends as if nothing was found and no follow-up is appended. The web client polls
+    /// for a pending follow-up a little longer than this.</summary>
+    public int TimeoutSeconds { get; set; } = 12;
 }

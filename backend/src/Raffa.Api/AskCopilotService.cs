@@ -201,7 +201,7 @@ internal sealed partial class AskCopilotService(
     IMarketDealLookup marketDealLookup,
     AskAgentFlow askAgentFlow,
     NegotiationDraftingWorkflow negotiationDraftingWorkflow,
-    CapabilityInvestigator capabilityInvestigator,
+    CapabilityCheckDispatcher capabilityCheckDispatcher,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
     WebResearchOptions webResearchOptions,
@@ -268,6 +268,9 @@ internal sealed partial class AskCopilotService(
     /// method can tell "no scope" from "a scope that did not resolve" — this parameter alone, not
     /// the gate's already-resolved supplier name, is what lets a same-name portfolio hit lose to
     /// the real scoped id and an unseen id refuse (see this type's own doc comment).</param>
+    /// <param name="capabilityCheck">ADR-031: when given, a fresh in-domain turn starts the
+    /// capability check in it, beside the answer; the caller appends its follow-up after
+    /// persisting the answer. <see langword="null"/>: no check at all.</param>
     /// <exception cref="ArgumentException"><paramref name="question"/> is null/blank.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="recentTurns"/> is <see langword="null"/>.</exception>
     public async Task<CopilotReply> AskAsync(
@@ -278,6 +281,7 @@ internal sealed partial class AskCopilotService(
         EntityId? scopeContractId = null,
         AskTurnHints? hints = null,
         bool previousRaffaTurnWasInterview = false,
+        CapabilityCheckSlot? capabilityCheck = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
@@ -367,29 +371,38 @@ internal sealed partial class AskCopilotService(
             };
         }
 
-        // ADR-031: Raffa's own judgement, before any pack, interview or answer — does this fresh
-        // turn ask for an operation nothing in Raffa performs? Only an InDomain turn is asked: the
-        // fixed catalog already had its say in the gate (a CapabilityGap label never reaches the
-        // investigator); Greeting/OffDomain/Legal/Capability/NeedsDocument are decided without any
-        // AI Gateway call and stay that way (R-ASK-02/03, the golden set's zero-call cases); a turn
-        // resolved by key (an interview option, a web consent) continues one that was already
-        // investigated. Fail-open: no verdict leaves the gate exactly as it was.
-        var investigation = GapInvestigation.NotFound("skipped");
-        if (gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints))
+        // ADR-031: Raffa's own judgement on whether this turn asks for an operation nothing in
+        // Raffa performs — started here, beside the answer, never in front of it: the answer below
+        // is computed while the investigator's model call is in flight, and the endpoint appends
+        // any proposal as a separate message after the answer (CapabilityCheckDispatcher). Only a
+        // fresh, typed InDomain turn is checked: the fixed catalog already had its say in the gate;
+        // Greeting/OffDomain/Legal/Capability/NeedsDocument make no AI Gateway call and stay that
+        // way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an interview
+        // option, a web consent) continues one that was already checked; and only a caller that
+        // will persist a follow-up (the conversation endpoints) passes a slot.
+        var gapInvestigation = "skipped";
+        if (capabilityCheck is not null && gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints))
         {
-            investigation = await capabilityInvestigator
-                .InvestigateAsync(question, supplierNames.Values.ToList(), cancellationToken)
-                .ConfigureAwait(false);
-
-            if (investigation.Gap is { } investigatedGap)
+            if (!capabilityCheckDispatcher.Enabled)
             {
-                gate = gate with
-                {
-                    Label = GateLabel.CapabilityGap,
-                    Reason = $"the capability investigator found the '{investigatedGap.Key}' gap " +
-                        $"({investigation.Outcome}, ADR-031).",
-                    Gap = investigatedGap,
-                };
+                gapInvestigation = "off";
+            }
+            else
+            {
+                var (namedItem, _, _) = ResolveNamedContractItem(scopedContractItem, gate.NamedSupplier, portfolio, supplierNames);
+                var namedSupplier = namedItem?.SupplierId is { } namedSupplierId &&
+                    supplierNames.TryGetValue(new EntityId(namedSupplierId), out var namedSupplierName)
+                        ? namedSupplierName
+                        : null;
+
+                capabilityCheck.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
+                    tenantId,
+                    question,
+                    supplierNames.Values.ToList(),
+                    portfolio.TotalCount,
+                    namedSupplier,
+                    namedItem?.ContractId));
+                gapInvestigation = "started";
             }
         }
 
@@ -405,8 +418,7 @@ internal sealed partial class AskCopilotService(
             GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false, false),
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
             GateLabel.CapabilityGap => await BuildCapabilityGapReplyAsync(
-                tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor,
-                investigation.AlternativeQuestions, cancellationToken)
+                tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor, cancellationToken)
                 .ConfigureAwait(false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
                 tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
@@ -415,7 +427,7 @@ internal sealed partial class AskCopilotService(
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
 
-        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, investigation.Outcome, actor, cancellationToken).ConfigureAwait(false);
+        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, gapInvestigation, actor, cancellationToken).ConfigureAwait(false);
 
         // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
         // answer above), so "asked, said no" is visible without the query ever being logged.

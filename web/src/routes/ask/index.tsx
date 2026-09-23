@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import type { ApiClient, CapabilityBody, DocumentListPageBody } from "../../api/client";
+import type { ApiClient, CapabilityBody, ConversationReplyBody, DocumentListPageBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { useValidatedContractCount } from "../../components/shell/useValidatedContractCount";
 import { usePollBudget } from "../../components/shell/usePollBudget";
@@ -22,6 +22,7 @@ import {
   NEW_CHAT_INTRO,
   THINKING_COPY,
   TRANSPORT_ERROR_REASON,
+  appendCapabilityFollowUp,
   buildRaffaTurnFromMessage,
   buildInterviewAnswerRequest,
   buildRaffaTurnFromReply,
@@ -40,6 +41,7 @@ import {
   fetchBoundContractChip,
   nextTurnId,
   parseScopeContractId,
+  pollCapabilityFollowUp,
   resolveAskOffReason,
   resolveCitationOpenAction,
   suggestionsFor,
@@ -290,6 +292,42 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     }
   }, [routeConversationId]);
 
+  // ADR-031: the capability check runs beside the answer, never in front of it. Its follow-up
+  // arrives with the reply when the check finished first (`followUpMessage`), or later when the
+  // reply says `capabilityCheck: "pending"` -- then the screen reads the conversation back for a
+  // few seconds. A poll stops on its own when a new question is asked (`followUpWatch` is bumped),
+  // when another conversation is open (a new chat's first answer navigates to its own id, which
+  // is the same conversation, so that one keeps its poll) and on unmount.
+  const followUpWatch = useRef(0);
+  const routeConversationIdRef = useRef(routeConversationId);
+  routeConversationIdRef.current = routeConversationId;
+  useEffect(
+    () => () => {
+      followUpWatch.current += 1;
+    },
+    [],
+  );
+
+  const receiveCapabilityFollowUp = useCallback(
+    (conversationId: string, reply: ConversationReplyBody) => {
+      const followUpMessage = reply.followUpMessage ?? null;
+      if (followUpMessage) {
+        setTurns((previous) => appendCapabilityFollowUp(previous, followUpMessage));
+        return;
+      }
+      if (reply.capabilityCheck !== "pending" || !workspace) return;
+
+      const watch = followUpWatch.current;
+      const stale = () =>
+        followUpWatch.current !== watch ||
+        (routeConversationIdRef.current ?? createdConversationId.current) !== conversationId;
+      void pollCapabilityFollowUp(apiClient, workspace.id, conversationId, reply.messageId, stale).then((message) => {
+        if (message && !stale()) setTurns((previous) => appendCapabilityFollowUp(previous, message));
+      });
+    },
+    [apiClient, workspace?.id],
+  );
+
   // ADR-030: the interview the next message answers is read off the turns on screen at the
   // moment of asking (a ref, so `ask` itself never re-creates on every turn).
   const turnsRef = useRef<readonly AskTurnView[]>(turns);
@@ -299,6 +337,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     (rawText: string, interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null }) => {
       const text = rawText.trim();
       if (text === "" || !workspace) return;
+      // ADR-031: a new question ends the wait for the previous answer's follow-up.
+      followUpWatch.current += 1;
 
       // An explicit option click, else the pending interview a typed answer implicitly replies to.
       const pending = interviewAnswer ?? (() => {
@@ -333,6 +373,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
           // once `createdConversationId.current` above makes `currentConversationId` non-null.
           setBoundContractId(result.scopeContractId);
           setTurns((previous) => [...previous, buildRaffaTurnFromReply(nextTurnId(), result.reply)]);
+          receiveCapabilityFollowUp(result.conversationId, result.reply);
           navigate(`/ask/${result.conversationId}`, { replace: true });
         });
         return;
@@ -347,12 +388,13 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
             ? buildRaffaTurnFromReply(nextTurnId(), result.reply)
             : buildErrorTurn(nextTurnId(), result.error ?? TRANSPORT_ERROR_REASON);
         setTurns((previous) => [...previous, turn]);
+        if (result.ok && result.reply) receiveCapabilityFollowUp(openConversationId, result.reply);
       });
     },
     // Depends on workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns
     // a fresh object every call, the same convention ../contracts/contract360/index.tsx#load already
     // establishes for this app.
-    [apiClient, workspace?.id, routeConversationId, scopeContractId, navigate],
+    [apiClient, workspace?.id, routeConversationId, scopeContractId, navigate, receiveCapabilityFollowUp],
   );
 
   /**

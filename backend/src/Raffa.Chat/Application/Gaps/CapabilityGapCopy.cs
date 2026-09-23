@@ -62,6 +62,14 @@ public static class CapabilityGapCopy
         };
     }
 
+    /// <summary>The first sentence of a capability follow-up (ADR-031): the answer came first,
+    /// this message comes after it, so it says what it is — the result of checking what Raffa can
+    /// do for the request.</summary>
+    public static string CheckedOpening(string language) =>
+        QuestionLanguage.IsItalian(language)
+            ? "Ho verificato cosa sa fare Raffa.ai per la tua richiesta."
+            : "I checked what Raffa.ai can do for your request.";
+
     /// <summary>The second sentence of a discovered-gap turn (ADR-031): the feature does not
     /// exist yet, the user can propose it, and a person approves it before anything is built.</summary>
     public static string DiscoveredLeadIn(string language) =>

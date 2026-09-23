@@ -245,8 +245,10 @@ public sealed class ConversationFeedbackEndpointTests(RaffaApiFactory factory) :
             HttpMethod.Post, $"/api/conversations/{conversationId}/messages", tenantId,
             new { question = "Can you prepare a slide deck on our renewals for the board?" });
         using var reply = JsonDocument.Parse(await (await client.SendAsync(messageRequest)).Content.ReadAsStringAsync());
-        Assert.Equal("redirect", reply.RootElement.GetProperty("kind").GetString());
-        var messageId = reply.RootElement.GetProperty("messageId").GetGuid();
+        // The proposal is the follow-up message after the standard answer, not the answer itself.
+        var followUp = reply.RootElement.GetProperty("followUpMessage");
+        Assert.Equal("redirect", followUp.GetProperty("kind").GetString());
+        var messageId = followUp.GetProperty("id").GetGuid();
 
         using var request = Request(HttpMethod.Post, $"/api/conversations/{conversationId}/feedback", tenantId, new
         {

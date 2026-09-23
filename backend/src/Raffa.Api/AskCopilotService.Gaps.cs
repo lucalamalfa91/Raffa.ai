@@ -22,10 +22,8 @@ namespace Raffa.Api;
 /// facts, lever calculations, clause evidence, playbook, plus what Ask's agentic flow adds: the
 /// market data check, the market researcher's notes and the council plays) by
 /// <see cref="NegotiationDraftingWorkflow"/>; for the other gaps it is a deep link into the screen
-/// that already holds the answer. A gap the capability investigator discovered (ADR-031) takes the
-/// same shape: the preface, the nearest existing screen it named, the questions Ask can already
-/// answer instead, and the offer to propose the feature — which becomes a GitHub issue a person
-/// approves before anything is built.
+/// that already holds the answer. (A gap the capability investigator finds, ADR-031, is never this
+/// turn's reply: it follows the answer as a separate message — <see cref="CapabilityCheckDispatcher"/>.)
 /// </summary>
 internal sealed partial class AskCopilotService
 {
@@ -43,7 +41,6 @@ internal sealed partial class AskCopilotService
         EntityId? scopeContractId,
         PortfolioListItem? scopedContractItem,
         string actor,
-        IReadOnlyList<string> investigatedFollowUps,
         CancellationToken cancellationToken)
     {
         var gap = gate.Gap ?? throw new ArgumentException("A capability-gap turn must carry its catalog entry.", nameof(gate));
@@ -61,11 +58,6 @@ internal sealed partial class AskCopilotService
 
         var contractIdForActions = namedContractItem is not null ? new EntityId(namedContractItem.ContractId) : (EntityId?)null;
         var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard, contractIdForActions);
-
-        if (gap.Alternative == GapAlternative.NearestCapability)
-        {
-            return (BuildDiscoveredGapRedirect(gap, language, investigatedFollowUps, routingContext), false, false);
-        }
 
         if (gap.Alternative != GapAlternative.DraftEmail)
         {
@@ -100,33 +92,6 @@ internal sealed partial class AskCopilotService
         var actions = capabilityRouting.ResolveActions([CapabilityIntent.HowTo(capabilityKey)], routingContext);
 
         return CapabilityGapReplyBuilder.Redirect(gap, language, CapabilityGapCopy.Preface(gap, language), actions, []);
-    }
-
-    /// <summary>
-    /// ADR-031: a gap the investigator discovered. The honest preface names the operation and the
-    /// nearest existing screen (server-authored copy), the lead-in says the feature does not exist
-    /// yet and that a proposal is approved by a person before it is built, the action opens that
-    /// screen — none when the nearest thing is Ask itself, so the Ask screen never links to itself —
-    /// and the follow-ups are the questions the investigator said Ask can already answer.
-    /// </summary>
-    private CopilotReply BuildDiscoveredGapRedirect(
-        CapabilityGap gap, string language, IReadOnlyList<string> followUps, RoutingContext routingContext)
-    {
-        var linkKey = gap.NearestCapabilityKey switch
-        {
-            null or CapabilityCatalog.AskKey => null,
-            // Both patterns need an object id this turn does not have; the list they belong to does not.
-            CapabilityCatalog.ContractDetailKey when routingContext.ContractId is null => CapabilityCatalog.PortfolioKey,
-            CapabilityCatalog.DocumentsReviewKey => CapabilityCatalog.DocumentsAttentionKey,
-            var key => key,
-        };
-
-        IReadOnlyList<CopilotAction> actions = linkKey is null
-            ? []
-            : capabilityRouting.ResolveActions([CapabilityIntent.HowTo(linkKey)], routingContext);
-
-        var markdown = CapabilityGapCopy.Preface(gap, language) + " " + CapabilityGapCopy.DiscoveredLeadIn(language);
-        return CapabilityGapReplyBuilder.Redirect(gap, language, markdown, actions, followUps);
     }
 
     /// <summary>A turn the capability investigator may look at (ADR-031): typed by the user, not

@@ -861,9 +861,15 @@ per-user conversations.
   `ActionRow.tsx`, never a router `<Link>`. Every turn now carries `messageId` (`AskTurnView`) and the
   wire's `payload` (`ConversationPayloadBody`), mapped by `askViewModel.ts#buildReply`; a stored
   `draft` whose payload lost its email degrades to a plain `answer`, never an empty turn.
-  ADR-031 adds nothing to render: a gap Raffa's capability investigator discovered by itself arrives
-  as the same capability-gap `redirect` (key `discovered:<slug>`, the server's preface, the nearest
-  screen, the investigator's follow-up questions and a card that asks to *propose* the feature);
+  ADR-031's **capability follow-up** is a separate Raffa turn after the answer, built from the
+  stored-message shape (`askViewModel.ts#appendCapabilityFollowUp`, deduplicated by message id): the
+  reply carries it as `followUpMessage` when the server's check finished first; when the reply says
+  `capabilityCheck: "pending"`, `pollCapabilityFollowUp` reads the conversation back every 2 s for
+  up to 16 s until a message whose `payload.capabilityCheckFor` is the answer's id appears, and stops
+  at a new question, another conversation or an unmount. Its chips come from `payload.followUps`
+  (so a resumed follow-up keeps them); it renders as the existing capability-gap `redirect` (key
+  `discovered:<slug>` or a catalog key) with the card that asks to *propose* the feature; and it is
+  never "the last Raffa turn" a typed message answers (`pendingInterview` skips it).
   `payload.gap.discovery` (`replyTypes.ts#ReplyGapDiscovery`) only travels with the turn.
 - **Resume** (`/ask/:conversationId`, R-CONV-02 AC-1) -- `useConversation.ts` loads the conversation
   (`GET /api/conversations/{id}`) and turns every stored message, oldest first, into the same turn

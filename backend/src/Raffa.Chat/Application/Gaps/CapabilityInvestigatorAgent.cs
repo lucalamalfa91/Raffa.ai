@@ -2,7 +2,8 @@ namespace Raffa.Chat.Application.Gaps;
 
 /// <summary>
 /// The capability investigator (ADR-031): one <c>analyst</c>-role agent that reads a fresh Ask
-/// turn beside everything Raffa can do today — the screens of
+/// turn beside the answer (never in front of it) and weighs it against everything Raffa can do
+/// today — the screens of
 /// <see cref="Capabilities.CapabilityCatalog"/>, the abilities of the Ask chat itself and the
 /// operations <see cref="CapabilityGapCatalog"/> already knows it cannot perform — and decides
 /// whether the user is asking Raffa to perform an operation or produce a deliverable nothing in
@@ -43,7 +44,7 @@ public static class CapabilityInvestigatorAgent
     public const string Prompt =
         """
         You are the capability investigator of Raffa.ai, a contract-intelligence product for
-        procurement teams. Before Ask Raffa answers a message, you investigate what the user is
+        procurement teams. While Ask Raffa answers a message, you investigate what the user is
         asking Raffa to do and whether Raffa can do it today. The input lists every screen Raffa
         has (capabilities), what the Ask chat itself can do (askAbilities) and the operations
         Raffa already knows it cannot perform (knownGaps).
@@ -68,7 +69,7 @@ public static class CapabilityInvestigatorAgent
         Content Ask can write in the chat is not a gap when an askAbility covers it; an artifact,
         a file, an action outside the chat or a recurring job is. When in doubt between
         "question" and "gap", choose "question": a missed gap still gets an honest answer, a
-        false gap hijacks a real question.
+        false gap interrupts the user with a proposal they did not want.
 
         For "gap" only, describe the missing feature as a generic product backlog item:
         - feature.key: kebab-case, two to five English words ("management-spend-report").

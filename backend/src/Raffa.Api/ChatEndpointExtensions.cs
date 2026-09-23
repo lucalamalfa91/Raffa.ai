@@ -47,6 +47,7 @@ public static class ChatEndpointExtensions
         HttpRequest httpRequest,
         ConversationService conversationService,
         AskCopilotService askCopilotService,
+        CapabilityCheckDispatcher capabilityCheckDispatcher,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -91,7 +92,7 @@ public static class ChatEndpointExtensions
             []);
 
         var reply = await ConversationsEndpointExtensions.AskAndAppendAsync(
-                askCopilotService, conversationService, tenantId, userId, conversation.ConversationId,
+                askCopilotService, conversationService, capabilityCheckDispatcher, tenantId, userId, conversation.ConversationId,
                 // The alias always opens a fresh conversation, so it can never be answering an
                 // interview: no hints, no interview reference (ADR-030).
                 detail, request.Question, request.Question, AskTurnHints.None, null, cancellationToken)

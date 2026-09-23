@@ -42,6 +42,9 @@ internal static class GoldenSet
         "answer", "abstain", "redirect", "refusal",
         // ADR-030 D2: the drafted negotiation email.
         "draft",
+        // ADR-030 A: the interview on an ambiguous question — first exercised by ADR-031's case,
+        // where the interview is the standard reply and the capability follow-up comes after it.
+        "interview",
     };
 
     private static IReadOnlyList<GoldenCase> Load()
