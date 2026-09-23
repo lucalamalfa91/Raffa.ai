@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import EvidenceCard, { SNIPPET_COLLAPSE_LENGTH } from "../../../../src/routes/ask/reply/EvidenceCard";
@@ -30,16 +30,44 @@ const BACKEND_ACTIONS: ReplyAction[] = [
   { label: "Renewals →", href: "/renewals", kind: "secondary" },
 ];
 
-function renderCard(citations: readonly ReplyCitation[], actions: readonly ReplyAction[] = BACKEND_ACTIONS, onOpen = vi.fn()) {
+/** Renders the card and, unless `collapsed`, opens its sources row -- most tests are about the
+ * detail behind it. */
+function renderCard(citations: readonly ReplyCitation[], actions: readonly ReplyAction[] = BACKEND_ACTIONS, onOpen = vi.fn(), collapsed = false) {
   const view = render(
     <MemoryRouter>
       <EvidenceCard citations={citations} actions={actions} onOpenCitation={onOpen} />
     </MemoryRouter>,
   );
+  const toggle = view.container.querySelector<HTMLButtonElement>(".evidence-toggle");
+  if (toggle && !collapsed) fireEvent.click(toggle);
   return { ...view, onOpen };
 }
 
 describe("EvidenceCard", () => {
+  it("starts collapsed to one sources row; the actions stay visible under it", async () => {
+    const user = userEvent.setup();
+    const { container } = renderCard(TWO_CONTRACTS, BACKEND_ACTIONS, vi.fn(), true);
+
+    const toggle = screen.getByRole("button", { name: "3 sources: Salesforce, Microsoft · 2 contracts · 1 Raffa item" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const body = container.querySelector(".evidence-body");
+    expect(body).not.toBeVisible();
+    expect(screen.queryByRole("button", { name: "Open source 1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Portfolio · these 2 contracts →" })).toBeVisible();
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(body).toBeVisible();
+    expect(screen.getByRole("button", { name: "Open source 1" })).toBeInTheDocument();
+  });
+
+  it("counts a single source in the singular", () => {
+    renderCard([TWO_CONTRACTS[0]], BACKEND_ACTIONS, vi.fn(), true);
+
+    expect(screen.getByRole("button", { name: "1 source: Salesforce · 1 contract" })).toBeInTheDocument();
+  });
+
   it("renders exactly one card that names every supplier the answer cites", () => {
     const { container } = renderCard(TWO_CONTRACTS);
 

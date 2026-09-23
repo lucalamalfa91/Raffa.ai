@@ -9,10 +9,13 @@
  *   content column: display:flex;flex-direction:column;gap:14px;min-width:0
  *   text:           font-size:14px;white-space:pre-line;text-wrap:pretty;max-width:72ch
  *   abstain:        rendered as text (persona v2.4 retired the accent-left "cannot determine" block)
- *   evidence card:  see EvidenceCard.tsx's own header comment
- *   actions:        display:flex;flex-wrap:wrap;gap:8px; .btn font-size:12px;padding:7px 12px
- *   next:           display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;border-top:1px solid divider;padding-top:10px
- *                   "Next" 11px uppercase .08em neutral-600 · items 12px neutral-700, accent on hover
+ *
+ * Everything that is not prose follows the Claude.ai chat conventions: quiet chrome (hairline
+ * borders at ~15% ink, 8px controls / 12px cards, flat surfaces, no shadows but the one floating
+ * preview), long self-contained objects as a one-line artifact card that opens in the side panel,
+ * sources behind one collapsed row with inline number chips that preview on hover, suggestions as
+ * quiet one-liners on the latest turn only. The chat-local tokens below carry those values; the
+ * app-wide square look (`--radius-*: 0`) stays untouched outside this conversation surface.
  *
  * `src/index.css` (the shared sheets) loads after every route sheet, so instance values on a
  * shared class (`.btn`) carry one extra class of specificity here.
@@ -25,6 +28,20 @@
   min-width: 0;
 }
 
+/* Chat-local tokens -- also read by `../ask.css` (the side panel). */
+.ask-screen,
+.reply-body {
+  --chat-radius-card: 12px;
+  --chat-radius-control: 8px;
+  --chat-hairline: color-mix(in srgb, var(--color-text) 15%, transparent);
+  --chat-hairline-strong: color-mix(in srgb, var(--color-text) 30%, transparent);
+  --chat-tint: color-mix(in srgb, var(--color-text) 5%, transparent);
+  --chat-tint-strong: color-mix(in srgb, var(--color-text) 9%, transparent);
+  --chat-paper: #fff;
+  --chat-muted: var(--color-neutral-600);
+  --chat-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 /* ---- Text ------------------------------------------------------------------ */
 
 .reply-markdown {
@@ -32,6 +49,7 @@
   flex-direction: column;
   gap: var(--space-3);
   font-size: 14px;
+  line-height: 1.65;
   max-width: 72ch;
   text-wrap: pretty;
 }
@@ -51,16 +69,104 @@
   margin-top: var(--space-1);
 }
 
+/* ---- Inline citation chips (`ReplyMarkdown.tsx#CitationChip`) ------------- */
+
+.reply-citation {
+  position: relative;
+  display: inline-block;
+  margin: 0 1px;
+  vertical-align: 1px;
+  line-height: 1;
+}
+
 .reply-citation-ref {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--chat-tint-strong);
+  font: inherit;
+  font-size: 11px;
   font-weight: var(--weight-body-strong);
-  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--color-neutral-700);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
-.reply-citation-ref:hover {
-  text-decoration: underline;
+.reply-citation-ref:hover,
+.reply-citation-ref:focus-visible {
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
 }
 
-/* ---- The evidence card (one per answer; `EvidenceCard.tsx`) ---------------- */
+.reply-citation-preview {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  top: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 10px 12px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: var(--chat-paper);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  font-weight: var(--weight-body);
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  color: var(--color-text);
+  animation: reply-fade-in 120ms ease-out;
+}
+
+/* Keeps the pointer's path from the chip to the preview inside the hover area. */
+.reply-citation-preview::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 8px;
+}
+
+.reply-citation-preview-kind {
+  font-size: 10px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--chat-muted);
+}
+
+.reply-citation-preview-title {
+  font-weight: var(--weight-body-strong);
+}
+
+.reply-citation-preview-subtitle {
+  color: var(--chat-muted);
+}
+
+.reply-citation-preview-snippet {
+  margin-top: 3px;
+  color: var(--color-neutral-800);
+}
+
+@keyframes reply-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+/* ---- Sources (one per answer; `EvidenceCard.tsx`) --------------------------- */
 
 .reply-cards {
   display: flex;
@@ -68,46 +174,63 @@
   gap: 14px;
 }
 
-/* Same frame as the prototype's quote block (`b.isQuote`): 1px divider border, paper-white ground,
-   kicker header, footer rule. One card now holds every source of the answer. */
+/* The root holds the collapsed sources row, its detail and the reply's action row. */
 .citation-card {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: flex-start;
+  gap: 10px;
   width: 100%;
   max-width: 760px;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--color-divider);
-  border-radius: 0;
-  /* `background:#fff` in the compiled block -- a literal, deliberately whiter than the page ground
-     (`--color-bg`) so the quoted passages read as paper. */
-  background: #fff;
   font: inherit;
   color: inherit;
   text-align: left;
 }
 
 .citation-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--color-divider);
-  font-size: 11px;
-  color: var(--color-neutral-600);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--chat-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.citation-card-header:hover {
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
+}
+
+.evidence-toggle-icon,
+.evidence-toggle-chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--chat-muted);
+}
+
+.evidence-toggle-chevron {
+  transition: transform 160ms var(--chat-ease);
+}
+
+.citation-card[data-open="true"] .evidence-toggle-chevron {
+  transform: rotate(180deg);
 }
 
 .citation-card-label {
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.citation-card-index {
+  flex: none;
   font-weight: var(--weight-body-strong);
-  letter-spacing: 0;
+  color: var(--color-text);
+  white-space: nowrap;
 }
 
 .citation-card-source {
@@ -118,8 +241,20 @@
 }
 
 .citation-card-title {
-  color: var(--color-text);
-  font-weight: var(--weight-body-strong);
+  color: var(--color-neutral-800);
+}
+
+.evidence-body {
+  width: 100%;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-card);
+  background: var(--chat-paper);
+  overflow: hidden;
+  animation: reply-fade-in 140ms ease-out;
+}
+
+.evidence-body[hidden] {
+  display: none;
 }
 
 .evidence-section {
@@ -130,7 +265,7 @@
 }
 
 .evidence-section + .evidence-section {
-  border-top: 1px solid var(--color-divider);
+  border-top: 1px solid var(--chat-hairline);
 }
 
 .evidence-section-title {
@@ -139,7 +274,7 @@
   font-weight: var(--weight-body-strong);
   letter-spacing: var(--tracking-kicker);
   text-transform: uppercase;
-  color: var(--color-neutral-600);
+  color: var(--chat-muted);
 }
 
 .evidence-group {
@@ -150,7 +285,7 @@
 
 .evidence-group + .evidence-group {
   padding-top: 10px;
-  border-top: 1px dashed var(--color-divider);
+  border-top: 1px solid var(--chat-hairline);
 }
 
 .evidence-group-head {
@@ -161,7 +296,7 @@
 }
 
 .evidence-group-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: var(--weight-body-strong);
   color: var(--color-text);
 }
@@ -172,41 +307,51 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .evidence-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 28px minmax(0, 1fr);
   gap: 6px;
   align-items: start;
 }
 
+/* Same chip as the inline markers, so a number reads as the same source in both places. */
 .evidence-row-ref {
-  margin: 0;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  padding: 0 5px;
   border: 0;
-  background: transparent;
+  border-radius: 999px;
+  background: var(--chat-tint-strong);
   font: inherit;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: var(--weight-body-strong);
-  line-height: 1.55;
-  color: var(--color-accent);
-  text-align: left;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--color-neutral-700);
   cursor: pointer;
 }
 
 .evidence-row-ref:hover {
-  text-decoration: underline;
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
 }
 
 .evidence-row-ref-static {
-  color: var(--color-neutral-600);
+  background: var(--chat-tint);
+  color: var(--chat-muted);
   cursor: default;
 }
 
 .evidence-row-ref-static:hover {
-  text-decoration: none;
+  background: var(--chat-tint);
+  color: var(--chat-muted);
 }
 
 .evidence-row-body {
@@ -218,7 +363,7 @@
 
 .evidence-row-meta {
   font-size: 11px;
-  color: var(--color-neutral-600);
+  color: var(--chat-muted);
 }
 
 .evidence-row-label {
@@ -228,10 +373,9 @@
 
 .evidence-row-snippet {
   margin: 0;
-  font-family: Georgia, serif;
   font-size: 13px;
   line-height: 1.55;
-  color: var(--color-text);
+  color: var(--color-neutral-800);
   white-space: pre-wrap;
 }
 
@@ -253,7 +397,7 @@
 .evidence-link {
   font-size: 12px;
   font-weight: var(--weight-body-strong);
-  color: var(--color-accent);
+  color: var(--color-accent-700);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -274,20 +418,13 @@
 }
 
 .evidence-row-toggle:hover {
-  color: var(--color-accent);
+  color: var(--color-accent-700);
 }
 
 .citation-card-footer {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  padding: 8px 16px 10px;
-  border-top: 1px solid var(--color-divider);
-}
-
-.citation-card-footer .reply-actions .btn {
-  font-size: 12px;
-  padding: 4px 10px;
 }
 
 /* ---- Actions (`m.hasActions`) ---------------------------------------------- */
@@ -298,10 +435,91 @@
   gap: 8px;
 }
 
-.reply-actions .btn {
+/* Compact, rounded, never full-width; the one primary keeps the accent, the rest stay quiet. */
+.reply-body .reply-actions .btn {
+  min-height: 0;
+  padding: 6px 12px;
+  border-radius: var(--chat-radius-control);
   font-size: 12px;
-  padding: 7px 12px;
   text-decoration: none;
+}
+
+.reply-body .reply-actions .btn-secondary {
+  border-color: var(--chat-hairline);
+  background: transparent;
+}
+
+.reply-body .reply-actions .btn-secondary:hover {
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
+}
+
+/* ---- Artifact card (`ArtifactCard.tsx`) ------------------------------------- */
+
+.artifact-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0;
+  padding: 10px 14px 10px 10px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-card);
+  background: var(--chat-paper);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: border-color 140ms ease, transform 140ms var(--chat-ease), background-color 140ms ease;
+}
+
+button.artifact-card {
+  cursor: pointer;
+}
+
+button.artifact-card:hover {
+  border-color: var(--chat-hairline-strong);
+  transform: translateY(-1px);
+}
+
+.artifact-card[data-active="true"] {
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
+}
+
+.artifact-card-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: var(--color-bg);
+  color: var(--color-neutral-700);
+}
+
+.artifact-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.artifact-card-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.artifact-card-meta {
+  font-size: 12px;
+  color: var(--chat-muted);
 }
 
 /* ---- Interview (ADR-030; `InterviewBlock.tsx`) ------------------------------ */
@@ -335,20 +553,21 @@
 }
 
 .reply-interview-option {
-  padding: 6px 12px;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  padding: 7px 12px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: var(--chat-paper);
   font: inherit;
   font-size: 13px;
   color: var(--color-text);
   text-align: left;
   cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
 }
 
 .reply-interview-option:hover:not(:disabled) {
-  border-color: var(--color-accent);
-  color: var(--color-accent-700);
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
 }
 
 .reply-interview-question:disabled .reply-interview-option {
@@ -360,85 +579,43 @@
   margin: 8px 0 0;
 }
 
-/* ---- Next (`m.hasFollow`) --------------------------------------------------- */
+/* ---- Suggested questions (`m.hasFollow`; latest turn only) ----------------- */
 
 .reply-followups {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  align-items: baseline;
-  border-top: 1px solid var(--color-divider);
-  padding-top: 10px;
-}
-
-.reply-followups-label {
-  font-size: 11px;
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
-  color: var(--color-neutral-600);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 2px;
 }
 
 .reply-followup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  margin-left: -8px;
   border: 0;
+  border-radius: var(--chat-radius-control);
   background: transparent;
-  padding: 0;
-  font-size: 12px;
+  font: inherit;
+  font-size: 13px;
   color: var(--color-neutral-700);
   text-align: left;
   cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .reply-followup:hover {
-  color: var(--color-accent);
+  background: var(--chat-tint);
+  color: var(--color-text);
 }
 
-/* ---- Draft email (ADR-030 D2) ---------------------------------------------- */
-
-.reply-draft {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 720px;
-  border: 1px solid var(--color-divider);
-  background: #fff;
-}
-
-.reply-draft-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--color-divider);
-}
-
-.reply-draft-copy {
+.reply-followup-arrow {
+  flex: none;
   font-size: 12px;
-  padding: 4px 10px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.reply-draft-subject {
-  margin: 0;
-  padding: 12px 18px 0;
-  font-size: 13px;
-  font-weight: var(--weight-body-strong);
-}
-
-.reply-draft-subject-label {
-  color: var(--color-neutral-600);
-  font-weight: normal;
-}
-
-.reply-draft-body {
-  margin: 0;
-  padding: 12px 18px 16px;
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  color: var(--chat-muted);
 }
 
 /* ---- Feedback card (ADR-030 D5) -------------------------------------------- */
@@ -447,10 +624,11 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-width: 72ch;
+  max-width: 560px;
   padding: 12px 14px;
-  border-left: 2px solid var(--color-accent);
-  background: var(--color-accent-100);
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-card);
+  background: var(--chat-paper);
   font-size: 13px;
 }
 
@@ -465,8 +643,9 @@
 }
 
 .reply-feedback-actions .btn {
-  font-size: 12px;
   padding: 6px 12px;
+  border-radius: var(--chat-radius-control);
+  font-size: 12px;
 }
 
 .reply-feedback-question {
@@ -478,7 +657,7 @@
 .reply-feedback-notice,
 .reply-feedback-step {
   font-size: 11px;
-  color: var(--color-neutral-600);
+  color: var(--chat-muted);
 }
 
 .reply-feedback-label {
@@ -487,6 +666,7 @@
 
 .reply-feedback-text {
   width: 100%;
+  border-radius: var(--chat-radius-control);
   font: inherit;
   font-size: 13px;
   resize: vertical;
@@ -500,21 +680,26 @@
 
 .reply-feedback-chip {
   padding: 5px 10px;
-  border: 1px solid var(--color-divider);
-  border-radius: 0;
-  background: #fff;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: var(--chat-paper);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
 
+.reply-feedback-chip:hover {
+  background: var(--chat-tint);
+}
+
 .reply-feedback-chip.is-selected {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
 }
 
 .reply-feedback-error {
-  color: var(--color-accent);
+  color: var(--color-accent-700);
 }
 
 .reply-feedback-status {
@@ -524,10 +709,12 @@
 /* ---- ADR-030: web research ------------------------------------------------- */
 
 .reply-unverified-banner {
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  border-left: 3px solid var(--color-warning, var(--color-accent));
-  background: var(--color-surface-muted, var(--color-surface));
+  align-self: flex-start;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: var(--chat-tint);
   font-size: 12px;
   color: var(--color-neutral-700);
 }
@@ -555,7 +742,7 @@
   width: min(520px, 100%);
   padding: 20px 20px 16px;
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-lg, var(--radius-md));
+  border-radius: var(--chat-radius-card);
   background: var(--color-surface);
   box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 0.18));
 }
@@ -596,4 +783,14 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reply-citation-preview,
+  .evidence-body,
+  .artifact-card,
+  .evidence-toggle-chevron {
+    animation: none;
+    transition: none;
+  }
 }

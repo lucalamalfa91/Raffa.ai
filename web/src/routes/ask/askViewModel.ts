@@ -655,12 +655,13 @@ export function buildStarterGroups(supplierName: string | null): readonly Starte
 }
 
 /** screens-v2.md #2 "Thinking": V1 copy retained verbatim until the reply streams. */
-/** ADR-030 D2: the draft card's English chrome (the email body itself arrives in the question's
- * language from the server). */
+/** ADR-030 D2: the draft artifact's English chrome -- the in-chat card and the side panel (the
+ * email itself arrives in the question's language from the server). */
 export const DRAFT_CARD_TITLE = "Draft email";
 export const DRAFT_SUBJECT_LABEL = "Subject";
 export const COPY_EMAIL_LABEL = "Copy email";
 export const COPIED_LABEL = "Copied";
+export const OPEN_IN_MAIL_LABEL = "Open in mail";
 
 export const THINKING_COPY = "Authorising scope → detecting intent → retrieving evidence";
 

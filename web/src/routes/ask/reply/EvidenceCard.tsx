@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { DocumentViewerLink } from "../../documents/viewer/DocumentViewerOverlay";
 import { isDocumentViewerHref } from "../../documents/viewer/documentViewerViewModel";
@@ -25,23 +25,34 @@ export interface EvidenceCardProps {
 /** A snippet longer than this collapses to three lines with a More/Less toggle. */
 export const SNIPPET_COLLAPSE_LENGTH = 240;
 
+/** "1 source" / "4 sources" -- the collapsed row's lead. */
+export function sourcesLabel(count: number): string {
+  return count === 1 ? "1 source" : `${count} sources`;
+}
+
 /**
- * The one evidence card under an `answer` (replaces the one-card-per-citation stack): every
- * contract the answer cites sits under its supplier with the row's own fact or clause, market
- * records and Raffa items follow in their own sections, and a single action row closes the card
- * (`buildEvidenceActions`: Portfolio filtered to these contracts, or the one contract's Contract
- * 360, plus the backend's actions, three at most).
+ * The one evidence block under an `answer` (replaces the one-card-per-citation stack), in the
+ * Claude.ai "sources" shape: the answer stays prose-first, its sources sit behind **one collapsed
+ * row** ("4 sources · Salesforce, Microsoft · 2 contracts · 1 Raffa item"), and the inline `[n]`
+ * chips (`ReplyMarkdown`) preview each one on hover. Expanded, every contract the answer cites sits
+ * under its supplier with the row's own fact or clause, market records and Raffa items follow in
+ * their own sections. The action row (`buildEvidenceActions`: Portfolio filtered to these
+ * contracts, or the one contract's Contract 360, plus the backend's actions, three at most) stays
+ * visible under the row -- it is the reply's next step, not part of the collapsed detail.
  *
  * Keeps the `.citation-card*` hooks the e2e specs read (`web/e2e/v2.spec.ts`): the root is still a
- * `.citation-card`, the header still carries one `.citation-card-title` / `.citation-card-subtitle`
- * pair, actions still render inside `.reply-actions`. R-ASK-08 still holds: ids only ever appear
- * inside `href` attributes, never as text.
+ * `.citation-card`, the always-visible row still carries one `.citation-card-title` /
+ * `.citation-card-subtitle` pair, actions still render inside `.reply-actions`. The collapsed
+ * detail is `hidden`, not unmounted, so its text (the provenance section titles) stays in the
+ * document. R-ASK-08 still holds: ids only ever appear inside `href` attributes, never as text.
  */
 export default function EvidenceCard({ citations, actions, onOpenCitation }: EvidenceCardProps) {
   const groups = useMemo(() => groupCitations(citations), [citations]);
   const footerActions = useMemo(() => buildEvidenceActions(groups, actions), [groups, actions]);
   const summary = useMemo(() => describeEvidence(groups), [groups]);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
 
   if (citations.length === 0) return null;
 
@@ -77,10 +88,10 @@ export default function EvidenceCard({ citations, actions, onOpenCitation }: Evi
             aria-label={`Open source ${citation.n}`}
             onClick={() => onOpenCitation(citation)}
           >
-            [{citation.n}]
+            {citation.n}
           </button>
         ) : (
-          <span className="evidence-row-ref evidence-row-ref-static">[{citation.n}]</span>
+          <span className="evidence-row-ref evidence-row-ref-static">{citation.n}</span>
         )}
         <div className="evidence-row-body">
           {(label || citation.subtitle) && (
@@ -136,52 +147,70 @@ export default function EvidenceCard({ citations, actions, onOpenCitation }: Evi
   );
 
   return (
-    <div className="citation-card evidence-card" data-corpus="mixed">
-      <div className="citation-card-header">
-        <span className="citation-card-label">
-          <span className="citation-card-index">{citations.length === 1 ? "[1]" : `[1–${citations.length}]`}</span> Evidence
+    <div className="citation-card evidence-card" data-corpus="mixed" data-open={open ? "true" : "false"}>
+      <button
+        type="button"
+        className="citation-card-header evidence-toggle"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        aria-label={`${sourcesLabel(citations.length)}: ${summary.title} · ${summary.subtitle}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="evidence-toggle-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+            <path d="M7 3h7l5 5v13H7z" />
+            <path d="M14 3v5h5M10 13h6M10 17h6" />
+          </svg>
         </span>
+        <span className="citation-card-label">{sourcesLabel(citations.length)}</span>
         <span className="citation-card-source">
           <span className="citation-card-title">{summary.title}</span>
           <span aria-hidden="true"> · </span>
           <span className="citation-card-subtitle">{summary.subtitle}</span>
         </span>
+        <span className="evidence-toggle-chevron" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
+      </button>
+
+      <div id={bodyId} className="evidence-body" hidden={!open}>
+        {groups.contracts.length > 0 && (
+          <section className="evidence-section" data-section="contracts">
+            <h4 className="evidence-section-title">Your contracts</h4>
+            {groups.contracts.map(renderContractGroup)}
+          </section>
+        )}
+
+        {groups.market.length > 0 && (
+          <section className="evidence-section" data-section="market">
+            <h4 className="evidence-section-title">Market · representative</h4>
+            <ul className="evidence-rows">
+              {groups.market.map((citation) => renderRow(citation, citation.title, true))}
+            </ul>
+          </section>
+        )}
+
+        {groups.raffa.length > 0 && (
+          <section className="evidence-section" data-section="raffa">
+            <h4 className="evidence-section-title">Raffa</h4>
+            <ul className="evidence-rows">
+              {groups.raffa.map((citation) => renderRow(citation, citation.title, Boolean(citation.href)))}
+            </ul>
+          </section>
+        )}
+
+        {groups.web.length > 0 && (
+          <section className="evidence-section" data-section="web">
+            <h4 className="evidence-section-title">Web · unverified</h4>
+            <p className="evidence-section-note micro-meta">Public sources Raffa read with your permission. Not checked against your contracts.</p>
+            <ul className="evidence-rows">
+              {groups.web.map((citation) => renderRow(citation, citation.title, Boolean(citation.href)))}
+            </ul>
+          </section>
+        )}
       </div>
-
-      {groups.contracts.length > 0 && (
-        <section className="evidence-section" data-section="contracts">
-          <h4 className="evidence-section-title">Your contracts</h4>
-          {groups.contracts.map(renderContractGroup)}
-        </section>
-      )}
-
-      {groups.market.length > 0 && (
-        <section className="evidence-section" data-section="market">
-          <h4 className="evidence-section-title">Market · representative</h4>
-          <ul className="evidence-rows">
-            {groups.market.map((citation) => renderRow(citation, citation.title, true))}
-          </ul>
-        </section>
-      )}
-
-      {groups.raffa.length > 0 && (
-        <section className="evidence-section" data-section="raffa">
-          <h4 className="evidence-section-title">Raffa</h4>
-          <ul className="evidence-rows">
-            {groups.raffa.map((citation) => renderRow(citation, citation.title, Boolean(citation.href)))}
-          </ul>
-        </section>
-      )}
-
-      {groups.web.length > 0 && (
-        <section className="evidence-section" data-section="web">
-          <h4 className="evidence-section-title">Web · unverified</h4>
-          <p className="evidence-section-note micro-meta">Public sources Raffa read with your permission. Not checked against your contracts.</p>
-          <ul className="evidence-rows">
-            {groups.web.map((citation) => renderRow(citation, citation.title, Boolean(citation.href)))}
-          </ul>
-        </section>
-      )}
 
       {footerActions.length > 0 && (
         <div className="citation-card-footer">

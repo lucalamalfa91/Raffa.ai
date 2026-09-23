@@ -10,6 +10,7 @@ import type { FeedbackAnswers } from "./reply/replyTypes";
 import type { ReplyCitation } from "./reply/replyTypes";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
+import DraftPanel from "./DraftPanel";
 import { useConversation } from "./useConversation";
 import { useAskSessionStore, useAskSessionsSnapshot } from "./AskSessionsContext";
 import { customTitleFor, draftSessionKey, resolveSessionKey } from "./askSessions";
@@ -55,6 +56,22 @@ interface CitationNoticeState {
   turnId: string;
   n: number;
   text: string;
+}
+
+/** The screen's one side-panel slot: a market record (a market citation) or a turn's drafted email.
+ * `focus` is true when the user opened it, false when a draft opened itself on arrival. A draft is
+ * held by its turn id and read back off `turns`, so a panel whose turn is gone (a new chat, another
+ * conversation) simply stops rendering. */
+type SidePanelState =
+  | { kind: "market"; recordId: string; focus: boolean }
+  | { kind: "draft"; turnId: string; focus: boolean };
+
+/** Same breakpoint as `ask.css`: below it the side panel is a full-screen sheet, so opening one
+ * unasked would cover the reply the user is reading. jsdom has no `matchMedia`: treat it as wide. */
+const SIDE_PANEL_BESIDE_CHAT_QUERY = "(min-width: 901px)";
+
+function sidePanelFitsBesideChat(): boolean {
+  return typeof window.matchMedia !== "function" || window.matchMedia(SIDE_PANEL_BESIDE_CHAT_QUERY).matches;
 }
 
 /**
@@ -112,6 +129,12 @@ interface CitationNoticeState {
  * then one 72px-kicker grid per turn), and the screen's own composer pinned at the bottom (accent
  * mark + underlined input + "Ask", the two suggestion chips and "Procurement only · cites or
  * abstains"). Every figure is quoted in `ask.css`'s header comment.
+ *
+ * **Side panel** (the Claude.ai artifact pattern): long, self-contained reply objects never render
+ * in the middle of the thread. A drafted email is a one-line card in its turn and opens in the
+ * right-hand panel (`DraftPanel.tsx`) -- by itself when it arrives live, on click afterwards; a
+ * market citation opens its record in the same slot (`MarketRecordPanel.tsx`). One object at a
+ * time; the chat narrows beside it and keeps working.
  */
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
@@ -175,22 +198,24 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   const [question, setQuestion] = useState(() => store.composerText(sessionKey));
   const [citationNotice, setCitationNotice] = useState<CitationNoticeState | null>(null);
-  const [marketPanelRecordId, setMarketPanelRecordId] = useState<string | null>(null);
+  const [sidePanel, setSidePanel] = useState<SidePanelState | null>(null);
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [renameFailed, setRenameFailed] = useState(false);
 
   // Switching chats swaps the composer's unsent text for that chat's own, and drops the notice and
-  // market panel opened on the previous thread.
+  // the side panel opened on the previous thread. A draft chat promoted to its new conversation id
+  // is the same thread: its panel (a draft that just opened itself) stays.
   const questionRef = useRef(question);
   questionRef.current = question;
   const shownSessionKey = useRef(sessionKey);
   useEffect(() => {
     if (shownSessionKey.current === sessionKey) return;
+    const promoted = resolveSessionKey(store.getSnapshot(), shownSessionKey.current) === sessionKey;
     store.saveComposerText(shownSessionKey.current, questionRef.current);
     shownSessionKey.current = sessionKey;
     setQuestion(store.composerText(sessionKey));
     setCitationNotice(null);
-    setMarketPanelRecordId(null);
+    if (!promoted) setSidePanel(null);
     setRenamingTitle(false);
     setRenameFailed(false);
   }, [store, sessionKey]);
@@ -298,6 +323,20 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   // this is recomputed every render rather than memoized.
   const scopedBrief = buildScopedBrief(scopedSupplierName);
 
+  // A drafted email that lands on the chat on screen opens itself in the side panel (the Claude.ai
+  // artifact behaviour) on a screen wide enough to keep the chat beside it -- never for a reply that
+  // landed on a chat the user left, never on resume.
+  useEffect(
+    () =>
+      store.onReply((event) => {
+        if (!event.seen || event.conversationId === null || !sidePanelFitsBesideChat()) return;
+        const landed = store.getSnapshot().sessions.get(event.conversationId);
+        const last = landed?.turns[landed.turns.length - 1];
+        if (last?.role === "raffa" && last.reply.kind === "draft") setSidePanel({ kind: "draft", turnId: last.id, focus: false });
+      }),
+    [store],
+  );
+
   // ADR-030: the interview a typed message answers, the create-then-ask sequence and the reply
   // itself are all the store's (`askSessions.ts#send`), so the reply lands in this session even if
   // the user has moved on. A session still answering refuses a second question.
@@ -348,6 +387,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const feedbackDone = session?.feedbackDone ?? NO_FEEDBACK;
   const submittedFromThread = feedbackSubmittedMessageIds(turns);
 
+  const sidePanelView = useMemo(() => {
+    if (sidePanel === null || sidePanel.kind === "market") return sidePanel;
+    const turn = turns.find((candidate) => candidate.id === sidePanel.turnId);
+    return turn?.role === "raffa" && turn.reply.kind === "draft" ? { ...sidePanel, draft: turn.reply.draft } : null;
+  }, [sidePanel, turns]);
+
   // AC-1 / GlobalAskBar's own contract: a query typed into the global Ask bar arrives here as
   // router state and is asked automatically, exactly once, and only while this is genuinely a new
   // chat (never against a conversation already being resumed). "Once" is per history entry: the
@@ -382,7 +427,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         return;
       }
       if (action.kind === "market-panel") {
-        setMarketPanelRecordId(action.recordId);
+        setSidePanel({ kind: "market", recordId: action.recordId, focus: true });
         return;
       }
       if (action.kind === "external") {
@@ -535,7 +580,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         </div>
       </div>
 
-      <div className={`ask-screen-body${marketPanelRecordId !== null ? " has-panel" : ""}`}>
+      <div className={`ask-screen-body${sidePanelView !== null ? " has-panel" : ""}`}>
         <div className="ask-chat-column">
           <div className="ask-chat-log" role="log" aria-live="polite">
             <div className="ask-thread">
@@ -573,7 +618,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 </div>
               )}
 
-              {turns.map((turn) =>
+              {turns.map((turn, index) =>
                 turn.role === "you" ? (
                   <div key={turn.id} className="ask-message" data-role="you">
                     <div className="ask-message-who">You</div>
@@ -595,6 +640,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                         onInterviewOption={(reply, questionKey, option) => {
                           if (reply.messageId !== null) ask(option.label, { messageId: reply.messageId, questionKey, optionKey: option.key });
                         }}
+                        onOpenDraft={() => setSidePanel({ kind: "draft", turnId: turn.id, focus: true })}
+                        draftOpen={sidePanel?.kind === "draft" && sidePanel.turnId === turn.id}
+                        showFollowUps={index === turns.length - 1 && !asking}
                       />
                       {citationNotice !== null && citationNotice.turnId === turn.id && (
                         <p className="hint" role="status">
@@ -664,8 +712,17 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
           </div>
         </div>
 
-        {marketPanelRecordId !== null && (
-          <MarketRecordPanel apiClient={apiClient} recordId={marketPanelRecordId} onClose={() => setMarketPanelRecordId(null)} />
+        {sidePanelView?.kind === "market" && (
+          <MarketRecordPanel
+            key={sidePanelView.recordId}
+            apiClient={apiClient}
+            recordId={sidePanelView.recordId}
+            focusOnOpen={sidePanelView.focus}
+            onClose={() => setSidePanel(null)}
+          />
+        )}
+        {sidePanelView?.kind === "draft" && (
+          <DraftPanel key={sidePanelView.turnId} draft={sidePanelView.draft} focusOnOpen={sidePanelView.focus} onClose={() => setSidePanel(null)} />
         )}
       </div>
     </div>

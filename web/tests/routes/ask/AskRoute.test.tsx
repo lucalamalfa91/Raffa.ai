@@ -206,6 +206,12 @@ function postedReply(reply: ConversationReplyBody = answerReply()): PostMessageR
   return { ok: true, statusCode: 200, reply, error: null };
 }
 
+/** An answer's sources start collapsed behind one row (`EvidenceCard.tsx`); open it before
+ * reaching for a row inside. */
+async function openSources() {
+  await userEvent.click(screen.getByRole("button", { name: /^\d+ sources?:/ }));
+}
+
 /** Stand-in for ../contracts/contract360/index.tsx -- proves AskRoute navigates with the exact
  * `?page=`/`state.from` shape that screen's own `resolveHighlightedClauseId`/`resolveBackLink`
  * read, without pulling that whole screen's own fetch machinery into this suite. */
@@ -586,6 +592,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
       await screen.findByText("MSA 2024");
+      await openSources();
       await userEvent.click(screen.getByRole("button", { name: "Open source 1" }));
 
       expect(await screen.findByText(/CONTRACT_360/)).toHaveTextContent("contractId=contract-1");
@@ -636,6 +643,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
       await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
       await screen.findByText("Sales Cloud Enterprise · CH");
+      await openSources();
       await userEvent.click(screen.getByRole("button", { name: "Open source 1" }));
 
       expect(getMarketRecord).toHaveBeenCalledWith("rec-1");
@@ -711,6 +719,109 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       renderAsk(mockApiClient({ getConversation }), `/ask/${CONVERSATION_ID}`);
 
       expect(await screen.findByText(/conversation not found/i)).toBeInTheDocument();
+    });
+  });
+
+  // ADR-030 D2: the drafted email is an artifact -- a card in the thread, the email in the side panel.
+  describe("ADR-030: drafted email side panel", () => {
+    const draftReply = () =>
+      answerReply({
+        messageId: "msg-draft",
+        kind: "draft",
+        answerMarkdown: "I can't send emails from Raffa.ai yet, but here is a draft you can send yourself.",
+        citations: [],
+        actions: [],
+        followUps: [],
+        payload: {
+          gap: { key: "email-draft", title: "Draft and send negotiation emails", language: "en" },
+          draft: { subject: "Salesforce renewal – request to revise the terms", body: "Dear Salesforce team,\n\nWe are writing about the renewal." },
+          feedbackOffer: null,
+          feedbackResult: null,
+        },
+      });
+
+    it("a draft that arrives live opens itself in the side panel; the thread keeps only its card", async () => {
+      renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply(draftReply())) }));
+
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "Write the renewal email{Enter}");
+
+      const panel = await screen.findByRole("complementary", { name: "Draft email" });
+      expect(within(panel).getByRole("heading", { name: "Salesforce renewal – request to revise the terms" })).toBeInTheDocument();
+      expect(panel.querySelector("pre.draft-document-body")!.textContent).toBe("Dear Salesforce team,\n\nWe are writing about the renewal.");
+      // Opening by itself never pulls focus out of the composer.
+      expect(panel).not.toHaveFocus();
+
+      const card = screen.getByRole("button", { name: /^Open draft email:/ });
+      expect(card).toHaveAttribute("aria-expanded", "true");
+      expect(card.closest(".ask-message")!.textContent).not.toContain("We are writing about the renewal.");
+    });
+
+    it("closing the panel keeps the card, and the card reopens the draft", async () => {
+      renderAsk(mockApiClient({ createConversation: vi.fn().mockResolvedValue(createdConversation()), postMessage: vi.fn().mockResolvedValue(postedReply(draftReply())) }));
+
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "Write the renewal email{Enter}");
+      const panel = await screen.findByRole("complementary", { name: "Draft email" });
+      await userEvent.click(within(panel).getByRole("button", { name: "Close" }));
+
+      expect(screen.queryByRole("complementary", { name: "Draft email" })).not.toBeInTheDocument();
+      const card = screen.getByRole("button", { name: /^Open draft email:/ });
+      expect(card).toHaveAttribute("aria-expanded", "false");
+
+      await userEvent.click(card);
+
+      expect(screen.getByRole("complementary", { name: "Draft email" })).toHaveFocus();
+    });
+
+    it("a market citation takes the same slot: one object at a time", async () => {
+      const reply = draftReply();
+      const withMarket = answerReply({
+        ...reply,
+        answerMarkdown: "Here is a draft, grounded in the market band [1].",
+        citations: [
+          {
+            n: 1,
+            corpus: "market",
+            title: "Sales Cloud Enterprise · CH",
+            subtitle: "representative market data · mock feed · updated 2026-09-01",
+            snippet: "P25 118 · P50 132 · P75 149",
+            documentId: null,
+            contractId: null,
+            page: null,
+            section: null,
+            previewUrl: null,
+            href: null,
+            recordId: "rec-1",
+          },
+        ],
+      });
+      const getMarketRecord = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        record: {
+          recordId: "rec-1",
+          title: "Sales Cloud Enterprise · CH",
+          category: "CRM",
+          geography: "CH",
+          band: { currency: "CHF", p25: 118, p50: 132, p75: 149 },
+          provenance: "representative market data · mock feed",
+          updatedAt: "2026-09-01T00:00:00Z",
+        },
+        error: null,
+      });
+      renderAsk(
+        mockApiClient({
+          createConversation: vi.fn().mockResolvedValue(createdConversation()),
+          postMessage: vi.fn().mockResolvedValue(postedReply(withMarket)),
+          getMarketRecord,
+        }),
+      );
+
+      await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "Write the renewal email{Enter}");
+      await screen.findByRole("complementary", { name: "Draft email" });
+      await userEvent.click(screen.getByRole("button", { name: "Source 1: Sales Cloud Enterprise · CH" }));
+
+      expect(await screen.findByRole("complementary", { name: "Market record" })).toBeInTheDocument();
+      expect(screen.queryByRole("complementary", { name: "Draft email" })).not.toBeInTheDocument();
     });
   });
 
@@ -1006,6 +1117,7 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
 
     await userEvent.type(await screen.findByRole("textbox", { name: /ask raffa a question/i }), "…{Enter}");
     await screen.findAllByText("Northwind");
+    await openSources();
     await userEvent.click(screen.getByRole("link", { name: "Open at this span" }));
 
     expect(await screen.findByRole("dialog", { name: "Document viewer" })).toBeInTheDocument();
@@ -1073,6 +1185,7 @@ describe("AskRoute web research consent (ADR-030)", () => {
     );
     // The dialog is gone, the answer is labelled unverified and its source opens in a new tab.
     await screen.findByText("Public web · not verified.");
+    await openSources();
     expect(screen.queryByRole("alertdialog")).toBeNull();
     const link = screen.getByRole("link", { name: "example.com ↗" });
     expect(link).toHaveAttribute("target", "_blank");

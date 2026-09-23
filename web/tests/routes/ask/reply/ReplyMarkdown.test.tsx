@@ -72,7 +72,7 @@ describe("ReplyMarkdown (task E13/F09/US01/T02, AC-3)", () => {
     expect(items[1].textContent).toBe("Auto-renews: yes");
   });
 
-  it("renders a matching [n] as a link that opens the exact same citation object a card would", async () => {
+  it("renders a matching [n] as a citation chip that opens the exact same citation object a card would", async () => {
     const user = userEvent.setup();
     const onOpenCitation = vi.fn();
     const salesforceCitation = citation({ n: 2, title: "Sales Cloud Enterprise" });
@@ -85,11 +85,46 @@ describe("ReplyMarkdown (task E13/F09/US01/T02, AC-3)", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "[2]" });
-    await user.click(link);
+    const chip = screen.getByRole("button", { name: "Source 2: Sales Cloud Enterprise" });
+    expect(chip).toHaveTextContent(/^2$/);
+    await user.click(chip);
 
     expect(onOpenCitation).toHaveBeenCalledTimes(1);
     expect(onOpenCitation).toHaveBeenCalledWith(salesforceCitation);
+  });
+
+  it("previews a chip's source on hover and focus, and Escape dismisses it", async () => {
+    const user = userEvent.setup();
+    render(<ReplyMarkdown text="Salesforce renews automatically [1]." citations={[citation()]} onOpenCitation={vi.fn()} />);
+
+    // Nothing is duplicated into the transcript until the reader asks for it.
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    const chip = screen.getByRole("button", { name: "Source 1: Salesforce · MSA 2024" });
+    await user.hover(chip);
+    const preview = screen.getByRole("tooltip");
+    expect(preview).toHaveTextContent("Validated contract");
+    expect(preview).toHaveTextContent("Salesforce · MSA 2024");
+    expect(preview).toHaveTextContent("p.12 §8.4");
+    expect(preview).toHaveTextContent("automatically renew for successive twelve (12) month periods");
+    await user.unhover(chip);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    await user.tab();
+    expect(chip).toHaveFocus();
+    expect(chip).toHaveAccessibleDescription(/automatically renew/);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("quotes at most the first 160 characters of a long passage in the preview", async () => {
+    const user = userEvent.setup();
+    const long = "a".repeat(200);
+    render(<ReplyMarkdown text="See [1]." citations={[citation({ snippet: long })]} onOpenCitation={vi.fn()} />);
+
+    await user.hover(screen.getByRole("button", { name: /^Source 1/ }));
+
+    expect(screen.getByRole("tooltip")).toHaveTextContent(`${"a".repeat(160)}…`);
   });
 
   it("renders an [n] with no matching citation as plain text, never a dangling link", () => {
