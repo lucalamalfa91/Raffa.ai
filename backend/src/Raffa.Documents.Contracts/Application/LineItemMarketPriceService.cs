@@ -13,7 +13,8 @@ namespace Raffa.Documents.Contracts.Application;
 /// <summary>
 /// One line item's stored market comparison, as Contract 360 reads it. <see cref="Matched"/> is
 /// <see langword="false"/> for a checked line with no comparable market record — every other
-/// member is then <see langword="null"/>.
+/// member is then <see langword="null"/>. <see cref="Kind"/> says whether the band is the line's own
+/// product, a bundle of the products it names, or only a similar product.
 /// </summary>
 public sealed record LineItemMarketPrice(
     EntityId LineItemId,
@@ -29,7 +30,8 @@ public sealed record LineItemMarketPrice(
     int? SampleSize,
     string? Provenance,
     DateTimeOffset? MarketUpdatedAt,
-    DateTimeOffset CheckedAt);
+    DateTimeOffset CheckedAt,
+    MarketMatchKind? Kind = null);
 
 /// <summary>
 /// Compares a contract's line items with the shared market corpus and keeps the result on
@@ -95,7 +97,7 @@ public sealed class LineItemMarketPriceService(
         var contract = await dbContext.Contracts
             .AsNoTracking()
             .Where(c => c.TenantId == tenantId && c.Id == contractId)
-            .Select(c => new { c.SupplierId, c.Currency, c.RenewalTermMonths })
+            .Select(c => new { c.SupplierId, c.Currency, c.RenewalTermMonths, c.AnnualSpend })
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
         if (contract is null)
@@ -108,13 +110,18 @@ public sealed class LineItemMarketPriceService(
             .Where(l => l.TenantId == tenantId && l.ContractId == contractId)
             .OrderBy(l => l.CreatedAt)
             .ThenBy(l => l.Id)
-            .Select(l => new { l.Id, l.Description, l.Sku })
+            .Select(l => new { l.Id, l.Description, l.Sku, l.AnnualCost })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        // A match stored before the match kind was recorded is re-priced at once: it may be one
+        // product of a bundle line read as the whole line's price.
         var staleBefore = clock.UtcNow - RefreshAfter;
         var toPrice = lineItems
-            .Where(l => force || !stored.TryGetValue(l.Id, out var row) || row.CheckedAt < staleBefore)
+            .Where(l => force
+                || !stored.TryGetValue(l.Id, out var row)
+                || row.CheckedAt < staleBefore
+                || (row.RecordId is not null && row.MatchKind is null))
             .ToList();
         if (toPrice.Count == 0)
         {
@@ -126,9 +133,13 @@ public sealed class LineItemMarketPriceService(
         {
             var supplierName = await ResolveSupplierNameAsync(tenantId, contract.SupplierId, cancellationToken)
                 .ConfigureAwait(false);
+            // The buyer's type for "customers of the same type": the contract's yearly value, or the
+            // sum of its lines' own annual costs when the header carries none.
+            var annualValue = contract.AnnualSpend
+                ?? (lineItems.Any(l => l.AnnualCost is not null) ? lineItems.Sum(l => l.AnnualCost ?? 0m) : null);
             matches = await matcher
                 .MatchAsync(
-                    new MarketPriceContext(supplierName, contract.Currency, contract.RenewalTermMonths),
+                    new MarketPriceContext(supplierName, contract.Currency, contract.RenewalTermMonths, annualValue),
                     toPrice.Select(l => new MarketPriceLine(l.Description, l.Sku)).ToList(),
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -203,6 +214,7 @@ public sealed class LineItemMarketPriceService(
         row.SampleSize = match?.SampleSize;
         row.Provenance = match?.Provenance;
         row.MarketUpdatedAt = match?.UpdatedAt;
+        row.MatchKind = match?.Kind;
     }
 
     private static IReadOnlyDictionary<EntityId, LineItemMarketPrice> ToResult(IEnumerable<ContractLineItemMarketPrice> rows) =>
@@ -222,5 +234,6 @@ public sealed class LineItemMarketPriceService(
                 r.SampleSize,
                 r.Provenance,
                 r.MarketUpdatedAt,
-                r.CheckedAt));
+                r.CheckedAt,
+                r.RecordId is null ? null : r.MatchKind ?? MarketMatchKind.Exact));
 }

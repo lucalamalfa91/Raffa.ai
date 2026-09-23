@@ -136,6 +136,7 @@ public sealed class LineItemMarketPriceServiceTests : IAsyncLifetime
             Assert.Equal(350m, priced[unlimited].UnitPriceP50);
             Assert.Equal("MKT-SFDC-UK-UNL", priced[unlimited].RecordId);
             Assert.Equal(64, priced[unlimited].SampleSize);
+            Assert.Equal(MarketMatchKind.Exact, priced[unlimited].Kind);
             Assert.False(priced[support].Matched);
             Assert.Null(priced[support].UnitPriceP50);
             Assert.Equal(T0, priced[support].CheckedAt);
@@ -155,6 +156,72 @@ public sealed class LineItemMarketPriceServiceTests : IAsyncLifetime
         }
 
         Assert.Single(matcher.Contexts);
+    }
+
+    [Fact]
+    public async Task The_match_kind_is_stored_and_a_match_stored_before_kinds_existed_is_repriced_at_once()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var supplierId = EntityId.New();
+        var (contractId, unlimited, support) = await SeedAsync(tenantContext, tenantId, supplierId);
+        var names = new FakeSupplierNames(supplierId, "Salesforce");
+
+        var similar = new FakeMatcher(line => line.Description.Contains("Unlimited", StringComparison.Ordinal)
+            ? UnlimitedBand() with { Kind = MarketMatchKind.Similar }
+            : null);
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var priced = await new LineItemMarketPriceService(db, tenantContext, new MutableClock(T0), similar, names)
+                .PriceContractAsync(tenantId, contractId, CancellationToken.None);
+            Assert.Equal(MarketMatchKind.Similar, priced[unlimited].Kind);
+            Assert.Null(priced[support].Kind);
+        }
+
+        // A row written before the kind was recorded: its band may be one product of a bundle line.
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var db = CreateAppContext(tenantContext);
+            await db.ContractLineItemMarketPrices
+                .Where(p => p.LineItemId == unlimited)
+                .ExecuteUpdateAsync(p => p.SetProperty(r => r.MatchKind, (MarketMatchKind?)null));
+        }
+
+        var bundle = new FakeMatcher(_ => UnlimitedBand() with { Kind = MarketMatchKind.Bundle });
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var current = await new LineItemMarketPriceService(db, tenantContext, new MutableClock(T0.AddMinutes(5)), bundle, names)
+                .GetCurrentAsync(tenantId, contractId, CancellationToken.None);
+            Assert.Equal(MarketMatchKind.Bundle, current[unlimited].Kind);
+            Assert.Equal(T0, current[support].CheckedAt);
+        }
+
+        Assert.Equal(1, bundle.LinesPriced);
+    }
+
+    [Fact]
+    public async Task The_buyer_type_is_the_contracts_yearly_value_or_else_its_lines_annual_costs()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var supplierId = EntityId.New();
+        var (contractId, unlimited, support) = await SeedAsync(tenantContext, tenantId, supplierId);
+
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var db = CreateAppContext(tenantContext);
+            await db.ContractLineItems.Where(l => l.Id == unlimited).ExecuteUpdateAsync(l => l.SetProperty(r => r.AnnualCost, 149_000m));
+            await db.ContractLineItems.Where(l => l.Id == support).ExecuteUpdateAsync(l => l.SetProperty(r => r.AnnualCost, 18_000m));
+        }
+
+        var matcher = new FakeMatcher(_ => null);
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            await new LineItemMarketPriceService(db, tenantContext, new MutableClock(T0), matcher, new FakeSupplierNames(supplierId, "Salesforce"))
+                .PriceContractAsync(tenantId, contractId, CancellationToken.None);
+        }
+
+        Assert.Equal(167_000m, Assert.Single(matcher.Contexts).AnnualValue);
     }
 
     [Fact]

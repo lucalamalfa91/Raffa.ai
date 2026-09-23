@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { Contract360HeaderBody, RenewalActionRow } from "../../../api/client";
+import InfoTip from "../../../components/InfoTip";
 import { getRenewalActionPlan, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
 import {
   CLOSE_CYCLE_KICKER,
   CLOSE_CYCLE_RENEWED_LABEL,
   CLOSE_CYCLE_TERMINATED_LABEL,
+  SAVE_EXPLAINED,
+  SIMILAR_IN_TOTAL,
   buildClosedOutcome,
   formatCloseCycleNote,
   formatTrackerMeta,
@@ -83,7 +86,16 @@ export default function AnswersBand({
   return (
     <section className="contract360-answers" aria-label="Answers">
       <div className="contract360-answer">
-        <p className="contract360-answer-label">Where you can save</p>
+        <p className="contract360-answer-label">
+          Where you can save
+          {save.source !== "" && (
+            <InfoTip label="Where this saving comes from">
+              <p>{SAVE_EXPLAINED}</p>
+              {save.similar === true && <p>{SIMILAR_IN_TOTAL}</p>}
+              <p className="info-tip-meta">{save.source}</p>
+            </InfoTip>
+          )}
+        </p>
         <p className={answerDisplayClass("contract360-answer-value", save.estimate)}>{save.estimate}</p>
         <p className="contract360-answer-detail">{save.lever}</p>
       </div>

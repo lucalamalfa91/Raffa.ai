@@ -27,19 +27,20 @@ export default function ProcessingPipeline({ stage }: ProcessingPipelineProps) {
 }
 
 /**
- * The same 4px bar for a row that is `Uploaded` but not yet claimed by the Worker: there is no real
- * stage to size the fill from, so the fill sweeps indefinitely instead -- the user sees work is
- * pending without the bar claiming a percentage nobody has measured.
+ * The same 4px bar for a local row whose bytes are still on their way to the server: there is no
+ * measured byte count to size the fill from, so the fill sweeps indefinitely instead. It goes away
+ * as soon as the server row (`Uploaded`) replaces the local one -- from then on only the spinner
+ * says work is pending.
  */
-export function PendingPipeline() {
+export function UploadingBar() {
   return (
-    <div className="document-row-progress document-row-progress-pending" role="progressbar" aria-label="Waiting to start processing">
+    <div className="document-row-progress document-row-progress-pending" role="progressbar" aria-label="Uploading">
       <div className="document-row-progress-fill" />
     </div>
   );
 }
 
-/** Small spinning ring shown beside the "Processing in the background" next-step copy. */
+/** Small spinning ring shown beside the next-step copy until processing has finished. */
 export function PendingSpinner() {
   return <span className="document-row-spinner" aria-hidden="true" />;
 }

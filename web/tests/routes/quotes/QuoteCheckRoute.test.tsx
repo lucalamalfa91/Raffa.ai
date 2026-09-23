@@ -278,7 +278,7 @@ describe("QuoteCheckRoute (V2, ADR-024 / screens-v2.md #9)", () => {
       expect(within(row).getByText("CHF 90")).toBeInTheDocument();
       expect(within(row).getByText("Above market")).toHaveClass("tag-accent");
       expect(within(row).getByText("+11% vs P50")).toBeInTheDocument();
-      expect(within(row).getByText("High · n=42")).toHaveClass("tag-neutral");
+      expect(within(row).getByText("High · 42 deals compared")).toHaveClass("tag-neutral");
 
       const band = screen.getByRole("region", { name: "Quote assessment" });
       expect(within(band).getByText("Supplier quote").nextSibling).toHaveTextContent("CHF 1,000");
