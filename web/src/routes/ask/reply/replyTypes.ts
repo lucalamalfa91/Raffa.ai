@@ -109,12 +109,26 @@ export interface ReplyAction {
 // ADR-030: the reply's structured half (`payload`) -- capability gap, drafted email, feedback
 // ---------------------------------------------------------------------------------------------
 
-/** `payload.gap`: which catalog entry fired (`Raffa.Chat.Application.Gaps.CapabilityGapCatalog`)
- * and the language the server wrote the deterministic copy in. */
+/** `payload.gap.discovery` (ADR-031): what the capability investigator found when no catalog
+ * entry knew the request -- English and generic by construction; carried so a resumed turn's
+ * feedback still reaches GitHub with it. Nothing on the screen renders it: the server's own copy
+ * (the preface, the feedback card) already says everything the user needs. */
+export interface ReplyGapDiscovery {
+  titleEn: string;
+  descriptionEn: string;
+  nearestCapability: string | null;
+  confidence: string;
+  investigatorVersion: string;
+}
+
+/** `payload.gap`: which catalog entry fired (`Raffa.Chat.Application.Gaps.CapabilityGapCatalog`),
+ * or `discovered:<slug>` for a gap the capability investigator found (ADR-031), and the language
+ * the server wrote the deterministic copy in. */
 export interface ReplyGap {
   key: string;
   title: string;
   language: string;
+  discovery?: ReplyGapDiscovery | null;
 }
 
 /** `payload.draft`: the drafted negotiation email, plain text, rendered verbatim by `DraftCard`

@@ -71,7 +71,13 @@ a reminder, export a file, raise a PO) it says so in one sentence, offers the
 nearest alternative — a drafted negotiation email written from the contract's
 own facts, or the screen that already has the answer — and can file the gap
 as a GitHub issue for the team from a three-question card in the chat
-(ADR-030).
+(ADR-030). Beyond those five, Raffa recognises a missing feature by itself: a
+capability investigator agent checks each new question against everything
+Raffa can do and, when the user asks for something no screen or Ask ability
+does (a report for management, a slide deck, …), offers to propose it as a new
+feature through the same interview. Every such issue opens as
+`awaiting-approval` and is built only after a maintainer approves it
+(ADR-031).
 
 Quote check is only for a **new** supplier proposal. "Which of *my* contracts
 are off-market?" stays in Ask (today that intent routes correctly, then

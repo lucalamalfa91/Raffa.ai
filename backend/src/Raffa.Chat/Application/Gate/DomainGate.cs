@@ -135,6 +135,11 @@ public sealed class DomainGate
     {
         "I", "I'm", "I've", "I'd", "I'll", "A", "An", "The", "OK", "Ok",
         "Raffa", "Ask", "EUR", "USD", "CHF", "GBP", "Q1", "Q2", "Q3", "Q4", "FY", "H1", "H2",
+
+        // ADR-031: the people a report or a summary is for are written in capitals too — "un report
+        // per il CFO" was answered "No CFO contract has been uploaded and validated".
+        "CFO", "CEO", "CTO", "CIO", "CPO", "COO", "CMO", "CISO", "CDO", "CRO", "HR", "Board", "CdA",
+        "KPI", "KPIs", "ROI", "YTD",
     };
 
     // Money shorthand and currency codes are never supplier names: "40K", "20 k", "1.5M", "€ 20k",

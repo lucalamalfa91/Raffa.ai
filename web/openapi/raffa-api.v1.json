@@ -6290,7 +6290,7 @@
                                   "object",
                                   "null"
                                 ],
-                                "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                                "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
                                 "required": [
                                   "key",
                                   "title",
@@ -6299,7 +6299,7 @@
                                 "properties": {
                                   "key": {
                                     "type": "string",
-                                    "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                    "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
                                   },
                                   "title": {
                                     "type": "string"
@@ -6310,6 +6310,48 @@
                                       "it",
                                       "en"
                                     ]
+                                  },
+                                  "discovery": {
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
+                                    "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                                    "required": [
+                                      "titleEn",
+                                      "descriptionEn",
+                                      "nearestCapability",
+                                      "confidence",
+                                      "investigatorVersion"
+                                    ],
+                                    "properties": {
+                                      "titleEn": {
+                                        "type": "string",
+                                        "description": "The proposed feature's title -- the GitHub issue's title."
+                                      },
+                                      "descriptionEn": {
+                                        "type": "string",
+                                        "description": "One sentence: what Raffa should do."
+                                      },
+                                      "nearestCapability": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ],
+                                        "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                      },
+                                      "confidence": {
+                                        "type": "string",
+                                        "enum": [
+                                          "high",
+                                          "medium"
+                                        ]
+                                      },
+                                      "investigatorVersion": {
+                                        "type": "string",
+                                        "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                      }
+                                    }
                                   }
                                 }
                               },
@@ -6842,7 +6884,7 @@
                             "object",
                             "null"
                           ],
-                          "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                          "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
                           "required": [
                             "key",
                             "title",
@@ -6851,7 +6893,7 @@
                           "properties": {
                             "key": {
                               "type": "string",
-                              "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                              "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
                             },
                             "title": {
                               "type": "string"
@@ -6862,6 +6904,48 @@
                                 "it",
                                 "en"
                               ]
+                            },
+                            "discovery": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                              "required": [
+                                "titleEn",
+                                "descriptionEn",
+                                "nearestCapability",
+                                "confidence",
+                                "investigatorVersion"
+                              ],
+                              "properties": {
+                                "titleEn": {
+                                  "type": "string",
+                                  "description": "The proposed feature's title -- the GitHub issue's title."
+                                },
+                                "descriptionEn": {
+                                  "type": "string",
+                                  "description": "One sentence: what Raffa should do."
+                                },
+                                "nearestCapability": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                },
+                                "confidence": {
+                                  "type": "string",
+                                  "enum": [
+                                    "high",
+                                    "medium"
+                                  ]
+                                },
+                                "investigatorVersion": {
+                                  "type": "string",
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                }
+                              }
                             }
                           }
                         },
@@ -8684,7 +8768,7 @@
                                 "object",
                                 "null"
                               ],
-                              "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                              "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
                               "required": [
                                 "key",
                                 "title",
@@ -8693,7 +8777,7 @@
                               "properties": {
                                 "key": {
                                   "type": "string",
-                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
                                 },
                                 "title": {
                                   "type": "string"
@@ -8704,6 +8788,48 @@
                                     "it",
                                     "en"
                                   ]
+                                },
+                                "discovery": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                                  "required": [
+                                    "titleEn",
+                                    "descriptionEn",
+                                    "nearestCapability",
+                                    "confidence",
+                                    "investigatorVersion"
+                                  ],
+                                  "properties": {
+                                    "titleEn": {
+                                      "type": "string",
+                                      "description": "The proposed feature's title -- the GitHub issue's title."
+                                    },
+                                    "descriptionEn": {
+                                      "type": "string",
+                                      "description": "One sentence: what Raffa should do."
+                                    },
+                                    "nearestCapability": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                    },
+                                    "confidence": {
+                                      "type": "string",
+                                      "enum": [
+                                        "high",
+                                        "medium"
+                                      ]
+                                    },
+                                    "investigatorVersion": {
+                                      "type": "string",
+                                      "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                    }
+                                  }
                                 }
                               }
                             },
@@ -9139,7 +9265,7 @@
                                 "object",
                                 "null"
                               ],
-                              "description": "Which catalog entry fired and the language the deterministic copy was written in.",
+                              "description": "Which gap fired and the language the deterministic copy was written in -- a Raffa.Chat.Application.Gaps.CapabilityGapCatalog entry, or a gap ADR-031's capability investigator discovered.",
                               "required": [
                                 "key",
                                 "title",
@@ -9148,7 +9274,7 @@
                               "properties": {
                                 "key": {
                                   "type": "string",
-                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key: send-supplier | email-draft | reminder | export-file | purchase-order."
+                                  "description": "Raffa.Chat.Application.Gaps.CapabilityGapCatalog key (send-supplier | email-draft | reminder | export-file | purchase-order), or discovered:<kebab-case slug> for a gap the capability investigator found (ADR-031)."
                                 },
                                 "title": {
                                   "type": "string"
@@ -9159,6 +9285,48 @@
                                     "it",
                                     "en"
                                   ]
+                                },
+                                "discovery": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "description": "ADR-031: only on a gap the capability investigator discovered -- what it found, in English and generic by construction (no supplier, amount, date, e-mail or link: Raffa.Chat.Application.Gaps.DiscoveredGapText). null or absent for a catalog gap; turns stored before ADR-031 omit it.",
+                                  "required": [
+                                    "titleEn",
+                                    "descriptionEn",
+                                    "nearestCapability",
+                                    "confidence",
+                                    "investigatorVersion"
+                                  ],
+                                  "properties": {
+                                    "titleEn": {
+                                      "type": "string",
+                                      "description": "The proposed feature's title -- the GitHub issue's title."
+                                    },
+                                    "descriptionEn": {
+                                      "type": "string",
+                                      "description": "One sentence: what Raffa should do."
+                                    },
+                                    "nearestCapability": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "description": "The CapabilityCatalog key of the closest existing screen, or null when nothing comes close."
+                                    },
+                                    "confidence": {
+                                      "type": "string",
+                                      "enum": [
+                                        "high",
+                                        "medium"
+                                      ]
+                                    },
+                                    "investigatorVersion": {
+                                      "type": "string",
+                                      "description": "Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Version, e.g. gaps-v1."
+                                    }
+                                  }
                                 }
                               }
                             },

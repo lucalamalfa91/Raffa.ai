@@ -123,6 +123,25 @@ asks three quick questions and `POST /api/conversations/{id}/feedback` stores
 the request and opens a GitHub issue for the team (public-safe body: gap,
 answers, language, environment, an opaque workspace hash).
 
+**Raffa discovers gaps by itself** (ADR-031). The catalog only knows five
+phrasings, so every fresh, typed in-domain turn first goes to the **capability
+investigator** (`CapabilityInvestigator`, one `analyst`-role call, prompt
+`Prompts/gaps/v1.md`): it reads the message beside Raffa's whole capability map
+(the screens, what Ask itself can do, the known gaps) and says `question`,
+`supported`, `known-gap` or `gap`. A `gap` becomes a `discovered:<slug>` gap
+answered like a catalog one — the honest preface, the nearest screen, the
+questions Ask can already answer as follow-ups, and a card to **propose** the
+feature. Its texts are scrubbed server-side (`DiscoveredGapText`: no supplier,
+amount, date, e-mail or link) before anything shows or stores them. Every
+issue — catalog or discovered — opens with the `awaiting-approval` label and a
+"Human approval" section: a maintainer approves it with the `approved` label
+(the `feature-request-approval` workflow checks the permission), or closes it as
+not planned. Nothing is built before that. Greeting / off-domain / legal /
+capability / needs-document turns, catalog gaps and turns answered by key
+(interview options, consent) never call the investigator; a failure, a timeout
+or a low-confidence verdict leaves the turn exactly as before
+(`Chat:GapInvestigation:Enabled` is the kill switch).
+
 **Intent** is deterministic (`IntentPlanner`), not chosen by the model:
 
 | Intent | Typical question |

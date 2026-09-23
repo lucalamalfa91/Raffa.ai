@@ -93,8 +93,10 @@ public sealed class AskAbstainRecoveryActionTests : IClassFixture<RaffaApiFactor
 
         // The empty-pack branch returns before AnswerComposer ever calls the gateway — same "zero
         // AI Gateway calls" proof ChatEndpointTests.Greeting_question... makes for the deterministic
-        // redirect branches, here proven for the deterministic abstain branch instead.
-        Assert.Empty(recordingGateway.Calls);
+        // redirect branches, here proven for the deterministic abstain branch instead (beyond
+        // ADR-031's one capability check on the typed turn).
+        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 
     /// <summary>AC-1/AC-3: the composer-failure abstain (`composed.IsFailure`) for a tenant that

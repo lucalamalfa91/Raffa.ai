@@ -17,12 +17,34 @@ public sealed record ReplyPayload(
     FeedbackOffer? FeedbackOffer = null,
     FeedbackResult? FeedbackResult = null);
 
-/// <summary>Which catalog entry fired and in which language the deterministic copy was written.</summary>
-/// <param name="Key"><c>Gaps.CapabilityGap.Key</c>.</param>
+/// <summary>Which gap fired and in which language the deterministic copy was written.</summary>
+/// <param name="Key"><c>Gaps.CapabilityGap.Key</c> — a catalog key, or
+/// <c>discovered:&lt;slug&gt;</c> for a gap the capability investigator found (ADR-031).</param>
 /// <param name="Title">The gap's title in <paramref name="Language"/> — what the feedback card and
 /// the confirmation name.</param>
 /// <param name="Language"><c>Language.QuestionLanguage</c>'s "it" or "en".</param>
-public sealed record GapInfo(string Key, string Title, string Language);
+/// <param name="Discovery">Only for a discovered gap: what the investigator found. Rows stored
+/// before ADR-031 have no such member and read back as <see langword="null"/>.</param>
+public sealed record GapInfo(string Key, string Title, string Language, GapDiscovery? Discovery = null);
+
+/// <summary>
+/// What the capability investigator (<c>Gaps.CapabilityInvestigator</c>, ADR-031) found when a
+/// turn asked for an operation nothing in Raffa performs — the developer-facing half of a
+/// discovered gap, in English. Every text is already generic (<c>Gaps.DiscoveredGapText</c>: no
+/// supplier, amount, date, e-mail or link), because this record travels into a public GitHub issue.
+/// </summary>
+/// <param name="TitleEn">The proposed feature's title — the issue's title.</param>
+/// <param name="DescriptionEn">One sentence: what Raffa should do.</param>
+/// <param name="NearestCapability">The <c>Capabilities.CapabilityCatalog</c> key of the closest
+/// existing screen, or <see langword="null"/> when nothing comes close.</param>
+/// <param name="Confidence">The investigator's own "high" / "medium".</param>
+/// <param name="InvestigatorVersion">The prompt version that found it (<c>Gaps.CapabilityInvestigatorAgent.Version</c>).</param>
+public sealed record GapDiscovery(
+    string TitleEn,
+    string DescriptionEn,
+    string? NearestCapability,
+    string Confidence,
+    string InvestigatorVersion);
 
 /// <summary>The drafted email — plain text, verbatim, never rendered through the markdown subset
 /// (the client shows it in a pre-wrap block with a "Copy email" button). No inline <c>[n]</c>

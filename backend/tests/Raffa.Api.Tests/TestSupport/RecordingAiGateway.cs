@@ -47,6 +47,39 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
     /// "AnswerAsync").</summary>
     public IReadOnlyList<string> Calls => _calls;
 
+    /// <summary>The agent name ADR-031's capability investigator calls
+    /// <see cref="AnalyzeAsync"/> with (<c>Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Name</c>).</summary>
+    public const string CapabilityInvestigatorAgent = "capability-investigator";
+
+    /// <summary>How many capability checks ran (ADR-031: at most one per fresh typed turn).</summary>
+    public int CapabilityChecks => Agents.Count(agent => agent == CapabilityInvestigatorAgent);
+
+    /// <summary><see cref="Calls"/> minus the capability investigator's checks — what "zero AI
+    /// Gateway calls" meant for a deterministic path before ADR-031, and still means: no
+    /// retrieval, no answer, no other agent.</summary>
+    public IReadOnlyList<string> CallsBeyondCapabilityCheck
+    {
+        get
+        {
+            // Agents is appended in AnalyzeAsync order; the investigator always runs alone, before
+            // any other agent of its turn, so its position in both lists is the same.
+            var agents = Agents;
+            var analyzeIndex = 0;
+            var calls = new List<string>();
+            foreach (var call in _calls.ToList())
+            {
+                if (call == nameof(AnalyzeAsync) && agents.ElementAtOrDefault(analyzeIndex++) == CapabilityInvestigatorAgent)
+                {
+                    continue;
+                }
+
+                calls.Add(call);
+            }
+
+            return calls;
+        }
+    }
+
     public Task<Result<AiClassificationResult>> ClassifyAsync(
         AiClassificationRequest request, CancellationToken cancellationToken = default)
     {

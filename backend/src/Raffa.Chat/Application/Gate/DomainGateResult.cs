@@ -18,6 +18,8 @@ namespace Raffa.Chat.Application.Gate;
 /// to resolve, also for <see cref="GateLabel.InDomain"/>), so a caller does not have to
 /// re-extract the same candidate a second time for the planner's own supplier-scoped intents.</param>
 /// <param name="Gap">The catalog entry that fired, only for <see cref="GateLabel.CapabilityGap"/>
-/// (ADR-030 D1) — the composition root reads the alternative and the copy from it.</param>
+/// (ADR-030 D1) — the composition root reads the alternative and the copy from it. Also set, after
+/// the gate, when the capability investigator turned an in-domain turn into a gap (ADR-031): a
+/// catalog entry the regex missed, or a <see cref="GapOrigin.Investigator"/> gap it discovered.</param>
 public sealed record DomainGateResult(
     GateLabel Label, string Reason, string? NamedSupplier = null, CapabilityGap? Gap = null);

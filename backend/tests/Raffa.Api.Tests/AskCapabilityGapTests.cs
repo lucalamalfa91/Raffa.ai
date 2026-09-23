@@ -4,6 +4,7 @@ using System.Text.Json;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
+using Raffa.Chat.Application.Gaps;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Suppliers;
@@ -28,7 +29,7 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
     private static readonly DateTimeOffset Now = new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
 
     private (WebApplicationFactory<Program> Factory, RecordingAiGateway Gateway, RecordingAuditWriter Audit) Host(
-        IReadOnlyDictionary<EntityId, string> supplierNames)
+        IReadOnlyDictionary<EntityId, string> supplierNames, GapInvestigationOptions? gapInvestigation = null)
     {
         var gateway = new RecordingAiGateway(
             new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
@@ -41,7 +42,13 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
                 "Host=localhost;Port=5432;Database=raffa_dev;Username=raffa;Password=raffa;Include Error Detail=true"))
             .WithInMemoryAskEngine(gateway, new FixedClock(Now), auditWriter: audit)
             .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-                services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(supplierNames))));
+            {
+                services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(supplierNames));
+                if (gapInvestigation is not null)
+                {
+                    services.AddSingleton(gapInvestigation);
+                }
+            }));
 
         return (host, gateway, audit);
     }
@@ -247,5 +254,93 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
         Assert.Equal("redirect", reply.RootElement.GetProperty("kind").GetString());
         Assert.Contains("upload a contract in Documents", raw, StringComparison.Ordinal);
         Assert.DoesNotContain("Raffa can", raw, StringComparison.Ordinal);
+    }
+
+    /// <summary>The owner's screenshot of 2026-09-23: no regex knows "scrivere un report", so the
+    /// capability investigator decides — a discovered gap, the honest preface, the nearest screen,
+    /// the questions Ask can already answer, and the offer to propose the feature.</summary>
+    [Fact]
+    public async Task A_report_request_no_catalog_entry_knows_is_discovered_by_the_investigator()
+    {
+        var tenantId = TenantId.New();
+        var amazonId = EntityId.New();
+        var (host, gateway, audit) = Host(new Dictionary<EntityId, string> { [amazonId] = "Amazon Web Services" });
+
+        var contract = AmazonContract(tenantId, amazonId);
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        var client = host.CreateClient();
+        var (conversationId, reply, raw) = await AskAsync(
+            client, tenantId, "puoi scrivere un report per riportare l'anamento del 2026 al CFO?");
+
+        var root = reply.RootElement;
+        Assert.Equal("redirect", root.GetProperty("kind").GetString());
+        var markdown = root.GetProperty("answerMarkdown").GetString()!;
+        Assert.StartsWith(
+            "Al momento non posso generare un report per il management da Raffa.ai, però in Portfolio trovi già",
+            markdown,
+            StringComparison.Ordinal);
+        Assert.Contains("approvazione di una persona del team", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("CFO contract", raw, StringComparison.Ordinal);
+
+        var gap = root.GetProperty("payload").GetProperty("gap");
+        Assert.Equal("discovered:management-report", gap.GetProperty("key").GetString());
+        Assert.Equal("Report per il management", gap.GetProperty("title").GetString());
+        Assert.Equal("it", gap.GetProperty("language").GetString());
+        var discovery = gap.GetProperty("discovery");
+        Assert.Equal("Management reports", discovery.GetProperty("titleEn").GetString());
+        Assert.Equal("portfolio", discovery.GetProperty("nearestCapability").GetString());
+        Assert.Equal(CapabilityInvestigatorAgent.Version, discovery.GetProperty("investigatorVersion").GetString());
+
+        var offer = root.GetProperty("payload").GetProperty("feedbackOffer");
+        Assert.Equal("Vuoi proporre «Report per il management» come nuova funzionalità di Raffa.ai?", offer.GetProperty("prompt").GetString());
+        Assert.Contains("dovrà approvarla", offer.GetProperty("publicNotice").GetString(), StringComparison.Ordinal);
+        Assert.StartsWith("Generare un report periodico", offer.GetProperty("questions")[0].GetProperty("prefill").GetString(), StringComparison.Ordinal);
+        Assert.Equal(3, offer.GetProperty("questions").GetArrayLength());
+
+        Assert.Equal("/contracts", Assert.Single(root.GetProperty("actions").EnumerateArray()).GetProperty("href").GetString());
+        Assert.Equal(2, root.GetProperty("followUps").GetArrayLength());
+
+        // One model call — the investigator — and nothing else: no retrieval, no answer, no council.
+        Assert.Equal([RecordingAiGateway.CapabilityInvestigatorAgent], gateway.Agents);
+        Assert.Empty(gateway.CallsBeyondCapabilityCheck);
+
+        var turn = Assert.Single(audit.Entries, e => e.Action.StartsWith("chat.", StringComparison.Ordinal));
+        Assert.Equal("chat.redirected", turn.Action);
+        Assert.Contains("gapInvestigation=gap", turn.Detail, StringComparison.Ordinal);
+
+        // Resume: the stored turn carries the discovery, so the feedback submitted later still has it.
+        using var getRequest = Request(HttpMethod.Get, $"/api/conversations/{conversationId}", tenantId);
+        using var detail = JsonDocument.Parse(await (await client.SendAsync(getRequest)).Content.ReadAsStringAsync());
+        var stored = detail.RootElement.GetProperty("messages").EnumerateArray().Last();
+        Assert.Equal(
+            "Management reports",
+            stored.GetProperty("payload").GetProperty("gap").GetProperty("discovery").GetProperty("titleEn").GetString());
+    }
+
+    [Fact]
+    public async Task With_the_investigator_switched_off_no_check_runs_and_no_gap_is_discovered()
+    {
+        var tenantId = TenantId.New();
+        var amazonId = EntityId.New();
+        var (host, gateway, audit) = Host(
+            new Dictionary<EntityId, string> { [amazonId] = "Amazon Web Services" },
+            new GapInvestigationOptions { Enabled = false });
+
+        var contract = AmazonContract(tenantId, amazonId);
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        var client = host.CreateClient();
+        var (_, reply, raw) = await AskAsync(client, tenantId, "puoi scrivere un report per riportare l'anamento del 2026 al CFO?");
+
+        Assert.DoesNotContain("discovered:", raw, StringComparison.Ordinal);
+        Assert.Equal(0, gateway.CapabilityChecks);
+        Assert.Contains(
+            "gapInvestigation=off",
+            Assert.Single(audit.Entries, e => e.Action.StartsWith("chat.", StringComparison.Ordinal)).Detail,
+            StringComparison.Ordinal);
+        Assert.NotEqual("draft", reply.RootElement.GetProperty("kind").GetString());
     }
 }

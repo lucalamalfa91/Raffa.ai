@@ -22,6 +22,57 @@ public static class CapabilityGapCopy
             : $"I can't {gap.OperationEn} from Raffa.ai yet, but {gap.AlternativeEn}.";
     }
 
+    /// <summary>
+    /// The clause after "but" for a gap the investigator discovered (ADR-031): server-authored
+    /// from the nearest existing screen it named, never model text — a
+    /// <see cref="Capabilities.CapabilityCatalog"/> key, or <see langword="null"/>/<c>ask</c> when
+    /// the nearest thing Raffa offers is an answer in the chat itself.
+    /// </summary>
+    public static string NearestAlternative(string? capabilityKey, string language)
+    {
+        var italian = QuestionLanguage.IsItalian(language);
+        return capabilityKey switch
+        {
+            Capabilities.CapabilityCatalog.PortfolioKey => italian
+                ? "in Portfolio trovi già ogni contratto validato con spesa, scadenze e rischio"
+                : "Portfolio already shows every validated contract with its spend, dates and risk",
+            Capabilities.CapabilityCatalog.RenewalsKey => italian
+                ? "in Renewals trovi già ogni scadenza di preavviso e l'azione da fare"
+                : "Renewals already lists every notice deadline and the action to take",
+            Capabilities.CapabilityCatalog.SavingsKey => italian
+                ? "in Savings trovi già i risparmi individuati e le opportunità da cui nascono"
+                : "Savings already shows the savings identified and the opportunities behind them",
+            Capabilities.CapabilityCatalog.ContractDetailKey => italian
+                ? "in Contract 360 trovi già tutti i dati di un contratto"
+                : "Contract 360 already holds every fact of a contract",
+            Capabilities.CapabilityCatalog.QuoteCheckKey => italian
+                ? "con Quote check puoi già confrontare un nuovo preventivo con il mercato"
+                : "Quote check already benchmarks a new quote against the market",
+            Capabilities.CapabilityCatalog.DocumentsKey
+                or Capabilities.CapabilityCatalog.DocumentsAttentionKey
+                or Capabilities.CapabilityCatalog.DocumentsReviewKey => italian
+                ? "in Documents trovi già ogni file caricato e la sua revisione"
+                : "Documents already holds every file you uploaded and its review",
+            Capabilities.CapabilityCatalog.WorkspaceMembersKey => italian
+                ? "in Workspace & members gestisci già chi lavora in Raffa"
+                : "Workspace & members already manages who works in Raffa",
+            _ => italian
+                ? "posso rispondere qui alle tue domande sui contratti validati"
+                : "I can answer your questions on the validated contracts right here",
+        };
+    }
+
+    /// <summary>The second sentence of a discovered-gap turn (ADR-031): the feature does not
+    /// exist yet, the user can propose it, and a person approves it before anything is built.</summary>
+    public static string DiscoveredLeadIn(string language) =>
+        QuestionLanguage.IsItalian(language)
+            ? "Non esiste ancora una funzionalità per farlo: se vuoi, puoi proporla al team Raffa.ai " +
+              "rispondendo a tre domande. La proposta diventa una segnalazione su GitHub e verrà sviluppata " +
+              "solo dopo l'approvazione di una persona del team."
+            : "There is no feature for this yet: if you like, you can propose it to the Raffa.ai team by " +
+              "answering three questions. The proposal becomes a GitHub issue and is built only once a " +
+              "person on the team approves it.";
+
     /// <summary>The second sentence of a draft turn, before the email card.</summary>
     public static string DraftLeadIn(string language, string supplierName) =>
         QuestionLanguage.IsItalian(language)
@@ -70,18 +121,24 @@ public static class CapabilityGapCopy
 
     /// <summary>The in-chat feedback card, fully localised (ADR-030 D5). The first question is
     /// prefilled with the gap's own one-line description so "yes" then "send" is a complete,
-    /// meaningful report even when nothing is typed.</summary>
+    /// meaningful report even when nothing is typed. A discovered gap (ADR-031) asks to
+    /// <em>propose</em> the feature by name; every card says, before the free text, that the
+    /// answers are public and that a person approves the request before it is built.</summary>
     public static FeedbackOffer FeedbackOfferFor(CapabilityGap gap, string language)
     {
         ArgumentNullException.ThrowIfNull(gap);
+        var discovered = gap.Origin == GapOrigin.Investigator;
 
         if (QuestionLanguage.IsItalian(language))
         {
             return new FeedbackOffer(
-                "Vuoi segnalarlo al team Raffa.ai perché lo implementi?",
+                discovered
+                    ? $"Vuoi proporre «{gap.TitleIt}» come nuova funzionalità di Raffa.ai?"
+                    : "Vuoi segnalarlo al team Raffa.ai perché lo implementi?",
                 "Sì", "No", "Avanti", "Indietro", "Invia", "Invio in corso…", "Grazie!",
                 "Non sono riuscito a inviare la segnalazione. Riprova.",
-                "Le risposte saranno pubbliche su GitHub: non inserire nomi di fornitori, importi o dati dei contratti.",
+                "Le risposte saranno pubbliche su GitHub: non inserire nomi di fornitori, importi o dati dei contratti. " +
+                "Una persona del team Raffa.ai valuterà la richiesta e dovrà approvarla prima che venga sviluppata.",
                 [
                     new FeedbackQuestion(FeedbackQuestions.WhatKey, FeedbackQuestions.TextKind,
                         "Cosa dovrebbe fare Raffa esattamente?", gap.DescriptionIt, null),
@@ -103,10 +160,13 @@ public static class CapabilityGapCopy
         }
 
         return new FeedbackOffer(
-            "Want to report this to the Raffa.ai team so they can build it?",
+            discovered
+                ? $"Want to propose “{gap.TitleEn}” as a new Raffa.ai feature?"
+                : "Want to report this to the Raffa.ai team so they can build it?",
             "Yes", "No", "Next", "Back", "Send", "Sending…", "Thanks!",
             "I couldn't send the report. Please try again.",
-            "Your answers will be public on GitHub: do not include supplier names, amounts or contract data.",
+            "Your answers will be public on GitHub: do not include supplier names, amounts or contract data. " +
+            "A person on the Raffa.ai team reviews the request and must approve it before it is built.",
             [
                 new FeedbackQuestion(FeedbackQuestions.WhatKey, FeedbackQuestions.TextKind,
                     "What exactly should Raffa do?", gap.DescriptionEn, null),

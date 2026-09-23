@@ -117,8 +117,10 @@ public sealed class AskInterviewTests : IClassFixture<RaffaApiFactory>
             Assert.False(option.TryGetProperty("resolvesTo", out _));
         });
 
-        // No embedding, no answer, no classify: the interview decided before any retrieval.
-        Assert.Empty(gateway.Calls);
+        // No embedding, no answer, no classify: the interview decided before any retrieval. The one
+        // model call is ADR-031's capability check, which runs before the interview on a typed turn.
+        Assert.Equal(1, gateway.CapabilityChecks);
+        Assert.Empty(gateway.CallsBeyondCapabilityCheck);
     }
 
     [Fact]

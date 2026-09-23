@@ -1,0 +1,90 @@
+name: feature-request-approval
+
+# ADR-031: the human in the loop of Ask Raffa's feedback loop. Every issue the
+# API opens from the in-chat feedback card -- a known capability gap
+# (ADR-030 D5) or a gap Raffa's capability investigator discovered by itself
+# (label `ai-discovered`) -- is a proposal: it is opened with the
+# `awaiting-approval` label (Raffa.Chat.Application.Feedback
+# .FeatureRequestIssueText.Labels, which also strips `approved` from any
+# configured label list, so Raffa can never pre-approve its own request).
+# Nothing is planned or built from it until a person decides:
+#
+#   - approve: a maintainer with write access adds the `approved` label; this
+#     workflow checks the permission, removes `awaiting-approval` and records
+#     who approved it and when;
+#   - anyone else adding `approved` (a triager, a bot) gets the label removed
+#     and a comment saying only a maintainer can approve;
+#   - decline: close the issue as "not planned" (no workflow needed).
+#
+# Uses only the repository's own GITHUB_TOKEN (issues: write); no secret, no
+# Azure identity, no checkout -- the issue body is never executed or parsed.
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: feature-request-approval-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    name: human approval gate
+    if: >-
+      github.event.label.name == 'approved' &&
+      contains(github.event.issue.labels.*.name, 'awaiting-approval')
+    runs-on: ubuntu-latest
+    steps:
+      - name: check the approver and record the decision
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.issue.number;
+            const actor = context.actor;
+            const isBot = context.payload.sender?.type === 'Bot';
+
+            let permission = 'none';
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: actor });
+              permission = data.permission;
+            } catch (error) {
+              core.warning(`Could not read ${actor}'s permission: ${error.message}`);
+            }
+
+            // "maintain" is reported as "write" by this endpoint; "triage" as "read".
+            const isMaintainer = !isBot && (permission === 'admin' || permission === 'write');
+
+            if (!isMaintainer) {
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'approved' }).catch(() => {});
+              await github.rest.issues.createComment({
+                owner, repo, issue_number,
+                body: [
+                  `@${actor} only a maintainer with write access can approve a feature request, so the \`approved\` label was removed.`,
+                  '',
+                  'This request stays a proposal awaiting human approval (ADR-031).',
+                  '',
+                  '---',
+                  '_Posted by the feature-request-approval workflow_',
+                ].join('\n'),
+              });
+              core.notice(`Approval by ${actor} (permission: ${permission}, bot: ${isBot}) refused.`);
+              return;
+            }
+
+            await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'awaiting-approval' }).catch(() => {});
+            await github.rest.issues.createComment({
+              owner, repo, issue_number,
+              body: [
+                `Approved by @${actor} on ${new Date().toISOString().slice(0, 10)} (human in the loop, ADR-031).`,
+                '',
+                'This proposal can now be planned and built.',
+                '',
+                '---',
+                '_Posted by the feature-request-approval workflow_',
+              ].join('\n'),
+            });
+            core.notice(`Feature request #${issue_number} approved by ${actor}.`);

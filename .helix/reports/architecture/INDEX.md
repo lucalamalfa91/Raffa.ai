@@ -2043,3 +2043,14 @@ guard / `chat.drafted` / `chat.interviewed` audit consequences, and keeps web
 research a narrow exception to R-AI-03 (separate role, no pack slot, explicit
 consent, `WebGuard`, always unverified). ADR-016 also gains the w20 footer for
 the demo invitation / guest-provisioning flip and the feedback token gate.
+
+## Post-w20 product feedback (2026-09-23) — Ask Raffa discovers capability gaps by itself
+
+| ADR | Topic | Seat | One-line decision |
+| --- | --- | --- | --- |
+| ADR-031 | Ask Raffa: a capability investigator, a proposed feature and a human-approved GitHub issue | software-architect (+ product-owner, security-architect, client-architect on their respective seams) | Every fresh, typed **in-domain** turn first goes to one strict-JSON `analyst` agent that reads it beside Raffa's whole capability map and says `question`/`supported`/`known-gap`/`gap`; a `gap` becomes a `discovered:<slug>` capability gap answered like an ADR-030 redirect (server-worded preface and nearest screen, investigator's follow-ups, a card to propose the feature), its texts scrubbed server-side of names, numbers, e-mails and links; the investigator is fail-open behind `Chat:GapInvestigation`; every feedback issue opens as `awaiting-approval` and only a maintainer's `approved` label (enforced by `feature-request-approval.yml`) turns it into work. |
+
+ADR-031 amends ADR-030 D1 (a model may now decide an in-domain turn is a gap), D5 (the issue
+allow-list gains the generic discovery texts; every issue gains the human-approval gate) and the
+interview's "no model call" rule (one capability check may precede it). Greeting, off-domain,
+legal, capability, needs-document and catalog-gap turns keep their zero gateway calls.

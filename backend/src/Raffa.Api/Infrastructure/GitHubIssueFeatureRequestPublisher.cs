@@ -43,7 +43,7 @@ internal sealed class GitHubIssueFeatureRequestPublisher(
         }
 
         var (title, body) = FeatureRequestIssueText.Compose(issue);
-        var labels = options.GitHub.LabelList;
+        var labels = FeatureRequestIssueText.Labels(issue, options.GitHub.LabelList);
 
         var first = await SendAsync(title, body, labels, cancellationToken).ConfigureAwait(false);
         if (first.Published || first.StatusCode != HttpStatusCode.UnprocessableEntity || labels.Count == 0)

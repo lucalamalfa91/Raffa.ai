@@ -9,6 +9,7 @@ using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
+using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Pack;
@@ -200,6 +201,7 @@ internal sealed partial class AskCopilotService(
     IMarketDealLookup marketDealLookup,
     AskAgentFlow askAgentFlow,
     NegotiationDraftingWorkflow negotiationDraftingWorkflow,
+    CapabilityInvestigator capabilityInvestigator,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
     WebResearchOptions webResearchOptions,
@@ -365,6 +367,32 @@ internal sealed partial class AskCopilotService(
             };
         }
 
+        // ADR-031: Raffa's own judgement, before any pack, interview or answer — does this fresh
+        // turn ask for an operation nothing in Raffa performs? Only an InDomain turn is asked: the
+        // fixed catalog already had its say in the gate (a CapabilityGap label never reaches the
+        // investigator); Greeting/OffDomain/Legal/Capability/NeedsDocument are decided without any
+        // AI Gateway call and stay that way (R-ASK-02/03, the golden set's zero-call cases); a turn
+        // resolved by key (an interview option, a web consent) continues one that was already
+        // investigated. Fail-open: no verdict leaves the gate exactly as it was.
+        var investigation = GapInvestigation.NotFound("skipped");
+        if (gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints))
+        {
+            investigation = await capabilityInvestigator
+                .InvestigateAsync(question, supplierNames.Values.ToList(), cancellationToken)
+                .ConfigureAwait(false);
+
+            if (investigation.Gap is { } investigatedGap)
+            {
+                gate = gate with
+                {
+                    Label = GateLabel.CapabilityGap,
+                    Reason = $"the capability investigator found the '{investigatedGap.Key}' gap " +
+                        $"({investigation.Outcome}, ADR-031).",
+                    Gap = investigatedGap,
+                };
+            }
+        }
+
         // AC-7 / R-ASK-09: the audit row must distinguish "guard caught a violation and downgraded
         // to abstain" from every other abstain path (empty pack, gateway call failed) — so every
         // branch here carries its own guardIntervened alongside the reply, rather than WriteAuditAsync
@@ -377,7 +405,8 @@ internal sealed partial class AskCopilotService(
             GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false, false),
             GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
             GateLabel.CapabilityGap => await BuildCapabilityGapReplyAsync(
-                tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor, cancellationToken)
+                tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor,
+                investigation.AlternativeQuestions, cancellationToken)
                 .ConfigureAwait(false),
             GateLabel.InDomain => await BuildInDomainReplyAsync(
                 tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
@@ -386,7 +415,7 @@ internal sealed partial class AskCopilotService(
             _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
         };
 
-        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, actor, cancellationToken).ConfigureAwait(false);
+        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, investigation.Outcome, actor, cancellationToken).ConfigureAwait(false);
 
         // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
         // answer above), so "asked, said no" is visible without the query ever being logged.
@@ -2918,7 +2947,13 @@ internal sealed partial class AskCopilotService(
             item.AutoRenewal);
 
     private async Task WriteAuditAsync(
-        TenantId tenantId, CopilotReply reply, bool guardIntervened, bool fallbackUsed, string actor, CancellationToken cancellationToken)
+        TenantId tenantId,
+        CopilotReply reply,
+        bool guardIntervened,
+        bool fallbackUsed,
+        string gapInvestigation,
+        string actor,
+        CancellationToken cancellationToken)
     {
         var action = reply.Kind switch
         {
@@ -2951,7 +2986,8 @@ internal sealed partial class AskCopilotService(
                 $"fallbackUsed={fallbackUsed} " +
                 $"interviewQuestions={reply.Interview?.Questions.Count ?? 0} " +
                 $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
-                $"unverified={reply.Provenance.Unverified}"),
+                $"unverified={reply.Provenance.Unverified} " +
+                $"gapInvestigation={gapInvestigation}"),
             cancellationToken).ConfigureAwait(false);
     }
 
