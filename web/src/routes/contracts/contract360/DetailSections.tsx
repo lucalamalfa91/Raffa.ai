@@ -13,6 +13,7 @@ import {
   buildDocumentRows,
   buildKeyTerms,
   buildLeverCards,
+  buildProductLegend,
   buildProductNote,
   buildProductSavingTotal,
   buildObligationColumns,
@@ -94,6 +95,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
   const lines = buildProductLines(contract.tabs.products, currency, autoAcceptThreshold);
   const total = contract.header.annualSpend === null ? "—" : formatCompactAmount(contract.header.annualSpend, currency);
   const saving = buildProductSavingTotal(contract.tabs.products, currency, autoAcceptThreshold);
+  const legend = buildProductLegend(contract.tabs.products);
   return (
     <SectionFrame copy={SECTION_COPY.products} label="Products & pricing">
       {lines.length === 0 ? (
@@ -135,7 +137,19 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
               </div>
             ))}
             <div className="contract360-products-foot">
-              <span className="contract360-products-note">{buildProductNote(contract.tabs.products)}</span>
+              <div className="contract360-products-note">
+                {legend.length > 0 && (
+                  <dl className="contract360-products-legend" aria-label="How to read this table">
+                    {legend.map((entry) => (
+                      <div key={entry.term} className="contract360-products-legend-row">
+                        <dt>{entry.term}</dt>
+                        <dd>{entry.meaning}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                <p className="contract360-products-note-text">{buildProductNote(contract.tabs.products)}</p>
+              </div>
               {saving !== null && (
                 <span className="contract360-products-total contract360-products-total-saving">
                   <span className="contract360-products-total-label">Could save / yr</span>

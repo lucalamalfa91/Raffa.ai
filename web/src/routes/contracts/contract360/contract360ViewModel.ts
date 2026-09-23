@@ -132,7 +132,7 @@ export interface SaveAnswer {
   estimate: string;
   /** What you pay against what the market pays, the lever sentence, or why the estimate is not yet there. */
   lever: string;
-  /** Never-bare representative provenance (`adapter A, n = 214`), the small print under the lever; empty when no market band backs the estimate. */
+  /** Never-bare representative provenance in plain words ("Representative market data from 214 comparable contracts · source A · as of …"), the small print under the lever; empty when no market band backs the estimate. */
   source: string;
 }
 
@@ -192,8 +192,9 @@ const NO_PRICING: PricingContext = { products: [], currency: "" };
  * The three answers (`markup.html` "CONTRACT 360 — three answers"). `Where you can save` and
  * `When you must move` **map** `GET /api/contracts/{id}/strategy` (ADR-012 w17 clause 35) — they
  * never compute a second figure from the pipeline. Three states per cell (ADR-020 w17 §14(f)):
- * a figure and its lever; a representative band with Ask provenance (`adapter A, n = 214`) on its
- * own small-print line; or no answer yet, naming what is missing and the way to get it.
+ * a figure and its lever; a representative band with its provenance (source, how many comparable
+ * contracts, as-of date) on its own small-print line; or no answer yet, naming what is missing and
+ * the way to get it.
  *
  * "Where you can save" reads like the mock's `CHF 80–120k / yr` over "You pay CHF 156 per user
  * against a market median of 132": the strategy's target band (P25–median, clamped to today's
@@ -232,6 +233,8 @@ type StrategyTarget = ContractStrategyBody["targets"][number];
 interface SizedTarget {
   low: number;
   high: number;
+  /** The target's own provenance, in plain words. */
+  source: string;
   /** The contract line the target prices, when it is on screen with a unit price (officialized). */
   product: Contract360ProductBody | null;
   saving: SavingRange | null;
@@ -250,7 +253,13 @@ function sizeTargets(pack: ContractStrategyBody, pricing: PricingContext): Sized
       candidate !== null && candidate.description === target.description && isExtractedRowShown(candidate, threshold) && candidate.unitPrice !== null
         ? candidate
         : null;
-    sized.push({ low, high, product, saving: product === null ? null : computeLineSaving(product.unitPrice, product.annualCost, low, high) });
+    sized.push({
+      low,
+      high,
+      source: formatRepresentativeProvenance(target.explanation),
+      product,
+      saving: product === null ? null : computeLineSaving(product.unitPrice, product.annualCost, low, high),
+    });
   });
   return sized;
 }
@@ -259,7 +268,6 @@ function mapSave(pack: ContractStrategyBody, pricing: PricingContext): SaveAnswe
   const targets = sizeTargets(pack, pricing);
 
   if (targets.length > 0) {
-    const source = formatRepresentativeProvenance(pack.targets.find((t) => t.explanation.toLowerCase().includes("representative"))!.explanation);
     const withSaving = targets.filter((t): t is SizedTarget & { saving: SavingRange } => t.saving !== null);
     const named = pricing.products.length > 1;
 
@@ -267,6 +275,8 @@ function mapSave(pack: ContractStrategyBody, pricing: PricingContext): SaveAnswe
       const total = withSaving.reduce<SavingRange>((sum, t) => ({ low: sum.low + t.saving.low, high: sum.high + t.saving.high }), { low: 0, high: 0 });
       const lead = withSaving.reduce((best, t) => (t.saving.high > best.saving.high ? t : best));
       const estimate = formatSavingRange(total, pricing.currency);
+      // The small print backs the sentence above it: the lead line's own source and sample.
+      const source = lead.source;
       if (estimate === null) return { estimate: AT_MARKET_PRICE, lever: formatYouPay(lead, pricing.currency, named, true), source };
       // A similar product's median in the total is a guide, not the line's own market price: "≈", as in the table.
       const similar = withSaving.some((t) => t.saving.high > 0 && t.product?.market?.matchKind === "Similar");
@@ -281,7 +291,7 @@ function mapSave(pack: ContractStrategyBody, pricing: PricingContext): SaveAnswe
     return {
       estimate: `${pricing.currency === "" ? "" : `${pricing.currency} `}${formatPlainNumber(first.low)}–${formatPlainNumber(first.high)} / unit`,
       lever: TARGET_PRICE_ONLY,
-      source,
+      source: first.source,
     };
   }
 
@@ -328,19 +338,37 @@ function formatYouPay(lead: SizedTarget, currency: string, named: boolean, atMar
     : `${subject} ${price} per unit against ${against} (${delta}).`;
 }
 
-/** Ask vocabulary (`ia-v2.md:110`): `adapter A, n = 214` — never a second phrase for the same idea. */
+/** Below this many comparable contracts a market median is a small sample: shown, but said to be indicative. */
+export const SMALL_SAMPLE = 10;
+
+/** "22 comparable contracts", "only 6 comparable contracts" -- the sample size in words, never `n=`. */
+export function formatSampleSize(sampleSize: number, noun = "contract"): string {
+  const count = `${sampleSize} ${noun}${sampleSize === 1 ? "" : "s"}`;
+  return sampleSize < SMALL_SAMPLE ? `only ${count}` : count;
+}
+
+/**
+ * The pack's `representative (source: A; n=214; as of 2026-01-01)` in plain words -- still never
+ * bare (ADR-001 w17 clause 4: representative, source, sample size, as-of date), but readable by
+ * someone who is not a statistician: "Representative market data from 214 comparable contracts ·
+ * source A · as of 01/01/2026", with a small sample said to be indicative.
+ */
 function formatRepresentativeProvenance(explanation: string): string {
   const match = explanation.match(/representative \(source: ([^;]+)(?:; n=(\d+))?(?:; as of ([^)]+))?\)/i);
   if (match === null) {
     return explanation.toLowerCase().includes("representative") ? explanation : `representative · ${explanation}`;
   }
   const adapter = match[1].trim();
-  const sample = match[2];
+  const sample = match[2] !== undefined ? Number(match[2]) : null;
   const asOf = match[3]?.trim();
-  const adapterPart = sample !== undefined ? `adapter ${adapter}, n = ${sample}` : `adapter ${adapter}`;
-  return asOf !== undefined && asOf !== ""
-    ? `representative · ${adapterPart} · as of ${asOf}`
-    : `representative · ${adapterPart}`;
+  const from =
+    sample === null
+      ? "Representative market data"
+      : sample < SMALL_SAMPLE
+        ? `Representative market data from ${formatSampleSize(sample, "comparable contract")} (a small sample: treat it as indicative)`
+        : `Representative market data from ${formatSampleSize(sample, "comparable contract")}`;
+  const date = asOf !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(asOf) ? formatDateOnly(asOf) : asOf;
+  return date !== undefined && date !== "" ? `${from} · source ${adapter} · as of ${date}` : `${from} · source ${adapter}`;
 }
 
 function mapMove(
@@ -934,7 +962,7 @@ export interface ProductLine {
   price: string;
   /** The market median (P50) unit price -- "≈"-prefixed when it is a similar product's -- or an em dash. */
   market: string;
-  /** "UK · 12 mo · n=14" under the market figure (led by "similar" / "sum" for a similar product or a bundle); "no match" for a line compared with nothing comparable; empty before any comparison. */
+  /** "UK · 12 mo · 14 contracts" under the market figure (led by "similar" / "sum" for a similar product or a bundle; "only 6 contracts" for a small sample); "no match" for a line compared with nothing comparable; empty before any comparison. */
   marketMeta: string;
   /** Hover detail: the market product, its P25–P75 band and the corpus's own provenance label. */
   marketTitle: string | null;
@@ -957,17 +985,56 @@ export const PRODUCT_NOTE_UNCHECKED =
   "Prices are the negotiated rate on the validated document; the market column fills once the lines have been compared with the market data.";
 export const PRODUCT_NOTE_NO_MATCH =
   "No comparable market record for these lines yet — not your product, and nothing similar, from customers paying in the contract's own currency.";
-export const PRODUCT_NOTE_SIMILAR =
-  "≈ marks the median of a similar product, not of your exact product — a guide for the negotiation, not your market price.";
+export const PRODUCT_NOTE_MATCHED =
+  "Representative market data (mock feed), always in your own currency. Hover a market price for its range and date.";
 
-/** The foot note under the table: what the market and saving columns are, and where their figures come from. */
+/** The foot note under the table: where the market figures come from, or why there are none yet. */
 export function buildProductNote(products: readonly Contract360ProductBody[]): string {
   const markets = products.map((p) => p.market).filter((m): m is ProductMarketBody => m !== null);
   if (markets.length === 0) return PRODUCT_NOTE_UNCHECKED;
   if (!markets.some((m) => m.matched)) return PRODUCT_NOTE_NO_MATCH;
-  const base =
-    "Market median is the median (P50) unit price paid for the same product in your currency, by customers with a contract of your size where the market data has them — representative market data (mock feed). Could save is what paying between that median and the cheaper quarter of the market (P25) would save over a year.";
-  return markets.some((m) => m.matched && m.matchKind === "Similar") ? `${base} ${PRODUCT_NOTE_SIMILAR}` : base;
+  return PRODUCT_NOTE_MATCHED;
+}
+
+export interface LegendEntry {
+  term: string;
+  meaning: string;
+}
+
+/**
+ * "How to read this table", shown once a line has a market price: every term the columns use, in
+ * plain words, so nobody needs to know what a median, a P25 or a sample size is. The "≈" entry
+ * only when a similar product's median is on screen.
+ */
+export function buildProductLegend(products: readonly Contract360ProductBody[]): LegendEntry[] {
+  const matched = products.map((p) => p.market).filter((m): m is ProductMarketBody => m !== null && m.matched);
+  if (matched.length === 0) return [];
+  const legend: LegendEntry[] = [
+    {
+      term: "Market median",
+      meaning:
+        "the middle price other customers pay for the same product: half pay less, half pay more. Compared with contracts of your size, in your currency, where the data has them.",
+    },
+    {
+      term: "UK · 12 mo",
+      meaning: "the region and contract length of the contracts compared.",
+    },
+    {
+      term: "22 contracts",
+      meaning: `how many contracts the market price is worked out from. The more, the more reliable; under ${SMALL_SAMPLE} ("only 6 contracts") treat it as indicative.`,
+    },
+    {
+      term: "Could save / yr",
+      meaning: "what you would save in a year by paying between the market median and the price the cheapest quarter of customers pay.",
+    },
+  ];
+  if (matched.some((m) => m.matchKind === "Similar")) {
+    legend.push({ term: "≈", meaning: "the price of a similar product, not of your exact product: a guide for the negotiation, not your market price." });
+  }
+  if (matched.some((m) => m.matchKind === "Bundle")) {
+    legend.push({ term: "sum", meaning: "the line bundles several products: each one's market median, added up." });
+  }
+  return legend;
 }
 
 // ---- Savings arithmetic shared by the answers band and the table --------------------------------
@@ -1132,7 +1199,7 @@ function formatMarketMeta(market: ProductMarketBody): string {
     kind,
     market.geography,
     market.termMonths !== null ? `${market.termMonths} mo` : null,
-    market.sampleSize !== null ? `n=${market.sampleSize}` : null,
+    market.sampleSize !== null ? formatSampleSize(market.sampleSize) : null,
   ]
     .filter((part): part is string => part !== null && part !== "")
     .join(" · ");

@@ -518,9 +518,10 @@
    2px text rule · rows padding:14px 0, 1px divider, 13px tabular · 6px bar track (neutral-200) with
    a neutral-500 market bar and a text/accent pay bar at .85 (accent when paying above the market
    P50; both bars scaled to the larger of price and P50) · market cell: P50 over an 11px "region ·
-   term · n" line · an 11px accent-700 basis line under the product name when the market figure is a
+   term · N contracts" line · an 11px accent-700 basis line under the product name when the market figure is a
    bundle's or a similar product's · "could save" in accent-700 · foot: note 13px neutral-600 + the
-   saving and spend totals, heading 16px under an 11px kicker. */
+   saving and spend totals, heading 16px under an 11px kicker; a plain-words legend of every column
+   term sits above the note once a line has a market price. */
 
 .contract360-products-scroll {
   overflow-x: auto;
@@ -595,7 +596,6 @@
 .contract360-product-market-meta {
   font-size: 11px;
   color: var(--color-neutral-600);
-  white-space: nowrap;
 }
 
 .contract360-product-delta {
@@ -655,6 +655,31 @@
 .contract360-products-note {
   color: var(--color-neutral-600);
   text-wrap: pretty;
+}
+
+.contract360-products-legend {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+}
+
+.contract360-products-legend-row {
+  display: contents;
+}
+
+.contract360-products-legend dt {
+  font-weight: var(--weight-body-strong);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.contract360-products-legend dd {
+  margin: 0;
+}
+
+.contract360-products-note-text {
+  margin: 0;
 }
 
 .contract360-products-total {

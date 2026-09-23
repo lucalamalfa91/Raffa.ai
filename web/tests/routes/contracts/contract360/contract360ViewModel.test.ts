@@ -41,7 +41,9 @@ import {
   standardClausesLabel,
   terminatedActionText,
   PRODUCT_NOTE_NO_MATCH,
-  PRODUCT_NOTE_SIMILAR,
+  PRODUCT_NOTE_MATCHED,
+  buildProductLegend,
+  formatSampleSize,
   PRODUCT_NOTE_UNCHECKED,
   AT_MARKET_PRICE,
   SIMILAR_IN_TOTAL,
@@ -427,8 +429,9 @@ describe("answers band", () => {
     const save = buildAnswers(header(), renewalTab, [], strategyCalled(strategyPack())).save;
     expect(save.estimate).toBe("1,500–1,800 / unit");
     expect(save.lever).toBe(TARGET_PRICE_ONLY);
-    expect(save.source).toBe("representative · adapter A, n = 214 · as of 2026-01-01");
-    expect(save.source).toMatch(/adapter .+ n = /);
+    expect(save.source).toBe("Representative market data from 214 comparable contracts · source A · as of 01/01/2026");
+    expect(save.source).toMatch(/source A/);
+    expect(save.source).not.toMatch(/n = |n=/);
 
     const withCurrency = buildAnswers(header(), renewalTab, [], strategyCalled(strategyPack()), {
       products: [product({ description: "Premium DBU", annualCost: null })],
@@ -463,7 +466,8 @@ describe("answers band", () => {
     expect(save).toEqual({
       estimate: "GBP 55–64k / yr",
       lever: "You pay GBP 191 per unit against a market median of GBP 120 (+59%).",
-      source: "representative · adapter market-feed (representative, mock), n = 6 · as of 2026-09-10",
+      source:
+        "Representative market data from only 6 comparable contracts (a small sample: treat it as indicative) · source market-feed (representative, mock) · as of 10/09/2026",
     });
     expect(formatTrackerMeta(save, buildAnswers(header(), renewalTab, [], strategyCalled(pack)).move)).toBe("target GBP 55–64k / yr · close by 17/11/2025");
   });
@@ -530,10 +534,28 @@ describe("answers band", () => {
     expect(save.estimate).toBe("GBP 10–15k / yr");
     expect(save.lever).toBe("Line B: you pay GBP 100 per unit against a market median of GBP 80 (+25%).");
 
+    // The small print is the lead line's own source and sample, not the first line's.
+    const sourced = strategyPack({
+      targets: [
+        { ...target, description: "Line A", acceptableRangeLow: 8, acceptableRangeHigh: 9, explanation: "representative (source: A; n=6; as of 2026-01-01)" },
+        { ...target, description: "Line B", acceptableRangeLow: 70, acceptableRangeHigh: 80, explanation: "representative (source: B; n=40; as of 2026-01-01)" },
+      ],
+    });
+    expect(buildAnswers(header(), renewalTab, [], strategyCalled(sourced), { products: [small, big], currency: "GBP" }).save.source).toBe(
+      "Representative market data from 40 comparable contracts · source B · as of 01/01/2026",
+    );
+
     // A line whose price is not officialized never sizes a saving.
     const hidden = { ...big, confidence: 0.5, sourcePage: null, sourceSpan: null };
     const withoutHidden = buildAnswers(header(), renewalTab, [], strategyCalled(pack), { products: [small, hidden], currency: "GBP" }).save;
     expect(withoutHidden.estimate).toBe("GBP 100–200 / yr");
+  });
+
+  it("formatSampleSize says how many contracts in words, and 'only' below the small-sample bar", () => {
+    expect(formatSampleSize(22)).toBe("22 contracts");
+    expect(formatSampleSize(10)).toBe("10 contracts");
+    expect(formatSampleSize(6)).toBe("only 6 contracts");
+    expect(formatSampleSize(1, "comparable contract")).toBe("only 1 comparable contract");
   });
 
   it("formatSavingRange puts both ends on the higher one's scale, and says 'up to' when the low end is nothing", () => {
@@ -904,7 +926,7 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
 
   it("02 Products & pricing: a matched line shows the market P50 with region · term · n, the delta vs P50 and bars scaled to the larger", () => {
     const [above] = buildProductLines([product({ market: marketBand() })], "CHF");
-    expect(above).toMatchObject({ marketBasis: null, market: "CHF 0.5", marketMeta: "CH · 12 mo · n=40", delta: "+10%", deltaAccent: true, payWidth: "100%", marketWidth: "91%" });
+    expect(above).toMatchObject({ marketBasis: null, market: "CHF 0.5", marketMeta: "CH · 12 mo · 40 contracts", delta: "+10%", deltaAccent: true, payWidth: "100%", marketWidth: "91%" });
     // 120,000 units a year: 0.05 over the median, 0.15 over P25.
     expect(above).toMatchObject({ saving: "CHF 6–18k", savingAccent: true });
     expect(above.marketTitle).toBe("Premium DBU · P25 CHF 0.4 – P75 CHF 0.6 · representative market data · mock feed · updated 2026-07-01");
@@ -923,8 +945,15 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(hidden).toMatchObject({ price: UNOFFICIALIZED_PLACEHOLDER, market: "CHF 0.5", delta: "—", payWidth: "0%", marketWidth: "0%", saving: "—" });
 
     expect(buildProductNote([product({ market: noMatch })])).toBe(PRODUCT_NOTE_NO_MATCH);
-    expect(buildProductNote([product({ market: noMatch }), product({ market: marketBand() })])).toMatch(/median \(P50\).*same product in your currency.*mock feed.*P25/);
-    expect(buildProductNote([product({ market: marketBand() })])).not.toContain(PRODUCT_NOTE_SIMILAR);
+    expect(buildProductNote([product({ market: noMatch }), product({ market: marketBand() })])).toBe(PRODUCT_NOTE_MATCHED);
+    // The legend: every column term in plain words -- never P50, P25 or n.
+    const legend = buildProductLegend([product({ market: noMatch }), product({ market: marketBand() })]);
+    expect(legend.map((entry) => entry.term)).toEqual(["Market median", "UK · 12 mo", "22 contracts", "Could save / yr"]);
+    expect(legend[0].meaning).toMatch(/half pay less, half pay more/);
+    expect(legend[2].meaning).toMatch(/how many contracts.*under 10.*indicative/);
+    expect(JSON.stringify(legend)).not.toMatch(/P50|P25|n=/);
+    expect(buildProductLegend([product({ market: noMatch })])).toEqual([]);
+    expect(buildProductLegend([product()])).toEqual([]);
     expect(buildProductSavingTotal([product({ market: marketBand() }), product({ market: noMatch })], "CHF")).toBe("CHF 6–18k");
     expect(buildProductSavingTotal([product({ market: noMatch })], "CHF")).toBeNull();
   });
@@ -937,7 +966,7 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(bundle).toMatchObject({
       marketBasis: "Market: Jira Software Premium + Confluence Premium, priced one by one and added up",
       market: "GBP 205",
-      marketMeta: "sum · UK · 12 mo · n=6",
+      marketMeta: "sum · UK · 12 mo · only 6 contracts",
       delta: "-7%",
       deltaAccent: false,
       saving: "up to GBP 4.4k",
@@ -948,11 +977,13 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(similar).toMatchObject({
       marketBasis: "Market: a similar product, not yours — Confluence Premium",
       market: "≈ GBP 85",
-      marketMeta: "similar · UK · 12 mo · n=48",
+      marketMeta: "similar · UK · 12 mo · 48 contracts",
       delta: "≈ +18%",
       saving: "≈ GBP 1.5–2.4k",
     });
-    expect(buildProductNote([product({ market: similarBand })])).toContain(PRODUCT_NOTE_SIMILAR);
+    expect(buildProductLegend([product({ market: similarBand })]).map((entry) => entry.term)).toContain("≈");
+    expect(buildProductLegend([product({ market: marketBand({ matchKind: "Bundle" }) })]).map((entry) => entry.term)).toContain("sum");
+    expect(buildProductLegend([product({ market: marketBand() })]).map((entry) => entry.term)).not.toContain("≈");
     expect(buildProductSavingTotal([product({ unitPrice: 100, annualCost: 10_000, market: similarBand })], "GBP")).toBe("≈ GBP 1.5–2.4k");
   });
 
