@@ -368,7 +368,7 @@
   background: var(--color-accent);
 }
 
-/* Uploaded, not yet claimed: no measured stage, so the fill sweeps across instead of sizing. */
+/* Local row, bytes still in flight: nothing measured, so the fill sweeps across instead of sizing. */
 .document-row-progress-pending {
   overflow: hidden;
   position: relative;
