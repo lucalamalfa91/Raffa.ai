@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { Contract360Body, Contract360ClauseBody, Contract360DocumentBody, ContractFieldEvidenceBody, ContractStrategyBody, RenewalPriorityBody } from "../../../api/client";
 import { DocumentViewerLink } from "../../documents/viewer/DocumentViewerOverlay";
 import ClauseHighlight from "./ClauseHighlight";
+import InfoTip from "../../../components/InfoTip";
 import { formatCompactAmount } from "../portfolioViewModel";
 import {
   AUTO_ACCEPT_THRESHOLD,
@@ -13,7 +14,9 @@ import {
   buildDocumentRows,
   buildKeyTerms,
   buildLeverCards,
-  buildProductLegend,
+  MARKET_MEDIAN_EXPLAINED,
+  MARKET_SOURCE,
+  SAVING_COLUMN_EXPLAINED,
   buildProductNote,
   buildProductSavingTotal,
   buildObligationColumns,
@@ -95,7 +98,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
   const lines = buildProductLines(contract.tabs.products, currency, autoAcceptThreshold);
   const total = contract.header.annualSpend === null ? "—" : formatCompactAmount(contract.header.annualSpend, currency);
   const saving = buildProductSavingTotal(contract.tabs.products, currency, autoAcceptThreshold);
-  const legend = buildProductLegend(contract.tabs.products);
+  const note = buildProductNote(contract.tabs.products);
   return (
     <SectionFrame copy={SECTION_COPY.products} label="Products & pricing">
       {lines.length === 0 ? (
@@ -107,9 +110,22 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
               <span>Product</span>
               <span className="is-right">Qty</span>
               <span className="is-right">You pay / unit</span>
-              <span className="is-right">Market median / unit</span>
+              <span className="is-right">
+                Market median / unit
+                <InfoTip label="What the market median is" align="end">
+                  {MARKET_MEDIAN_EXPLAINED.map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                  <p className="info-tip-meta">{MARKET_SOURCE}</p>
+                </InfoTip>
+              </span>
               <span>vs market</span>
-              <span className="is-right">Could save / yr</span>
+              <span className="is-right">
+                Could save / yr
+                <InfoTip label="How the saving is worked out" align="end">
+                  <p>{SAVING_COLUMN_EXPLAINED}</p>
+                </InfoTip>
+              </span>
               <span className="is-right">Annual</span>
             </div>
             {lines.map((line) => (
@@ -137,19 +153,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
               </div>
             ))}
             <div className="contract360-products-foot">
-              <div className="contract360-products-note">
-                {legend.length > 0 && (
-                  <dl className="contract360-products-legend" aria-label="How to read this table">
-                    {legend.map((entry) => (
-                      <div key={entry.term} className="contract360-products-legend-row">
-                        <dt>{entry.term}</dt>
-                        <dd>{entry.meaning}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                )}
-                <p className="contract360-products-note-text">{buildProductNote(contract.tabs.products)}</p>
-              </div>
+              <span className="contract360-products-note">{note}</span>
               {saving !== null && (
                 <span className="contract360-products-total contract360-products-total-saving">
                   <span className="contract360-products-total-label">Could save / yr</span>

@@ -132,6 +132,8 @@ export interface SaveAnswer {
   estimate: string;
   /** What you pay against what the market pays, the lever sentence, or why the estimate is not yet there. */
   lever: string;
+  /** A similar product's median is part of the estimate ("≈"), said in the tooltip. */
+  similar?: boolean;
   /** Never-bare representative provenance in plain words ("Representative market data from 214 comparable contracts · source A · as of …"), the small print under the lever; empty when no market band backs the estimate. */
   source: string;
 }
@@ -282,7 +284,7 @@ function mapSave(pack: ContractStrategyBody, pricing: PricingContext): SaveAnswe
       const similar = withSaving.some((t) => t.saving.high > 0 && t.product?.market?.matchKind === "Similar");
       const lever = formatYouPay(lead, pricing.currency, named, false);
       return similar
-        ? { estimate: `≈ ${upperFirst(estimate)} / yr`, lever: `${lever} ${SIMILAR_IN_TOTAL}`, source }
+        ? { estimate: `≈ ${upperFirst(estimate)} / yr`, lever, source, similar: true }
         : { estimate: `${upperFirst(estimate)} / yr`, lever, source };
     }
 
@@ -305,7 +307,9 @@ function mapSave(pack: ContractStrategyBody, pricing: PricingContext): SaveAnswe
 }
 
 export const AT_MARKET_PRICE = "At market price";
-export const SIMILAR_IN_TOTAL = "≈: part of this comes from a similar product's median, not your exact product's.";
+export const SIMILAR_IN_TOTAL = "≈ Part of this comes from a similar product's median, not your exact product's.";
+export const SAVE_EXPLAINED =
+  "What you would save in a year by paying what other customers pay: between the market median (the middle price) and the price the cheapest quarter of customers pay.";
 export const TARGET_PRICE_ONLY =
   "Target unit price: from the market's P25 to its median. The line's annual cost is not recorded, so the yearly saving cannot be sized yet.";
 
@@ -985,57 +989,23 @@ export const PRODUCT_NOTE_UNCHECKED =
   "Prices are the negotiated rate on the validated document; the market column fills once the lines have been compared with the market data.";
 export const PRODUCT_NOTE_NO_MATCH =
   "No comparable market record for these lines yet — not your product, and nothing similar, from customers paying in the contract's own currency.";
-export const PRODUCT_NOTE_MATCHED =
-  "Representative market data (mock feed), always in your own currency. Hover a market price for its range and date.";
-
-/** The foot note under the table: where the market figures come from, or why there are none yet. */
-export function buildProductNote(products: readonly Contract360ProductBody[]): string {
+/** The foot note under the table: why there are no market figures yet; `null` once a line has one (the header tooltips explain them). */
+export function buildProductNote(products: readonly Contract360ProductBody[]): string | null {
   const markets = products.map((p) => p.market).filter((m): m is ProductMarketBody => m !== null);
   if (markets.length === 0) return PRODUCT_NOTE_UNCHECKED;
   if (!markets.some((m) => m.matched)) return PRODUCT_NOTE_NO_MATCH;
-  return PRODUCT_NOTE_MATCHED;
+  return null;
 }
 
-export interface LegendEntry {
-  term: string;
-  meaning: string;
-}
-
-/**
- * "How to read this table", shown once a line has a market price: every term the columns use, in
- * plain words, so nobody needs to know what a median, a P25 or a sample size is. The "≈" entry
- * only when a similar product's median is on screen.
- */
-export function buildProductLegend(products: readonly Contract360ProductBody[]): LegendEntry[] {
-  const matched = products.map((p) => p.market).filter((m): m is ProductMarketBody => m !== null && m.matched);
-  if (matched.length === 0) return [];
-  const legend: LegendEntry[] = [
-    {
-      term: "Market median",
-      meaning:
-        "the middle price other customers pay for the same product: half pay less, half pay more. Compared with contracts of your size, in your currency, where the data has them.",
-    },
-    {
-      term: "UK · 12 mo",
-      meaning: "the region and contract length of the contracts compared.",
-    },
-    {
-      term: "22 contracts",
-      meaning: `how many contracts the market price is worked out from. The more, the more reliable; under ${SMALL_SAMPLE} ("only 6 contracts") treat it as indicative.`,
-    },
-    {
-      term: "Could save / yr",
-      meaning: "what you would save in a year by paying between the market median and the price the cheapest quarter of customers pay.",
-    },
-  ];
-  if (matched.some((m) => m.matchKind === "Similar")) {
-    legend.push({ term: "≈", meaning: "the price of a similar product, not of your exact product: a guide for the negotiation, not your market price." });
-  }
-  if (matched.some((m) => m.matchKind === "Bundle")) {
-    legend.push({ term: "sum", meaning: "the line bundles several products: each one's market median, added up." });
-  }
-  return legend;
-}
+/** The "Market median / unit" header tooltip: what the figure is and where it comes from. */
+export const MARKET_MEDIAN_EXPLAINED = [
+  "The middle price other customers pay for the same product: half pay less, half pay more. In your currency, from contracts of your size where the market data has them.",
+  `Under each price: region, contract length and how many contracts it is worked out from. Under ${SMALL_SAMPLE}, treat it as indicative.`,
+  "≈ a similar product, not yours · sum: a bundle's products, added up.",
+];
+export const MARKET_SOURCE = "Representative market data (mock feed).";
+export const SAVING_COLUMN_EXPLAINED =
+  "What you would save in a year by paying between the market median and the price the cheapest quarter of customers pay.";
 
 // ---- Savings arithmetic shared by the answers band and the table --------------------------------
 

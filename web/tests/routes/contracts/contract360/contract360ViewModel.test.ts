@@ -41,12 +41,12 @@ import {
   standardClausesLabel,
   terminatedActionText,
   PRODUCT_NOTE_NO_MATCH,
-  PRODUCT_NOTE_MATCHED,
-  buildProductLegend,
+  MARKET_MEDIAN_EXPLAINED,
+  SAVE_EXPLAINED,
+  SAVING_COLUMN_EXPLAINED,
   formatSampleSize,
   PRODUCT_NOTE_UNCHECKED,
   AT_MARKET_PRICE,
-  SIMILAR_IN_TOTAL,
   TARGET_PRICE_ONLY,
   buildProductSavingTotal,
   computeLineSaving,
@@ -498,9 +498,8 @@ describe("answers band", () => {
     });
     const similar = buildAnswers(header(), renewalTab, [], strategyCalled(similarPack), { products: [similarLine], currency: "GBP" }).save;
     expect(similar.estimate).toBe("≈ GBP 1.5–2.4k / yr");
-    expect(similar.lever).toBe(
-      `You pay GBP 100 per unit against GBP 85, the median of a similar product (Confluence Premium), not your exact one (+18%). ${SIMILAR_IN_TOTAL}`,
-    );
+    expect(similar.lever).toBe("You pay GBP 100 per unit against GBP 85, the median of a similar product (Confluence Premium), not your exact one (+18%).");
+    expect(similar.similar).toBe(true);
     expect(formatTrackerMeta({ ...similar, estimate: "≈ Up to GBP 2.4k / yr" }, buildAnswers(header(), renewalTab, [], strategyCalled(similarPack)).move)).toBe(
       "target ≈ up to GBP 2.4k / yr · close by 17/11/2025",
     );
@@ -945,15 +944,11 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(hidden).toMatchObject({ price: UNOFFICIALIZED_PLACEHOLDER, market: "CHF 0.5", delta: "—", payWidth: "0%", marketWidth: "0%", saving: "—" });
 
     expect(buildProductNote([product({ market: noMatch })])).toBe(PRODUCT_NOTE_NO_MATCH);
-    expect(buildProductNote([product({ market: noMatch }), product({ market: marketBand() })])).toBe(PRODUCT_NOTE_MATCHED);
-    // The legend: every column term in plain words -- never P50, P25 or n.
-    const legend = buildProductLegend([product({ market: noMatch }), product({ market: marketBand() })]);
-    expect(legend.map((entry) => entry.term)).toEqual(["Market median", "UK · 12 mo", "22 contracts", "Could save / yr"]);
-    expect(legend[0].meaning).toMatch(/half pay less, half pay more/);
-    expect(legend[2].meaning).toMatch(/how many contracts.*under 10.*indicative/);
-    expect(JSON.stringify(legend)).not.toMatch(/P50|P25|n=/);
-    expect(buildProductLegend([product({ market: noMatch })])).toEqual([]);
-    expect(buildProductLegend([product()])).toEqual([]);
+    // Once a line has a market price the page carries no note: the header tooltips explain it, in plain words.
+    expect(buildProductNote([product({ market: noMatch }), product({ market: marketBand() })])).toBeNull();
+    expect(MARKET_MEDIAN_EXPLAINED[0]).toMatch(/half pay less, half pay more/);
+    expect(MARKET_MEDIAN_EXPLAINED[1]).toMatch(/how many contracts.*Under 10.*indicative/);
+    expect(JSON.stringify([MARKET_MEDIAN_EXPLAINED, SAVING_COLUMN_EXPLAINED, SAVE_EXPLAINED])).not.toMatch(/P50|P25|n=/);
     expect(buildProductSavingTotal([product({ market: marketBand() }), product({ market: noMatch })], "CHF")).toBe("CHF 6–18k");
     expect(buildProductSavingTotal([product({ market: noMatch })], "CHF")).toBeNull();
   });
@@ -981,9 +976,6 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
       delta: "≈ +18%",
       saving: "≈ GBP 1.5–2.4k",
     });
-    expect(buildProductLegend([product({ market: similarBand })]).map((entry) => entry.term)).toContain("≈");
-    expect(buildProductLegend([product({ market: marketBand({ matchKind: "Bundle" }) })]).map((entry) => entry.term)).toContain("sum");
-    expect(buildProductLegend([product({ market: marketBand() })]).map((entry) => entry.term)).not.toContain("≈");
     expect(buildProductSavingTotal([product({ unitPrice: 100, annualCost: 10_000, market: similarBand })], "GBP")).toBe("≈ GBP 1.5–2.4k");
   });
 

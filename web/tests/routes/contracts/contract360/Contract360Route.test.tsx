@@ -687,7 +687,9 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       // 120,000 DBU a year at CHF 0.55: 0.05 over the median, 0.15 over P25.
       expect(within(cells[0] as HTMLElement).getByText("CHF 6–18k / yr")).toHaveClass("contract360-answer-value");
       expect(cells[0]).toHaveTextContent("You pay CHF 0.55 per unit against a market median of CHF 0.5 (+10%).");
-      expect(within(cells[0] as HTMLElement).getByText("Representative market data from 214 comparable contracts · source A · as of 01/01/2026")).toHaveClass("contract360-answer-source");
+      // Where the saving comes from sits behind the "i", not on the page.
+      const saveInfo = within(cells[0] as HTMLElement).getByRole("button", { name: "Where this saving comes from" });
+      expect(saveInfo).toHaveAccessibleDescription(/Representative market data from 214 comparable contracts · source A · as of 01\/01\/2026/);
       expect(cells[0]).not.toHaveTextContent("Not yet available");
 
       expect(within(cells[1] as HTMLElement).getByText(formatDateOnly(CANCEL_DEADLINE))).toHaveClass("deadline-critical");
@@ -1017,8 +1019,8 @@ describe("Contract360Route (V2 no tabs, ADR-024 / screens-v2.md #5)", () => {
       expect(within(products).getByText("CHF 0.5")).toBeInTheDocument();
       expect(within(products).getByText("CH · 12 mo · 40 contracts")).toBeInTheDocument();
       expect(within(products).getByText("+10%")).toHaveClass("is-accent");
-      expect(within(products).getByLabelText("How to read this table")).toHaveTextContent(/Market median.*half pay less, half pay more/);
-      expect(within(products).getByLabelText("How to read this table")).toHaveTextContent(/how many contracts the market price is worked out from/);
+      expect(within(products).getByRole("button", { name: "What the market median is" })).toHaveAccessibleDescription(/half pay less, half pay more/);
+      expect(within(products).getByRole("button", { name: "How the saving is worked out" })).toHaveAccessibleDescription(/cheapest quarter of customers/);
 
       const obligations = screen.getByRole("region", { name: "Obligations" });
       expect(within(obligations).getByText("You must")).toBeInTheDocument();
