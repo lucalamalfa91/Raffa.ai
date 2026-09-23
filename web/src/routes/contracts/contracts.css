@@ -179,6 +179,12 @@
   font-size: 13px;
 }
 
+.portfolio-highlight-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .portfolio-highlight-notice .btn {
   font-size: 12px;
   padding-block: 2px;

@@ -123,11 +123,16 @@ test.describe("A17-S1 — Savings verified (w17)", () => {
     await expect(band).toBeVisible({ timeout: 15_000 });
     const cells = band.locator(".savings-kpi-cell");
     await expect(cells).toHaveCount(4);
-    await expect(cells.nth(0)).toContainText("Contracts analyzed");
-    await expect(cells.nth(1)).toContainText("Upcoming renewals");
-    await expect(cells.nth(2)).toContainText("Savings identified");
-    await expect(cells.nth(3)).toContainText("Savings verified");
-    await expect(cells.nth(3)).not.toContainText("Realized");
+    // Verified money leads the band; contracts analyzed and upcoming renewals moved to the
+    // portfolio-context strip under it.
+    await expect(cells.nth(0)).toContainText("Savings verified");
+    await expect(cells.nth(1)).toContainText("Savings identified");
+    await expect(cells.nth(2)).toContainText("Savings in progress");
+    await expect(cells.nth(3)).toContainText("Savings potential");
+    await expect(cells.nth(0)).not.toContainText("Realized");
+    const context = page.getByRole("navigation", { name: "Portfolio context" });
+    await expect(context).toContainText("Contracts analyzed");
+    await expect(context).toContainText("Upcoming renewals");
 
     for (const bucket of body.savingsRealized) {
       expect(bucket).toHaveProperty("amount");

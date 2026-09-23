@@ -10,10 +10,12 @@ import {
   filterRowsByContractIds,
   formatHighlightNotice,
   formatPortfolioSummary,
+  getSelectionSourceLink,
   moreColumnsLabel,
   PORTFOLIO_SUMMARY_OFF,
   readCategoryFilter,
   readContractIdsFilter,
+  readSelectionSource,
   withCategoryFilter,
 } from "./portfolioViewModel";
 import "./contracts.css";
@@ -92,6 +94,8 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
   // `?ids=`: the contracts an Ask evidence card highlighted -- a client-side narrowing of the same
   // page, never a second request, so "Show all" is one link away and the summary stays honest.
   const highlightedIds = useMemo(() => readContractIdsFilter(searchParams), [searchParams]);
+  // `?from=`: which screen picked those contracts (Ask, Renewals, Savings) -- named in the notice.
+  const selectionSource = readSelectionSource(searchParams);
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
   const [moreColumns, setMoreColumns] = useState(false);
   const [documentCounts, setDocumentCounts] = useState<DocumentListPageBody["counts"] | null>(null);
@@ -268,10 +272,17 @@ export default function PortfolioRoute({ apiClient }: PortfolioRouteProps) {
 
       {highlighting && (
         <div className="portfolio-highlight-notice" role="status" data-testid="portfolio-highlight-notice">
-          <span>{formatHighlightNotice(rows.length, allRows.length)}</span>
-          <Link to={showAllHref} className="btn btn-ghost">
-            Show all contracts →
-          </Link>
+          <span>{formatHighlightNotice(rows.length, allRows.length, selectionSource)}</span>
+          <span className="portfolio-highlight-links">
+            {selectionSource !== "ask" && (
+              <Link to={getSelectionSourceLink(selectionSource).href} className="btn btn-ghost">
+                ← {getSelectionSourceLink(selectionSource).label}
+              </Link>
+            )}
+            <Link to={showAllHref} className="btn btn-ghost">
+              Show all contracts →
+            </Link>
+          </span>
         </div>
       )}
 

@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { SavingsKpiSummaryBody, SavingsOpportunityBody } from "../../../src/api/client";
 import {
   SAVINGS_SUMMARY_OFF,
+  buildContextCells,
   buildKpiCells,
+  buildOpportunitiesPortfolioHref,
   buildOpportunityRows,
+  findNoticeSoonContractIds,
   buildSupplierNameIndex,
   formatSavingsSummary,
   getOpportunityNavigation,
@@ -74,6 +77,27 @@ describe("buildOpportunityRows (Supplier · Action · Estimate · Status)", () =
     expect(row.navigation).toEqual({ kind: "contract", contractId: opportunity().contractId });
   });
 
+  it("carries the spend, the contract's notice days, a scoped Ask question and a Renewals link while notice is ahead", () => {
+    const contractId = opportunity().contractId!;
+    const names = new Map([[contractId, "Salesforce"]]);
+    const [row] = buildOpportunityRows([opportunity()], names, new Map([[contractId, 14]]));
+    expect(row.contractId).toBe(contractId);
+    expect(row.currentSpend).toBe("CHF 640,000");
+    expect(row.noticeDays).toBe(14);
+    expect(row.noticeUrgent).toBe(true);
+    expect(row.askQuestion).toBe("Where can we save with Salesforce?");
+    expect(row.renewalHref).toBe(`/renewals?select=${contractId}`);
+
+    const [unnamed] = buildOpportunityRows([opportunity()]);
+    expect(unnamed.noticeDays).toBeNull();
+    expect(unnamed.renewalHref).toBeNull();
+    // Never an id in a question.
+    expect(unnamed.askQuestion).toBe("Where can we save on this contract?");
+
+    const [realized] = buildOpportunityRows([opportunity({ status: "Realized", realizedAmount: 90_000 })], names, new Map([[contractId, 14]]));
+    expect(realized.renewalHref).toBeNull();
+  });
+
   it("does not invent a tracked-action row — only real SavingsOpportunity payloads render", () => {
     const rows = buildOpportunityRows([opportunity()]);
     expect(rows).toHaveLength(1);
@@ -106,36 +130,39 @@ describe("reduceKpiFetch ('benchmark-provider-unreachable -> KPIs stale-labelled
   });
 });
 
-describe("buildKpiCells (screens-v2.md #8 plus the verified-money cell)", () => {
-  it("names the four cells in band order in both the failed-fetch and ready branches", () => {
-    const keys = ["contracts-analyzed", "upcoming-renewals", "savings-identified", "savings-verified"];
+describe("buildKpiCells (headline band: verified first, then the open estimates)", () => {
+  it("names the four cells in band order in both the failed-fetch and ready branches, verified money leading", () => {
+    const keys = ["savings-verified", "savings-identified", "savings-in-progress", "savings-potential"];
     expect(buildKpiCells(null).map((cell) => cell.key)).toEqual(keys);
     expect(buildKpiCells(kpis()).map((cell) => cell.key)).toEqual(keys);
     expect(buildKpiCells(null).map((cell) => cell.label)).toEqual([
-      "Contracts analyzed",
-      "Upcoming renewals",
-      "Savings identified",
       "Savings verified",
+      "Savings identified",
+      "Savings in progress",
+      "Savings potential",
     ]);
+    expect(buildKpiCells(kpis()).map((cell) => cell.hero)).toEqual([true, false, false, false]);
   });
 
-  it("kpis:null renders every cell with an honestly empty lines array and no meta", () => {
+  it("kpis:null renders every cell with an honestly empty lines array, no meta and no notes", () => {
     const cells = buildKpiCells(null);
     expect(cells).toHaveLength(4);
-    expect(cells.every((cell) => cell.lines.length === 0 && cell.meta === null)).toBe(true);
+    expect(cells.every((cell) => cell.lines.length === 0 && cell.meta === null && cell.notes.length === 0)).toBe(true);
   });
 
   it("carries real values and meta lines from the same response", () => {
-    const [contracts, renewals, identified, verified] = buildKpiCells(kpis());
-    expect(contracts.lines).toEqual(["9"]);
-    expect(contracts.meta).toBe("CHF 6,270,000 annual spend");
-    expect(renewals.lines).toEqual(["4"]);
-    expect(renewals.meta).toBe("auto-renewing contracts in the pipeline");
-    expect(identified.lines).toEqual(["CHF 410,000–590,000"]);
-    expect(identified.meta).toBe("6 identified · 2 in progress");
+    const [verified, identified, inProgress, potential] = buildKpiCells(kpis());
     expect(verified.lines).toEqual(["CHF 85,000"]);
     expect(verified.meta).toBe("from 1 recorded outcome");
-    expect(verified.label).toBe("Savings verified");
+    // 85,000 / 6,270,000 = 1.36% of the same currency's spend.
+    expect(verified.notes).toEqual(["1.4% of CHF annual spend"]);
+    expect(identified.lines).toEqual(["CHF 410,000–590,000"]);
+    expect(identified.meta).toBe("6 opportunities · avg. confidence 82%");
+    expect(inProgress.lines).toEqual(["CHF 240,000"]);
+    expect(inProgress.meta).toBe("2 being negotiated");
+    // (410k + 240k) / 6.27M = 10.4% ... (590k + 240k) / 6.27M = 13.2%
+    expect(potential.lines).toEqual(["10–13%"]);
+    expect(potential.meta).toBe("of annual spend analyzed, from open estimates");
   });
 
   it("multiple currency buckets render one line per currency, never summed across currencies", () => {
@@ -153,24 +180,103 @@ describe("buildKpiCells (screens-v2.md #8 plus the verified-money cell)", () => 
         { currency: "USD", amount: 100_000, contractCount: 1 },
       ],
     });
-    const [contracts, , identified, verified] = buildKpiCells(twoCurrencies);
+    const [verified, identified, , potential] = buildKpiCells(twoCurrencies);
     expect(identified.lines).toEqual(["CHF 410,000–590,000", "USD 20,000"]);
-    expect(contracts.meta).toBe("CHF 6,270,000 · USD 100,000 annual spend");
+    // Weighted by count: (0.82 * 6 + 0.7 * 1) / 7 = 0.803.
+    expect(identified.meta).toBe("7 opportunities · avg. confidence 80%");
     expect(verified.lines).toEqual(["CHF 85,000", "USD 12,000"]);
     expect(verified.meta).toBe("from 3 recorded outcomes");
+    expect(verified.notes).toEqual(["1.4% of CHF annual spend", "12% of USD annual spend"]);
+    expect(potential.lines).toEqual(["CHF 10–13%", "USD 20%"]);
   });
 
   it("loaded empty verified savings is an em-dash with a non-null meta, never a fabricated 0", () => {
-    const [, , , verified] = buildKpiCells(kpis({ savingsRealized: [] }));
+    const [verified] = buildKpiCells(kpis({ savingsRealized: [] }));
     expect(verified.lines).toEqual([]);
     expect(verified.meta).toBe("no verified savings recorded yet");
+    expect(verified.notes).toEqual([]);
     expect(verified.label).toBe("Savings verified");
   });
 
-  it("is honest when no spend has been analysed yet", () => {
-    const [contracts] = buildKpiCells(kpis({ annualSpendAnalyzed: [], contractsAnalyzedCount: 0 }));
-    expect(contracts.lines).toEqual(["0"]);
-    expect(contracts.meta).toBe("no annual spend recorded yet");
+  it("is honest when no spend has been analyzed yet: no share of spend is divided by nothing", () => {
+    const [verified, , , potential] = buildKpiCells(kpis({ annualSpendAnalyzed: [], contractsAnalyzedCount: 0 }));
+    expect(verified.notes).toEqual([]);
+    expect(potential.lines).toEqual([]);
+    expect(potential.meta).toBe("needs annual spend on validated contracts");
+  });
+
+  it("says so when nothing is open or being negotiated", () => {
+    const [, identified, inProgress] = buildKpiCells(kpis({ savingsIdentified: [], savingsInProgress: [] }));
+    expect(identified.lines).toEqual([]);
+    expect(identified.meta).toBe("no open opportunities yet");
+    expect(inProgress.meta).toBe("nothing being negotiated yet");
+  });
+});
+
+describe("buildContextCells (portfolio context under the band)", () => {
+  it("names contracts and spend analyzed, upcoming renewals and notice deadlines, each leading to the screen that owns it", () => {
+    const cells = buildContextCells(kpis(), ["c-1", "c-2"]);
+    expect(cells.map((cell) => [cell.key, cell.value, cell.href])).toEqual([
+      ["contracts-analyzed", "9", "/contracts"],
+      ["annual-spend", "CHF 6,270,000", "/contracts"],
+      ["upcoming-renewals", "4", "/renewals"],
+      ["notice-soon", "2", "/contracts?ids=c-1,c-2&from=savings"],
+    ]);
+    expect(cells[3].urgent).toBe(true);
+    expect(cells[3].linkLabel).toBe("Show them");
+  });
+
+  it("is honest before anything loads, and with no deadline this close", () => {
+    const empty = buildContextCells(null, null);
+    expect(empty.map((cell) => cell.value)).toEqual(["—", "—", "—", "—"]);
+    expect(empty[3].href).toBe("/renewals");
+
+    const none = buildContextCells(kpis(), []);
+    expect(none[3].value).toBe("0");
+    expect(none[3].urgent).toBe(false);
+    expect(none[3].meta).toBe("no notice deadline this close");
+  });
+});
+
+describe("findNoticeSoonContractIds / buildOpportunitiesPortfolioHref", () => {
+  const now = new Date("2026-09-23T10:00:00Z");
+  function portfolioItem(contractId: string, cancellationDeadline: string | null, status = "active") {
+    return {
+      contractId,
+      supplierId: null,
+      supplierName: null,
+      type: "Msa",
+      annualSpend: null,
+      currency: "CHF",
+      startDate: null,
+      endDate: null,
+      renewalDate: null,
+      cancellationDeadline,
+      autoRenewal: true,
+      status,
+      risk: null,
+      documentProcessingStatus: "Completed",
+    } as const;
+  }
+
+  it("lists validated contracts whose notice is today or within 45 days -- never a passed or far deadline", () => {
+    const ids = findNoticeSoonContractIds(
+      [
+        portfolioItem("soon", "2026-10-07"),
+        portfolioItem("today", "2026-09-23"),
+        portfolioItem("passed", "2026-09-01"),
+        portfolioItem("far", "2027-03-01"),
+        portfolioItem("none", null),
+      ],
+      now,
+    );
+    expect(ids).toEqual(["today", "soon"]);
+  });
+
+  it("narrows Portfolio to the distinct contracts behind the rows on screen, with Savings as the source", () => {
+    const rows = buildOpportunityRows([opportunity(), opportunity({ id: "other" }), opportunity({ id: "quote", contractId: null })]);
+    expect(buildOpportunitiesPortfolioHref(rows)).toBe(`/contracts?ids=${opportunity().contractId}&from=savings`);
+    expect(buildOpportunitiesPortfolioHref(buildOpportunityRows([opportunity({ contractId: null })]))).toBeNull();
   });
 });
 

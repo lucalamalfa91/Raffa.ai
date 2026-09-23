@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { ApiClient, RenewalPipelineItemBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
+import AskRaffaLink from "../../components/ask-bar/AskRaffaLink";
+import { ASK_PROMPTS } from "../../components/ask-bar/askLaunch";
 import RenewalTable from "./RenewalTable";
 import InsightCard from "./InsightCard";
+import RenewalKpiStrip from "./RenewalKpiStrip";
+import RenewalBulkBar from "./RenewalBulkBar";
 import ReadinessFilter from "../../components/ReadinessFilter";
 import {
   countReadiness,
@@ -13,13 +17,23 @@ import {
   type ReadinessFilterValue,
 } from "../../components/readiness";
 import {
+  buildRenewalContractIndex,
+  buildRenewalKpis,
   buildRenewalRows,
+  EMPTY_RENEWAL_FILTERS,
+  filterRenewalRows,
   formatRenewalsSummary,
   getRenewalActionPlan,
+  isRenewalFilterActive,
   isRenewalItemReady,
   RENEWALS_SUMMARY_OFF,
+  toggleKpiFilter,
   type RenewalActionKind,
+  type RenewalContractInfo,
+  type RenewalListFilters,
+  type RenewalStateFilter,
 } from "./renewalPipelineViewModel";
+import { buildRenewalBulkActions, type RenewalBulkActionView } from "./renewalActions";
 import "./renewals.css";
 
 export interface RenewalsRouteProps {
@@ -37,54 +51,60 @@ type FetchState =
   | { phase: "error"; statusCode: number | null; message: string }
   | { phase: "ready"; items: readonly RenewalPipelineItemBody[]; scores: Readonly<Record<string, number | null>> };
 
+const STATE_FILTER_OPTIONS: ReadonlyArray<{ value: RenewalStateFilter; label: string }> = [
+  { value: "all", label: "Any status" },
+  { value: "open", label: "Not started" },
+  { value: "negotiating", label: "In negotiation" },
+  { value: "closed", label: "Closed" },
+];
+
 /**
- * Route `/renewals` -- Renewals, V2 (ADR-024 V2 IA amending ADR-020 screen 8; screens-v2.md #7;
- * `raffa-v2/markup.html` "RENEWALS" block, `app.jsx` `renewals` / `rsel` / `rnSummary` / `rAct`).
- * Replaces the Day-1 "Renewal pipeline" (threshold strip, seven-column table, six-fact insight card
- * with three actions) with the prototype's own shape: a header ("Renewals" + `rnSummary`), the list
- * sorted by priority, the selected row's "Why it is here" pane with Start negotiation / Assign to
- * me, and -- while nothing has validated dates -- the tier's reroute state (R-WEB-02): "No renewal
- * dates yet · Renewals are computed from validated end dates and notice periods. Upload a contract
- * to start. · Upload a contract".
+ * Route `/renewals` -- Renewals (ADR-024 V2 IA amending ADR-020 screen 8; screens-v2.md #7). The
+ * screen where a notice deadline is worked, and the launch point for everything that can be done
+ * about one. Top to bottom:
  *
- * **Fetch order.** One read: `getRenewals` -- a non-2xx there is this screen's own error state.
- * Every row carries its own `priority` (the same object `GET /api/renewals/{contractId}/priority`
- * returns, computed server-side from the row's own header facts), so the list paints already scored
- * and sorted. A row the server sent without a score reads "—" and sorts last, never the whole
- * screen. The one-priority-call-per-row fan-out this replaced was, on the demo server's 50 Postgres
- * connections, enough on its own to starve every other request into a 500.
+ * 1. **Header** -- "Renewals" + summary, and "Ask Raffa which to start first".
+ * 2. **KPI strip** (`RenewalKpiStrip`) -- notice in 30 / 90 days, spend renewing inside 90 days,
+ *    not started / in negotiation / closed; each cell filters the list.
+ * 3. **Toolbar** -- the readiness `.seg` (Ready / To review / All, default Ready: the same
+ *    validation rule as Portfolio), a supplier search and a workflow-status select.
+ * 4. **Bulk bar** (`RenewalBulkBar`) while rows are ticked -- assign them to me, show them in
+ *    Portfolio, ask Raffa which to start first.
+ * 5. **The list, sorted by priority, and the selected row's pane** (`InsightCard`) -- facts,
+ *    recommendation, the workflow buttons and the action registry's launcher (`renewalActions.ts`).
  *
- * **Status shared with the Contract 360 tracker** (`racts`): the real write is
- * `POST /api/renewals/{id}/action`; every surface reads `savedAction` on the same
- * `GET /api/renewals` row.
+ * **Fetch order.** `getRenewals` is the screen: a non-2xx there is this screen's own error state.
+ * Every row carries its own `priority`, so the list paints already scored and sorted (the old
+ * one-priority-call-per-row fan-out could starve the demo server's 50 Postgres connections). The
+ * portfolio (`getPortfolio`) is read alongside, never blocking: it only adds each contract's type
+ * and currency; without it the contract reads as an id fragment and the spend carries no code.
  *
- * **`?select=` deep link (task E29/F03/US01/T01, NW-84; ADR-012 cl. 51 per
- * `reports/architecture/waves/w19.md` -- the ADR-012 body's own w19 footer text was not yet
- * transcribed when this task ran, so the wave file is the citable source of the decision).** A chat
- * reply can inject `/renewals?select={contractId}` (`Raffa.Chat`'s `CapabilityRouting.BuildHref`,
- * `CapabilityCatalog.RenewalsKey`); see `effectiveSelectedId` below for how an unmatched value falls
- * back to the same top-priority default the no-query case has always used.
+ * **Status shared with the Contract 360 tracker**: the real write is `POST /api/renewals/{id}/action`;
+ * every surface reads `savedAction` on the same `GET /api/renewals` row.
  *
- * **Readiness filter.** The pipeline still carries contracts that are not yet OK to open (still in
- * human validation, not analyzed, or otherwise unusable). A compact `.seg` (Ready / To review / All)
- * defaults to already-OK so the list is usable; the still-to-review bucket is one click away, never
- * hidden forever. Ready is the same validation rule as Portfolio -- not "has dates".
+ * **`?select=` deep link** (task E29/F03/US01/T01, NW-84; ADR-012 cl. 51): a chat reply, Savings or
+ * Contract 360 can open `/renewals?select={contractId}`; see `effectiveSelectedId` below for how an
+ * unmatched value falls back to the top-priority visible row.
  */
 export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRouteProps) {
   const workspace = loadCurrentWorkspace();
   const [searchParams] = useSearchParams();
   const [fetchState, setFetchState] = useState<FetchState>({ phase: "loading" });
+  const [contracts, setContracts] = useState<ReadonlyMap<string, RenewalContractInfo>>(new Map());
   // Seeds the initial selection from the `?select=` deep link above, read once via the lazy
   // initializer -- the same "read once, on mount" convention `routes/documents/index.tsx`'s
   // `?filter=` already uses -- so a later click (`onSelect` below) is never fought by a stale URL on
   // re-render. A value matching no row (absent, malformed, or another tenant's contract -- `rows` is
   // already this tenant's own `GET /api/renewals` list, so a foreign id simply never appears in it)
-  // is handled entirely by `effectiveSelectedId`'s existing fallback: no 500, no leak, no special
-  // case needed here.
+  // is handled entirely by `effectiveSelectedId`'s existing fallback.
   const [selectedContractId, setSelectedContractId] = useState<string | null>(() => searchParams.get("select"));
   const [actionPending, setActionPending] = useState<RenewalActionKind | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<ReadinessFilterValue>(DEFAULT_READINESS_FILTER);
+  const [filters, setFilters] = useState<RenewalListFilters>(EMPTY_RENEWAL_FILTERS);
+  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set());
+  const [bulkProgress, setBulkProgress] = useState<string | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!workspace) return;
@@ -118,19 +138,32 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
     // fresh object every call, the same convention every other route's own load() callback follows.
   }, [apiClient, workspace?.id]);
 
+  const loadContracts = useCallback(() => {
+    if (!workspace) return;
+    void apiClient.getPortfolio(workspace.id, { pageSize: 100 }).then((result) => {
+      if (result.ok && result.portfolio) setContracts(buildRenewalContractIndex(result.portfolio.items));
+    });
+  }, [apiClient, workspace?.id]);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadContracts();
+  }, [load, loadContracts]);
 
   const rows = useMemo(
-    () => (fetchState.phase === "ready" ? buildRenewalRows(fetchState.items, fetchState.scores) : []),
-    [fetchState],
+    () => (fetchState.phase === "ready" ? buildRenewalRows(fetchState.items, fetchState.scores, contracts) : []),
+    [fetchState, contracts],
   );
   const readinessCounts = useMemo(
     () => countReadiness(rows.filter((row) => isRenewalItemReady(row.item)).length, rows.filter((row) => !isRenewalItemReady(row.item)).length),
     [rows],
   );
-  const visibleRows = useMemo(() => filterByReadiness(rows, readiness, (row) => isRenewalItemReady(row.item)), [rows, readiness]);
+  const readyRows = useMemo(() => filterByReadiness(rows, readiness, (row) => isRenewalItemReady(row.item)), [rows, readiness]);
+  const kpis = useMemo(() => buildRenewalKpis(readyRows), [readyRows]);
+  const visibleRows = useMemo(() => filterRenewalRows(readyRows, filters), [readyRows, filters]);
+  // A bulk action only ever runs on ticked rows the list is showing -- never on one a filter has hidden since.
+  const checkedRows = useMemo(() => visibleRows.filter((row) => checkedIds.has(row.item.contractId)), [visibleRows, checkedIds]);
+  const bulkActions = useMemo(() => buildRenewalBulkActions(checkedRows), [checkedRows]);
 
   if (!workspace) {
     // Should not normally be reachable -- App.tsx only mounts the shell (and therefore this route)
@@ -147,7 +180,7 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
   // The pane always follows a real selection (`app.jsx`: `rsel = renewals.find(r=>r.id===s.rsel) ||
   // renewals[0]`): an explicit click, or the initial `?select=` deep link seeded above, wins while
   // its row is still listed; an unmatched id (absent, malformed, or another tenant's) falls through
-  // to the top-priority *visible* row (the readiness filter can hide the previous selection).
+  // to the top-priority *visible* row (the readiness and list filters can hide the previous selection).
   const effectiveSelectedId = visibleRows.some((row) => row.item.contractId === selectedContractId)
     ? selectedContractId
     : (visibleRows[0]?.item.contractId ?? null);
@@ -174,7 +207,42 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
       });
   };
 
+  // A bulk write runs the same real write the pane makes, one row at a time, and stops at the first
+  // failure -- so the error names what did not happen and nothing is assumed saved.
+  const handleBulkWrite = async (action: RenewalBulkActionView) => {
+    if (action.target.kind !== "write") return;
+    const plan = getRenewalActionPlan("assign");
+    setBulkError(null);
+    let done = 0;
+    for (const row of action.rows) {
+      setBulkProgress(`Assigning ${done + 1} of ${action.rows.length}…`);
+      const result = await apiClient.postRenewalAction(workspace.id, row.item.contractId, { owner: userLabel, status: plan.status, action: plan.action });
+      if (!result.ok || !result.action) {
+        setBulkError(`${done} of ${action.rows.length} assigned. ${result.error ?? "The next one could not be saved."}`);
+        break;
+      }
+      done += 1;
+    }
+    setBulkProgress(null);
+    if (done === action.rows.length) setCheckedIds(new Set());
+    load();
+  };
+
+  const toggleChecked = (contractId: string) =>
+    setCheckedIds((current) => {
+      const next = new Set(current);
+      if (next.has(contractId)) next.delete(contractId);
+      else next.add(contractId);
+      return next;
+    });
+  const toggleAllChecked = () =>
+    setCheckedIds((current) => {
+      const allChecked = visibleRows.length > 0 && visibleRows.every((row) => current.has(row.item.contractId));
+      return allChecked ? new Set() : new Set(visibleRows.map((row) => row.item.contractId));
+    });
+
   const ready = fetchState.phase === "ready";
+  const filtersActive = isRenewalFilterActive(filters);
 
   return (
     <div className="renewal-screen">
@@ -185,6 +253,16 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
             {ready ? formatRenewalsSummary(readinessCounts.ok) : fetchState.phase === "loading" ? "Loading renewals…" : RENEWALS_SUMMARY_OFF}
           </p>
         </div>
+        {ready && rows.length > 0 && (
+          <div className="screen-header-actions">
+            <Link to="/savings" className="btn btn-ghost">
+              Savings →
+            </Link>
+            <AskRaffaLink question={ASK_PROMPTS.renewalsStartFirst} className="btn btn-primary renewal-ask">
+              Ask Raffa which to start first →
+            </AskRaffaLink>
+          </div>
+        )}
       </header>
 
       {fetchState.phase === "loading" && (
@@ -222,18 +300,76 @@ export default function RenewalsRoute({ apiClient, userLabel }: RenewalsRoutePro
 
       {ready && rows.length > 0 && (
         <>
-          <ReadinessFilter value={readiness} onChange={setReadiness} counts={readinessCounts} ariaLabel="Filter renewals by readiness" />
-          {visibleRows.length === 0 ? (
+          <RenewalKpiStrip cells={kpis} filters={filters} onToggle={(cell) => setFilters((current) => toggleKpiFilter(cell, current))} />
+
+          <div className="renewal-toolbar">
+            <ReadinessFilter value={readiness} onChange={setReadiness} counts={readinessCounts} ariaLabel="Filter renewals by readiness" />
+            <div className="renewal-toolbar-filters" role="group" aria-label="Filter the list">
+              <input
+                type="search"
+                className="input renewal-search"
+                placeholder="Search supplier or contract"
+                aria-label="Search renewals"
+                value={filters.query}
+                onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              />
+              <select
+                className="input renewal-state-select"
+                aria-label="Workflow status"
+                value={filters.state}
+                onChange={(event) => setFilters((current) => ({ ...current, state: event.target.value as RenewalStateFilter }))}
+              >
+                {STATE_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="btn btn-ghost" disabled={!filtersActive} onClick={() => setFilters(EMPTY_RENEWAL_FILTERS)}>
+                Clear filters
+              </button>
+            </div>
+          </div>
+
+          {checkedRows.length > 0 && (
+            <RenewalBulkBar
+              selectedCount={checkedRows.length}
+              actions={bulkActions}
+              onWrite={(action) => void handleBulkWrite(action)}
+              onClear={() => {
+                setCheckedIds(new Set());
+                setBulkError(null);
+              }}
+              progress={bulkProgress}
+              error={bulkError}
+            />
+          )}
+
+          {readyRows.length === 0 ? (
             <div className="renewal-readiness-empty" role="status">
               <p className="micro-meta">{getReadinessEmptyCopy(readiness)}</p>
             </div>
+          ) : visibleRows.length === 0 ? (
+            <div className="renewal-readiness-empty" role="status">
+              <p className="micro-meta">No renewal matches these filters.</p>
+              <button type="button" className="btn btn-secondary" onClick={() => setFilters(EMPTY_RENEWAL_FILTERS)}>
+                Clear filters
+              </button>
+            </div>
           ) : (
             <div className="renewal-screen-body">
-              <RenewalTable rows={visibleRows} selectedContractId={effectiveSelectedId} onSelect={setSelectedContractId} />
+              <RenewalTable
+                rows={visibleRows}
+                selectedContractId={effectiveSelectedId}
+                onSelect={setSelectedContractId}
+                checkedIds={checkedIds}
+                onToggleChecked={toggleChecked}
+                onToggleAllChecked={toggleAllChecked}
+              />
               {selectedRow && (
                 <InsightCard
-                  item={selectedRow.item}
-                  tracked={selectedRow.tracked}
+                  key={selectedRow.item.contractId}
+                  row={selectedRow}
                   actionPending={actionPending}
                   actionError={actionError}
                   onAction={handleAction}

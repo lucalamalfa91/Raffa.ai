@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { Contract360HeaderBody, RenewalActionRow } from "../../../api/client";
 import InfoTip from "../../../components/InfoTip";
 import { getRenewalActionPlan, type RenewalActionKind } from "../../renewals/renewalPipelineViewModel";
+import { buildSavingsContractHref } from "../../savings/savingsFilters";
 import {
   CLOSE_CYCLE_KICKER,
   CLOSE_CYCLE_RENEWED_LABEL,
@@ -82,6 +83,9 @@ export default function AnswersBand({
   const closed = tracked !== null && tracked.status === "Completed";
   const negotiate = getRenewalActionPlan("negotiate");
   const assign = getRenewalActionPlan("assign");
+  // Renewals and Savings open with this contract in focus, not at the top of their lists.
+  const renewalsHref = `/renewals?select=${encodeURIComponent(header.contractId)}`;
+  const savingsHref = buildSavingsContractHref(header.contractId);
 
   return (
     <section className="contract360-answers" aria-label="Answers">
@@ -98,6 +102,9 @@ export default function AnswersBand({
         </p>
         <p className={answerDisplayClass("contract360-answer-value", save.estimate)}>{save.estimate}</p>
         <p className="contract360-answer-detail">{save.lever}</p>
+        <Link to={savingsHref} className="btn btn-ghost contract360-tracker-link contract360-answer-link">
+          Track it in Savings →
+        </Link>
       </div>
 
       <div className="contract360-answer">
@@ -162,7 +169,7 @@ export default function AnswersBand({
               })}
             </div>
             <div className="contract360-tracker-links">
-              <Link to="/renewals" className="btn btn-ghost contract360-tracker-link">
+              <Link to={renewalsHref} className="btn btn-ghost contract360-tracker-link">
                 Track it in Renewals →
               </Link>
               <button type="button" className="btn btn-ghost contract360-tracker-link contract360-undo" disabled={busy} onClick={onUndo}>
@@ -239,7 +246,7 @@ export default function AnswersBand({
               )}
               <div className="contract360-outcome-note">{outcome.note}</div>
               <div className="contract360-tracker-links">
-                <Link to="/renewals" className="btn btn-ghost contract360-tracker-link">
+                <Link to={renewalsHref} className="btn btn-ghost contract360-tracker-link">
                   See it in Renewals →
                 </Link>
                 <button type="button" className="btn btn-ghost contract360-tracker-link contract360-undo" disabled={busy} onClick={onReopen}>
