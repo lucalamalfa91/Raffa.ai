@@ -1,4 +1,5 @@
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Market;
 
 namespace Raffa.Documents.Contracts.Domain;
 
@@ -27,8 +28,14 @@ public sealed class ContractLineItemMarketPrice : TenantScopedEntity
     /// <summary>The market record matched, or <see langword="null"/> when none was comparable.</summary>
     public string? RecordId { get; set; }
 
-    /// <summary>The market product name matched, e.g. <c>"Sales Cloud Unlimited"</c>.</summary>
+    /// <summary>The market product name matched, e.g. <c>"Sales Cloud Unlimited"</c> — for a
+    /// <see cref="MarketMatchKind.Similar"/> match, the similar product, never the line's own.</summary>
     public string? Product { get; set; }
+
+    /// <summary>Whether <see cref="Product"/> is the line's own product, a bundle of the products it
+    /// names, or only a similar product; <see langword="null"/> when nothing was matched (and on
+    /// rows written before the kind was recorded, which were all exact matches).</summary>
+    public MarketMatchKind? MatchKind { get; set; }
 
     public string? Geography { get; set; }
     public string? Currency { get; set; }

@@ -52,16 +52,26 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext) : IMarke
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<MarketDeal>> GetBySupplierAsync(
-        string supplierName, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(supplierName))
-        {
-            return [];
-        }
+    public Task<IReadOnlyList<MarketDeal>> GetBySupplierAsync(
+        string supplierName, CancellationToken cancellationToken = default) =>
+        string.IsNullOrWhiteSpace(supplierName)
+            ? Task.FromResult<IReadOnlyList<MarketDeal>>([])
+            : LoadWhereAsync(deal => MarketSupplierMatch.Matches(deal.Supplier, supplierName), cancellationToken);
 
-        // The corpus is small (one feed, tens to low hundreds of rows) and the supplier lives inside
-        // PayloadJson, so this filters in memory -- the same whole-corpus load
+    /// <inheritdoc />
+    public Task<IReadOnlyList<MarketDeal>> GetByCategoryAsync(
+        string category, CancellationToken cancellationToken = default) =>
+        string.IsNullOrWhiteSpace(category)
+            ? Task.FromResult<IReadOnlyList<MarketDeal>>([])
+            : LoadWhereAsync(
+                deal => string.Equals(deal.Category, category.Trim(), StringComparison.OrdinalIgnoreCase),
+                cancellationToken);
+
+    private async Task<IReadOnlyList<MarketDeal>> LoadWhereAsync(
+        Func<MarketDeal, bool> predicate, CancellationToken cancellationToken)
+    {
+        // The corpus is small (one feed, tens to low hundreds of rows) and the supplier and category
+        // live inside PayloadJson, so this filters in memory -- the same whole-corpus load
         // MarketFeedBenchmarkAdapter.LoadDealsAsync already performs per benchmark query.
         var records = await dbContext.MarketRecords
             .AsNoTracking()
@@ -72,7 +82,7 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext) : IMarke
         foreach (var record in records)
         {
             var deal = JsonSerializer.Deserialize<MarketDeal>(record.PayloadJson, JsonOptions);
-            if (deal is not null && MarketSupplierMatch.Matches(deal.Supplier, supplierName))
+            if (deal is not null && predicate(deal))
             {
                 deals.Add(deal);
             }

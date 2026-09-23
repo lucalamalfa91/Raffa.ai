@@ -475,7 +475,9 @@ public static class ContractsEndpointExtensions
     /// A product's market comparison on the wire: <see langword="null"/> when the line has never
     /// been compared (no market module composed in), <c>matched: false</c> when it was and no
     /// comparable record exists, otherwise the record's P25/P50/P75 with the provenance every
-    /// market figure must carry (ADR-001 w17 clause 4: source, sample size, region/term, as-of).
+    /// market figure must carry (ADR-001 w17 clause 4: source, sample size, region/term, as-of) and
+    /// <c>matchKind</c>: <c>Exact</c> (the line's own product), <c>Bundle</c> (the products the line
+    /// names, summed) or <c>Similar</c> (a similar product, never the line's own price).
     /// </summary>
     private static object? ToMarketResponse(LineItemMarketPrice? price) =>
         price is null
@@ -495,6 +497,7 @@ public static class ContractsEndpointExtensions
                 provenance = price.Provenance,
                 marketUpdatedAt = price.MarketUpdatedAt,
                 checkedAt = price.CheckedAt,
+                matchKind = price.Kind?.ToString(),
             };
 
     private static async Task<IResult> CorrectContractAsync(

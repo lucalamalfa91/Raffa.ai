@@ -218,7 +218,7 @@ describe("buildQuoteLineRows (Line · Quoted · P50 · Position · Benchmark)", 
     expect(row.p50).toBe("CHF 90");
     expect(row.position).toEqual({ variant: "accent", label: "Above market" });
     expect(row.vsP50).toBe("+11% vs P50");
-    expect(row.benchmark).toEqual({ variant: "neutral", label: "High · n=42" });
+    expect(row.benchmark).toEqual({ variant: "neutral", label: "High · 42 deals compared" });
     expect(row.needsMapping).toBe(false);
   });
 
@@ -227,8 +227,8 @@ describe("buildQuoteLineRows (Line · Quoted · P50 · Position · Benchmark)", 
     const low = line({ confidence: { ...line().confidence!, level: "Low", sampleSize: null } });
     const [mediumRow] = buildQuoteLineRows(buildExtractRows([medium], [], new Map()), [medium]);
     const [lowRow] = buildQuoteLineRows(buildExtractRows([low], [], new Map()), [low]);
-    expect(mediumRow.benchmark).toEqual({ variant: "accent", label: "Medium · n=22" });
-    expect(lowRow.benchmark).toEqual({ variant: "outline", label: "Low · n=—" });
+    expect(mediumRow.benchmark).toEqual({ variant: "accent", label: "Medium · 22 deals compared" });
+    expect(lowRow.benchmark).toEqual({ variant: "outline", label: "Low · sample not reported" });
   });
 
   it("says 'Needs mapping' for an unmatched line instead of a position it does not have, and has no benchmark tag", () => {

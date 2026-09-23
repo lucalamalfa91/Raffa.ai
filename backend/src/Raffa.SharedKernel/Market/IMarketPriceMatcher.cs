@@ -18,10 +18,11 @@ public interface IMarketPriceMatcher
 {
     /// <summary>
     /// Returns one entry per <paramref name="lines"/> element, in the same order: the market band
-    /// for that line, or <see langword="null"/> when the corpus holds no comparable record (unknown
-    /// supplier, no product whose name the line carries, no record in the contract's own currency,
-    /// or too small a sample). Never a guess and never a currency conversion — a line priced in
-    /// GBP is only ever compared with GBP market records.
+    /// for that line, or <see langword="null"/> when the corpus holds nothing comparable (unknown
+    /// supplier, no product whose name the line carries and none similar to it, no record in the
+    /// contract's own currency, or too small a sample). A band that is not the line's own product
+    /// says so in <see cref="MarketPriceMatch.Kind"/>. Never a currency conversion — a line priced
+    /// in GBP is only ever compared with GBP market records.
     /// </summary>
     Task<IReadOnlyList<MarketPriceMatch?>> MatchAsync(
         MarketPriceContext context,
@@ -36,15 +37,34 @@ public interface IMarketPriceMatcher
 /// <param name="Currency">ISO 4217 code every line's unit price is expressed in.</param>
 /// <param name="TermMonths">The contract's committed term, when known — a same-term record is
 /// preferred over a longer or shorter one.</param>
-public sealed record MarketPriceContext(string? SupplierName, string Currency, int? TermMonths);
+/// <param name="AnnualValue">The contract's yearly value in <paramref name="Currency"/>, when known
+/// — the buyer's own type: a record whose annual-value band holds it (customers of the same size of
+/// deal) is preferred over one from a bigger or smaller buyer.</param>
+public sealed record MarketPriceContext(string? SupplierName, string Currency, int? TermMonths, decimal? AnnualValue = null);
 
 /// <summary>One line item to price: its description and SKU as extracted.</summary>
 public sealed record MarketPriceLine(string Description, string? Sku);
 
+/// <summary>How closely a <see cref="MarketPriceMatch"/> describes the line it prices.</summary>
+public enum MarketMatchKind
+{
+    /// <summary>The market record is the line's own product (or its SKU).</summary>
+    Exact,
+
+    /// <summary>The line names several products; the band is the sum of each product's own band.</summary>
+    Bundle,
+
+    /// <summary>No record for the line's own product: the band is a similar product's (a sibling
+    /// edition, or the same kind of product from another supplier in the same market) — a guide,
+    /// never the line's own market price.</summary>
+    Similar,
+}
+
 /// <summary>
-/// The one market record a line was matched to, with the provenance every market figure must
-/// carry (ADR-001 w17 clause 4: a representative position with its source, sample size and as-of
-/// date — never a bare number).
+/// The market record a line was matched to, with the provenance every market figure must carry
+/// (ADR-001 w17 clause 4: a representative position with its source, sample size and as-of date —
+/// never a bare number) and <see cref="Kind"/>: whether it is the line's own product, a bundle of
+/// the products it names, or only a similar product.
 /// </summary>
 /// <param name="RecordId">The market record's own id (<c>GET /api/market/records/{id}</c>).</param>
 /// <param name="Product">The market product the line was matched to, e.g. <c>"Sales Cloud Unlimited"</c>.</param>
@@ -58,6 +78,7 @@ public sealed record MarketPriceLine(string Description, string? Sku);
 /// <param name="Provenance">The corpus's own provenance label, e.g.
 /// <c>"representative market data · mock feed · updated 2026-07-01"</c>.</param>
 /// <param name="UpdatedAt">When the market record itself was last refreshed.</param>
+/// <param name="Kind">Exact product, bundle or similar product — see <see cref="MarketMatchKind"/>.</param>
 public sealed record MarketPriceMatch(
     string RecordId,
     string Product,
@@ -69,4 +90,5 @@ public sealed record MarketPriceMatch(
     decimal UnitPriceP75,
     int SampleSize,
     string Provenance,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    MarketMatchKind Kind = MarketMatchKind.Exact);

@@ -41,7 +41,16 @@ import {
   standardClausesLabel,
   terminatedActionText,
   PRODUCT_NOTE_NO_MATCH,
+  MARKET_MEDIAN_EXPLAINED,
+  SAVE_EXPLAINED,
+  SAVING_COLUMN_EXPLAINED,
+  formatSampleSize,
   PRODUCT_NOTE_UNCHECKED,
+  AT_MARKET_PRICE,
+  TARGET_PRICE_ONLY,
+  buildProductSavingTotal,
+  computeLineSaving,
+  formatSavingRange,
   SECTION_COPY,
   clauseViewerHref,
   computeNeedsAttention,
@@ -120,6 +129,7 @@ function marketBand(overrides: Partial<NonNullable<Contract360ProductBody["marke
     provenance: "representative market data · mock feed · updated 2026-07-01",
     marketUpdatedAt: "2026-07-01T00:00:00Z",
     checkedAt: "2026-09-22T08:00:00Z",
+    matchKind: "Exact",
     ...overrides,
   };
 }
@@ -412,15 +422,151 @@ describe("answers band", () => {
       ],
     });
     const save = buildAnswers(header(), renewalTab, [renewalItem()], strategyCalled(pack)).save;
-    expect(save).toEqual({ estimate: "1,500", lever: "This line orders 120,000 — cite the order size." });
+    expect(save).toEqual({ estimate: "1,500", lever: "This line orders 120,000 — cite the order size.", source: "" });
   });
 
-  it("state (ii): a representative band renders with adapter and sample size on the detail line, never bare", () => {
+  it("state (ii): a representative band without the line's annual cost reads as a target unit price, its provenance never bare", () => {
     const save = buildAnswers(header(), renewalTab, [], strategyCalled(strategyPack())).save;
-    expect(save.estimate).toBe("1,500–1,800");
-    expect(save.lever).toBe("representative · adapter A, n = 214 · as of 2026-01-01");
-    expect(save.lever).toMatch(/adapter .+ n = /);
-    expect(save.lever.toLowerCase()).toContain("representative");
+    expect(save.estimate).toBe("1,500–1,800 / unit");
+    expect(save.lever).toBe(TARGET_PRICE_ONLY);
+    expect(save.source).toBe("Representative market data from 214 comparable contracts · source A · as of 01/01/2026");
+    expect(save.source).toMatch(/source A/);
+    expect(save.source).not.toMatch(/n = |n=/);
+
+    const withCurrency = buildAnswers(header(), renewalTab, [], strategyCalled(strategyPack()), {
+      products: [product({ description: "Premium DBU", annualCost: null })],
+      currency: "CHF",
+    }).save;
+    expect(withCurrency.estimate).toBe("CHF 1,500–1,800 / unit");
+  });
+
+  it("where you can save: the yearly saving, what you pay against the market median, then the provenance", () => {
+    const jira = product({
+      description: "Jira Software Premium + Confluence Premium",
+      quantity: 780,
+      unit: "named users / licenses",
+      unitPrice: 191,
+      annualCost: 149_000,
+      market: marketBand({ product: "Jira Software Premium", geography: "UK", currency: "GBP", unitPriceP25: 109, unitPriceP50: 120, unitPriceP75: 131, sampleSize: 6 }),
+    });
+    const pack = strategyPack({
+      targets: [
+        {
+          description: "Jira Software Premium + Confluence Premium",
+          openingTarget: 98,
+          acceptableRangeLow: 109,
+          acceptableRangeHigh: 120,
+          walkAwayThreshold: 131,
+          explanation: "Recommended target range [109, 120]. representative (source: market-feed (representative, mock); n=6; as of 2026-09-10)",
+        },
+      ],
+    });
+
+    const save = buildAnswers(header(), renewalTab, [], strategyCalled(pack), { products: [jira], currency: "GBP" }).save;
+    expect(save).toEqual({
+      estimate: "GBP 55–64k / yr",
+      lever: "You pay GBP 191 per unit against a market median of GBP 120 (+59%).",
+      source:
+        "Representative market data from only 6 comparable contracts (a small sample: treat it as indicative) · source market-feed (representative, mock) · as of 10/09/2026",
+    });
+    expect(formatTrackerMeta(save, buildAnswers(header(), renewalTab, [], strategyCalled(pack)).move)).toBe("target GBP 55–64k / yr · close by 17/11/2025");
+  });
+
+  it("where you can save: a bundle's summed medians and a similar product's median say what they are", () => {
+    const bundleLine = product({
+      description: "Jira Software Premium + Confluence Premium",
+      unitPrice: 191,
+      annualCost: 149_000,
+      market: marketBand({ product: "Jira Software Premium + Confluence Premium", currency: "GBP", unitPriceP25: 185.3, unitPriceP50: 205, matchKind: "Bundle" }),
+    });
+    const bundlePack = strategyPack({
+      targets: [{ ...strategyPack().targets[0], description: bundleLine.description, acceptableRangeLow: 185.3, acceptableRangeHigh: 191 }],
+    });
+    const bundle = buildAnswers(header(), renewalTab, [], strategyCalled(bundlePack), { products: [bundleLine], currency: "GBP" }).save;
+    expect(bundle.estimate).toBe("Up to GBP 4.4k / yr");
+    expect(bundle.lever).toBe("You pay GBP 191 per unit against GBP 205, each product's market median added up (-7%).");
+    expect(formatTrackerMeta(bundle, buildAnswers(header(), renewalTab, [], strategyCalled(bundlePack)).move)).toBe("target up to GBP 4.4k / yr · close by 17/11/2025");
+
+    const similarLine = product({
+      description: "Confluence Enterprise",
+      unitPrice: 100,
+      annualCost: 10_000,
+      market: marketBand({ product: "Confluence Premium", currency: "GBP", unitPriceP25: 76.3, unitPriceP50: 85, matchKind: "Similar" }),
+    });
+    const similarPack = strategyPack({
+      targets: [{ ...strategyPack().targets[0], description: "Confluence Enterprise", acceptableRangeLow: 76.3, acceptableRangeHigh: 85 }],
+    });
+    const similar = buildAnswers(header(), renewalTab, [], strategyCalled(similarPack), { products: [similarLine], currency: "GBP" }).save;
+    expect(similar.estimate).toBe("≈ GBP 1.5–2.4k / yr");
+    expect(similar.lever).toBe("You pay GBP 100 per unit against GBP 85, the median of a similar product (Confluence Premium), not your exact one (+18%).");
+    expect(similar.similar).toBe(true);
+    expect(formatTrackerMeta({ ...similar, estimate: "≈ Up to GBP 2.4k / yr" }, buildAnswers(header(), renewalTab, [], strategyCalled(similarPack)).move)).toBe(
+      "target ≈ up to GBP 2.4k / yr · close by 17/11/2025",
+    );
+  });
+
+  it("where you can save: at or below the market's cheaper quarter there is nothing to save on price", () => {
+    const cheap = product({
+      description: "Premium DBU",
+      unitPrice: 100,
+      annualCost: 10_000,
+      market: marketBand({ currency: "GBP", unitPriceP25: 109, unitPriceP50: 120 }),
+    });
+    const pack = strategyPack({ targets: [{ ...strategyPack().targets[0], acceptableRangeLow: 100, acceptableRangeHigh: 100 }] });
+    const save = buildAnswers(header(), renewalTab, [], strategyCalled(pack), { products: [cheap], currency: "GBP" }).save;
+    expect(save.estimate).toBe(AT_MARKET_PRICE);
+    expect(save.lever).toBe("You pay GBP 100 per unit, at or below a market median of GBP 120 (-17%) — price is not where the saving is.");
+  });
+
+  it("where you can save: several lines add up, the lever names the line with the most to save", () => {
+    const small = product({ lineItemId: "li-a", description: "Line A", unitPrice: 10, annualCost: 1_000, market: marketBand({ currency: "GBP", unitPriceP25: 8, unitPriceP50: 9 }) });
+    const big = product({ lineItemId: "li-b", description: "Line B", unitPrice: 100, annualCost: 50_000, market: marketBand({ currency: "GBP", unitPriceP25: 70, unitPriceP50: 80 }) });
+    const target = strategyPack().targets[0];
+    const pack = strategyPack({
+      targets: [
+        { ...target, description: "Line A", acceptableRangeLow: 8, acceptableRangeHigh: 9 },
+        { ...target, description: "Line B", acceptableRangeLow: 70, acceptableRangeHigh: 80 },
+      ],
+    });
+    const save = buildAnswers(header(), renewalTab, [], strategyCalled(pack), { products: [small, big], currency: "GBP" }).save;
+    // A: 100–200; B: 10,000–15,000.
+    expect(save.estimate).toBe("GBP 10–15k / yr");
+    expect(save.lever).toBe("Line B: you pay GBP 100 per unit against a market median of GBP 80 (+25%).");
+
+    // The small print is the lead line's own source and sample, not the first line's.
+    const sourced = strategyPack({
+      targets: [
+        { ...target, description: "Line A", acceptableRangeLow: 8, acceptableRangeHigh: 9, explanation: "representative (source: A; n=6; as of 2026-01-01)" },
+        { ...target, description: "Line B", acceptableRangeLow: 70, acceptableRangeHigh: 80, explanation: "representative (source: B; n=40; as of 2026-01-01)" },
+      ],
+    });
+    expect(buildAnswers(header(), renewalTab, [], strategyCalled(sourced), { products: [small, big], currency: "GBP" }).save.source).toBe(
+      "Representative market data from 40 comparable contracts · source B · as of 01/01/2026",
+    );
+
+    // A line whose price is not officialized never sizes a saving.
+    const hidden = { ...big, confidence: 0.5, sourcePage: null, sourceSpan: null };
+    const withoutHidden = buildAnswers(header(), renewalTab, [], strategyCalled(pack), { products: [small, hidden], currency: "GBP" }).save;
+    expect(withoutHidden.estimate).toBe("GBP 100–200 / yr");
+  });
+
+  it("formatSampleSize says how many contracts in words, and 'only' below the small-sample bar", () => {
+    expect(formatSampleSize(22)).toBe("22 contracts");
+    expect(formatSampleSize(10)).toBe("10 contracts");
+    expect(formatSampleSize(6)).toBe("only 6 contracts");
+    expect(formatSampleSize(1, "comparable contract")).toBe("only 1 comparable contract");
+  });
+
+  it("formatSavingRange puts both ends on the higher one's scale, and says 'up to' when the low end is nothing", () => {
+    expect(formatSavingRange({ low: 55_387, high: 63_968 }, "GBP")).toBe("GBP 55–64k");
+    expect(formatSavingRange({ low: 0, high: 4_446 }, "GBP")).toBe("up to GBP 4.4k");
+    expect(formatSavingRange({ low: 1_200_000, high: 2_500_000 }, "CHF")).toBe("CHF 1.2–2.5M");
+    expect(formatSavingRange({ low: 800, high: 950 }, "EUR")).toBe("EUR 800–950");
+    expect(formatSavingRange({ low: 64_000, high: 64_200 }, "GBP")).toBe("GBP 64k");
+    expect(formatSavingRange({ low: 0, high: 0 }, "GBP")).toBeNull();
+    expect(computeLineSaving(191, 149_000, 109, 120)).toEqual({ low: expect.closeTo(55_387, 0), high: expect.closeTo(63_969, 0) });
+    expect(computeLineSaving(191, null, 109, 120)).toBeNull();
+    expect(computeLineSaving(null, 149_000, 109, 120)).toBeNull();
   });
 
   it("state (iii): a missing end date names the way to get the fact and never says Not determined", () => {
@@ -444,7 +590,7 @@ describe("answers band", () => {
     const neverCalled = buildAnswers(header(), renewalTab, [renewalItem()], strategyNotCalled);
     expect(neverCalled.save.estimate).not.toBe(SAVINGS_NOT_YET_AVAILABLE);
     expect(neverCalled.save.lever).not.toBe(LEVER_NOT_YET_AVAILABLE);
-    expect(neverCalled.save).toEqual({ estimate: "", lever: "" });
+    expect(neverCalled.save).toEqual({ estimate: "", lever: "", source: "" });
 
     const calledEmpty = buildAnswers(
       header(),
@@ -466,10 +612,10 @@ describe("answers band", () => {
         }),
       ),
     );
-    expect(calledEmpty.save).toEqual({ estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE });
+    expect(calledEmpty.save).toEqual({ estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE, source: "" });
 
     const calledFailed = buildAnswers(header(), renewalTab, [renewalItem()], strategyCalled(null));
-    expect(calledFailed.save).toEqual({ estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE });
+    expect(calledFailed.save).toEqual({ estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE, source: "" });
   });
 
   it("When you must move maps the pack's notice deadline, days left and auto-renewal", () => {
@@ -525,7 +671,7 @@ describe("answers band", () => {
       { key: "SignOrSendNonRenewalNotice", label: "Sign, or send non-renewal notice", due: "by 17/11/2025" },
     ]);
     const answers = buildAnswers(header(), renewalTab, [], strategyCalled(strategyPack()));
-    expect(formatTrackerMeta(answers.save, answers.move)).toBe("target 1,500–1,800 · close by 17/11/2025");
+    expect(formatTrackerMeta(answers.save, answers.move)).toBe("target 1,500–1,800 / unit · close by 17/11/2025");
   });
 
   it("ticksFromServer keeps named keys, ignores unknown names, and treats a missing key as unticked", () => {
@@ -769,7 +915,7 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
 
   it("02 Products & pricing: pay figures from the line; before any market comparison, market and delta an honest dash; unofficialized lines dashed but kept", () => {
     const [line] = buildProductLines([product()], "CHF");
-    expect(line).toMatchObject({ name: "Premium DBU — committed", meta: "SKU-1 · DBU/yr", qty: "120,000", price: "CHF 0.55", market: "—", marketMeta: "", marketTitle: null, delta: "—", payWidth: "100%", marketWidth: "0%", annual: "CHF 66,000" });
+    expect(line).toMatchObject({ name: "Premium DBU — committed", meta: "SKU-1 · DBU/yr", marketBasis: null, qty: "120,000", price: "CHF 0.55", market: "—", marketMeta: "", marketTitle: null, delta: "—", payWidth: "100%", marketWidth: "0%", saving: "—", savingAccent: false, annual: "CHF 66,000" });
     const [sourced] = buildProductLines([product({ confidence: 0.71 })], "CHF");
     expect(sourced.price).toBe("CHF 0.55");
     const [unofficial] = buildProductLines([product({ confidence: 0.71, sourceSpan: null, sourcePage: null })], "CHF");
@@ -779,24 +925,58 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
 
   it("02 Products & pricing: a matched line shows the market P50 with region · term · n, the delta vs P50 and bars scaled to the larger", () => {
     const [above] = buildProductLines([product({ market: marketBand() })], "CHF");
-    expect(above).toMatchObject({ market: "CHF 0.5", marketMeta: "CH · 12 mo · n=40", delta: "+10%", deltaAccent: true, payWidth: "100%", marketWidth: "91%" });
+    expect(above).toMatchObject({ marketBasis: null, market: "CHF 0.5", marketMeta: "CH · 12 mo · 40 contracts", delta: "+10%", deltaAccent: true, payWidth: "100%", marketWidth: "91%" });
+    // 120,000 units a year: 0.05 over the median, 0.15 over P25.
+    expect(above).toMatchObject({ saving: "CHF 6–18k", savingAccent: true });
     expect(above.marketTitle).toBe("Premium DBU · P25 CHF 0.4 – P75 CHF 0.6 · representative market data · mock feed · updated 2026-07-01");
 
     const [below] = buildProductLines([product({ unitPrice: 0.4, market: marketBand() })], "CHF");
-    expect(below).toMatchObject({ delta: "-20%", deltaAccent: false, payWidth: "80%", marketWidth: "100%" });
+    expect(below).toMatchObject({ delta: "-20%", deltaAccent: false, payWidth: "80%", marketWidth: "100%", saving: "none", savingAccent: false });
     expect(formatVersusMarket(0.5, 0.5)).toBe("0%");
 
     // Compared, nothing comparable: an honest dash that says so, the pay bar full.
     const noMatch = marketBand({ matched: false, recordId: null, product: null, geography: null, currency: null, termMonths: null, unitPriceP25: null, unitPriceP50: null, unitPriceP75: null, sampleSize: null, provenance: null, marketUpdatedAt: null });
     const [unmatched] = buildProductLines([product({ market: noMatch })], "CHF");
-    expect(unmatched).toMatchObject({ market: "—", marketMeta: "no match", marketTitle: null, delta: "—", deltaAccent: false, payWidth: "100%", marketWidth: "0%" });
+    expect(unmatched).toMatchObject({ market: "—", marketMeta: "no match", marketTitle: null, delta: "—", deltaAccent: false, payWidth: "100%", marketWidth: "0%", saving: "—" });
 
     // An unofficialized price still shows the market figure, but no delta is drawn against a hidden price.
     const [hidden] = buildProductLines([product({ confidence: 0.71, sourceSpan: null, sourcePage: null, market: marketBand() })], "CHF");
-    expect(hidden).toMatchObject({ price: UNOFFICIALIZED_PLACEHOLDER, market: "CHF 0.5", delta: "—", payWidth: "0%", marketWidth: "0%" });
+    expect(hidden).toMatchObject({ price: UNOFFICIALIZED_PLACEHOLDER, market: "CHF 0.5", delta: "—", payWidth: "0%", marketWidth: "0%", saving: "—" });
 
     expect(buildProductNote([product({ market: noMatch })])).toBe(PRODUCT_NOTE_NO_MATCH);
-    expect(buildProductNote([product({ market: noMatch }), product({ market: marketBand() })])).toMatch(/median \(P50\).*same supplier, product and currency.*mock feed/);
+    // Once a line has a market price the page carries no note: the header tooltips explain it, in plain words.
+    expect(buildProductNote([product({ market: noMatch }), product({ market: marketBand() })])).toBeNull();
+    expect(MARKET_MEDIAN_EXPLAINED[0]).toMatch(/half pay less, half pay more/);
+    expect(MARKET_MEDIAN_EXPLAINED[1]).toMatch(/how many contracts.*Under 10.*indicative/);
+    expect(JSON.stringify([MARKET_MEDIAN_EXPLAINED, SAVING_COLUMN_EXPLAINED, SAVE_EXPLAINED])).not.toMatch(/P50|P25|n=/);
+    expect(buildProductSavingTotal([product({ market: marketBand() }), product({ market: noMatch })], "CHF")).toBe("CHF 6–18k");
+    expect(buildProductSavingTotal([product({ market: noMatch })], "CHF")).toBeNull();
+  });
+
+  it("02 Products & pricing: a bundle says it is summed and a similar product is marked ≈, never read as the line's own price", () => {
+    const [bundle] = buildProductLines(
+      [product({ unitPrice: 191, annualCost: 149_000, market: marketBand({ product: "Jira Software Premium + Confluence Premium", geography: "UK", currency: "GBP", unitPriceP25: 185.3, unitPriceP50: 205, sampleSize: 6, matchKind: "Bundle" }) })],
+      "GBP",
+    );
+    expect(bundle).toMatchObject({
+      marketBasis: "Market: Jira Software Premium + Confluence Premium, priced one by one and added up",
+      market: "GBP 205",
+      marketMeta: "sum · UK · 12 mo · only 6 contracts",
+      delta: "-7%",
+      deltaAccent: false,
+      saving: "up to GBP 4.4k",
+    });
+
+    const similarBand = marketBand({ product: "Confluence Premium", geography: "UK", currency: "GBP", unitPriceP25: 76.3, unitPriceP50: 85, sampleSize: 48, matchKind: "Similar" });
+    const [similar] = buildProductLines([product({ unitPrice: 100, annualCost: 10_000, market: similarBand })], "GBP");
+    expect(similar).toMatchObject({
+      marketBasis: "Market: a similar product, not yours — Confluence Premium",
+      market: "≈ GBP 85",
+      marketMeta: "similar · UK · 12 mo · 48 contracts",
+      delta: "≈ +18%",
+      saving: "≈ GBP 1.5–2.4k",
+    });
+    expect(buildProductSavingTotal([product({ unitPrice: 100, annualCost: 10_000, market: similarBand })], "GBP")).toBe("≈ GBP 1.5–2.4k");
   });
 
   it("03 Clauses that matter: High/Critical push, Medium raise, the rest standard; the ask slot is the leverage copy", () => {
