@@ -400,43 +400,41 @@
 }
 
 /* ---- Web search toggle (ADR-032) ---------------------------------------------
- * A switch beside "Ask": square like every control, ink when on so it never reads as a second
- * primary button next to the accent "Ask". */
+ * A tool chip beside "Ask", in the chat's own quiet chrome (`reply/reply.css`'s --chat-* tokens):
+ * hairline border, 8px radius, 12px sentence-case label, tint on hover. On, it takes the accent
+ * tint the inline citation chips use on focus -- the way Claude.ai marks an enabled tool -- so it
+ * never reads as a second primary button next to the solid accent "Ask". */
 .ask-web-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: none;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 2px solid var(--color-text);
-  border-radius: var(--radius-sm);
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
   background: transparent;
-  color: var(--color-text);
-  font-size: 11px;
+  font: inherit;
+  font-size: 12px;
   font-weight: var(--weight-body-strong);
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
+  line-height: 1.2;
+  color: var(--color-neutral-700);
   white-space: nowrap;
   cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .ask-web-toggle:hover:not([aria-disabled="true"]) {
-  background: var(--color-neutral-200);
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
+  color: var(--color-text);
 }
 
-.ask-web-toggle:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.ask-web-toggle[aria-checked="true"] {
-  background: var(--color-text);
-  color: #fff;
-}
-
+.ask-web-toggle[aria-checked="true"],
 .ask-web-toggle[aria-checked="true"]:hover {
-  background: var(--color-neutral-800);
+  border-color: var(--color-accent-300);
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
 }
 
 .ask-web-toggle[aria-disabled="true"] {
@@ -444,41 +442,15 @@
   cursor: help;
 }
 
-.ask-web-toggle-track {
-  position: relative;
-  width: 22px;
-  height: 12px;
-  flex: none;
-  border: 2px solid currentColor;
-}
-
-.ask-web-toggle-track::after {
-  content: "";
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 6px;
-  height: 6px;
-  background: currentColor;
-  transition: transform 120ms ease;
-}
-
-.ask-web-toggle[aria-checked="true"] .ask-web-toggle-track::after {
-  transform: translateX(10px);
-}
-
-/* The "Web" tag under a question sent with the toggle on. */
+/* Under a question sent with the toggle on: a quiet meta line, the way the chat labels a tool it
+ * used -- no box, no caps. */
 .ask-message-web-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin-top: 6px;
-  font-size: 11px;
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ask-web-toggle-track::after {
-    transition: none;
-  }
+  font-size: 12px;
+  color: var(--chat-muted);
 }
 
 /* On a phone the composer row wraps: the input keeps the full width, the toggle and "Ask" share

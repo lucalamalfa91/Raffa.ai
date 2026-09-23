@@ -141,8 +141,9 @@ function sidePanelFitsBesideChat(): boolean {
  * research (`GET /api/workspaces/{id}/settings` → `webResearchAvailable`), usable once the workspace
  * Admin opted in. On, every plain question is sent with `webResearch: true` -- the public web and
  * the workspace's own data together, no consent dialog; the placeholder, the note and the thinking
- * row say so, and the question's bubble carries a "Web" tag. Clicking it while the workspace has
- * not opted in explains where to switch it on instead of toggling.
+ * row say so, and the question carries a quiet "Web search" line. It is a tool chip in the chat's
+ * own chrome (`--chat-*` tokens, see `ask.css`), accent-tinted when on. Clicking it while the
+ * workspace has not opted in explains where to switch it on instead of toggling.
  *
  * **Side panel** (the Claude.ai artifact pattern): long, self-contained reply objects never render
  * in the middle of the thread. A drafted email is a one-line card in its turn and opens in the
@@ -665,7 +666,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                     <div className="ask-message-who">You</div>
                     <div className="ask-message-content">
                       <div className="ask-message-text">{turn.text}</div>
-                      {turn.web && <span className="tag tag-outline ask-message-web-tag">{WEB_SEARCH_TOGGLE_LABEL}</span>}
+                      {turn.web && (
+                        <span className="ask-message-web-tag">
+                          <GlobeIcon size={12} />
+                          {WEB_SEARCH_TOGGLE_LABEL}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -758,7 +764,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                     composerInputRef.current?.focus();
                   }}
                 >
-                  <span className="ask-web-toggle-track" aria-hidden="true" />
+                  <GlobeIcon size={14} />
                   {WEB_SEARCH_TOGGLE_LABEL}
                 </button>
               )}
@@ -802,6 +808,16 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         )}
       </div>
     </div>
+  );
+}
+
+/** The web-search glyph -- same stroke family as the chat's other icons (`EvidenceCard`, `ArtifactPanel`). */
+function GlobeIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9s1.3-6.4 3.8-9z" />
+    </svg>
   );
 }
 

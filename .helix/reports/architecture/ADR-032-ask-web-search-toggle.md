@@ -59,8 +59,12 @@ only a question that has nothing to do with work is sent elsewhere.
 6. **Discoverability.** `GET/PATCH /api/workspaces/{id}/settings` gain `webResearchAvailable`
    (the kill switch). The SPA shows the toggle only where it is true; before the workspace opts
    in, clicking it explains where to switch it on instead of toggling. While on, the placeholder,
-   the composer note and the thinking row say so, the question's bubble carries a "Web search" tag,
-   and a mixed reply's banner says only the web part is unverified.
+   the composer note and the thinking row say so, the question carries a quiet "Web search" line,
+   and a mixed reply's banner says only the web part is unverified. The toggle and that line use
+   the chat's own chrome from the Claude.ai-style conversation surface (`--chat-*` tokens:
+   hairline border, 8px radius, 12px sentence case, a globe icon in the same stroke family);
+   "on" is the accent tint the inline citation chips use, never a second solid button beside
+   "Ask".
 7. **Audit** (ADR-011): toggle turns write the ADR-030 rows with `mode=toggle` and
    `purpose=Open`; the per-turn row gains `webMode=`.
 
