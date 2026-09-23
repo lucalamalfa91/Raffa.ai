@@ -151,6 +151,7 @@ public static class ServiceCollectionExtensions
         // (`POST /api/documents/{id}/validate`, `GET /api/contracts/{id}/evidence`). Scoped for the
         // same reason as every DbContext-bound service above.
         services.AddScoped<DocumentValidationService>();
+        services.AddScoped<NothingToReviewAutoValidator>();
         services.AddScoped<ContractEvidenceQueryService>();
 
         // Task E16/F02/US01/T01 (async-processing-schema): the conditional-UPDATE claim us-02's

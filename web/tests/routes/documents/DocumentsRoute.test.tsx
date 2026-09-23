@@ -672,8 +672,9 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
       history: [],
       error: null,
     } satisfies GetCorrectionHistoryResult);
+    const validatedItems = [{ ...items[0], processingStatus: "Completed" as const, weakFactCount: 0 }];
     const client = mockApiClient({
-      listDocuments: vi.fn().mockResolvedValue(listOk(items)),
+      listDocuments: vi.fn().mockResolvedValueOnce(listOk(items)).mockResolvedValue(listOk(validatedItems)),
       getContract360,
       getCorrectionHistory,
       getContractEvidence: vi.fn().mockResolvedValue({
@@ -698,6 +699,10 @@ describe("DocumentsRoute (task E13/F09/US01/T03, web-documents-v2)", () => {
     expect(client.validateDocument).toHaveBeenCalledWith(WORKSPACE_ID, "doc-1", {
       acceptedFields: [],
     });
+    // The validated document leaves "Needs your attention" at once -- no stale "Review N fields".
+    expect(screen.queryByText("Needs review")).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Review \d+ fields?$/ })).toBeNull();
+    expect(client.listDocuments).toHaveBeenCalledTimes(2);
   });
 
   it("stays on the review when the sign-off is refused, showing the server's own reason", async () => {

@@ -25,28 +25,6 @@ public sealed class DocumentQueryService(
     ISupplierNameLookup? supplierNameLookup = null,
     Raffa.AiGateway.Configuration.AiGatewayOcrOptions? ocrOptions = null)
 {
-    /// <summary>
-    /// Weak-fact counting and document <c>needs_review</c> share
-    /// <see cref="ExtractionConfidencePolicy"/> — one bar, every field. Changing only this site
-    /// or only <c>StagedExtractionService</c> desyncs the Documents badge from the document's
-    /// status. A human acceptance is never weak even when the model's score sits below the bar.
-    /// </summary>
-    private static bool IsWeak(double? confidence, string? decision)
-    {
-        if (string.Equals(decision, ExtractionConfidencePolicy.HumanAccepted, StringComparison.Ordinal)
-            || string.Equals(decision, ExtractionConfidencePolicy.AutoAccepted, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (string.Equals(decision, ExtractionConfidencePolicy.ReviewRequired, StringComparison.Ordinal))
-        {
-            return true;
-        }
-
-        return ExtractionConfidencePolicy.RequiresReview(confidence);
-    }
-
     public async Task<DocumentMetadataResult?> GetByIdAsync(
         TenantId tenantId, EntityId documentId, CancellationToken cancellationToken = default)
     {
@@ -192,7 +170,7 @@ public sealed class DocumentQueryService(
                 .ToList(),
             cancellationToken).ConfigureAwait(false);
 
-        var weakFactsByContract = await WeakFactCountsAsync(tenantId, contractIds, cancellationToken)
+        var weakFactsByContract = await NothingToReviewAutoValidator.WeakFactCountsAsync(dbContext, tenantId, contractIds, cancellationToken)
             .ConfigureAwait(false);
         var supplierNamesByContract = await SupplierNamesByContractAsync(tenantId, contractIds, cancellationToken)
             .ConfigureAwait(false);
@@ -323,38 +301,6 @@ public sealed class DocumentQueryService(
                     .OrderByDescending(j => j.CompletedAt ?? j.StartedAt ?? j.QueuedAt)
                     .Select(j => j.ErrorDetail!)
                     .First());
-    }
-
-    /// <summary>
-    /// Per contract, how many extracted fields a human should still confirm: the latest
-    /// <see cref="ExtractionEvidence"/> row per field name whose confidence is missing or below
-    /// <see cref="ExtractionConfidencePolicy"/> (R-DOC-06's <c>weakFactCount</c>, the number the row's
-    /// "Review N fields" action shows). Counted per field, never per evidence row, so a field
-    /// re-extracted three times still counts once.
-    /// </summary>
-    private async Task<Dictionary<EntityId, int>> WeakFactCountsAsync(
-        TenantId tenantId, IReadOnlyList<EntityId> contractIds, CancellationToken cancellationToken)
-    {
-        if (contractIds.Count == 0)
-        {
-            return [];
-        }
-
-        var evidence = await dbContext.ExtractionEvidences
-            .AsNoTracking()
-            .Where(e => e.TenantId == tenantId && contractIds.Contains(e.ContractId))
-            .Select(e => new { e.ContractId, e.FieldName, e.Confidence, e.Decision, e.CreatedAt })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        return evidence
-            .GroupBy(e => e.ContractId)
-            .ToDictionary(
-                byContract => byContract.Key,
-                byContract => byContract
-                    .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
-                    .Select(byField => byField.OrderByDescending(e => e.CreatedAt).First())
-                    .Count(latest => IsWeak(latest.Confidence, latest.Decision)));
     }
 
     private async Task<Dictionary<EntityId, string>> SupplierNamesByContractAsync(

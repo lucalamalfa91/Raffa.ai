@@ -34,6 +34,10 @@ export interface UseDocumentsListResult {
   fetchState: DocumentsFetchState;
   errorMessage: string | null;
   reload: () => void;
+  /** A review was just signed off (`POST /api/documents/{id}/validate` answered 200): the row reads
+   * `Completed` at once -- so it leaves "Needs your attention" the moment the list is back on
+   * screen -- and the list is re-fetched for the server's own counts. */
+  markValidated: (documentId: string) => void;
   /** The tenant's first page, unfiltered, newest-first (server order) -- `Rejected` rows included,
    * which is why every reader goes through `filteredDocuments`, never this array's length. */
   documents: readonly DocumentListItemBody[];
@@ -129,6 +133,26 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
   useEffect(() => {
     load();
   }, [load]);
+
+  const markValidated = useCallback(
+    (documentId: string) => {
+      const target = documents.find((item) => item.id === documentId);
+      if (target !== undefined && target.processingStatus === "NeedsReview") {
+        setDocuments((current) =>
+          current.map((item) =>
+            item.id === documentId ? { ...item, processingStatus: "Completed", weakFactCount: 0 } : item,
+          ),
+        );
+        setCounts((c) => ({
+          ...c,
+          needsAttention: Math.max(0, c.needsAttention - 1),
+          needsReview: Math.max(0, c.needsReview - 1),
+        }));
+      }
+      load();
+    },
+    [documents, load],
+  );
 
   const setFilter = useCallback(
     (value: AttentionFilterValue) => {
@@ -327,6 +351,7 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
     fetchState,
     errorMessage,
     reload: load,
+    markValidated,
     documents,
     counts,
     filter,
