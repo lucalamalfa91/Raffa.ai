@@ -359,12 +359,13 @@ public static class DocumentsEndpointExtensions
     /// <c>page</c> and <c>pageSize</c> query parameters, same conventions as
     /// <c>GET /api/contracts</c>. Hung recovery also requeues Failed rows left terminal by the
     /// old 3-minute hang cap and by the classify-unreachable / EF-transient wrap, so opening the
-    /// list is enough to restart them.
+    /// list is enough to restart them; a NeedsReview row with zero weak fields is auto-validated.
     /// </summary>
     private static async Task<IResult> ListDocumentsAsync(
         HttpRequest request,
         DocumentQueryService queryService,
         HungProcessingRecoveryService hungRecovery,
+        NothingToReviewAutoValidator autoValidator,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -383,6 +384,12 @@ public static class DocumentsEndpointExtensions
 
         await hungRecovery
             .RecoverHungInTenantAsync(tenantId, cancellationToken)
+            .ConfigureAwait(false);
+
+        // A NeedsReview document with no weak field left is validated automatically, so the
+        // list never asks anyone to "Review 0 fields" (NothingToReviewAutoValidator).
+        await autoValidator
+            .AutoValidateInTenantAsync(tenantId, cancellationToken)
             .ConfigureAwait(false);
 
         DocumentProcessingStatus? status = null;

@@ -205,6 +205,23 @@ public sealed class StagedExtractionService(
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
+        // "Review 0 fields" is never a state to park a document in: a weak line item, clause,
+        // obligation or risk, or a failed stage, can route the document to review without leaving
+        // a single field the review screen can show. Counted after the save, on the same latest-
+        // evidence-per-field rule the Documents row uses (NothingToReviewAutoValidator).
+        if (document.ProcessingStatus == DocumentProcessingStatus.NeedsReview)
+        {
+            var weakByContract = await NothingToReviewAutoValidator
+                .WeakFactCountsAsync(dbContext, tenantId, [contract.Id], cancellationToken)
+                .ConfigureAwait(false);
+
+            if (weakByContract.GetValueOrDefault(contract.Id) == 0)
+            {
+                document.ProcessingStatus = DocumentProcessingStatus.Completed;
+                await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
         await auditWriter.WriteAsync(
                 new AuditEntry(
                     tenantId,
@@ -907,8 +924,8 @@ public sealed class StagedExtractionService(
     /// with every found fact at or above the bar the document completes on its own instead of
     /// asking the user to confirm an empty review list. Stage <em>failures</em> (model/network
     /// error, malformed payload) still require review: a low-confidence fact is a "weak signal";
-    /// a failed stage is a "missing signal", and its <c>ErrorDetail</c> is what the Documents row
-    /// shows next to "Review 0 fields" so the state is explainable.
+    /// a failed stage is a "missing signal". Either way the caller then completes the document
+    /// anyway when the contract has no weak field left to show (never "Review 0 fields").
     /// </para>
     /// </summary>
     private static DocumentProcessingStatus DetermineDocumentStatus(
