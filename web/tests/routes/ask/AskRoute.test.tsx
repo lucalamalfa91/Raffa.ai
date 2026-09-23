@@ -185,6 +185,8 @@ function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     postMessage: vi.fn(),
     postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn(),
+    renameConversation: vi.fn(),
+    restoreConversation: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue(emptyCatalog()),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -886,6 +888,74 @@ describe("AskRoute (V2, task E13/F09/US01/T04)", () => {
       await screen.findByRole("log");
       await waitFor(() => expect(getContract360).toHaveBeenCalledWith(WORKSPACE_ID, "contract-1"));
       expect(screen.queryByRole("link", { name: "Acme Corp · MSA" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("chat rename", () => {
+    function resumed(customTitle: string | null) {
+      return vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        conversation: {
+          id: CONVERSATION_ID,
+          title: "When does Salesforce expire?",
+          customTitle,
+          scopeContractId: null,
+          createdAt: "2026-09-08T00:00:00Z",
+          updatedAt: "2026-09-08T00:05:00Z",
+          messages: [],
+        },
+        error: null,
+      });
+    }
+
+    it("a resumed chat's own name is its header title", async () => {
+      renderAsk(mockApiClient({ getConversation: resumed("Salesforce renewal") }), `/ask/${CONVERSATION_ID}`);
+
+      expect(await screen.findByRole("heading", { name: "Salesforce renewal" })).toBeInTheDocument();
+    });
+
+    it("Rename in the header saves the new name and shows it as the title", async () => {
+      const user = userEvent.setup();
+      const renameConversation = vi.fn().mockResolvedValue({
+        ok: true,
+        statusCode: 200,
+        conversation: { id: CONVERSATION_ID, title: "When does Salesforce expire?", customTitle: "Salesforce renewal", scopeContractId: null, updatedAt: "2026-09-08T00:05:00Z" },
+        error: null,
+      });
+      renderAsk(mockApiClient({ getConversation: resumed(null), renameConversation }), `/ask/${CONVERSATION_ID}`);
+
+      await screen.findByRole("heading", { name: "When does Salesforce expire?" });
+      await user.click(screen.getByRole("button", { name: "Rename" }));
+      const field = screen.getByRole("textbox", { name: "Rename this chat" });
+      expect(field).toHaveValue("When does Salesforce expire?");
+      await user.clear(field);
+      await user.type(field, "Salesforce renewal{Enter}");
+
+      expect(renameConversation).toHaveBeenCalledWith(WORKSPACE_ID, CONVERSATION_ID, "Salesforce renewal");
+      expect(screen.getByRole("heading", { name: "Salesforce renewal" })).toBeInTheDocument();
+      // The composer is untouched: renaming never sends a message.
+      expect(screen.getByRole("textbox", { name: /ask raffa a question/i })).toHaveValue("");
+    });
+
+    it("says so, and keeps the old title, when the rename fails", async () => {
+      const user = userEvent.setup();
+      const renameConversation = vi.fn().mockResolvedValue({ ok: false, statusCode: null, conversation: null, error: "network down" });
+      renderAsk(mockApiClient({ getConversation: resumed(null), renameConversation }), `/ask/${CONVERSATION_ID}`);
+
+      await screen.findByRole("heading", { name: "When does Salesforce expire?" });
+      await user.dblClick(screen.getByRole("heading", { name: "When does Salesforce expire?" }));
+      await user.type(screen.getByRole("textbox", { name: "Rename this chat" }), " (old){Enter}");
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not rename this chat.");
+      expect(screen.getByRole("heading", { name: "When does Salesforce expire?" })).toBeInTheDocument();
+    });
+
+    it("a new chat that does not exist yet offers no rename", async () => {
+      renderAsk(mockApiClient());
+
+      await screen.findByText("What do you want to know?");
+      expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
     });
   });
 

@@ -78,6 +78,43 @@
   white-space: nowrap;
 }
 
+/* Chat rename (ConversationRenameField): the header title turns into a field set in the title's
+   own type, and "Rename" sits beside it as muted text, the same weight as the rail's row actions. */
+.ask-conv-rename {
+  flex: none;
+  width: min(360px, 50vw);
+  height: 24px;
+  padding: 0 var(--space-2);
+  border-width: 1px;
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.ask-conv-rename-button {
+  appearance: none;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.ask-conv-rename-button:hover {
+  color: var(--color-accent-700);
+  text-decoration: underline;
+}
+
+.ask-conv-rename-error {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-accent-700);
+}
+
 /* NW-78 binding chip: `.tag`/`.tag-neutral` (components.css) paint it; this only keeps the anchor
    from stretching and undoes its default underline. */
 .ask-bound-chip {
@@ -338,9 +375,15 @@
   cursor: pointer;
 }
 
-.ask-suggestion:hover {
+.ask-suggestion:hover:not(:disabled) {
   color: var(--color-accent);
   background: transparent;
+}
+
+/* This chat is still answering: a chip would be refused, so it reads as unavailable. */
+.ask-suggestion:disabled {
+  cursor: default;
+  opacity: var(--opacity-disabled);
 }
 
 .ask-composer-note {

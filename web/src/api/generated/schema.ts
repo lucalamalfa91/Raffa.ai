@@ -665,7 +665,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": ({ id: string; title: string; scopeContractId: string | null; updatedAt: string })[];
+          "application/json": ({ id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean })[];
         };
       };
       400: {
@@ -679,7 +679,7 @@ export interface operations {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; title: string; scopeContractId: string | null; updatedAt: string };
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
         };
       };
       400: {
@@ -693,7 +693,43 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { id: string; title: string; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft" | "interview"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload?: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null })[] };
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; createdAt: string; updatedAt: string; messages: ({ id: string; role: "you" | "raffa"; kind: "answer" | "abstain" | "redirect" | "refusal" | "draft" | "interview"; markdown: string; citations: ({ n: number; corpus: string; title: string; subtitle: string | null; snippet: string; documentId: string | null; contractId: string | null; page: number | null; section: string | null; previewUrl: string | null; href: string | null; recordId: string | null })[]; actions: ({ label: string; href: string; kind: "navigate" | "upload" | "external" })[]; modelId: string | null; promptVersion: string | null; inputHash: string | null; createdAt: string; payload?: { gap: { key: string; title: string; language: "it" | "en" } | null; draft: { subject: string; body: string } | null; feedbackOffer: { prompt: string; yesLabel: string; noLabel: string; nextLabel: string; backLabel: string; submitLabel: string; sendingLabel: string; thanksLabel: string; errorLabel: string; publicNotice: string; questions: ({ key: "what" | "frequency" | "importance"; kind: "text" | "choice"; label: string; prefill: string | null; choices: ({ key: string; label: string })[] | null })[] } | null; feedbackResult: { forMessageId: string; status: "recorded" | "issue_opened"; issueNumber: number | null; issueUrl: string | null } | null } | null; interview?: { prompt: string; questions: ({ key: string; prompt: string; presentation: "choice" | "consent"; allowFreeText: boolean; options: ({ key: string; label: string; hint: string | null })[] })[]; answered: boolean } | null })[] };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  renameConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  restoreConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
         };
       };
       400: {
@@ -1035,6 +1071,10 @@ export interface paths {
   };
   "/api/conversations/{id}": {
     get: operations["getConversation"];
+    patch: operations["renameConversation"];
+  };
+  "/api/conversations/{id}/restore": {
+    post: operations["restoreConversation"];
   };
   "/api/conversations/{id}/messages": {
     post: operations["postConversationMessage"];

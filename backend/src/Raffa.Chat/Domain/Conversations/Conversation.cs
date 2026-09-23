@@ -39,6 +39,15 @@ public sealed class Conversation : TenantScopedEntity
     public required string Title { get; set; }
 
     /// <summary>
+    /// The name the user gave this chat (rename, from the rail or the chat header), or
+    /// <see langword="null"/> while it keeps its automatic title. Kept apart from
+    /// <see cref="Title"/> rather than overwriting it: clearing the name brings the derived title
+    /// back, and a renamed chat is still told apart from one whose title is only its first
+    /// question (the rail never shows a first question as a title). Same 48-char limit.
+    /// </summary>
+    public string? CustomTitle { get; set; }
+
+    /// <summary>
     /// The contract this conversation was opened from (Contract 360 "Ask about it" → new chat
     /// scoped to that contract), or <see langword="null"/> for a conversation started from the
     /// global Ask bar. Cross-module reference by id only — deliberately no FK, the same "a
@@ -52,8 +61,10 @@ public sealed class Conversation : TenantScopedEntity
     public required DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
-    /// Bumped every time a message is appended (never on read) — the recency ordering
-    /// `GET /api/conversations` (a later task) sorts by, per R-CONV-02's "last N conversations".
+    /// Bumped every time a message is appended, and when the user takes the chat back out of the
+    /// archive (<c>ConversationService.RestoreAsync</c> — an explicit action, never a read) — the
+    /// recency ordering `GET /api/conversations` sorts by, per R-CONV-02's "last N conversations",
+    /// and what decides whether the chat is archived (<c>ConversationService.ArchiveAfter</c>).
     /// </summary>
     public required DateTimeOffset UpdatedAt { get; set; }
 }

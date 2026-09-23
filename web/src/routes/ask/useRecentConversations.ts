@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import type { ApiClient, ConversationSummaryBody } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
@@ -26,7 +26,11 @@ import { loadCurrentWorkspace } from "../signin/workspaceStore";
  * `contract360ViewModel.ts`'s own `?clause=`/`?page=` handling already relies on).
  */
 export interface RecentConversationsState {
+  /** The chats in use (`?archived=false`), most recent first. */
   conversations: readonly ConversationSummaryBody[];
+  /** The archive (`?archived=true`): chats not used for a week, most recent first. Each list is its
+   * own `CONVERSATION_LIST_TAKE`, so a long archive never pushes recent chats off the rail. */
+  archivedConversations: readonly ConversationSummaryBody[];
   /** `/ask/<id>` (route param) matches one of `conversations[].id` -- RailNav's own "active one in
    * accent" (task text point (5)). `null` on `/ask` itself (no conversation open) or any other
    * screen. */
@@ -50,19 +54,37 @@ export function activeConversationIdFromPathname(pathname: string): string | nul
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-export function useRecentConversations(apiClient: ApiClient): RecentConversationsState {
+/**
+ * `refreshKey` is the second reload signal: `askSessions.ts#listVersion`, bumped when a chat is
+ * created or answered in the background -- a new chat the user already left (so no navigation
+ * happened) still appears in the rail, and an answered one moves to the top.
+ */
+export function useRecentConversations(apiClient: ApiClient, refreshKey: number = 0): RecentConversationsState {
   const location = useLocation();
   const workspace = loadCurrentWorkspace();
   const [conversations, setConversations] = useState<readonly ConversationSummaryBody[]>(EMPTY_STATE);
+  const [archivedConversations, setArchivedConversations] = useState<readonly ConversationSummaryBody[]>(EMPTY_STATE);
+  // Reloads overlap (every navigation starts one): only the latest one's answers land.
+  const loadSeq = useRef(0);
 
   const load = useCallback(() => {
+    loadSeq.current += 1;
+    const seq = loadSeq.current;
     if (!workspace) {
       setConversations(EMPTY_STATE);
+      setArchivedConversations(EMPTY_STATE);
       return;
     }
 
-    void apiClient.listConversations(workspace.id, CONVERSATION_LIST_TAKE).then((result) => {
-      setConversations(result.ok && result.conversations ? result.conversations : EMPTY_STATE);
+    // Each row's own `archived` flag is checked too, so a server that ignores `?archived=`
+    // (or a test double that answers both calls alike) still files every chat exactly once.
+    void apiClient.listConversations(workspace.id, CONVERSATION_LIST_TAKE, { archived: false }).then((result) => {
+      if (seq !== loadSeq.current) return;
+      setConversations(result.ok && result.conversations ? result.conversations.filter((c) => c.archived !== true) : EMPTY_STATE);
+    });
+    void apiClient.listConversations(workspace.id, CONVERSATION_LIST_TAKE, { archived: true }).then((result) => {
+      if (seq !== loadSeq.current) return;
+      setArchivedConversations(result.ok && result.conversations ? result.conversations.filter((c) => c.archived === true) : EMPTY_STATE);
     });
     // workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns a fresh
     // object every call, the same convention every other hook in this app already follows
@@ -73,10 +95,11 @@ export function useRecentConversations(apiClient: ApiClient): RecentConversation
     load();
     // See this module's own header comment for why `location.pathname` is a deliberate dependency
     // here, unlike useValidatedContractCount's identical-shaped effect.
-  }, [load, location.pathname]);
+  }, [load, location.pathname, refreshKey]);
 
   return {
     conversations,
+    archivedConversations,
     activeConversationId: activeConversationIdFromPathname(location.pathname),
     reload: load,
   };
