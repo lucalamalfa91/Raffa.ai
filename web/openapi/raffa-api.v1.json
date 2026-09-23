@@ -5891,6 +5891,15 @@
               "type": "integer"
             },
             "description": "Overrides ConversationService.DefaultRecentLimit (5) when supplied; must be a positive integer."
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "true lists only archived conversations, false only the ones in use; absent lists both. Each is its own most-recent-first `take`. 400 for anything but true/false."
           }
         ],
         "responses": {
@@ -5935,6 +5944,10 @@
                       "updatedAt": {
                         "type": "string",
                         "format": "date-time"
+                      },
+                      "archived": {
+                        "type": "boolean",
+                        "description": "Not used for a week (ConversationService.ArchiveAfter: no message, no restore) -- the rail files it under Archive. Derived from updatedAt on every read; POST /api/conversations/{id}/restore takes it back out."
                       }
                     }
                   }
@@ -6016,6 +6029,10 @@
                     "updatedAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Not used for a week (ConversationService.ArchiveAfter: no message, no restore) -- the rail files it under Archive. Derived from updatedAt on every read; POST /api/conversations/{id}/restore takes it back out."
                     }
                   }
                 }
@@ -6683,6 +6700,10 @@
                     "updatedAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Not used for a week (ConversationService.ArchiveAfter: no message, no restore) -- the rail files it under Archive. Derived from updatedAt on every read; POST /api/conversations/{id}/restore takes it back out."
                     }
                   }
                 }
@@ -6691,6 +6712,107 @@
           },
           "400": {
             "description": "Missing/invalid X-Tenant-Id header, a non-GUID id in the route, or a `title` longer than 48 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such conversation for this tenant and caller (unknown id, another tenant's, or another user's -- one honest outcome, see this operation's own description)."
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/restore": {
+      "post": {
+        "operationId": "restoreConversation",
+        "summary": "Take one of the caller's conversations back out of the archive.",
+        "description": "Maps to RestoreConversationAsync in backend/src/Raffa.Api/ConversationsEndpointExtensions.cs, backed by ConversationService.RestoreAsync. No request body. An archived conversation (unused for a week) gets `updatedAt` bumped to now, so it is in use again and at the top of the list; one that is not archived comes back unchanged (no write, no audit row). Writes a `conversation.restored` audit row when it did restore. Not Admin-gated. 404 under the identical tenant/user/unknown-id rule GET /api/conversations/{id} documents.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-User-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "See GET /api/conversations above."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Conversation.Id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restored (or already in use). The conversation's summary, `archived: false`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "title",
+                    "scopeContractId",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "The first question, <=48 chars (ConversationService.TitleMaxLength), or the literal 'New chat' (ConversationService.DefaultTitle) until the first message lands."
+                    },
+                    "customTitle": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The name the user gave this chat (PATCH /api/conversations/{id}), <=48 chars; null while it keeps its automatic title. Kept apart from `title` so clearing the name restores that title."
+                    },
+                    "scopeContractId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid",
+                      "description": "Set when this conversation was opened from Contract 360 'Ask about it' (/ask?scope=); null for a plain new chat."
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "archived": {
+                      "type": "boolean",
+                      "description": "Not used for a week (ConversationService.ArchiveAfter: no message, no restore) -- the rail files it under Archive. Derived from updatedAt on every read; POST /api/conversations/{id}/restore takes it back out."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid X-Tenant-Id header, or a non-GUID id in the route.",
             "content": {
               "application/json": {
                 "schema": {

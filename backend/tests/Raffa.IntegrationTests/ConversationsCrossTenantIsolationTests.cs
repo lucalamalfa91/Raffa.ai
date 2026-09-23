@@ -130,6 +130,45 @@ public sealed class ConversationsCrossTenantIsolationTests : IClassFixture<Conve
         Assert.Equal(JsonValueKind.Null, clearedBody.RootElement.GetProperty("customTitle").ValueKind);
     }
 
+    [Fact]
+    public async Task A_chat_in_use_lists_as_not_archived_and_only_its_owner_can_restore_it()
+    {
+        var client = _fixture.CreateClient();
+        var tenantId = Guid.NewGuid();
+        const string owner = "alice@example.com";
+        const string other = "bob@example.com";
+
+        var conversationId = await CreateConversationAsync(client, tenantId, owner);
+        await ImplicitTenantAdminStartupFilter.EnsureMembershipAsync(_fixture.Services, new TenantId(tenantId), other, WorkspaceRoleName.Admin);
+
+        async Task<List<JsonElement>> ListAsync(string query)
+        {
+            using var list = new HttpRequestMessage(HttpMethod.Get, $"/api/conversations{query}");
+            list.Headers.Add("X-Tenant-Id", tenantId.ToString());
+            list.Headers.Add("X-User-Id", owner);
+            using var body = JsonDocument.Parse(await (await client.SendAsync(list)).Content.ReadAsStringAsync());
+            return body.RootElement.EnumerateArray().Select(item => item.Clone()).ToList();
+        }
+
+        var inUse = Assert.Single(await ListAsync("?archived=false"));
+        Assert.False(inUse.GetProperty("archived").GetBoolean());
+        Assert.Empty(await ListAsync("?archived=true"));
+
+        async Task<HttpResponseMessage> RestoreAsync(string userId)
+        {
+            using var restore = new HttpRequestMessage(HttpMethod.Post, $"/api/conversations/{conversationId}/restore");
+            restore.Headers.Add("X-Tenant-Id", tenantId.ToString());
+            restore.Headers.Add("X-User-Id", userId);
+            return await client.SendAsync(restore);
+        }
+
+        Assert.Equal(HttpStatusCode.NotFound, (await RestoreAsync(other)).StatusCode);
+        var restored = await RestoreAsync(owner);
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        using var restoredBody = JsonDocument.Parse(await restored.Content.ReadAsStringAsync());
+        Assert.False(restoredBody.RootElement.GetProperty("archived").GetBoolean());
+    }
+
     private static Task<HttpResponseMessage> PatchTitleAsync(HttpClient client, Guid tenantId, string userId, Guid conversationId, string title)
     {
         var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/conversations/{conversationId}")

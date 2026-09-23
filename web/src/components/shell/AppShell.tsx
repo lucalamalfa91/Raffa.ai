@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { Outlet, useLocation, useMatch } from "react-router-dom";
 import RailNav from "./RailNav";
+import RailResizeHandle from "./RailResizeHandle";
+import { useRailWidth } from "./useRailWidth";
 import GlobalAskBar from "../ask-bar/GlobalAskBar";
 import { useValidatedContractCount } from "./useValidatedContractCount";
 import { useDocumentCounts } from "./useDocumentCounts";
@@ -68,6 +70,7 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
   const matchAskRelative = useMatch({ path: "ask", end: true });
   const matchAskConversationRelative = useMatch({ path: "ask/:conversationId", end: true });
   const [pollTick, setPollTick] = useState(0);
+  const railWidth = useRailWidth();
   const refreshKey = `${location.pathname}:${pollTick}`;
   const documentCounts = useDocumentCounts(apiClient, refreshKey);
   const { count, kbReady } = useValidatedContractCount(apiClient, refreshKey);
@@ -105,7 +108,8 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
       {/* Parallel Ask sessions (`routes/ask/askSessions.ts`): one store for the rail, the Ask screen
           and the "reply ready" notices, so a chat keeps answering while the user is elsewhere. */}
       <AskSessionsProvider>
-        <div className="shell-layout">
+        {/* The rail is resizable (RailResizeHandle): its width is this one custom property. */}
+        <div className="shell-layout" style={{ "--shell-rail-width": `${railWidth.width}px` } as CSSProperties}>
           <RailNav
             workspaceName={workspaceName}
             role={role}
@@ -116,6 +120,7 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
             documentCounts={documentCounts}
             apiClient={apiClient}
           />
+          <RailResizeHandle {...railWidth} />
           <main className="shell-main">
             {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
                 below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips

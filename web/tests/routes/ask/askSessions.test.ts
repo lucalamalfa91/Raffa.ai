@@ -48,6 +48,7 @@ function apiClient(
     postMessage: vi.fn(),
     postConversationFeedback: vi.fn(),
     renameConversation: vi.fn(),
+    restoreConversation: vi.fn(),
     ...overrides,
   } as unknown as ApiClient;
 }

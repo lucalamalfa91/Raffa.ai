@@ -665,7 +665,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": ({ id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string })[];
+          "application/json": ({ id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean })[];
         };
       };
       400: {
@@ -679,7 +679,7 @@ export interface operations {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string };
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
         };
       };
       400: {
@@ -711,7 +711,25 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string };
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  restoreConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; title: string; customTitle?: string | null; scopeContractId: string | null; updatedAt: string; archived?: boolean };
         };
       };
       400: {
@@ -1054,6 +1072,9 @@ export interface paths {
   "/api/conversations/{id}": {
     get: operations["getConversation"];
     patch: operations["renameConversation"];
+  };
+  "/api/conversations/{id}/restore": {
+    post: operations["restoreConversation"];
   };
   "/api/conversations/{id}/messages": {
     post: operations["postConversationMessage"];

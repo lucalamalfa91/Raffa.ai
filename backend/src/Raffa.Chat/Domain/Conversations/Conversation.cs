@@ -61,8 +61,10 @@ public sealed class Conversation : TenantScopedEntity
     public required DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
-    /// Bumped every time a message is appended (never on read) — the recency ordering
-    /// `GET /api/conversations` (a later task) sorts by, per R-CONV-02's "last N conversations".
+    /// Bumped every time a message is appended, and when the user takes the chat back out of the
+    /// archive (<c>ConversationService.RestoreAsync</c> — an explicit action, never a read) — the
+    /// recency ordering `GET /api/conversations` sorts by, per R-CONV-02's "last N conversations",
+    /// and what decides whether the chat is archived (<c>ConversationService.ArchiveAfter</c>).
     /// </summary>
     public required DateTimeOffset UpdatedAt { get; set; }
 }

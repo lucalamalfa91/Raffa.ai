@@ -67,10 +67,19 @@ public sealed class ConversationService(
     /// </summary>
     public const string DefaultTitle = "New chat";
 
+    /// <summary>
+    /// A chat not used for this long — no message, no restore — is archived: listed apart, so the
+    /// rail's recent list stays short. Nothing is moved or deleted; it is a reading of
+    /// <see cref="Conversation.UpdatedAt"/>, so the next message (or <see cref="RestoreAsync"/>)
+    /// brings the chat back at once.
+    /// </summary>
+    public static readonly TimeSpan ArchiveAfter = TimeSpan.FromDays(7);
+
     private const string AuditConversationCreatedAction = "conversation.created";
     private const string AuditMessageAppendedAction = "conversation.message.appended";
     private const string AuditConversationDeletedAction = "conversation.deleted";
     private const string AuditConversationRenamedAction = "conversation.renamed";
+    private const string AuditConversationRestoredAction = "conversation.restored";
     private const string AuditConversationResourceType = "conversation";
     private const string AuditConversationMessageResourceType = "conversation_message";
 
@@ -112,30 +121,43 @@ public sealed class ConversationService(
                 scopeContractId is null ? null : $"scopeContractId={scopeContractId}"),
             cancellationToken).ConfigureAwait(false);
 
-        return ToSummary(conversation);
+        return ToSummary(conversation, now);
     }
 
     /// <summary>R-CONV-02 "last N conversations", most recently active first (see
-    /// <see cref="Conversation.UpdatedAt"/>'s own doc comment).</summary>
+    /// <see cref="Conversation.UpdatedAt"/>'s own doc comment). <paramref name="archive"/> narrows
+    /// it to the chats in use or to the archived ones (<see cref="ArchiveAfter"/>), each its own
+    /// "last N", so a long archive never crowds the recent list out of <paramref name="limit"/>.</summary>
     public async Task<IReadOnlyList<ConversationSummaryResult>> ListRecentAsync(
         TenantId tenantId,
         string userId,
         int limit = DefaultRecentLimit,
+        ConversationArchiveFilter archive = ConversationArchiveFilter.All,
         CancellationToken cancellationToken = default)
     {
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
         var take = Math.Clamp(limit, 1, MaxRecentLimit);
+        var now = clock.UtcNow;
+        var archivedBefore = now - ArchiveAfter;
 
-        var conversations = await dbContext.Conversations
+        var query = dbContext.Conversations
             .AsNoTracking()
-            .Where(c => c.TenantId == tenantId && c.UserId == userId)
+            .Where(c => c.TenantId == tenantId && c.UserId == userId);
+        query = archive switch
+        {
+            ConversationArchiveFilter.Active => query.Where(c => c.UpdatedAt >= archivedBefore),
+            ConversationArchiveFilter.Archived => query.Where(c => c.UpdatedAt < archivedBefore),
+            _ => query,
+        };
+
+        var conversations = await query
             .OrderByDescending(c => c.UpdatedAt)
             .Take(take)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return conversations.Select(ToSummary).ToList();
+        return conversations.Select(conversation => ToSummary(conversation, now)).ToList();
     }
 
     /// <summary>AC-2 "returns it with its messages"; AC-1 "another user... gets 404/403" —
@@ -403,6 +425,7 @@ public sealed class ConversationService(
 
         conversation.CustomTitle = name;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        var renamedAt = clock.UtcNow;
 
         await auditWriter.WriteAsync(
             new AuditEntry(
@@ -411,11 +434,67 @@ public sealed class ConversationService(
                 AuditConversationRenamedAction,
                 AuditConversationResourceType,
                 conversationId.Value.ToString(),
-                clock.UtcNow,
+                renamedAt,
                 name is null ? "customTitle=cleared" : "customTitle=set"),
             cancellationToken).ConfigureAwait(false);
 
-        return ToSummary(conversation);
+        return ToSummary(conversation, renamedAt);
+    }
+
+    /// <summary>
+    /// Takes the caller's own chat back out of the archive (the rail's "Archive": click a chat and
+    /// it is back in the list): bumps <see cref="Conversation.UpdatedAt"/> to now, so it is in use
+    /// again and at the top of the recent list. A chat that is not archived is returned untouched
+    /// — no write, no audit row. <see langword="null"/> under the identical "not this user's
+    /// conversation in this tenant" rule <see cref="GetAsync"/> documents. Writes one
+    /// <c>conversation.restored</c> audit row when it did restore.
+    /// </summary>
+    public async Task<ConversationSummaryResult?> RestoreAsync(
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("A user id is required.", nameof(userId));
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var conversation = await dbContext.Conversations
+            .SingleOrDefaultAsync(
+                c => c.TenantId == tenantId && c.UserId == userId && c.Id == conversationId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (conversation is null)
+        {
+            return null;
+        }
+
+        var now = clock.UtcNow;
+        if (!IsArchived(conversation, now))
+        {
+            return ToSummary(conversation, now);
+        }
+
+        var archivedSince = conversation.UpdatedAt;
+        conversation.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId,
+                userId,
+                AuditConversationRestoredAction,
+                AuditConversationResourceType,
+                conversationId.Value.ToString(),
+                now,
+                $"idleDays={(int)(now - archivedSince).TotalDays}"),
+            cancellationToken).ConfigureAwait(false);
+
+        return ToSummary(conversation, now);
     }
 
     /// <summary>A rename's name on one line: runs of whitespace (newlines included) collapse to a
@@ -573,8 +652,17 @@ public sealed class ConversationService(
         }
     }
 
-    private static ConversationSummaryResult ToSummary(Conversation conversation) =>
-        new(conversation.Id, conversation.Title, conversation.ScopeContractId, conversation.UpdatedAt, conversation.CustomTitle);
+    private static bool IsArchived(Conversation conversation, DateTimeOffset now) =>
+        conversation.UpdatedAt < now - ArchiveAfter;
+
+    private static ConversationSummaryResult ToSummary(Conversation conversation, DateTimeOffset now) =>
+        new(
+            conversation.Id,
+            conversation.Title,
+            conversation.ScopeContractId,
+            conversation.UpdatedAt,
+            conversation.CustomTitle,
+            IsArchived(conversation, now));
 
     private static ConversationMessageResult ToMessageResult(ConversationMessage message) =>
         new(

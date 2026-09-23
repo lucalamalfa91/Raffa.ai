@@ -1178,6 +1178,11 @@ export interface GetSavingsOpportunitiesResult {
 type ListConversationsResponses = paths["/api/conversations"]["get"]["responses"];
 export type ConversationSummaryBody = ListConversationsResponses[200]["content"]["application/json"][number];
 
+/** `GET /api/conversations` query options beyond `take`. */
+export interface ListConversationsOptions {
+  archived?: boolean;
+}
+
 export interface ListConversationsResult {
   /** True only on `200 OK`. */
   ok: boolean;
@@ -1312,6 +1317,20 @@ export interface RenameConversationResult {
   statusCode: number | null;
   /** The renamed conversation's summary (its new `customTitle`), present only when `ok` is true. */
   conversation: RenamedConversationBody | null;
+  /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
+  error: string | null;
+}
+
+type RestoreConversationResponses = paths["/api/conversations/{id}/restore"]["post"]["responses"];
+export type RestoredConversationBody = RestoreConversationResponses[200]["content"]["application/json"];
+
+export interface RestoreConversationResult {
+  /** True only on `200 OK`. */
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
+  statusCode: number | null;
+  /** The conversation's summary, now `archived: false`, present only when `ok` is true. */
+  conversation: RestoredConversationBody | null;
   /** Plain-language failure reason (400/404 message, HTTP status text, or network-failure cause), present only when `ok` is false. */
   error: string | null;
 }
@@ -1759,9 +1778,11 @@ export interface ApiClient {
   /**
    * Calls `GET /api/conversations` (operationId `listConversations`) -- the rail's resume
    * list (R-CONV-02). `take` defaults to the backend's own default (5) when omitted; the rail
-   * passes a larger take so search/filter can see accumulated chats. Same never-throws shape.
+   * passes a larger take so search/filter can see accumulated chats. `options.archived` sends
+   * `?archived=` -- `false` for the chats in use, `true` for the archive (unused for a week), each
+   * its own most-recent-first `take`; omitted lists both. Same never-throws shape.
    */
-  listConversations(tenantId: string, take?: number): Promise<ListConversationsResult>;
+  listConversations(tenantId: string, take?: number, options?: ListConversationsOptions): Promise<ListConversationsResult>;
   /**
    * Calls `POST /api/conversations` (operationId `createConversation`) -- opens a new chat, plain
    * or scoped to a contract (Contract 360 "Ask about it", `/ask?scope=<contractId>`). Same
@@ -1810,6 +1831,13 @@ export interface ApiClient {
    * `400` (longer than 48 characters) are normal, expected outcomes.
    */
   renameConversation(tenantId: string, conversationId: string, title: string | null): Promise<RenameConversationResult>;
+  /**
+   * Calls `POST /api/conversations/{id}/restore` (operationId `restoreConversation`) -- takes the
+   * caller's own chat back out of the archive (the rail's Archive: click a chat and it is back in
+   * the list). A chat already in use comes back unchanged. Same never-throws shape; a `404` is a
+   * normal, expected outcome.
+   */
+  restoreConversation(tenantId: string, conversationId: string): Promise<RestoreConversationResult>;
   /**
    * Calls `GET /api/capabilities` (operationId `getCapabilities`) -- the versioned capability
    * catalog (R-SYS-01), the source of the Ask screen's own two suggestion chips
@@ -3513,9 +3541,10 @@ export function createApiClient(
       return { ok: false, statusCode: response.status, opportunities: null, error };
     },
 
-    async listConversations(tenantId, take) {
+    async listConversations(tenantId, take, options = {}) {
       const url = new URL("/api/conversations", baseUrl);
       if (take !== undefined) url.searchParams.set("take", String(take));
+      if (options.archived !== undefined) url.searchParams.set("archived", String(options.archived));
 
       let response: Response;
       try {
@@ -3742,6 +3771,43 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, conversation: null, error: renameError };
+    },
+
+    async restoreConversation(tenantId, conversationId) {
+      let response: Response;
+      try {
+        response = await fetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}/restore`, baseUrl), {
+          method: "POST",
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          conversation: null,
+          error: `Unable to reach ${baseUrl}/api/conversations/${conversationId}/restore. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 200) {
+        const conversation = (await response.json()) as RestoredConversationBody;
+        return { ok: true, statusCode: 200, conversation, error: null };
+      }
+
+      if (response.status === 404) {
+        return { ok: false, statusCode: 404, conversation: null, error: `No conversation found for id ${conversationId}.` };
+      }
+
+      let restoreError: string;
+      try {
+        const errorBody: unknown = await response.json();
+        restoreError = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        restoreError = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+
+      return { ok: false, statusCode: response.status, conversation: null, error: restoreError };
     },
 
     async deleteConversation(tenantId, conversationId) {

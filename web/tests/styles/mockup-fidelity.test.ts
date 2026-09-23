@@ -71,11 +71,11 @@ describe("signin.css -- north-star type and statement ground (AC-2, gaps G-S1-TY
   });
 });
 
-describe("shell.css -- rail stays a fixed 232px beside the fluid main track (gap G-SHELL)", () => {
-  it("keeps .shell-layout's grid at 232px 1fr (raffa-v2/markup.html)", () => {
+describe("shell.css -- rail defaults to 232px beside the fluid main track (gap G-SHELL)", () => {
+  it("keeps .shell-layout's grid at 232px 1fr by default (raffa-v2/markup.html); the rail is resizable through --shell-rail-width", () => {
     const css = readSource("../../src/components/shell/shell.css");
     const body = ruleBodyFor(css, ".shell-layout");
-    expect(body).toMatch(/grid-template-columns:\s*232px\s+1fr/);
+    expect(body).toMatch(/grid-template-columns:\s*var\(--shell-rail-width,\s*232px\)\s+1fr/);
   });
 });
 

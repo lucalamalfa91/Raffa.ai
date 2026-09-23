@@ -1995,6 +1995,18 @@ describe("createApiClient().listConversations (task E13/F09/US01/T04)", () => {
     expect(init).toEqual({ headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
   });
 
+  it("sends ?take= and ?archived= when asked for the archive or the chats in use", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(conversations), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient("https://api.dev.raffa.example");
+
+    await client.listConversations("tenant-1", 50, { archived: true });
+    await client.listConversations("tenant-1", 50, { archived: false });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://api.dev.raffa.example/api/conversations?take=50&archived=true");
+    expect(String(fetchMock.mock.calls[1][0])).toBe("https://api.dev.raffa.example/api/conversations?take=50&archived=false");
+  });
+
   it("reports ok:true with the caller's own conversations, most-recently-updated first, on 200", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(conversations), { status: 200 })));
 
@@ -2216,6 +2228,41 @@ describe("createApiClient().renameConversation (chat rename, PATCH /api/conversa
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBeNull();
     expect(result.error).toContain("network down");
+  });
+});
+
+describe("createApiClient().restoreConversation (chat archive, POST /api/conversations/{id}/restore)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const restored = { id: "conv-1", title: "When does Salesforce expire?", customTitle: null, scopeContractId: null, updatedAt: "2026-09-23T00:00:00Z", archived: false };
+
+  it("POSTs <baseUrl>/api/conversations/{id}/restore with no body and reports the summary on 200", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(restored), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createApiClient("https://api.dev.raffa.example").restoreConversation("tenant-1", "conv-1");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/conversations/conv-1/restore");
+    expect(init).toEqual({ method: "POST", headers: { "X-Tenant-Id": "tenant-1" }, cache: "no-store" });
+    expect(result).toEqual({ ok: true, statusCode: 200, conversation: restored, error: null });
+  });
+
+  it("names a 404 and never throws on a network failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    expect(await createApiClient("https://api.dev.raffa.example").restoreConversation("tenant-1", "missing")).toEqual({
+      ok: false,
+      statusCode: 404,
+      conversation: null,
+      error: "No conversation found for id missing.",
+    });
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network down")));
+    const offline = await createApiClient("https://api.dev.raffa.example").restoreConversation("tenant-1", "conv-1");
+    expect(offline.statusCode).toBeNull();
+    expect(offline.error).toContain("network down");
   });
 });
 
@@ -2606,6 +2653,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
         client.postConversationFeedback("tenant-1", "conv-1", { messageId: "msg-1", answers: { what: "x", frequency: "weekly", importance: "blocking" } }),
       deleteConversation: () => client.deleteConversation("tenant-1", "conv-1"),
       renameConversation: () => client.renameConversation("tenant-1", "conv-1", "Renewals"),
+      restoreConversation: () => client.restoreConversation("tenant-1", "conv-1"),
       getCapabilities: () => client.getCapabilities(),
       getMarketRecord: () => client.getMarketRecord("rec-1"),
     };

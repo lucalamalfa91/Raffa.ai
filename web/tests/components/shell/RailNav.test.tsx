@@ -61,6 +61,7 @@ function mockApiClient(listConversations: ApiClient["listConversations"] = vi.fn
     postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn().mockResolvedValue({ ok: true, statusCode: 204, error: null }),
     renameConversation: vi.fn(),
+    restoreConversation: vi.fn(),
     getCapabilities: vi.fn(),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),
@@ -272,11 +273,13 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
   });
 
   describe("recent conversations slot (R-CONV-02; task E13/F09/US01/T04, gap G-CONVERSATIONS)", () => {
-    it("calls listConversations once on mount, for the current workspace", () => {
+    it("lists the current workspace's chats on mount: the ones in use and, separately, the archive", () => {
       const listConversations = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversations: [], error: null });
       renderRail({ apiClient: mockApiClient(listConversations) });
 
-      expect(listConversations).toHaveBeenCalledWith(WORKSPACE_ID, 50);
+      expect(listConversations).toHaveBeenCalledTimes(2);
+      expect(listConversations).toHaveBeenCalledWith(WORKSPACE_ID, 50, { archived: false });
+      expect(listConversations).toHaveBeenCalledWith(WORKSPACE_ID, 50, { archived: true });
     });
 
     it("lists every returned conversation, in the order the API returned them, above '+ New chat'", async () => {
@@ -487,6 +490,122 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
 
       expect(await screen.findByRole("alert")).toHaveTextContent("Could not rename this chat. Try again.");
       expect(screen.getByRole("link", { name: "Old name" })).toBeInTheDocument();
+    });
+  });
+
+  describe("archive and search", () => {
+    /** The server's two lists: `?archived=false` answers the chats in use, `?archived=true` the archive. */
+    function railWithLists(inUse: ConversationSummaryBody[], archived: ConversationSummaryBody[]) {
+      const listConversations = vi.fn(async (_tenant: string, _take?: number, options?: { archived?: boolean }) => ({
+        ok: true,
+        statusCode: 200,
+        conversations: options?.archived ? archived : inUse,
+        error: null,
+      }));
+      const apiClient = mockApiClient(listConversations as unknown as ApiClient["listConversations"]);
+      apiClient.restoreConversation = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, conversation: null, error: null });
+      return { ...renderRail({ apiClient }), apiClient, listConversations };
+    }
+
+    const recent = conversation({ id: "conv-new", customTitle: "Atlassian cap", archived: false, updatedAt: "2026-09-22T09:00:00Z" });
+    const old = conversation({ id: "conv-old", customTitle: "Q2 renewals", archived: true, updatedAt: "2026-09-02T09:00:00Z" });
+    const older = conversation({ id: "conv-older", customTitle: "AWS order form", archived: true, updatedAt: "2026-08-20T09:00:00Z" });
+
+    it("files chats unused for a week under a collapsed Archive, with a count and a tooltip that says where they went", async () => {
+      railWithLists([recent], [old, older]);
+
+      const toggle = await screen.findByRole("button", { name: /Archive/ });
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(toggle).toHaveTextContent("2");
+      expect(screen.getByRole("link", { name: "Atlassian cap" })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /Q2 renewals/ })).not.toBeInTheDocument();
+
+      const tip = screen.getByRole("button", { name: "About the archive" });
+      expect(tip).toHaveAccessibleDescription(/not used for a week move here/);
+      expect(tip).toHaveAccessibleDescription(/Can't find a chat\? It is in the archive\. Click it and it is back in your chats/);
+    });
+
+    it("opens the archive to list its chats with the day each was last used", async () => {
+      const user = userEvent.setup();
+      railWithLists([recent], [old, older]);
+
+      await user.click(await screen.findByRole("button", { name: /Archive/ }));
+
+      expect(screen.getByRole("button", { name: /Archive/ })).toHaveAttribute("aria-expanded", "true");
+      const link = screen.getByRole("link", { name: /Q2 renewals/ });
+      expect(link).toHaveAttribute("href", "/ask/conv-old");
+      expect(link).toHaveTextContent("2 Sep");
+      expect(screen.getByRole("link", { name: /AWS order form/ })).toHaveTextContent("20 Aug");
+    });
+
+    it("clicking an archived chat opens it and brings it back to the chats in use at once", async () => {
+      const user = userEvent.setup();
+      const { apiClient, container } = railWithLists([recent], [old, older]);
+
+      await user.click(await screen.findByRole("button", { name: /Archive/ }));
+      await user.click(screen.getByRole("link", { name: /Q2 renewals/ }));
+
+      expect(apiClient.restoreConversation).toHaveBeenCalledWith(WORKSPACE_ID, "conv-old");
+      // Back on top of the recent list, no longer dated like an archived row; the archive keeps the rest.
+      const recentLinks = Array.from(container.querySelectorAll(".shell-rail-conversations > div > .shell-rail-conv-row a"));
+      expect(recentLinks.map((node) => node.textContent)).toEqual(["Q2 renewals", "Atlassian cap"]);
+      expect(screen.getByRole("button", { name: /Archive/ })).toHaveTextContent("1");
+    });
+
+    it("puts the chat back in the archive when the server cannot restore it", async () => {
+      const user = userEvent.setup();
+      const { apiClient } = railWithLists([recent], [old]);
+      apiClient.restoreConversation = vi.fn().mockResolvedValue({ ok: false, statusCode: 404, conversation: null, error: "gone" });
+
+      await user.click(await screen.findByRole("button", { name: /Archive/ }));
+      await user.click(screen.getByRole("link", { name: /Q2 renewals/ }));
+
+      expect(await screen.findByRole("button", { name: /Archive/ })).toHaveTextContent("1");
+    });
+
+    it("shows no Archive while nothing is archived", async () => {
+      railWithLists([recent], []);
+
+      await screen.findByRole("link", { name: "Atlassian cap" });
+      expect(screen.queryByRole("button", { name: /Archive/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "About the archive" })).not.toBeInTheDocument();
+    });
+
+    it("search looks in the archive too and opens it on a match; nothing found says so", async () => {
+      const user = userEvent.setup();
+      railWithLists([recent], [old, older]);
+
+      const search = await screen.findByRole("searchbox", { name: "Search chats" });
+      await user.type(search, "aws");
+      expect(screen.getByRole("button", { name: /Archive/ })).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("link", { name: /AWS order form/ })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Atlassian cap" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /Q2 renewals/ })).not.toBeInTheDocument();
+
+      await user.clear(search);
+      await user.type(search, "salesforce");
+      expect(screen.getByRole("status")).toHaveTextContent("No chats match “salesforce”.");
+    });
+
+    it("clears the search with its own button or Escape", async () => {
+      const user = userEvent.setup();
+      railWithLists([recent], [old]);
+
+      const search = await screen.findByRole("searchbox", { name: "Search chats" });
+      expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
+      await user.type(search, "zzz");
+      await user.click(screen.getByRole("button", { name: "Clear search" }));
+      expect(search).toHaveValue("");
+      expect(screen.getByRole("link", { name: "Atlassian cap" })).toBeInTheDocument();
+
+      await user.type(search, "zzz{Escape}");
+      expect(search).toHaveValue("");
+    });
+
+    it("offers search when every chat is archived", async () => {
+      railWithLists([], [old]);
+
+      expect(await screen.findByRole("searchbox", { name: "Search chats" })).toBeInTheDocument();
     });
   });
 });
