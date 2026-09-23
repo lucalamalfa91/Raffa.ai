@@ -840,12 +840,32 @@ per-user conversations.
   citation still navigates to its own `href`. A `calc` citation with no contract (an aggregate such as
   "Annual spend total") sits under Raffa as a plain row -- no dead "View source" control. Follow-up chips post as a new message in
   the same conversation, the same `ask()` path a typed question uses.
+- **Non-prose content, the Claude.ai way** -- the reply stays prose-first and everything else is
+  quiet chrome (chat-local `--chat-*` tokens in `reply/reply.css`: hairline borders, 8px controls,
+  12px cards, flat surfaces; the app-wide square tokens are untouched outside the conversation):
+  - **Artifacts in a side panel.** A long, self-contained object never renders mid-thread: its turn
+    carries a one-line card (`reply/ArtifactCard.tsx`: icon tile, title, "Draft email · Click to
+    open") and the object opens in the screen's one right-hand slot (`ArtifactPanel.tsx`: icon,
+    title, type line, the object's own actions, close; Escape closes; a full-screen sheet below
+    900px). A draft that arrives live opens itself there on a wide screen without taking focus; a
+    click reopens it (and focuses it). A market citation opens its record (`MarketRecordPanel.tsx`)
+    in the same slot -- one object at a time.
+  - **Sources behind one row.** The evidence card starts collapsed to "N sources · Supplier · 2
+    contracts · …" (`aria-expanded`); the detail is `hidden`, not unmounted, and the reply's action
+    row stays visible under it. Inline `[n]` markers are small number chips (`ReplyMarkdown.tsx
+    #CitationChip`) that preview the source on hover/focus (kind, title, location, the first 160
+    characters of the passage; Escape dismisses) and open it on click.
+  - **Suggestions on the latest turn only.** Follow-up questions render as quiet one-liners (↗) on
+    the last turn, never on history (`ReplyBody`'s `showFollowUps`).
 - **Draft and the feedback card** (ADR-030, wave w20) -- a fifth `kind`, `draft`, renders the honest
   preface as markdown ("I can't create or send emails from Raffa.ai yet, but I can help you write the
-  renewal email…"), then `reply/DraftCard.tsx`: the subject and the body **verbatim** in a pre-wrap
-  block (never through `ReplyMarkdown`/`humanizeReplyText`) with a **Copy email** button
+  renewal email…"), then the email's artifact card; the email itself opens in `DraftPanel.tsx`: the
+  subject and the body **verbatim** in a pre-wrap block in the reading font (never through
+  `ReplyMarkdown`/`humanizeReplyText`) with a **Copy email** button
   (`navigator.clipboard.writeText(subject + blank line + body)`, the `InvitePane.tsx` "Copy link"
-  pattern, flips to "Copied"), then citation cards, actions, follow-ups, and `reply/FeedbackCard.tsx`.
+  pattern, flips to "Copied" for two seconds) and **Open in mail** (a recipient-less `mailto:` with
+  the same subject and body). The turn then carries citation cards, actions, follow-ups, and
+  `reply/FeedbackCard.tsx`.
   The card ("Vuoi segnalarlo al team Raffa.ai perché lo implementi?" [Sì] [No]) shows the three
   interview questions **one at a time** -- a prefilled free-text field with the public-GitHub notice,
   then two rows of quick-choice chips -- and submits once through `apiClient.postConversationFeedback`

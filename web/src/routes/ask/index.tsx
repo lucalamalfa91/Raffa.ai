@@ -10,6 +10,7 @@ import type { FeedbackAnswers } from "./reply/replyTypes";
 import type { ReplyCitation } from "./reply/replyTypes";
 import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
+import DraftPanel from "./DraftPanel";
 import { useConversation } from "./useConversation";
 import { parseDocumentViewerHref } from "../documents/viewer/documentViewerViewModel";
 import { useDocumentViewerOverlay } from "../documents/viewer/DocumentViewerOverlay";
@@ -59,6 +60,22 @@ interface CitationNoticeState {
   turnId: string;
   n: number;
   text: string;
+}
+
+/** The screen's one side-panel slot: a market record (a market citation) or a turn's drafted email.
+ * `focus` is true when the user opened it, false when a draft opened itself on arrival. A draft is
+ * held by its turn id and read back off `turns`, so a panel whose turn is gone (a new chat, another
+ * conversation) simply stops rendering. */
+type SidePanelState =
+  | { kind: "market"; recordId: string; focus: boolean }
+  | { kind: "draft"; turnId: string; focus: boolean };
+
+/** Same breakpoint as `ask.css`: below it the side panel is a full-screen sheet, so opening one
+ * unasked would cover the reply the user is reading. jsdom has no `matchMedia`: treat it as wide. */
+const SIDE_PANEL_BESIDE_CHAT_QUERY = "(min-width: 901px)";
+
+function sidePanelFitsBesideChat(): boolean {
+  return typeof window.matchMedia !== "function" || window.matchMedia(SIDE_PANEL_BESIDE_CHAT_QUERY).matches;
 }
 
 /**
@@ -116,6 +133,12 @@ interface CitationNoticeState {
  * then one 72px-kicker grid per turn), and the screen's own composer pinned at the bottom (accent
  * mark + underlined input + "Ask", the two suggestion chips and "Procurement only · cites or
  * abstains"). Every figure is quoted in `ask.css`'s header comment.
+ *
+ * **Side panel** (the Claude.ai artifact pattern): long, self-contained reply objects never render
+ * in the middle of the thread. A drafted email is a one-line card in its turn and opens in the
+ * right-hand panel (`DraftPanel.tsx`) -- by itself when it arrives live, on click afterwards; a
+ * market citation opens its record in the same slot (`MarketRecordPanel.tsx`). One object at a
+ * time; the chat narrows beside it and keeps working.
  */
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
@@ -154,7 +177,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   // `feedbackSubmittedMessageIds`), so a card never re-opens after "Send".
   const [feedbackDone, setFeedbackDone] = useState<ReadonlySet<string>>(() => new Set());
   const [citationNotice, setCitationNotice] = useState<CitationNoticeState | null>(null);
-  const [marketPanelRecordId, setMarketPanelRecordId] = useState<string | null>(null);
+  const [sidePanel, setSidePanel] = useState<SidePanelState | null>(null);
   const askedInitialQuery = useRef(false);
 
   // AC-1: "the validated-contract count is 0 (from the shell hook)" -- the same hook
@@ -278,12 +301,15 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       // chip is not this one's, so it drops rather than showing a stale supplier/type until the new
       // fetch resolves (AC-3 "not yet resolvable").
       setBoundContractId(null);
+      // Same for the side panel: the previous conversation's draft or market record is not this one's.
+      setSidePanel(null);
     }
   }, [resumeState]);
 
   useEffect(() => {
     if (routeConversationId === null) {
       createdConversationId.current = null;
+      setSidePanel(null);
       setTurns([]);
       setConversationTitle(null);
       setBoundContractId(null);
@@ -294,6 +320,16 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   // moment of asking (a ref, so `ask` itself never re-creates on every turn).
   const turnsRef = useRef<readonly AskTurnView[]>(turns);
   turnsRef.current = turns;
+
+  // A reply that just arrived live. A drafted email opens straight in the side panel (the Claude.ai
+  // artifact behaviour) on a screen wide enough to keep the chat beside it; a resumed conversation
+  // never opens anything by itself.
+  const appendLiveTurn = useCallback((turn: AskTurnView) => {
+    setTurns((previous) => [...previous, turn]);
+    if (turn.role === "raffa" && turn.reply.kind === "draft" && sidePanelFitsBesideChat()) {
+      setSidePanel({ kind: "draft", turnId: turn.id, focus: false });
+    }
+  }, []);
 
   const ask = useCallback(
     (rawText: string, interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null }) => {
@@ -332,7 +368,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
           // `scopeContractId` this call was made with -- that local is about to read `undefined`
           // once `createdConversationId.current` above makes `currentConversationId` non-null.
           setBoundContractId(result.scopeContractId);
-          setTurns((previous) => [...previous, buildRaffaTurnFromReply(nextTurnId(), result.reply)]);
+          appendLiveTurn(buildRaffaTurnFromReply(nextTurnId(), result.reply));
           navigate(`/ask/${result.conversationId}`, { replace: true });
         });
         return;
@@ -346,13 +382,13 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
           result.ok && result.reply
             ? buildRaffaTurnFromReply(nextTurnId(), result.reply)
             : buildErrorTurn(nextTurnId(), result.error ?? TRANSPORT_ERROR_REASON);
-        setTurns((previous) => [...previous, turn]);
+        appendLiveTurn(turn);
       });
     },
     // Depends on workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns
     // a fresh object every call, the same convention ../contracts/contract360/index.tsx#load already
     // establishes for this app.
-    [apiClient, workspace?.id, routeConversationId, scopeContractId, navigate],
+    [apiClient, workspace?.id, routeConversationId, scopeContractId, navigate, appendLiveTurn],
   );
 
   /**
@@ -380,6 +416,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   );
 
   const submittedFromThread = feedbackSubmittedMessageIds(turns);
+
+  const sidePanelView = useMemo(() => {
+    if (sidePanel === null || sidePanel.kind === "market") return sidePanel;
+    const turn = turns.find((candidate) => candidate.id === sidePanel.turnId);
+    return turn?.role === "raffa" && turn.reply.kind === "draft" ? { ...sidePanel, draft: turn.reply.draft } : null;
+  }, [sidePanel, turns]);
 
   // AC-1 / GlobalAskBar's own contract: a query typed into the global Ask bar arrives here as
   // router state and is asked automatically, exactly once, and only while this is genuinely a new
@@ -415,7 +457,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         return;
       }
       if (action.kind === "market-panel") {
-        setMarketPanelRecordId(action.recordId);
+        setSidePanel({ kind: "market", recordId: action.recordId, focus: true });
         return;
       }
       if (action.kind === "external") {
@@ -536,7 +578,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         </div>
       </div>
 
-      <div className={`ask-screen-body${marketPanelRecordId !== null ? " has-panel" : ""}`}>
+      <div className={`ask-screen-body${sidePanelView !== null ? " has-panel" : ""}`}>
         <div className="ask-chat-column">
           <div className="ask-chat-log" role="log" aria-live="polite">
             <div className="ask-thread">
@@ -574,7 +616,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 </div>
               )}
 
-              {turns.map((turn) =>
+              {turns.map((turn, index) =>
                 turn.role === "you" ? (
                   <div key={turn.id} className="ask-message" data-role="you">
                     <div className="ask-message-who">You</div>
@@ -596,6 +638,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                         onInterviewOption={(reply, questionKey, option) => {
                           if (reply.messageId !== null) ask(option.label, { messageId: reply.messageId, questionKey, optionKey: option.key });
                         }}
+                        onOpenDraft={() => setSidePanel({ kind: "draft", turnId: turn.id, focus: true })}
+                        draftOpen={sidePanel?.kind === "draft" && sidePanel.turnId === turn.id}
+                        showFollowUps={index === turns.length - 1 && !asking}
                       />
                       {citationNotice !== null && citationNotice.turnId === turn.id && (
                         <p className="hint" role="status">
@@ -665,8 +710,17 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
           </div>
         </div>
 
-        {marketPanelRecordId !== null && (
-          <MarketRecordPanel apiClient={apiClient} recordId={marketPanelRecordId} onClose={() => setMarketPanelRecordId(null)} />
+        {sidePanelView?.kind === "market" && (
+          <MarketRecordPanel
+            key={sidePanelView.recordId}
+            apiClient={apiClient}
+            recordId={sidePanelView.recordId}
+            focusOnOpen={sidePanelView.focus}
+            onClose={() => setSidePanel(null)}
+          />
+        )}
+        {sidePanelView?.kind === "draft" && (
+          <DraftPanel key={sidePanelView.turnId} draft={sidePanelView.draft} focusOnOpen={sidePanelView.focus} onClose={() => setSidePanel(null)} />
         )}
       </div>
     </div>

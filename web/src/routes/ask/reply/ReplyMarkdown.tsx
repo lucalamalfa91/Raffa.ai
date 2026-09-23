@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { humanizeReplyText } from "./humanizeReplyText";
-import type { ReplyCitation } from "./replyTypes";
+import { getCorpusBadge, type ReplyCitation } from "./replyTypes";
 
 /**
  * Safe markdown -> React elements for a reply's `answerMarkdown` (task text; R-WEB-04;
@@ -22,8 +22,8 @@ import type { ReplyCitation } from "./replyTypes";
  * makes the DoD's "`<script>` in markdown is escaped" true structurally, not by a special case.
  *
  * **`[n]` is a callback, not a DOM anchor.** "Rendered as superscript links to the matching card"
- * (task text) is satisfied by calling the exact same `onOpenCitation` callback `EvidenceCard`'s own
- * click does, not an `href="#some-id"` fragment jump: an anchor id would have to be unique
+ * (task text) is satisfied by a citation chip (`CitationChip`) calling the exact same
+ * `onOpenCitation` callback `EvidenceCard`'s own click does, not an `href="#some-id"` fragment jump: an anchor id would have to be unique
  * page-wide, but `n` is only unique *within one reply* (this file's own `ReplyCitation.n` doc
  * comment) -- a real conversation renders many replies at once, each restarting citation numbering
  * from 1, so a page-global id would collide the moment more than one reply is on screen. Calling
@@ -82,9 +82,57 @@ export function splitMarkdownBlocks(source: string): MarkdownBlock[] {
     .filter((block) => (block.type === "list" ? block.items.length > 0 : block.text.length > 0));
 }
 
+/** A hover preview quotes at most this many characters of the cited passage. */
+export const CITATION_PREVIEW_LENGTH = 160;
+
+function truncatePreview(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > CITATION_PREVIEW_LENGTH ? `${flat.slice(0, CITATION_PREVIEW_LENGTH).trimEnd()}…` : flat;
+}
+
+/**
+ * One inline `[n]` marker, in the Claude.ai citation-chip shape: a small muted chip carrying the
+ * number, and -- while it is hovered or focused -- a preview card with the source's kind, title,
+ * location and the quoted passage, so the reader can check a claim without leaving the sentence.
+ * Clicking opens the source through the same callback as the sources list. The preview is mounted
+ * only while shown (no duplicate text in the transcript), stays open while the pointer is on it,
+ * and Escape dismisses it (WCAG 1.4.13).
+ */
+function CitationChip({ citation, onOpenCitation }: { citation: ReplyCitation; onOpenCitation: ReplyMarkdownProps["onOpenCitation"] }) {
+  const [preview, setPreview] = useState(false);
+  const previewId = useId();
+
+  return (
+    <span className="reply-citation" onMouseEnter={() => setPreview(true)} onMouseLeave={() => setPreview(false)}>
+      <button
+        type="button"
+        className="reply-citation-ref"
+        aria-label={`Source ${citation.n}: ${citation.title}`}
+        aria-describedby={preview ? previewId : undefined}
+        onFocus={() => setPreview(true)}
+        onBlur={() => setPreview(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setPreview(false);
+        }}
+        onClick={() => onOpenCitation(citation)}
+      >
+        {citation.n}
+      </button>
+      {preview && (
+        <span className="reply-citation-preview" role="tooltip" id={previewId}>
+          <span className="reply-citation-preview-kind">{getCorpusBadge(citation.corpus).label}</span>
+          <span className="reply-citation-preview-title">{citation.title}</span>
+          {citation.subtitle && <span className="reply-citation-preview-subtitle">{citation.subtitle}</span>}
+          {citation.snippet && <span className="reply-citation-preview-snippet">{truncatePreview(citation.snippet)}</span>}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /**
  * Inline pass over one block's text (or one list item): `**bold**` -> `<strong>`, `[n]` -> a
- * superscript link when `n` has a real citation, else plain superscript text. Everything else is
+ * citation chip (`CitationChip`) when `n` has a real citation, else plain superscript text. Everything else is
  * emitted as a plain string child -- see this file's own header comment for why that alone is what
  * keeps raw HTML from ever executing. Not recursive: a citation marker nested inside `**bold**` is
  * not re-scanned, matching the persona prompt's own narration style (requirements.md §6:
@@ -111,18 +159,7 @@ export function renderInline(text: string, citations: readonly ReplyCitation[], 
       const citation = citationsByN.get(n);
       nodes.push(
         citation ? (
-          <sup key={`${keyPrefix}-c-${tokenIndex}`}>
-            <a
-              href="#"
-              className="reply-citation-ref"
-              onClick={(event) => {
-                event.preventDefault();
-                onOpenCitation(citation);
-              }}
-            >
-              [{n}]
-            </a>
-          </sup>
+          <CitationChip key={`${keyPrefix}-c-${tokenIndex}`} citation={citation} onOpenCitation={onOpenCitation} />
         ) : (
           <sup key={`${keyPrefix}-c-${tokenIndex}`}>[{n}]</sup>
         ),

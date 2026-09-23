@@ -1,10 +1,11 @@
 import ActionRow from "./ActionRow";
-import DraftCard from "./DraftCard";
+import ArtifactCard from "./ArtifactCard";
 import EvidenceCard from "./EvidenceCard";
 import FeedbackCard from "./FeedbackCard";
 import InterviewBlock from "./InterviewBlock";
 import ReplyMarkdown from "./ReplyMarkdown";
-import type { FeedbackAnswers, FeedbackOffer, InterviewOption, InterviewReply, Reply, ReplyCitation } from "./replyTypes";
+import type { FeedbackAnswers, FeedbackOffer, InterviewOption, InterviewReply, Reply, ReplyCitation, ReplyDraft } from "./replyTypes";
+import { DRAFT_CARD_TITLE } from "../askViewModel";
 import "./reply.css";
 
 export interface ReplyBodyProps {
@@ -29,21 +30,32 @@ export interface ReplyBodyProps {
   /** `interview`-only (ADR-030): the user picked an option. Optional so the pure component still
    * renders an interview read-only (a resumed, already-answered one) without a handler. */
   onInterviewOption?: (reply: InterviewReply, questionKey: string, option: InterviewOption) => void;
+  /** `draft`-only: the email card was clicked -- the screen opens the draft in its side panel
+   * (`../DraftPanel.tsx`). Absent, the card renders as a static summary. */
+  onOpenDraft?: (draft: ReplyDraft) => void;
+  /** `draft`-only: this turn's draft is the one the side panel shows right now. */
+  draftOpen?: boolean;
+  /** False on every turn but the latest: suggested next questions belong to where the conversation
+   * is now, not to its history (the Claude.ai rule -- nothing to click on stale turns). */
+  showFollowUps?: boolean;
 }
 
-/** The "Next" row of follow-up question chips, shared by `answer`, `abstain`, `draft` and a
- * capability-gap `redirect` (ADR-030). */
+/** The follow-up question chips, shared by `answer`, `abstain`, `draft` and a capability-gap
+ * `redirect` (ADR-030): quiet one-line suggestions at the end of the latest turn; clicking one asks
+ * it. */
 function FollowUps({ questions, onFollowUp }: { questions: readonly string[]; onFollowUp: (question: string) => void }) {
   if (questions.length === 0) {
     return null;
   }
 
   return (
-    <div className="reply-followups">
-      <span className="reply-followups-label">Next</span>
+    <div className="reply-followups" role="group" aria-label="Suggested questions">
       {questions.map((question) => (
         <button key={question} type="button" className="reply-followup" onClick={() => onFollowUp(question)}>
-          {question} →
+          <span className="reply-followup-text">{question}</span>
+          <span className="reply-followup-arrow" aria-hidden="true">
+            ↗
+          </span>
         </button>
       ))}
     </div>
@@ -52,7 +64,8 @@ function FollowUps({ questions, onFollowUp }: { questions: readonly string[]; on
 
 /**
  * Composes `kind` -> layout (R-WEB-04; requirements.md §6; ADR-024). `answer` uses the shared
- * evidence card; `draft` adds the verbatim email card and feedback card; `redirect`/`refusal`
+ * evidence card; `draft` adds the email's artifact card (the email opens in the side panel) and
+ * the feedback card; `redirect`/`refusal`
  * keep one CTA; `interview` renders clickable options; `abstain` is Raffa's own way forward when no
  * grounded answer exists -- the same prose as any reply, never a "cannot determine" banner (the
  * accent-left "I don't have data I trust enough to answer." block read as an error, and persona
@@ -72,6 +85,9 @@ export default function ReplyBody({
   onSubmitFeedback,
   feedbackDone,
   onInterviewOption,
+  onOpenDraft,
+  draftOpen = false,
+  showFollowUps = true,
 }: ReplyBodyProps) {
   // ADR-030 D5: the feedback card renders only when the turn carries an offer, has a real server
   // id to submit against, the screen wired a submit path, and the offer was not answered yet.
@@ -79,6 +95,8 @@ export default function ReplyBody({
     offer && messageId && onSubmitFeedback && !feedbackDone ? (
       <FeedbackCard offer={offer} onSubmit={(answers) => onSubmitFeedback(messageId, answers)} />
     ) : null;
+  const followUps = (questions: readonly string[] | undefined) =>
+    showFollowUps ? <FollowUps questions={questions ?? []} onFollowUp={onFollowUp} /> : null;
   switch (reply.kind) {
     case "answer":
       return (
@@ -99,19 +117,25 @@ export default function ReplyBody({
             reply.actions.length > 0 && <ActionRow actions={reply.actions} />
           )}
 
-          <FollowUps questions={reply.followUps} onFollowUp={onFollowUp} />
+          {followUps(reply.followUps)}
         </div>
       );
 
     case "draft":
-      // ADR-030 D2: the honest preface, the email card (verbatim + "Copy email"), the pack items
-      // the email was written from, the actions, the follow-ups, then the feedback offer. Never
-      // the abstain block -- the draft path cannot abstain.
+      // ADR-030 D2: the honest preface, the email as an artifact card (the email itself, verbatim
+      // with "Copy email", opens in the screen's side panel), the pack items the email was written
+      // from, the actions, the follow-ups, then the feedback offer. Never the abstain block -- the
+      // draft path cannot abstain.
       return (
         <div className="reply-body" data-reply-kind="draft">
           <ReplyMarkdown text={reply.answerMarkdown} citations={reply.citations} onOpenCitation={onOpenCitation} />
 
-          <DraftCard draft={reply.draft} />
+          <ArtifactCard
+            title={reply.draft.subject}
+            typeLabel={DRAFT_CARD_TITLE}
+            active={draftOpen}
+            onOpen={onOpenDraft ? () => onOpenDraft(reply.draft) : undefined}
+          />
 
           {reply.citations.length > 0 ? (
             <div className="reply-cards">
@@ -121,7 +145,7 @@ export default function ReplyBody({
             reply.actions.length > 0 && <ActionRow actions={reply.actions} />
           )}
 
-          <FollowUps questions={reply.followUps} onFollowUp={onFollowUp} />
+          {followUps(reply.followUps)}
 
           {feedbackCard(reply.feedbackOffer)}
         </div>
@@ -137,7 +161,7 @@ export default function ReplyBody({
           {reply.actions.length > 0 && <ActionRow actions={reply.actions.slice(0, 1)} />}
           {/* ADR-030: a capability-gap redirect ("which contract?") offers one supplier per chip
               and the feedback card; every other redirect/refusal carries neither. */}
-          <FollowUps questions={reply.followUps ?? []} onFollowUp={onFollowUp} />
+          {followUps(reply.followUps)}
           {feedbackCard(reply.feedbackOffer)}
         </div>
       );
@@ -166,7 +190,7 @@ export default function ReplyBody({
             <ActionRow actions={reply.actions.map((action) => ({ ...action, kind: "secondary" }))} />
           )}
           {/* A gap is never a dead end: the server's next-step questions, when it sent any. */}
-          <FollowUps questions={reply.followUps ?? []} onFollowUp={onFollowUp} />
+          {followUps(reply.followUps)}
         </div>
       );
 
