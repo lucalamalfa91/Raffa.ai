@@ -159,6 +159,8 @@ function mockApiClient(): ApiClient {
     postMessage: vi.fn(),
     postConversationFeedback: vi.fn(),
     deleteConversation: vi.fn(),
+    renameConversation: vi.fn(),
+    restoreConversation: vi.fn(),
     getCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, catalog: { version: "test", capabilities: [] }, error: null }),
     getMarketRecord: vi.fn(),
     getQuoteBenchmarkHistory: vi.fn(),

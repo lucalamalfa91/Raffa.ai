@@ -129,6 +129,80 @@ public sealed class ConversationsEndpointTests : IClassFixture<RaffaApiFactory>
     }
 
     [Fact]
+    public async Task List_archived_that_is_not_a_boolean_returns_400()
+    {
+        var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/conversations?archived=maybe");
+        request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
+        request.Headers.Add("X-User-Id", "alice@example.com");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("archived", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Restore_invalid_conversation_id_returns_400()
+    {
+        var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/conversations/not-a-guid/restore");
+        request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
+        request.Headers.Add("X-User-Id", "alice@example.com");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rename_invalid_conversation_id_returns_400()
+    {
+        var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Patch, "/api/conversations/not-a-guid")
+        {
+            Content = JsonContent.Create(new { title = "Renewals" }),
+        };
+        request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
+        request.Headers.Add("X-User-Id", "alice@example.com");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rename_title_longer_than_48_characters_returns_400_before_any_database_call()
+    {
+        var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/conversations/{Guid.NewGuid()}")
+        {
+            Content = JsonContent.Create(new { title = new string('x', 49) }),
+        };
+        request.Headers.Add("X-Tenant-Id", Guid.NewGuid().ToString());
+        request.Headers.Add("X-User-Id", "alice@example.com");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("48", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Rename_missing_tenant_header_returns_400()
+    {
+        var client = _factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/conversations/{Guid.NewGuid()}")
+        {
+            Content = JsonContent.Create(new { title = "Renewals" }),
+        };
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_missing_tenant_header_returns_400()
     {
         var client = _factory.CreateClient();

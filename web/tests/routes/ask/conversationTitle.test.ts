@@ -5,6 +5,7 @@ import {
   filterConversations,
   formatConversationTitle,
   indexPortfolioByContractId,
+  normalizeConversationName,
 } from "../../../src/routes/ask/conversationTitle";
 import type { PortfolioListItem } from "../../../src/api/client";
 
@@ -28,6 +29,20 @@ function portfolioItem(overrides: Partial<PortfolioListItem> = {}): PortfolioLis
 }
 
 describe("conversationTitle", () => {
+  it("shows a name the user gave the chat ahead of the bound supplier and the fallback", () => {
+    const portfolio = indexPortfolioByContractId([portfolioItem()]);
+    expect(conversationDisplayTitle({ scopeContractId: "contract-1", customTitle: "Salesforce renewal" }, portfolio)).toBe("Salesforce renewal");
+    expect(conversationDisplayTitle({ scopeContractId: null, customTitle: "Q3 savings" }, new Map())).toBe("Q3 savings");
+    expect(conversationDisplayTitle({ scopeContractId: "contract-1", customTitle: "   " }, portfolio)).toBe("Salesforce — MSA");
+    expect(conversationDisplayTitle({ scopeContractId: null, customTitle: null }, new Map())).toBe(ASK_FALLBACK_TITLE);
+  });
+
+  it("normalizes a chat name the way the server stores it", () => {
+    expect(normalizeConversationName("  Atlassian \n  renewal ")).toBe("Atlassian renewal");
+    expect(normalizeConversationName("   ")).toBeNull();
+    expect(normalizeConversationName(null)).toBeNull();
+  });
+
   it("formats supplier and contract as an em-dash pair", () => {
     expect(formatConversationTitle({ supplierName: "Salesforce", contractLabel: "MSA" })).toBe(
       "Salesforce — MSA",

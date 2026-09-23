@@ -12,6 +12,10 @@ import AskOffState from "./AskOffState";
 import MarketRecordPanel from "./MarketRecordPanel";
 import DraftPanel from "./DraftPanel";
 import { useConversation } from "./useConversation";
+import { useAskSessionStore, useAskSessionsSnapshot } from "./AskSessionsContext";
+import { customTitleFor, draftSessionKey, resolveSessionKey } from "./askSessions";
+import ConversationRenameField from "./ConversationRenameField";
+import { requestReplyNotificationPermission } from "./AskReplyNotifier";
 import { parseDocumentViewerHref } from "../documents/viewer/documentViewerViewModel";
 import { useDocumentViewerOverlay } from "../documents/viewer/DocumentViewerOverlay";
 import {
@@ -22,24 +26,13 @@ import {
   COMPOSER_NOTE,
   NEW_CHAT_INTRO,
   THINKING_COPY,
-  TRANSPORT_ERROR_REASON,
-  buildRaffaTurnFromMessage,
-  buildInterviewAnswerRequest,
-  buildRaffaTurnFromReply,
   feedbackSubmittedMessageIds,
-  buildErrorTurn,
   buildOffCopy,
   buildScopedBrief,
   buildScopeShort,
   buildStarterGroups,
-  buildYouTurn,
-  createConversationAndAsk,
-  markInterviewAnswered,
   pendingConsent,
-  pendingInterview,
-  deriveConversationTitle,
   fetchBoundContractChip,
-  nextTurnId,
   parseScopeContractId,
   resolveAskOffReason,
   resolveCitationOpenAction,
@@ -55,6 +48,9 @@ import "./ask.css";
 export interface AskRouteProps {
   apiClient: ApiClient;
 }
+
+const NO_TURNS: readonly AskTurnView[] = [];
+const NO_FEEDBACK: ReadonlySet<string> = new Set();
 
 interface CitationNoticeState {
   turnId: string;
@@ -88,23 +84,23 @@ function sidePanelFitsBesideChat(): boolean {
  * (`./reply/ReplyBody.tsx`) in place of the old `ChatMessage.tsx` (deleted by this task).
  *
  * **State machine, one screen, four faces**: off (task text point (1), `useValidatedContractCount`
- * -- "from the shell hook" -- gates it); new chat / blank (no turns yet, `routeConversationId` and
- * `createdConversationId.current` both null); conversation (at least one turn exists, whether just
- * asked or resumed); resume (`routeConversationId` names a conversation this screen has not yet
- * loaded turns for -- `useConversation` fetches it). "New chat" and "conversation" are not two
+ * -- "from the shell hook" -- gates it); new chat / blank (no turns yet: a draft session, or none
+ * at all); conversation (at least one turn exists, whether just asked or resumed); resume
+ * (`routeConversationId` names a conversation this tab does not hold yet -- `useConversation`
+ * fetches it). "New chat" and "conversation" are not two
  * components, only `turns.length === 0` vs `> 0` inside this one render -- the same "state, not a
  * route" shape the V1 screen already used for its own empty/answered/abstain faces.
  *
- * **One id, two sources.** `createdConversationId` (a ref, not state -- it must survive the render
- * that follows `ask()`'s own `setTurns` without waiting for React to flush) remembers a
- * conversation *this component itself* just created via `createConversationAndAsk`, so a second
- * message typed before the resulting `navigate(...)` call's own re-render lands still posts to the
- * right conversation, and so `useConversation` below is never asked to re-fetch the very thing this
- * screen just built turns for optimistically (which would flash a loading skeleton over content
- * already on screen for no reason). `routeConversationId` (the `:conversationId` route param) is
- * the other source -- resuming a link/rail click. `currentConversationId` is whichever is set;
- * `resumeTargetId` is the route id *only* when it is not the one this screen already created, which
- * is what actually tells `useConversation` whether to fetch at all.
+ * **Sessions, not component state.** The thread, the "Raffa is answering" flag, the title and the
+ * bound contract of every conversation live in the shell's `askSessions.ts` store, keyed by
+ * conversation id (or, for a new chat not created yet, by a draft key per `/ask` history entry).
+ * This screen only shows one of them: a question keeps running after the user leaves for another
+ * chat, a new chat or another screen, and its reply lands in the conversation that asked it --
+ * never in whatever thread happens to be on screen -- which is what lets two chats run in parallel.
+ * `AskReplyNotifier.tsx` and the rail report a reply that lands while its chat is not on screen.
+ * `useConversation` is only asked to fetch a conversation this tab does not hold yet (a link, a
+ * reload, a rail click on an older chat), so a chat this screen just built is never re-fetched over
+ * content already on screen.
  *
  * Task E25/F06/US01/T01 (NW-60, wave w18): `AppShell.tsx` stops mounting `GlobalAskBar` on this
  * route (it duplicated this screen's own input), so this component now also owns the Cmd/Ctrl+K
@@ -145,40 +141,85 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const navigate = useNavigate();
   const params = useParams<{ conversationId?: string }>();
   const workspace = loadCurrentWorkspace();
+  const store = useAskSessionStore();
+  const sessions = useAskSessionsSnapshot(store);
 
   const routeConversationId = params.conversationId ?? null;
-  const createdConversationId = useRef<string | null>(null);
-  const currentConversationId = routeConversationId ?? createdConversationId.current;
-  const resumeTargetId = routeConversationId !== null && routeConversationId !== createdConversationId.current ? routeConversationId : null;
+  // `/ask/<id>` shows that conversation's session; a plain `/ask` shows this history entry's own
+  // draft, so "+ New chat" (a new entry) is always blank even while another chat is still answering.
+  const routeSessionKey = routeConversationId ?? draftSessionKey(location.key);
+  const sessionKey = resolveSessionKey(sessions, routeSessionKey);
+  const session = sessions.sessions.get(sessionKey) ?? null;
+  const currentConversationId = session?.conversationId ?? routeConversationId;
 
+  const resumeTargetId = routeConversationId !== null && session === null ? routeConversationId : null;
   const { state: resumeState } = useConversation(apiClient, workspace?.id, resumeTargetId);
+  useEffect(() => {
+    if (resumeState.phase !== "ready") return;
+    // AC-2: the bound contract is rebuilt from the conversation detail wire, so the chip survives
+    // resume -- a resumed URL carries no `?scope=` at all, only `/ask/<conversationId>`.
+    store.hydrate(resumeState.conversation.id, {
+      turns: resumeState.turns,
+      title: resumeState.conversation.title,
+      customTitle: resumeState.conversation.customTitle ?? null,
+      boundContractId: resumeState.conversation.scopeContractId,
+    });
+  }, [store, resumeState]);
 
-  const [turns, setTurns] = useState<readonly AskTurnView[]>([]);
-  const [boundTitle, setBoundTitle] = useState<string | null>(null);
+  // AC-1 "the URL becomes /ask/<conversationId>": the draft on screen was just created on the
+  // server, so follow it. A draft the user already left is not followed -- it shows up in the rail.
+  const promotedConversationId = routeConversationId === null && sessionKey !== routeSessionKey ? sessionKey : null;
+  useEffect(() => {
+    if (promotedConversationId !== null) navigate(`/ask/${promotedConversationId}`, { replace: true });
+  }, [promotedConversationId, navigate]);
+
+  // Which session is on screen decides whether a landing reply counts as unread.
+  useEffect(() => {
+    store.setViewing(sessionKey);
+  }, [store, sessionKey]);
+  useEffect(() => () => store.setViewing(null), [store]);
+
+  const turns = session?.turns ?? NO_TURNS;
+  const asking = session?.pending ?? false;
   // `convTitle`: the conversation's own title -- the server's on resume, the first question's
-  // (`deriveConversationTitle`, the server's own rule) while this screen created it -- so the
-  // header reads the same before and after a reload.
-  const [conversationTitle, setConversationTitle] = useState<string | null>(null);
-  const supplierNames = useValidatedSuppliers(apiClient, workspace?.id);
+  // (`deriveConversationTitle`, the server's own rule) while this tab created it -- so the header
+  // reads the same before and after a reload.
+  const conversationTitle = session?.title ?? null;
+  // NW-78 (wave w19): the durable source of the persistent binding chip -- this conversation's own
+  // persisted `scopeContractId` (create response or resumed detail), **never** the transient
+  // `scopeContractId` local further down, which is only "what to send" pre-creation.
+  const boundContractId = session?.boundContractId ?? null;
 
-  // NW-78 (wave w19): the persistent binding chip's own two-stage state. `boundContractId` is the
-  // durable source -- this conversation's own persisted `scopeContractId`, read off the create
-  // response or the resumed conversation detail below, **never** the transient `scopeContractId`
-  // local further down (that one is only "what to send" pre-creation and reverts to `undefined`
-  // the render after `createdConversationId.current` is set -- see this file's own header comment).
-  // `boundContractChip` is what the 360-header fetch resolved that id to; `null` leaves the chip
-  // unrendered (AC-3), whether nothing is bound yet or the fetch has not settled.
-  const [boundContractId, setBoundContractId] = useState<string | null>(null);
+  const [boundTitle, setBoundTitle] = useState<string | null>(null);
+  const supplierNames = useValidatedSuppliers(apiClient, workspace?.id);
+  // What the 360-header fetch resolved `boundContractId` to; `null` leaves the chip unrendered
+  // (AC-3), whether nothing is bound yet or the fetch has not settled.
   const [boundContractChip, setBoundContractChip] = useState<BoundContractChip | null>(null);
 
-  const [question, setQuestion] = useState("");
-  const [asking, setAsking] = useState(false);
-  // ADR-030 D5: the offers answered in this session (the resumed ones come from the thread itself,
-  // `feedbackSubmittedMessageIds`), so a card never re-opens after "Send".
-  const [feedbackDone, setFeedbackDone] = useState<ReadonlySet<string>>(() => new Set());
+  const [question, setQuestion] = useState(() => store.composerText(sessionKey));
   const [citationNotice, setCitationNotice] = useState<CitationNoticeState | null>(null);
   const [sidePanel, setSidePanel] = useState<SidePanelState | null>(null);
-  const askedInitialQuery = useRef(false);
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [renameFailed, setRenameFailed] = useState(false);
+
+  // Switching chats swaps the composer's unsent text for that chat's own, and drops the notice and
+  // the side panel opened on the previous thread. A draft chat promoted to its new conversation id
+  // is the same thread: its panel (a draft that just opened itself) stays.
+  const questionRef = useRef(question);
+  questionRef.current = question;
+  const shownSessionKey = useRef(sessionKey);
+  useEffect(() => {
+    if (shownSessionKey.current === sessionKey) return;
+    const promoted = resolveSessionKey(store.getSnapshot(), shownSessionKey.current) === sessionKey;
+    store.saveComposerText(shownSessionKey.current, questionRef.current);
+    shownSessionKey.current = sessionKey;
+    setQuestion(store.composerText(sessionKey));
+    setCitationNotice(null);
+    if (!promoted) setSidePanel(null);
+    setRenamingTitle(false);
+    setRenameFailed(false);
+  }, [store, sessionKey]);
+  useEffect(() => () => store.saveComposerText(shownSessionKey.current, questionRef.current), [store]);
 
   // AC-1: "the validated-contract count is 0 (from the shell hook)" -- the same hook
   // AppShell.tsx/GlobalAskBar.tsx already share for the identical gate, never re-derived here.
@@ -227,46 +268,41 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const scopeContractId = currentConversationId === null ? parseScopeContractId(searchParams.get("scope")) : undefined;
 
   // Bound chat title is supplier + contract (never the question, never a guid). Scoped new chats
-  // and resumed conversations both resolve it from GET /api/contracts/{id}.
-  const lastScopeRef = useRef<string | null>(null);
-  if (scopeContractId !== undefined) lastScopeRef.current = scopeContractId;
-  if (resumeState.phase === "ready") lastScopeRef.current = resumeState.conversation.scopeContractId;
-
-  const boundScopeId =
-    resumeState.phase === "ready"
-      ? resumeState.conversation.scopeContractId
-      : (scopeContractId ?? lastScopeRef.current);
+  // read it off `?scope=`, created and resumed conversations off their persisted scope; both
+  // resolve it from GET /api/contracts/{id}.
+  const boundScopeId = scopeContractId ?? boundContractId;
 
   const [scopedSupplierName, setScopedSupplierName] = useState<string | null>(null);
   useEffect(() => {
-    if (boundScopeId === null || boundScopeId === undefined || !workspace) {
-      setScopedSupplierName(null);
-      setBoundTitle(null);
-      return;
-    }
+    setScopedSupplierName(null);
+    setBoundTitle(null);
+    if (boundScopeId === null || !workspace) return;
+    // A reply for the previous chat's contract must never retitle the chat now on screen.
+    let current = true;
     void apiClient.getContract360(workspace.id, boundScopeId).then((result) => {
-      if (!result.ok || !result.contract) {
-        setScopedSupplierName(null);
-        setBoundTitle(null);
-        return;
-      }
+      if (!current || !result.ok || !result.contract) return;
       const { supplierName, type } = result.contract.header;
       const name = supplierName !== null && supplierName.trim() !== "" ? supplierName : null;
       setScopedSupplierName(name);
       setBoundTitle(formatConversationTitle({ supplierName: name, contractLabel: getContractTypeLabel(type) }));
     });
+    return () => {
+      current = false;
+    };
   }, [apiClient, workspace?.id, boundScopeId]);
 
-  // NW-78: the persistent chip's own supplier+type fetch, independent of `scopedSupplierName`
-  // above (that effect only ever runs pre-creation, off the transient `?scope=`) -- this one runs
-  // off `boundContractId`, the durable id, for as long as this conversation is scoped, turns or no
-  // turns, freshly created or resumed.
+  // NW-78: the persistent chip's own supplier+type fetch, off `boundContractId`, the durable id,
+  // for as long as this conversation is scoped, turns or no turns, freshly created or resumed.
   useEffect(() => {
-    if (boundContractId === null || !workspace) {
-      setBoundContractChip(null);
-      return;
-    }
-    void fetchBoundContractChip(apiClient, workspace.id, boundContractId).then(setBoundContractChip);
+    setBoundContractChip(null);
+    if (boundContractId === null || !workspace) return;
+    let current = true;
+    void fetchBoundContractChip(apiClient, workspace.id, boundContractId).then((chip) => {
+      if (current) setBoundContractChip(chip);
+    });
+    return () => {
+      current = false;
+    };
   }, [apiClient, workspace?.id, boundContractId]);
 
   // Task text point (2): "two suggestion chips from GET /api/capabilities (suggestionsFor("ask"))".
@@ -287,134 +323,68 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   // this is recomputed every render rather than memoized.
   const scopedBrief = buildScopedBrief(scopedSupplierName);
 
-  // Resuming (or navigating back to a fresh /ask) seeds/clears this screen's own turn list.
-  useEffect(() => {
-    if (resumeState.phase === "ready") {
-      setTurns(resumeState.turns);
-      setConversationTitle(resumeState.conversation.title);
-      // AC-2: rebuilt from the conversation detail wire, so the chip survives resume -- a resumed
-      // URL carries no `?scope=` at all, only `/ask/<conversationId>`.
-      setBoundContractId(resumeState.conversation.scopeContractId);
-    } else if (resumeState.phase === "loading") {
-      // A rail click straight from one resumed conversation to another re-enters "loading" without
-      // ever passing through routeConversationId === null below -- the previous conversation's
-      // chip is not this one's, so it drops rather than showing a stale supplier/type until the new
-      // fetch resolves (AC-3 "not yet resolvable").
-      setBoundContractId(null);
-      // Same for the side panel: the previous conversation's draft or market record is not this one's.
-      setSidePanel(null);
-    }
-  }, [resumeState]);
+  // A drafted email that lands on the chat on screen opens itself in the side panel (the Claude.ai
+  // artifact behaviour) on a screen wide enough to keep the chat beside it -- never for a reply that
+  // landed on a chat the user left, never on resume.
+  useEffect(
+    () =>
+      store.onReply((event) => {
+        if (!event.seen || event.conversationId === null || !sidePanelFitsBesideChat()) return;
+        const landed = store.getSnapshot().sessions.get(event.conversationId);
+        const last = landed?.turns[landed.turns.length - 1];
+        if (last?.role === "raffa" && last.reply.kind === "draft") setSidePanel({ kind: "draft", turnId: last.id, focus: false });
+      }),
+    [store],
+  );
 
-  useEffect(() => {
-    if (routeConversationId === null) {
-      createdConversationId.current = null;
-      setSidePanel(null);
-      setTurns([]);
-      setConversationTitle(null);
-      setBoundContractId(null);
-    }
-  }, [routeConversationId]);
-
-  // ADR-030: the interview the next message answers is read off the turns on screen at the
-  // moment of asking (a ref, so `ask` itself never re-creates on every turn).
-  const turnsRef = useRef<readonly AskTurnView[]>(turns);
-  turnsRef.current = turns;
-
-  // A reply that just arrived live. A drafted email opens straight in the side panel (the Claude.ai
-  // artifact behaviour) on a screen wide enough to keep the chat beside it; a resumed conversation
-  // never opens anything by itself.
-  const appendLiveTurn = useCallback((turn: AskTurnView) => {
-    setTurns((previous) => [...previous, turn]);
-    if (turn.role === "raffa" && turn.reply.kind === "draft" && sidePanelFitsBesideChat()) {
-      setSidePanel({ kind: "draft", turnId: turn.id, focus: false });
-    }
-  }, []);
-
+  // ADR-030: the interview a typed message answers, the create-then-ask sequence and the reply
+  // itself are all the store's (`askSessions.ts#send`), so the reply lands in this session even if
+  // the user has moved on. A session still answering refuses a second question.
   const ask = useCallback(
     (rawText: string, interviewAnswer?: { messageId: string; questionKey: string; optionKey: string | null }) => {
       const text = rawText.trim();
       if (text === "" || !workspace) return;
 
-      // An explicit option click, else the pending interview a typed answer implicitly replies to.
-      const pending = interviewAnswer ?? (() => {
-        const found = pendingInterview(turnsRef.current);
-        return found ? { ...found, optionKey: null } : null;
-      })();
-      if (pending !== null) {
-        setTurns((previous) => markInterviewAnswered(previous, pending.messageId));
-      }
+      const sent = store.send({ key: sessionKey, apiClient, tenantId: workspace.id, text, interviewAnswer, scopeContractId });
+      if (sent === null) return;
 
-      setTurns((previous) => [...previous, buildYouTurn(nextTurnId(), text)]);
-      setConversationTitle((current) => current ?? deriveConversationTitle(text));
+      // Inside the click/Enter that sent the question -- the only moment a browser lets a page ask.
+      requestReplyNotificationPermission();
       setQuestion("");
       setCitationNotice(null);
-      setAsking(true);
-
-      const openConversationId = routeConversationId ?? createdConversationId.current;
-
-      if (openConversationId === null) {
-        // AC-1/task text point (2): "a question creates a conversation ... then posts the message";
-        // "the URL becomes /ask/<conversationId>".
-        void createConversationAndAsk(apiClient, workspace.id, text, scopeContractId).then((result) => {
-          setAsking(false);
-          if (!result.ok) {
-            setTurns((previous) => [...previous, buildErrorTurn(nextTurnId(), result.reason)]);
-            return;
-          }
-          createdConversationId.current = result.conversationId;
-          // AC-1/AC-2: sourced from the create response's own `conversation.scopeContractId`
-          // (askViewModel.ts#createConversationAndAsk's own doc comment), not the local
-          // `scopeContractId` this call was made with -- that local is about to read `undefined`
-          // once `createdConversationId.current` above makes `currentConversationId` non-null.
-          setBoundContractId(result.scopeContractId);
-          appendLiveTurn(buildRaffaTurnFromReply(nextTurnId(), result.reply));
-          navigate(`/ask/${result.conversationId}`, { replace: true });
-        });
-        return;
-      }
-
-      const request = pending === null ? { question: text } : buildInterviewAnswerRequest(text, pending.messageId, pending.questionKey, pending.optionKey);
-
-      void apiClient.postMessage(workspace.id, openConversationId, request).then((result) => {
-        setAsking(false);
-        const turn =
-          result.ok && result.reply
-            ? buildRaffaTurnFromReply(nextTurnId(), result.reply)
-            : buildErrorTurn(nextTurnId(), result.error ?? TRANSPORT_ERROR_REASON);
-        appendLiveTurn(turn);
-      });
     },
     // Depends on workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns
     // a fresh object every call, the same convention ../contracts/contract360/index.tsx#load already
     // establishes for this app.
-    [apiClient, workspace?.id, routeConversationId, scopeContractId, navigate, appendLiveTurn],
+    [store, sessionKey, apiClient, workspace?.id, scopeContractId],
   );
 
   /**
    * ADR-030 D5: the feedback card's one call. On success the server has stored the request,
-   * opened the issue when configured, and appended the confirmation turn -- appended here too so
-   * the live thread matches what a resume would show. A 409 (already answered) is also `ok`, with
-   * no new turn.
+   * opened the issue when configured, and appended the confirmation turn -- appended to this
+   * session too so the live thread matches what a resume would show. A 409 (already answered) is
+   * also `ok`, with no new turn.
    */
   const submitFeedback = useCallback(
-    async (messageId: string, answers: FeedbackAnswers): Promise<{ ok: boolean }> => {
-      const openConversationId = routeConversationId ?? createdConversationId.current;
-      if (!workspace || openConversationId === null) return { ok: false };
-
-      const result = await apiClient.postConversationFeedback(workspace.id, openConversationId, { messageId, answers });
-      if (!result.ok) return { ok: false };
-
-      setFeedbackDone((previous) => new Set(previous).add(messageId));
-      const message = result.result?.message ?? null;
-      if (message) {
-        setTurns((previous) => [...previous, buildRaffaTurnFromMessage(message)]);
-      }
-      return { ok: true };
-    },
-    [apiClient, workspace?.id, routeConversationId],
+    (messageId: string, answers: FeedbackAnswers): Promise<{ ok: boolean }> =>
+      workspace ? store.submitFeedback({ key: sessionKey, apiClient, tenantId: workspace.id, messageId, answers }) : Promise.resolve({ ok: false }),
+    [store, sessionKey, apiClient, workspace?.id],
   );
 
+  // A chat that exists on the server can be renamed from its header (the rail does the same).
+  const renameConversation = useCallback(
+    (name: string) => {
+      setRenamingTitle(false);
+      setRenameFailed(false);
+      if (!workspace || currentConversationId === null) return;
+      void store.rename({ apiClient, tenantId: workspace.id, conversationId: currentConversationId, name }).then((result) => {
+        if (!result.ok) setRenameFailed(true);
+      });
+    },
+    [store, apiClient, workspace?.id, currentConversationId],
+  );
+
+  const feedbackDone = session?.feedbackDone ?? NO_FEEDBACK;
   const submittedFromThread = feedbackSubmittedMessageIds(turns);
 
   const sidePanelView = useMemo(() => {
@@ -425,15 +395,15 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
 
   // AC-1 / GlobalAskBar's own contract: a query typed into the global Ask bar arrives here as
   // router state and is asked automatically, exactly once, and only while this is genuinely a new
-  // chat (never against a conversation already being resumed).
+  // chat (never against a conversation already being resumed). "Once" is per history entry: the
+  // draft session exists from the first send on (and keeps resolving to the conversation it became).
   useEffect(() => {
-    if (askedInitialQuery.current) return;
     const seedQuery = (location.state as { query?: string } | null)?.query;
-    if (typeof seedQuery === "string" && seedQuery.trim() !== "" && currentConversationId === null) {
-      askedInitialQuery.current = true;
-      ask(seedQuery);
-    }
-  }, [location.state, ask, currentConversationId]);
+    if (routeConversationId !== null || typeof seedQuery !== "string" || seedQuery.trim() === "") return;
+    const snapshot = store.getSnapshot();
+    if (snapshot.sessions.has(resolveSessionKey(snapshot, routeSessionKey))) return;
+    ask(seedQuery);
+  }, [location.state, ask, routeConversationId, routeSessionKey, store]);
 
   /**
    * Task text point (3): a tenant citation navigates (with `state.from = "ask"`, AC-1 of the
@@ -509,7 +479,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     );
   }
 
-  if (resumeState.phase === "loading") {
+  // Resume faces: only for a conversation this tab does not hold yet. Once `hydrate` has seeded the
+  // store, the conversation renders from its session like any other.
+  if (session === null && routeConversationId !== null && resumeState.phase !== "not-found" && resumeState.phase !== "error") {
     return (
       <div className="ask-screen" role="status" aria-live="polite">
         <p className="micro-meta">Loading conversation…</p>
@@ -520,7 +492,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     );
   }
 
-  if (resumeState.phase === "not-found") {
+  if (session === null && resumeState.phase === "not-found") {
     return (
       <div className="empty-state" role="status">
         <h3>Conversation not found</h3>
@@ -532,7 +504,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     );
   }
 
-  if (resumeState.phase === "error") {
+  if (session === null && resumeState.phase === "error") {
     return (
       <div className="error-state" role="alert">
         <h4>Conversation unavailable</h4>
@@ -545,21 +517,51 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   }
 
   const hasTurns = turns.length > 0;
-  const headerTitle = boundTitle ?? conversationTitle ?? ASK_NEW_CHAT_TITLE;
+  // A name the user gave the chat wins over the bound supplier + contract and the first question.
+  const conversationName = currentConversationId === null ? null : customTitleFor(sessions, currentConversationId, session?.customTitle);
+  const headerTitle = conversationName ?? boundTitle ?? conversationTitle ?? ASK_NEW_CHAT_TITLE;
+  const canRename = currentConversationId !== null;
   const scopeShort = buildScopeShort(validatedContractCount, supplierNames);
   const starterGroups = buildStarterGroups(supplierNames[0] ?? null);
 
-  const newChat = () => {
-    setQuestion("");
-    navigate("/ask", { state: { newChat: true } });
-  };
+  // A new history entry, so a new draft: this chat keeps running (and keeps its unsent text).
+  const newChat = () => navigate("/ask", { state: { newChat: true } });
 
   return (
     <div className="ask-screen">
       <div className="ask-conv-header">
         <div className="ask-conv-title">
           <span className="ask-conv-mark" aria-hidden="true" />
-          <h2 className="ask-conv-name">{headerTitle}</h2>
+          {renamingTitle && canRename ? (
+            <ConversationRenameField
+              className="ask-conv-rename"
+              initialValue={headerTitle}
+              label="Rename this chat"
+              onCommit={renameConversation}
+              onCancel={() => setRenamingTitle(false)}
+            />
+          ) : (
+            <h2 className="ask-conv-name" onDoubleClick={canRename ? () => setRenamingTitle(true) : undefined}>
+              {headerTitle}
+            </h2>
+          )}
+          {canRename && !renamingTitle && (
+            <button
+              type="button"
+              className="ask-conv-rename-button"
+              onClick={() => {
+                setRenameFailed(false);
+                setRenamingTitle(true);
+              }}
+            >
+              Rename
+            </button>
+          )}
+          {renameFailed && (
+            <span className="ask-conv-rename-error" role="alert">
+              Could not rename this chat. Try again.
+            </span>
+          )}
           {/* NW-78 (AC-1/AC-2/AC-3): beside the title, independent of hasTurns -- a just-scoped
               conversation is bound from the instant its create response resolves (already true by
               then, see the optimistic "you" bubble in ask() above), not only once it has been
@@ -701,7 +703,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
             </div>
             <div className="ask-composer-chips">
               {suggestions.map((suggestion) => (
-                <button key={suggestion} type="button" className="ask-suggestion" aria-label={suggestion} onClick={() => ask(suggestion)}>
+                <button key={suggestion} type="button" className="ask-suggestion" aria-label={suggestion} disabled={asking} onClick={() => ask(suggestion)}>
                   {suggestion} →
                 </button>
               ))}

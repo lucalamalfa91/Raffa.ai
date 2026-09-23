@@ -1,0 +1,46 @@
+/* "Reply ready" notices for Ask sessions answering in the background (AskReplyNotifier.tsx).
+   Top right, clear of the Ask composer pinned at the bottom of the screen; below the consent
+   dialog (z-index 40) so a modal question always stays on top. Surface + 2px ink rule + the
+   dialog-tier shadow, zero radius, the same chrome the other floating surfaces use. */
+.ask-reply-toasts {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(320px, calc(100vw - 2 * var(--space-4)));
+  pointer-events: none;
+}
+
+.ask-reply-toast {
+  pointer-events: auto;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  background: var(--color-surface);
+  border: 2px solid var(--color-text);
+  border-left: 6px solid var(--color-accent);
+  box-shadow: var(--shadow-md);
+}
+
+.ask-reply-toast-kicker {
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+
+.ask-reply-toast-title {
+  margin-top: var(--space-1);
+  font-size: 14px;
+  font-weight: var(--weight-body-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-reply-toast-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
