@@ -17,7 +17,7 @@ import {
   type AttentionFilterValue,
   type RowStatus,
 } from "./documentTable";
-import ProcessingPipeline, { PendingPipeline, PendingSpinner } from "./ProcessingPipeline";
+import ProcessingPipeline, { PendingSpinner, UploadingBar } from "./ProcessingPipeline";
 import { DocumentViewerLink } from "./viewer/DocumentViewerOverlay";
 import { buildDocumentViewerHref } from "./viewer/documentViewerViewModel";
 
@@ -180,7 +180,7 @@ function LocalUploadRow({ entry, isAdmin }: { entry: LocalUploadEntry; isAdmin: 
       <td className="micro-meta">—</td>
       <td>
         <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-        {entry.phase !== "rejected" && entry.phase !== "failed" && <PendingPipeline />}
+        {entry.phase !== "rejected" && entry.phase !== "failed" && <UploadingBar />}
       </td>
       <td className="document-status-table-next-step">
         {entry.phase === "rejected" || entry.phase === "failed" ? null : (
@@ -247,7 +247,6 @@ function ServerDocumentRow({
       </td>
       <td>
         <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-        {rowStatus === "uploaded" && <PendingPipeline />}
         {rowStatus === "processing" && <ProcessingPipeline stage={item.stage} />}
       </td>
       <td className="document-status-table-next-step">
@@ -257,7 +256,10 @@ function ServerDocumentRow({
             Processing in the background
           </span>
         ) : rowStatus === "processing" ? (
-          <span className="micro-meta">{(item.stage ?? "Queued") + "…"}</span>
+          <span className="micro-meta">
+            <PendingSpinner />
+            {(item.stage ?? "Queued") + "…"}
+          </span>
         ) : action !== null ? (
           action.kind === "ask" ? (
             <Link
