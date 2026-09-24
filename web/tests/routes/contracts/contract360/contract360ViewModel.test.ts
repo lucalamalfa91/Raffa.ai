@@ -20,6 +20,7 @@ import {
   LEVERAGE_STANDARD_TERMS,
   LEVERAGE_WORTH_RAISING,
   LEVER_NOT_YET_AVAILABLE,
+  LEVER_FROM_ESTIMATES,
   SAVINGS_NOT_YET_AVAILABLE,
   UNOFFICIALIZED_PLACEHOLDER,
   buildAnswers,
@@ -1010,6 +1011,14 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
     expect(buildEstimatedSavingTotal([product({ market: estimated }), product({ market: marketBand() })], "CHF")).toBe("est. CHF 6–18k");
     expect(buildEstimatedSavingTotal([product({ market: marketBand() })], "CHF")).toBeNull();
     expect(buildProductNote([product({ market: estimated })])).toBe(PRODUCT_NOTE_ESTIMATED);
+
+    // With no market target, "Where you can save" falls back to the same labelled estimate.
+    const pricing = { products: [product({ market: estimated })], currency: "CHF" };
+    expect(buildAnswers(header(), renewalTab, [], strategyCalled(null), pricing).save).toEqual({
+      estimate: "est. CHF 6–18k / yr",
+      lever: LEVER_FROM_ESTIMATES,
+      source: "",
+    });
 
     // A converted band says where it comes from.
     const converted = { ...estimated, estimate: { ...estimated.estimate, kind: "Converted" as const, basis: "Premium DBU: median EUR 0.52 (EU), converted" } };

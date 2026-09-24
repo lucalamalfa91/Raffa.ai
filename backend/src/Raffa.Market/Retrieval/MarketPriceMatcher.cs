@@ -45,12 +45,17 @@ public sealed class MarketPriceMatcher(IMarketDealLookup dealLookup) : IMarketPr
     /// <summary>Specificity of an equal SKU — above any product-name word count.</summary>
     private const int SkuSpecificity = 1000;
 
-    private static readonly Dictionary<string, string> HomeRegionByCurrency = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>The corpus category of supplier-specific support plans and services.</summary>
+    public const string SupplierBoundCategory = "Support & Services";
+
+    /// <summary>The geographies that count as a currency's home market: the region code the
+    /// hand-written records use, plus the countries the generated corpus uses.</summary>
+    private static readonly Dictionary<string, HashSet<string>> HomeRegionByCurrency = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["GBP"] = "UK",
-        ["CHF"] = "CH",
-        ["EUR"] = "EU",
-        ["USD"] = "US",
+        ["GBP"] = new(StringComparer.OrdinalIgnoreCase) { "UK" },
+        ["CHF"] = new(StringComparer.OrdinalIgnoreCase) { "CH" },
+        ["EUR"] = new(StringComparer.OrdinalIgnoreCase) { "EU", "DE", "FR", "IT", "ES", "NL", "BE", "AT", "IE", "SE", "DK", "PL" },
+        ["USD"] = new(StringComparer.OrdinalIgnoreCase) { "US" },
     };
 
     /// <summary>Edition, packaging and billing words: they say which tier or how a product is
@@ -127,7 +132,11 @@ public sealed class MarketPriceMatcher(IMarketDealLookup dealLookup) : IMarketPr
 
         var priced = supplierDeals.Where(Priced).ToList();
         var otherSuppliers = (marketDeals ?? [])
-            .Where(d => Priced(d) && !MarketSupplierMatch.Matches(d.Supplier, context.SupplierName ?? string.Empty))
+            // A support plan or onboarding fee is priced on its own supplier's licences: another
+            // supplier's is never a "similar product".
+            .Where(d => Priced(d)
+                && !string.Equals(d.Category, SupplierBoundCategory, StringComparison.OrdinalIgnoreCase)
+                && !MarketSupplierMatch.Matches(d.Supplier, context.SupplierName ?? string.Empty))
             .ToList();
 
         var results = new MarketPriceMatch?[lines.Count];
@@ -255,7 +264,7 @@ public sealed class MarketPriceMatcher(IMarketDealLookup dealLookup) : IMarketPr
     /// </summary>
     private static MarketPriceMatch? Bundle(
         MarketPriceContext context,
-        string? homeRegion,
+        IReadOnlySet<string>? homeRegion,
         MarketPriceLine line,
         IEnumerable<MarketDeal> named,
         IReadOnlySet<string> supplierWords)
@@ -317,7 +326,7 @@ public sealed class MarketPriceMatcher(IMarketDealLookup dealLookup) : IMarketPr
     /// see this type's own doc comment for "similar" — or <see langword="null"/>.</summary>
     private static MarketDeal? MostSimilar(
         MarketPriceContext context,
-        string? homeRegion,
+        IReadOnlySet<string>? homeRegion,
         MarketPriceLine line,
         IReadOnlyList<MarketDeal> pool,
         IReadOnlySet<string> supplierWords)
@@ -370,12 +379,12 @@ public sealed class MarketPriceMatcher(IMarketDealLookup dealLookup) : IMarketPr
         IEnumerable<T> items,
         Func<T, MarketDeal> deal,
         MarketPriceContext context,
-        string? homeRegion,
+        IReadOnlySet<string>? homeRegion,
         Func<IEnumerable<T>, IOrderedEnumerable<T>> byRelevance) =>
         byRelevance(items)
             .ThenByDescending(x => IsInValueBand(deal(x).AnnualValueBand, context.AnnualValue))
             .ThenByDescending(x => homeRegion is not null
-                && string.Equals(deal(x).Geography, homeRegion, StringComparison.OrdinalIgnoreCase))
+                && homeRegion.Contains(deal(x).Geography))
             .ThenBy(x => context.TermMonths is { } term ? Math.Abs(deal(x).TermMonths - term) : 0)
             .ThenByDescending(x => deal(x).SampleSize)
             .ThenByDescending(x => deal(x).UpdatedAt)

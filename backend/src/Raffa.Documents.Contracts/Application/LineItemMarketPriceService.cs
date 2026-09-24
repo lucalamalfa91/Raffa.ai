@@ -114,7 +114,7 @@ public sealed class LineItemMarketPriceService(
             .Where(l => l.TenantId == tenantId && l.ContractId == contractId)
             .OrderBy(l => l.CreatedAt)
             .ThenBy(l => l.Id)
-            .Select(l => new { l.Id, l.Description, l.Sku, l.AnnualCost })
+            .Select(l => new { l.Id, l.Description, l.Sku, l.Quantity, l.AnnualCost })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -170,7 +170,7 @@ public sealed class LineItemMarketPriceService(
 
         var now = clock.UtcNow;
         var estimates = await EstimateUnmatchedAsync(
-                priceContext, toPrice.Select(l => new MarketPriceLine(l.Description, l.Sku)).ToList(), matches,
+                priceContext, toPrice.Select(l => new MarketPriceLine(l.Description, l.Sku, l.Quantity, l.AnnualCost)).ToList(), matches,
                 i => force || !stored.TryGetValue(toPrice[i].Id, out var row) || row.EstimatedAt is null
                     || (corpusVersion is not null && row.CorpusVersion != corpusVersion),
                 contractId, cancellationToken)

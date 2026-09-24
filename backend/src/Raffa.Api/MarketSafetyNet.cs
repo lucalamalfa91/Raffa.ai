@@ -4,6 +4,7 @@ using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application.Pack;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Market.Contracts;
+using Raffa.Market.Retrieval;
 
 namespace Raffa.Api;
 
@@ -560,7 +561,9 @@ internal static class MarketSafetyNet
         // A unit price that sits inside (or close to) the deal's own annual-value band is the
         // yearly value of the whole contract (an insurance premium, a facilities contract), not a
         // per-seat price.
+        // A support plan's own fee is a slice of the contract, never its whole yearly value.
         var deal = MatchingProducts(SameCurrency(deals, currency), pricedLines)
+            .Where(d => !string.Equals(d.Category, MarketPriceMatcher.SupplierBoundCategory, StringComparison.OrdinalIgnoreCase))
             .Where(d => d.UnitPriceP25 > 0 && ParseBand(d.AnnualValueBand) is { } band &&
                 d.UnitPriceP25 >= Math.Max(band.Low ?? 0m, 20_000m) * 0.5m &&
                 (band.High is not { } high || d.UnitPriceP75 <= high * 1.5m) &&

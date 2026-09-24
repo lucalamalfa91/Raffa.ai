@@ -194,9 +194,10 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
         Assert.Contains("2026-09-30", packJson, StringComparison.Ordinal);
     }
 
-    // Persona v2.5's market safety net: a contract with no annual amounts is named as such, and the
-    // model gets the market's narrow estimate for comparable Oracle customers in its place
-    // (EUR 250,000–500,000, the band the mock feed's EUR Oracle deals mostly fall in).
+    // Persona v2.5's market safety net: a contract with no annual amounts is named as such. The mock
+    // feed's EUR Oracle deals span every value band (ERP, NetSuite, cloud, support across company
+    // sizes), so no band is a clear majority and the net says the market is not precise enough
+    // rather than inventing a middle; the estimate path itself is covered by MarketSafetyNetTests.
     [Fact]
     public async Task A_contract_without_annual_amounts_sends_its_gap_and_the_markets_estimate_to_the_model()
     {
@@ -208,9 +209,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
         var packJson = Assert.Single(declining.PackJsons);
         Assert.Contains("calc:contract-gaps[", packJson, StringComparison.Ordinal);
         Assert.Contains("no value for: annual spend", packJson, StringComparison.Ordinal);
-        Assert.Contains("Market estimate, not a figure from your contract", packJson, StringComparison.Ordinal);
-        Assert.Contains("between EUR 250,000 and EUR 500,000", packJson, StringComparison.Ordinal);
-        Assert.Contains("what comparable customers negotiated", packJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("Market estimate, not a figure from your contract", packJson, StringComparison.Ordinal);
 
         // Step 2 of the flow: the market researcher's notes from the market RAG, annual value included.
         Assert.Contains("market-researcher", packJson, StringComparison.Ordinal);
@@ -228,7 +227,6 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
 
         var packJson = Assert.Single(declining.PackJsons);
         Assert.Contains("no value for: annual spend", packJson, StringComparison.Ordinal);
-        Assert.Contains("Market estimate, not a figure from your contract", packJson, StringComparison.Ordinal);
     }
 
     // Both attempts decline: the deterministic reply still opens with the honest gap and the
@@ -243,8 +241,7 @@ public sealed class AskSavingsAnswerRecoveryTests(RaffaApiFactory factory) : ICl
 
         var markdown = reply.RootElement.GetProperty("answerMarkdown").GetString()!;
         Assert.StartsWith("Sul contratto Oracle mancano gli importi annuali.", markdown, StringComparison.Ordinal);
-        Assert.Contains("il valore annuo tipico è tra EUR 250,000 e EUR 500,000", markdown, StringComparison.Ordinal);
-        Assert.Contains("è una stima, non un dato del tuo contratto", markdown, StringComparison.Ordinal);
+        Assert.Contains("I dati di mercato non bastano per una stima affidabile", markdown, StringComparison.Ordinal);
         Assert.Contains("Ecco come preparare il rinnovo", markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("I don't have data I trust", markdown, StringComparison.Ordinal);
     }
