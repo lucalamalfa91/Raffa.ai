@@ -296,3 +296,9 @@
 .review-skeleton-row {
   height: 32px;
 }
+
+.review-accept-all-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}

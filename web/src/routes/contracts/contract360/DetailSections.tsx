@@ -1,3 +1,4 @@
+import { buildReviewFields, indexEvidence, isFieldBlocking } from "../review/reviewViewModel";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { Contract360Body, Contract360ClauseBody, Contract360DocumentBody, ContractFieldEvidenceBody, ContractStrategyBody, RenewalPriorityBody } from "../../../api/client";
@@ -23,7 +24,6 @@ import {
   buildProductLines,
   buildRiskItems,
   buildScoreParts,
-  computeNeedsAttention,
   formatReviewCountLine,
   standardClausesLabel,
   type ClauseItem,
@@ -377,7 +377,12 @@ export function RiskSection({
 export function KeyTermsSection({ contract, evidence }: { contract: Contract360Body; evidence: readonly ContractFieldEvidenceBody[] }) {
   const terms = buildKeyTerms(contract, evidence);
   const documents = buildDocumentRows(contract.tabs.documents);
-  const reviewCount = computeNeedsAttention(evidence);
+  // A server `review_required` decision on a field the Review screen actually lists as blocking:
+  // an evidence row outside the correctable set, or a field not found in the document, is not
+  // something Review asks about, so it must not be counted here either.
+  const reviewCount = buildReviewFields(contract, [], indexEvidence(evidence)).filter(
+    (row) => isFieldBlocking(row) && row.evidenceDecision === "review_required",
+  ).length;
   return (
     <SectionFrame copy={SECTION_COPY.terms} label="Key terms">
       <div className="contract360-terms">

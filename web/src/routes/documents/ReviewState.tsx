@@ -123,6 +123,7 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
           selectedField={session.selectedField}
           onSelect={session.selectField}
           onAccept={(name) => void session.accept(name)}
+          onAcceptAll={() => void session.acceptAll()}
           onCorrect={(name, value, reason) => void session.correct(name, value, reason)}
           submitting={session.submitting}
           error={session.correctionError}
