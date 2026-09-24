@@ -228,7 +228,7 @@ export function buildAnswers(
 
   if (strategy.pack === null) {
     return {
-      save: { estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE, source: "" },
+      save: estimatedSave(pricing),
       move: FAILED_MOVE,
       act,
     };
@@ -314,6 +314,29 @@ function mapSave(pack: ContractStrategyBody, pricing: PricingContext): SaveAnswe
     return { estimate: formatPlainNumber(target.openingTarget), lever: lever.rationale, source: "" };
   }
 
+  return estimatedSave(pricing);
+}
+
+export const LEVER_FROM_ESTIMATES =
+  "No market record matches these lines yet: this is the estimated saving from section 03's estimates (converted or AI), not market data.";
+export const LEVER_NO_SAVING_ESTIMATED =
+  "The estimates in section 03 put these lines at or below the typical price: no saving to push for on price.";
+
+/**
+ * The fallback when the strategy has no market target: the product lines' own estimates (the same
+ * figures as section 03's "Estimated saving / yr"), labelled "est." and never presented as market
+ * data. Only when not a single line carries an estimate does the cell stay "Not yet available".
+ */
+function estimatedSave(pricing: PricingContext): SaveAnswer {
+  const threshold = pricing.autoAcceptThreshold ?? AUTO_ACCEPT_THRESHOLD;
+  const total = buildEstimatedSavingTotal(pricing.products, pricing.currency, threshold);
+  if (total !== null) {
+    return { estimate: `${total} / yr`, lever: LEVER_FROM_ESTIMATES, source: "" };
+  }
+  const anyEstimate = pricing.products.some((p) => isExtractedRowShown(p, threshold) && p.unitPrice !== null && estimateOf(p) !== null);
+  if (anyEstimate) {
+    return { estimate: AT_MARKET_PRICE, lever: LEVER_NO_SAVING_ESTIMATED, source: "" };
+  }
   return { estimate: SAVINGS_NOT_YET_AVAILABLE, lever: LEVER_NOT_YET_AVAILABLE, source: "" };
 }
 
