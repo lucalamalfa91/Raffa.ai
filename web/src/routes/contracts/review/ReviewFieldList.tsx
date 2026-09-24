@@ -56,6 +56,13 @@ export default function ReviewFieldList({
 
   return (
     <div className="review-field-column">
+      {onAcceptAll && pendingCount > 0 && (
+        <div className="review-accept-all-bar">
+          <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onAcceptAll}>
+            Accept all ({pendingCount})
+          </button>
+        </div>
+      )}
       <table className="table review-field-table">
         <thead>
           <tr>
@@ -68,16 +75,6 @@ export default function ReviewFieldList({
             <th>
               Decision
               <CopyTip tip={TIPS.reviewDecision} align="end" />
-              {onAcceptAll && pendingCount > 0 && (
-                <button
-                  type="button"
-                  className="btn btn-secondary review-accept-all"
-                  disabled={submitting}
-                  onClick={onAcceptAll}
-                >
-                  Accept all ({pendingCount})
-                </button>
-              )}
             </th>
           </tr>
         </thead>
