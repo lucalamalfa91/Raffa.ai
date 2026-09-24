@@ -30,7 +30,7 @@ public sealed class MarketPriceEstimator(
     ILogger<MarketPriceEstimator>? logger = null) : IMarketPriceEstimator
 {
     public const string AgentName = "market-price-estimator";
-    public const string PromptVersion = "market-price-estimator-v1";
+    public const string PromptVersion = "market-price-estimator-v2";
 
     /// <summary>How many corpus reference prices the AI step is shown.</summary>
     private const int MaxReferences = 40;
@@ -205,7 +205,17 @@ public sealed class MarketPriceEstimator(
                 currency,
                 termMonths = context.TermMonths,
                 annualContractValue = context.AnnualValue,
-                lines = lines.Select((l, i) => new { index = i, description = l.Description, sku = l.Sku }),
+                // Quantity sets the volume tier; the other lines' spend is what a support or
+                // service line priced as a share of licences is a share of. The line's own price is
+                // never shown, so the estimate is not anchored on what the customer pays.
+                lines = lines.Select((l, i) => new
+                {
+                    index = i,
+                    description = l.Description,
+                    sku = l.Sku,
+                    quantity = l.Quantity,
+                    otherLinesAnnualCost = OtherLinesAnnualCost(lines, i),
+                }),
                 referencePrices = references,
             },
             JsonOptions);
@@ -265,6 +275,12 @@ public sealed class MarketPriceEstimator(
         }
     }
 
+    private static decimal? OtherLinesAnnualCost(IReadOnlyList<MarketPriceLine> lines, int index)
+    {
+        var others = lines.Where((l, i) => i != index && l.AnnualCost is > 0).ToList();
+        return others.Count == 0 ? null : others.Sum(l => l.AnnualCost!.Value);
+    }
+
     private static string Truncate(string text, int max) => text.Length <= max ? text : text[..max];
 
     public sealed record AiLineEstimate(int Index, bool CanEstimate, string? Product, decimal P25, decimal P50, decimal P75, string? Rationale);
@@ -275,12 +291,21 @@ public sealed class MarketPriceEstimator(
         "You are a procurement pricing analyst. For each contract line, estimate the unit price that " +
         "customers of this supplier (or of directly comparable products) typically pay, in the given " +
         "currency and per the same unit the line is sold in (per user/licence per year for a subscription, " +
-        "a one-off amount for a one-off fee). Give a P25-P50-P75 band. Use referencePrices only as " +
-        "calibration for the market's price level, never copy one unless it is the same product. " +
-        "Set canEstimate to false when the line is not a priced product (a fee without scope, a " +
-        "discount, a tax) or when you have no sound basis. rationale: one short sentence a buyer can " +
-        "check (which product and which public list or typical price it rests on). Never invent " +
-        "precision: round to sensible figures.";
+        "a one-off amount for a one-off fee). Give a P25-P50-P75 band of NEGOTIATED prices, not list prices. " +
+        "Rules: (1) quantity sets the volume tier - enterprise deals with hundreds or thousands of seats " +
+        "are discounted well below list (often 30-70% off), so scale the band to the line's quantity and " +
+        "to annualContractValue. (2) A support, premium support, success or maintenance plan sold as one " +
+        "package is usually priced as a percentage of the licences it covers (typically 15-25% of their " +
+        "annual cost for premium tiers): when otherLinesAnnualCost is given, estimate from it, not from " +
+        "a small-customer package price. (3) A one-off implementation or onboarding fee without scope: " +
+        "estimate only if the supplier publishes a typical fee, otherwise canEstimate false. " +
+        "(4) Keep units consistent: never compare a monthly list price with an annual line - convert. " +
+        "Use referencePrices only as calibration for the market's price level, never copy one unless it " +
+        "is the same product. Set canEstimate to false when the line is not a priced product (a discount, " +
+        "a tax) or when you have no sound basis - no estimate is better than a misleading one. " +
+        "rationale: one short sentence a buyer can check (which product, which public list or typical " +
+        "price, and the volume or percentage assumption applied). Never invent precision: round to " +
+        "sensible figures.";
 
     private const string ResponseSchema = """
         {
