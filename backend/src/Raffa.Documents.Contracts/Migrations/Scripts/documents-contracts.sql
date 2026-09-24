@@ -1117,5 +1117,19 @@ BEGIN
     VALUES ('20260922184249_AddContractLineItemMarketPrice', '10.0.4');
     END IF;
 END $EF$;
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260923122306_AddContractLineItemMarketPriceMatchKind') THEN
+    ALTER TABLE contract_line_item_market_price ADD match_kind character varying(20);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260923122306_AddContractLineItemMarketPriceMatchKind') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260923122306_AddContractLineItemMarketPriceMatchKind', '10.0.4');
+    END IF;
+END $EF$;
 COMMIT;
 
