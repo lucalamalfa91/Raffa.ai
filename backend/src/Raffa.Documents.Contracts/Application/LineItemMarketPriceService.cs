@@ -114,7 +114,7 @@ public sealed class LineItemMarketPriceService(
             .Where(l => l.TenantId == tenantId && l.ContractId == contractId)
             .OrderBy(l => l.CreatedAt)
             .ThenBy(l => l.Id)
-            .Select(l => new { l.Id, l.Description, l.Sku, l.AnnualCost })
+            .Select(l => new { l.Id, l.Description, l.Sku, l.Quantity, l.AnnualCost })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
