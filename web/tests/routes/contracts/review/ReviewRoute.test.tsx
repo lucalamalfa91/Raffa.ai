@@ -1095,14 +1095,18 @@ describe("ReviewRoute", () => {
       fireEvent.change(endDate, { target: { value: "2026-12-31" } });
       fireEvent.blur(endDate);
 
-      await waitFor(() =>
-        expect(correctContract).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, {
-          corrections: { endDate: "2026-12-31" },
-          reason: null,
-        }),
+      // blur -> correction -> reload -> re-render is several async hops: on a loaded CI runner it
+      // has taken just over waitFor's default 1s, so each wait gets headroom.
+      await waitFor(
+        () =>
+          expect(correctContract).toHaveBeenCalledWith(WORKSPACE_ID, CONTRACT_ID, {
+            corrections: { endDate: "2026-12-31" },
+            reason: null,
+          }),
+        { timeout: 5000 },
       );
-      await waitFor(() => expect(getContract360).toHaveBeenCalledTimes(2));
-      expect(await screen.findByRole("button", { name: "End date" })).toBeInTheDocument();
+      await waitFor(() => expect(getContract360).toHaveBeenCalledTimes(2), { timeout: 5000 });
+      expect(await screen.findByRole("button", { name: "End date" }, { timeout: 5000 })).toBeInTheDocument();
       expect(screen.queryByLabelText("End date")).toBeNull();
     });
   });
