@@ -100,6 +100,10 @@ public sealed class MarketPriceMatcher(IMarketDealLookup dealLookup) : IMarketPr
         return market.Count == 0 ? matches : Match(context, lines, deals, market);
     }
 
+    /// <inheritdoc />
+    public Task<string?> GetCorpusVersionAsync(CancellationToken cancellationToken) =>
+        dealLookup.GetCorpusVersionAsync(cancellationToken);
+
     /// <summary>The pure half of <see cref="MatchAsync"/>: <paramref name="supplierDeals"/> is the
     /// supplier's slice of the corpus, <paramref name="marketDeals"/> the wider market a similar
     /// product may come from (the supplier's own deals in it are ignored — they are

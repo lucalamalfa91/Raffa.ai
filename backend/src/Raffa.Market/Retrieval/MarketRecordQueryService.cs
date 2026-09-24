@@ -67,6 +67,25 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext) : IMarke
                 deal => string.Equals(deal.Category, category.Trim(), StringComparison.OrdinalIgnoreCase),
                 cancellationToken);
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<MarketDeal>> GetAllAsync(CancellationToken cancellationToken = default) =>
+        LoadWhereAsync(_ => true, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<string?> GetCorpusVersionAsync(CancellationToken cancellationToken = default)
+    {
+        var count = await dbContext.MarketRecords.CountAsync(cancellationToken).ConfigureAwait(false);
+        if (count == 0)
+        {
+            return "empty";
+        }
+
+        var feedVersion = await dbContext.MarketRecords
+            .MaxAsync(r => r.FeedVersion, cancellationToken)
+            .ConfigureAwait(false);
+        return $"{feedVersion}:{count}";
+    }
+
     private async Task<IReadOnlyList<MarketDeal>> LoadWhereAsync(
         Func<MarketDeal, bool> predicate, CancellationToken cancellationToken)
     {

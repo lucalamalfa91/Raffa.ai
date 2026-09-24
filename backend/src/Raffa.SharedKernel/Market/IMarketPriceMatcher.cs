@@ -28,6 +28,15 @@ public interface IMarketPriceMatcher
         MarketPriceContext context,
         IReadOnlyList<MarketPriceLine> lines,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A fingerprint of the corpus the matcher reads (e.g. its feed version and record count), so a
+    /// comparison stored before a re-ingestion is re-priced on its next read instead of waiting out
+    /// the refresh window. <see langword="null"/> when the backing cannot say — stored comparisons
+    /// then only age out by time.
+    /// </summary>
+    Task<string?> GetCorpusVersionAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<string?>(null);
 }
 
 /// <summary>What every line of one contract shares.</summary>

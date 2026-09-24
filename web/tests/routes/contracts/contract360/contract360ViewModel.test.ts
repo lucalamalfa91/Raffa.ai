@@ -49,6 +49,8 @@ import {
   AT_MARKET_PRICE,
   TARGET_PRICE_ONLY,
   buildProductSavingTotal,
+  buildEstimatedSavingTotal,
+  PRODUCT_NOTE_ESTIMATED,
   computeLineSaving,
   formatSavingRange,
   SECTION_COPY,
@@ -130,6 +132,7 @@ function marketBand(overrides: Partial<NonNullable<Contract360ProductBody["marke
     marketUpdatedAt: "2026-07-01T00:00:00Z",
     checkedAt: "2026-09-22T08:00:00Z",
     matchKind: "Exact",
+    estimate: null,
     ...overrides,
   };
 }
@@ -980,6 +983,42 @@ describe("the six sections (Raffa.ai V2.dc.html CONTRACT 360)", () => {
       saving: "≈ GBP 1.5–2.4k",
     });
     expect(buildProductSavingTotal([product({ unitPrice: 100, annualCost: 10_000, market: similarBand })], "GBP")).toBe("≈ GBP 1.5–2.4k");
+  });
+
+  it("02 Products & pricing: an unmatched line's estimate is shown as est., with its own saving, never in Could save", () => {
+    const noMatch = marketBand({ matched: false, recordId: null, product: null, geography: null, currency: null, termMonths: null, unitPriceP25: null, unitPriceP50: null, unitPriceP75: null, sampleSize: null, provenance: null, marketUpdatedAt: null, matchKind: null });
+    const estimated = {
+      ...noMatch,
+      estimate: { kind: "AiEstimate" as const, currency: "CHF", unitPriceP25: 0.4, unitPriceP50: 0.5, unitPriceP75: 0.6, basis: "Typical DBU list price, discounted.", product: "Premium DBU" },
+    };
+    const [line] = buildProductLines([product({ market: estimated })], "CHF");
+    expect(line).toMatchObject({
+      estimated: true,
+      marketBasis: "AI estimate, not market data — Premium DBU",
+      market: "est. CHF 0.5",
+      marketMeta: "AI estimate",
+      delta: "est. +10%",
+      saving: "est. CHF 6–18k",
+      payWidth: "100%",
+      marketWidth: "91%",
+    });
+    expect(line.marketTitle).toBe("P25 CHF 0.4 – P75 CHF 0.6 · Typical DBU list price, discounted.");
+
+    // The sure total never counts it; the estimate has its own, labelled figure.
+    expect(buildProductSavingTotal([product({ market: estimated })], "CHF")).toBeNull();
+    expect(buildProductSavingTotal([product({ market: estimated }), product({ market: marketBand() })], "CHF")).toBe("CHF 6–18k");
+    expect(buildEstimatedSavingTotal([product({ market: estimated }), product({ market: marketBand() })], "CHF")).toBe("est. CHF 6–18k");
+    expect(buildEstimatedSavingTotal([product({ market: marketBand() })], "CHF")).toBeNull();
+    expect(buildProductNote([product({ market: estimated })])).toBe(PRODUCT_NOTE_ESTIMATED);
+
+    // A converted band says where it comes from.
+    const converted = { ...estimated, estimate: { ...estimated.estimate, kind: "Converted" as const, basis: "Premium DBU: median EUR 0.52 (EU), converted" } };
+    const [conv] = buildProductLines([product({ market: converted })], "CHF");
+    expect(conv).toMatchObject({ marketMeta: "converted", marketBasis: "Estimate, not market data — Premium DBU: median EUR 0.52 (EU), converted" });
+
+    // A matched line never shows an estimate, even if one were sent.
+    const [matched] = buildProductLines([product({ market: marketBand({ estimate: estimated.estimate }) })], "CHF");
+    expect(matched).toMatchObject({ estimated: false, market: "CHF 0.5" });
   });
 
   it("03 Clauses that matter: High/Critical push, Medium raise, the rest standard; the ask slot is the leverage copy", () => {

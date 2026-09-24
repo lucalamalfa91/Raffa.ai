@@ -2412,7 +2412,8 @@
                                   "provenance",
                                   "marketUpdatedAt",
                                   "checkedAt",
-                                  "matchKind"
+                                  "matchKind",
+                                  "estimate"
                                 ],
                                 "properties": {
                                   "matched": {
@@ -2502,6 +2503,52 @@
                                       null
                                     ],
                                     "description": "MarketMatchKind: Exact -- the record is the line's own product (or SKU); Bundle -- the line names several products and the P25/P50/P75 are the sum of each product's own band (product lists them, recordId joins their ids with '+'); Similar -- no record for the line's own product, so the band is a similar product's (product names it) from customers of the same type where possible: a guide, never the line's own market price. null when matched is false."
+                                  },
+                                  "estimate": {
+                                    "type": [
+                                      "object",
+                                      "null"
+                                    ],
+                                    "description": "An estimated band for a line with no market match (matched=false only; null whenever matched is true). Never market data: kind says how it was obtained (Converted -- a record in another currency converted at an indicative fixed rate; AiEstimate -- an AI estimate), basis what it rests on. Kept apart from the matched band: savings, insights and Ask never read it.",
+                                    "required": [
+                                      "kind",
+                                      "currency",
+                                      "unitPriceP25",
+                                      "unitPriceP50",
+                                      "unitPriceP75",
+                                      "basis",
+                                      "product"
+                                    ],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                          "Converted",
+                                          "AiEstimate"
+                                        ]
+                                      },
+                                      "currency": {
+                                        "type": "string"
+                                      },
+                                      "unitPriceP25": {
+                                        "type": "number"
+                                      },
+                                      "unitPriceP50": {
+                                        "type": "number"
+                                      },
+                                      "unitPriceP75": {
+                                        "type": "number"
+                                      },
+                                      "basis": {
+                                        "type": "string"
+                                      },
+                                      "product": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      }
+                                    }
                                   }
                                 }
                               }

@@ -38,6 +38,15 @@ public sealed class ContractLineItemMarketPriceConfiguration : IEntityTypeConfig
         builder.Property(e => e.UnitPriceP50).HasPrecision(18, 4);
         builder.Property(e => e.UnitPriceP75).HasPrecision(18, 4);
 
+        builder.Property(e => e.CorpusVersion).HasMaxLength(100);
+        builder.Property(e => e.EstimateKind).HasConversion<string>().HasMaxLength(20);
+        builder.Property(e => e.EstimateCurrency).HasMaxLength(3);
+        builder.Property(e => e.EstimateUnitPriceP25).HasPrecision(18, 4);
+        builder.Property(e => e.EstimateUnitPriceP50).HasPrecision(18, 4);
+        builder.Property(e => e.EstimateUnitPriceP75).HasPrecision(18, 4);
+        builder.Property(e => e.EstimateBasis).HasMaxLength(600);
+        builder.Property(e => e.EstimateProduct).HasMaxLength(300);
+
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.ContractId);
         builder.HasIndex(e => new { e.TenantId, e.LineItemId }).IsUnique();

@@ -158,6 +158,7 @@ function contract(overrides: Partial<Contract360Body> = {}): Contract360Body {
             marketUpdatedAt: "2026-07-01T00:00:00Z",
             checkedAt: "2026-09-22T08:00:00Z",
             matchKind: "Exact",
+            estimate: null,
           },
         },
       ],

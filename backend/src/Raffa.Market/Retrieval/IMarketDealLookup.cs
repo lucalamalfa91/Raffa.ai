@@ -24,6 +24,16 @@ public interface IMarketDealLookup
     /// that cannot list by category.</summary>
     Task<IReadOnlyList<MarketDeal>> GetByCategoryAsync(string category, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<MarketDeal>>([]);
+
+    /// <summary>Every deal of the corpus, newest first — what an estimate for a line nothing else
+    /// priced may be converted from. Empty by default for a backing that cannot list it.</summary>
+    Task<IReadOnlyList<MarketDeal>> GetAllAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<MarketDeal>>([]);
+
+    /// <summary>A fingerprint of the corpus (feed version and record count) that changes when it is
+    /// re-ingested; <see langword="null"/> when the backing cannot say.</summary>
+    Task<string?> GetCorpusVersionAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(null);
 }
 
 /// <summary>Supplier-name matching shared by both <see cref="IMarketDealLookup"/> backings.</summary>
@@ -96,5 +106,16 @@ public sealed class ProviderMarketDealLookup(IMarketIntelligenceProvider provide
             .Where(d => string.Equals(d.Category, category.Trim(), StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(d => d.UpdatedAt)
             .ToList();
+    }
+    public async Task<IReadOnlyList<MarketDeal>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        var feed = await provider.GetDealsAsync(feedVersion: null, cancellationToken).ConfigureAwait(false);
+        return feed.IsFailure ? [] : feed.Value.Deals.OrderByDescending(d => d.UpdatedAt).ToList();
+    }
+
+    public async Task<string?> GetCorpusVersionAsync(CancellationToken cancellationToken = default)
+    {
+        var feed = await provider.GetDealsAsync(feedVersion: null, cancellationToken).ConfigureAwait(false);
+        return feed.IsFailure ? null : $"{feed.Value.FeedVersion}:{feed.Value.Deals.Count}";
     }
 }
