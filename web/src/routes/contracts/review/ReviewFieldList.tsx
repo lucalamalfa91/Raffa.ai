@@ -9,6 +9,8 @@ export interface ReviewFieldListProps {
   selectedField: CorrectableFieldName | null;
   onSelect: (name: CorrectableFieldName) => void;
   onAccept: (name: CorrectableFieldName) => void;
+  /** Accepts every pending field as extracted in one write; the button is hidden when omitted. */
+  onAcceptAll?: () => void;
   /** Same correction write the evidence pane uses (`PATCH /api/contracts/{id}` then in-place merge). */
   onCorrect: (name: CorrectableFieldName, value: string | null, reason: string) => void;
   submitting?: boolean;
@@ -42,6 +44,7 @@ export default function ReviewFieldList({
   selectedField,
   onSelect,
   onAccept,
+  onAcceptAll,
   onCorrect,
   submitting = false,
   error = null,
@@ -49,6 +52,7 @@ export default function ReviewFieldList({
 }: ReviewFieldListProps) {
   const recovered = rows.filter((row) => !row.missing);
   const missing = rows.filter((row) => row.missing);
+  const pendingCount = recovered.filter((row) => row.decision === "pending" && row.rawValue !== "").length;
 
   return (
     <div className="review-field-column">
@@ -64,6 +68,16 @@ export default function ReviewFieldList({
             <th>
               Decision
               <CopyTip tip={TIPS.reviewDecision} align="end" />
+              {onAcceptAll && pendingCount > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-secondary review-accept-all"
+                  disabled={submitting}
+                  onClick={onAcceptAll}
+                >
+                  Accept all ({pendingCount})
+                </button>
+              )}
             </th>
           </tr>
         </thead>

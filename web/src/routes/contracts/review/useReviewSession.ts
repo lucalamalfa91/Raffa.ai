@@ -49,6 +49,8 @@ export interface ReviewSession {
   /** "Accept" for one field: a real `correctContract` write for a proposal the pipeline did not
    * apply (`proposalPending`). Already-applied values take their decision from the server. */
   accept: (name: CorrectableFieldName) => Promise<void>;
+  /** "Accept all": one `correctContract` write stamping every acceptable pending field as extracted. */
+  acceptAll: () => Promise<void>;
   /** The bar the server used for auto-accept, for the legend. `null` until evidence is ready. */
   autoAcceptThreshold: number | null;
   /** "Save correction": `PATCH /api/contracts/{id}`, then merge that write into the current
@@ -218,6 +220,43 @@ export function useReviewSession(
     [rows, correct],
   );
 
+  const acceptAll = useCallback(async () => {
+    if (workspaceId === null || contractId === null) return;
+    const pending = rows.filter((row) => !row.missing && row.decision === "pending" && row.rawValue !== "");
+    if (pending.length === 0) return;
+    setSubmitting(true);
+    setCorrectionError(null);
+    const reason = "Accepted as extracted.";
+    const result = await apiClient.correctContract(workspaceId, contractId, {
+      corrections: Object.fromEntries(pending.map((row) => [row.name, row.rawValue])),
+      reason,
+    });
+    setSubmitting(false);
+    if (!result.ok) {
+      setCorrectionError(result.error ?? "The fields could not be accepted.");
+      return;
+    }
+    const correctedAt = result.correction?.correctedAt ?? new Date().toISOString();
+    setFetchState((current) => {
+      if (current.phase !== "ready") return current;
+      let next = current;
+      for (const row of pending) {
+        const applied = applySuccessfulCorrection({
+          contract: next.contract,
+          history: next.history,
+          evidence: next.evidence,
+          name: row.name,
+          newValue: row.rawValue,
+          reason,
+          correctedAt,
+        });
+        next = { ...next, ...applied };
+      }
+      return next;
+    });
+    load({ silent: true });
+  }, [apiClient, workspaceId, contractId, rows, load]);
+
   const markValidated = useCallback(async () => {
     if (workspaceId === null || reviewDocument === null) {
       setValidationError("This contract has no document to validate.");
@@ -245,6 +284,7 @@ export function useReviewSession(
     selectField: setSelectedField,
     selectedRow,
     accept,
+    acceptAll,
     autoAcceptThreshold: fetchState.phase === "ready" ? fetchState.autoAcceptThreshold : null,
     correct,
     correctionError,
