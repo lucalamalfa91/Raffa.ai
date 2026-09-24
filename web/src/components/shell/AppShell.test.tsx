@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
 import AppShell, { isAskRoute } from "./AppShell";
@@ -99,20 +99,13 @@ describe("AppShell global Ask bar suppression", () => {
     expect(apiClient.getCapabilities).not.toHaveBeenCalled();
   });
 
-  it("AC-3: keeps the global Ask bar on a non-Ask route, e.g. /documents", async () => {
-    const apiClient = fakeApiClient();
-    renderShellAt("/documents", apiClient);
-
-    expect(screen.getByRole("search")).toBeInTheDocument();
-    expect(screen.getByLabelText("Ask Raffa")).toBeInTheDocument();
-    await waitFor(() => expect(apiClient.getCapabilities).toHaveBeenCalledTimes(1));
-  });
-
-  it("AC-3: keeps the global Ask bar on another non-Ask route, e.g. /contracts", async () => {
-    const apiClient = fakeApiClient();
-    renderShellAt("/contracts", apiClient);
-
-    expect(screen.getByRole("search")).toBeInTheDocument();
-    await waitFor(() => expect(apiClient.getCapabilities).toHaveBeenCalledTimes(1));
+  it("renders no global Ask bar on non-Ask routes either", () => {
+    for (const path of ["/documents", "/contracts"]) {
+      const apiClient = fakeApiClient();
+      const { unmount } = renderShellAt(path, apiClient);
+      expect(screen.queryByRole("search")).not.toBeInTheDocument();
+      expect(apiClient.getCapabilities).not.toHaveBeenCalled();
+      unmount();
+    }
   });
 });

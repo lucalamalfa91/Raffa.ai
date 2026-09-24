@@ -1,15 +1,13 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import { Outlet, useLocation, useMatch } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import RailNav from "./RailNav";
 import RailResizeHandle from "./RailResizeHandle";
 import { useRailWidth } from "./useRailWidth";
-import GlobalAskBar from "../ask-bar/GlobalAskBar";
 import { useValidatedContractCount } from "./useValidatedContractCount";
 import { useDocumentCounts } from "./useDocumentCounts";
 import { usePollBudget } from "./usePollBudget";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
-import { isAskRoute } from "./isAskRoute";
 import { DocumentViewerProvider } from "../../routes/documents/viewer/DocumentViewerOverlay";
 import { AskSessionsProvider } from "../../routes/ask/AskSessionsContext";
 import AskReplyNotifier from "../../routes/ask/AskReplyNotifier";
@@ -38,9 +36,8 @@ export interface AppShellProps {
 }
 
 /**
- * The composite ADR-018/ADR-024 names: 232px rail + global Ask bar + routed content. AC-3 ("Global
- * Ask bar on every app screen") is why GlobalAskBar lives here, above `<Outlet/>`, rather than
- * inside each screen -- every route rendered through WorkspaceShellApp.tsx gets it automatically.
+ * The shell: resizable rail + routed content. There is no global Ask bar above the content --
+ * screens carry their own "Ask Raffa" action and `/ask` renders its own composer.
  *
  * Task E14/F03/US02/T01 (wave w14): `useValidatedContractCount` now answers from NW-01's server
  * field instead of a client-side portfolio scan (see that hook's own header comment) -- this
@@ -50,25 +47,10 @@ export interface AppShellProps {
  * While documents are still `Uploaded`/`Processing` or waiting in Needs review, both rail counts
  * re-read on the shared 2 s poll budget (and on every navigation) so "N to review" / Portfolio /
  * Renewals move with ingest instead of freezing at the first shell mount.
- *
- * Task E25/F06/US01/T01 (NW-60, wave w18): the blanket claim above ("every route ... gets it
- * automatically") now has one named exception. `/ask` and `/ask/:conversationId` render their own
- * composer (`routes/ask/index.tsx`) -- mounting GlobalAskBar there too put two Ask inputs on one
- * screen, exactly the duplicate ADR-018/ADR-020 forbid (AC-1/AC-3). `isAskRoute` (`./isAskRoute.ts`)
- * plus `useMatch` (absolute and relative, so a React Router 7 descendant remainder under App.tsx's
- * `path="/*"` cannot keep the bar mounted) are the check -- a route-scoped decision, not a new
- * context. Cmd/Ctrl+K still focuses an Ask composer everywhere (AC-2): GlobalAskBar keeps its own
- * shortcut for every route where it still renders, and `AskRoute` owns the identical shortcut for
- * its own input on the two routes above -- exactly one of the two is ever mounted, so the
- * listeners never overlap.
  */
 
 export default function AppShell({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: AppShellProps) {
   const location = useLocation();
-  const matchAskAbsolute = useMatch({ path: "/ask", end: true });
-  const matchAskConversationAbsolute = useMatch({ path: "/ask/:conversationId", end: true });
-  const matchAskRelative = useMatch({ path: "ask", end: true });
-  const matchAskConversationRelative = useMatch({ path: "ask/:conversationId", end: true });
   const [pollTick, setPollTick] = useState(0);
   const railWidth = useRailWidth();
   const refreshKey = `${location.pathname}:${pollTick}`;
@@ -91,17 +73,6 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
     onTick: () => setPollTick((current) => current + 1),
   });
 
-  // AC-1/AC-3: suppressed only on the Ask route itself, kept on every other screen.
-  // `useMatch` covers both the absolute `/ask` path and the relative `ask` remainder a splat
-  // parent can leave; `isAskRoute` is the same predicate GlobalAskBar uses as a second guard.
-  const onAskScreen = Boolean(
-    matchAskAbsolute ||
-      matchAskConversationAbsolute ||
-      matchAskRelative ||
-      matchAskConversationRelative ||
-      isAskRoute(location.pathname),
-  );
-  const showGlobalAskBar = !onAskScreen;
 
   return (
     <DocumentViewerProvider apiClient={apiClient}>
@@ -122,12 +93,8 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
           />
           <RailResizeHandle {...railWidth} />
           <main className="shell-main">
-            {/* Task E25/F01/US01/T01 (AC-3): the same server-derived `role` RailNav already receives
-                below, threaded into the global Ask bar too so it can drop admin-gated suggestion chips
-                for a non-Admin -- never re-derived, never fetched a second time.
-                Task E25/F06/US01/T01 (AC-1/AC-3): suppressed on the Ask route itself (see
-                `showGlobalAskBar` above) -- that route renders its own composer instead. */}
-            {showGlobalAskBar && <GlobalAskBar kbReady={kbReady} role={role} apiClient={apiClient} />}
+            {/* No global Ask bar: every screen already offers its own "Ask Raffa" action, and /ask
+                has its own composer. */}
             <div className="shell-content">
               {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
                   validated-count verdict the rail and the Ask bar already render, plus the same document

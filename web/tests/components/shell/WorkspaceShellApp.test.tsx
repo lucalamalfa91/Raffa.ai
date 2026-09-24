@@ -210,7 +210,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
-  it("renders the global Ask bar on a routed screen (AC-3, every app screen)", () => {
+  it("renders no global Ask bar on a routed screen (screens carry their own Ask action)", () => {
     // Task E07/F01/US01/T01 (portfolio-list-filters) replaced /contracts' ScaffoldScreen with the real
     // PortfolioRoute, which -- like DocumentsRoute below -- reads the current workspace directly and
     // guards on it being set, so this generic cross-screen assertion needs one current, same as the
@@ -223,7 +223,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     renderShell("admin", "/contracts");
 
     expect(screen.getByRole("heading", { name: "Portfolio" })).toBeInTheDocument();
-    expect(screen.getByRole("search")).toBeInTheDocument();
+    expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
   it("no longer gates /workspace/members behind RequireRole for Procurement (task E14/F03/US02/T01 removes that wrap so a Procurement member reaches the screen; E15/F02/US01/T01, same phase, renders it read-only for that role -- this suite only proves the route is reachable, not the read-only content itself, which tests/routes/workspace/members/* covers)", () => {
