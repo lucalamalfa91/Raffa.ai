@@ -979,8 +979,10 @@ export interface ProductLine {
   market: string;
   /** "UK · 12 mo · 14 contracts" under the market figure (led by "similar" / "sum" for a similar product or a bundle; "only 6 contracts" for a small sample); "no match" for a line compared with nothing comparable; empty before any comparison. */
   marketMeta: string;
-  /** Hover detail: the market product, its P25–P75 band and the corpus's own provenance label. */
+  /** Hover detail: the market product, its P25–P75 band and the corpus's own provenance label (for an estimate: what it rests on). */
   marketTitle: string | null;
+  /** The figures are an estimate (converted or AI), not market data: shown apart, never in the "Could save" total. */
+  estimated: boolean;
   /** "+14%" / "-8%" -- the line's unit price against the market P50. */
   delta: string;
   /** Paying above the market median. */
@@ -995,15 +997,28 @@ export interface ProductLine {
 }
 
 type ProductMarketBody = NonNullable<Contract360ProductBody["market"]>;
+type ProductEstimateBody = NonNullable<ProductMarketBody["estimate"]>;
+
+/** Prefix of every estimated figure, so it never reads as a market price. */
+export const ESTIMATE_PREFIX = "est. ";
+
+/** An unmatched line's estimate; `null` for a matched line (the server never sends both). */
+function estimateOf(p: Contract360ProductBody): ProductEstimateBody | null {
+  const market = p.market;
+  return market !== null && !market.matched && market.estimate !== null && market.estimate.unitPriceP50 > 0 ? market.estimate : null;
+}
 
 export const PRODUCT_NOTE_UNCHECKED =
   "Prices are the negotiated rate on the validated document; the market column fills once the lines have been compared with the market data.";
 export const PRODUCT_NOTE_NO_MATCH =
   "No comparable market record for these lines yet — not your product, and nothing similar, from customers paying in the contract's own currency.";
+export const PRODUCT_NOTE_ESTIMATED =
+  "Figures marked est. are estimates, not market data: no market record matches those lines, so they are converted from another currency or estimated by AI. They are never counted in \"Could save\".";
 /** The foot note under the table: why there are no market figures yet; `null` once a line has one (the header tooltips explain them). */
 export function buildProductNote(products: readonly Contract360ProductBody[]): string | null {
   const markets = products.map((p) => p.market).filter((m): m is ProductMarketBody => m !== null);
   if (markets.length === 0) return PRODUCT_NOTE_UNCHECKED;
+  if (products.some((p) => estimateOf(p) !== null)) return PRODUCT_NOTE_ESTIMATED;
   if (!markets.some((m) => m.matched)) return PRODUCT_NOTE_NO_MATCH;
   return null;
 }
@@ -1013,6 +1028,7 @@ export const MARKET_MEDIAN_EXPLAINED = [
   "The middle price other customers pay for the same product: half pay less, half pay more. In your currency, from contracts of your size where the market data has them.",
   `Under each price: region, contract length and how many contracts it is worked out from. Under ${SMALL_SAMPLE}, treat it as indicative.`,
   "≈ a similar product, not yours · sum: a bundle's products, added up.",
+  "est. no market record at all: an estimate (converted from another currency, or by AI) — never market data.",
 ];
 export const MARKET_SOURCE = "Representative market data (mock feed).";
 export const SAVING_COLUMN_EXPLAINED =
@@ -1104,6 +1120,37 @@ export function buildProductSavingTotal(
   return similar ? `≈ ${figure}` : figure;
 }
 
+/** One unmatched line's saving against its estimated band: P25–median, each clamped to today's price. */
+function estimatedLineSaving(p: Contract360ProductBody, price: number | null, annual: number | null): SavingRange | null {
+  const estimate = estimateOf(p);
+  if (price === null || estimate === null) return null;
+  return computeLineSaving(price, annual, Math.min(estimate.unitPriceP25, price), Math.min(estimate.unitPriceP50, price));
+}
+
+/**
+ * The table foot's "Estimated saving / yr": the estimated lines' savings added up, kept apart from
+ * "Could save" (which only ever counts market data) and "est."-prefixed; `null` when no estimated
+ * line can be sized or none saves anything.
+ */
+export function buildEstimatedSavingTotal(
+  products: readonly Contract360ProductBody[],
+  currency: string,
+  autoAcceptThreshold: number = AUTO_ACCEPT_THRESHOLD,
+): string | null {
+  const total: SavingRange = { low: 0, high: 0 };
+  let sized = false;
+  for (const p of products) {
+    const saving = isExtractedRowShown(p, autoAcceptThreshold) ? estimatedLineSaving(p, p.unitPrice, p.annualCost) : null;
+    if (saving === null) continue;
+    sized = true;
+    total.low += saving.low;
+    total.high += saving.high;
+  }
+  if (!sized) return null;
+  const figure = formatSavingRange(total, currency);
+  return figure === null ? null : `${ESTIMATE_PREFIX}${figure}`;
+}
+
 /** `(price / P50 - 1)`, rounded to a whole percent: "+14%", "-8%", "0%". */
 export function formatVersusMarket(unitPrice: number, p50: number): string {
   const percent = Math.round((unitPrice / p50 - 1) * 100);
@@ -1142,6 +1189,10 @@ export function buildProductLines(
     const approx = similar ? "≈ " : "";
     const saving = compared ? marketLineSaving(p, price, officialized ? p.annualCost : null) : null;
     const savingText = saving === null ? null : formatSavingRange(saving, currency);
+    const estimate = p50 === null ? estimateOf(p) : null;
+    if (estimate !== null) {
+      return buildEstimatedLine(p, estimate, { officialized, meta, price, currency });
+    }
     return {
       key: p.lineItemId,
       name: p.description !== "" ? p.description : (p.sku ?? "Line item"),
@@ -1152,6 +1203,7 @@ export function buildProductLines(
       market: p50 !== null ? `${approx}${formatMoney(p50, marketCurrency)}` : UNOFFICIALIZED_PLACEHOLDER,
       marketMeta: market === null ? "" : p50 !== null ? formatMarketMeta(market) : "no match",
       marketTitle: p50 !== null && market !== null ? formatMarketTitle(market, marketCurrency) : null,
+      estimated: false,
       delta: compared ? `${approx}${formatVersusMarket(price, p50)}` : UNOFFICIALIZED_PLACEHOLDER,
       deltaAccent: compared && price > p50,
       payWidth: compared ? percentOf(price, max) : price !== null ? "100%" : "0%",
@@ -1161,6 +1213,52 @@ export function buildProductLines(
       annual: officialized ? formatMoney(p.annualCost, currency) : UNOFFICIALIZED_PLACEHOLDER,
     };
   });
+}
+
+/**
+ * A row whose market column is an estimate: every figure "est."-prefixed, the estimate's kind
+ * under it, what it rests on as the hover and under the name, and its own saving — which the
+ * "Could save" total never adds (see {@link buildEstimatedSavingTotal}).
+ */
+function buildEstimatedLine(
+  p: Contract360ProductBody,
+  estimate: ProductEstimateBody,
+  row: { officialized: boolean; meta: string; price: number | null; currency: string },
+): ProductLine {
+  const { officialized, meta, price, currency } = row;
+  const p50 = estimate.unitPriceP50;
+  const compared = price !== null && price > 0;
+  const max = compared ? Math.max(price, p50) : 0;
+  const saving = compared ? estimatedLineSaving(p, price, officialized ? p.annualCost : null) : null;
+  const savingText = saving === null ? null : formatSavingRange(saving, currency);
+  const kind = estimate.kind === "Converted" ? "converted" : "AI estimate";
+  return {
+    key: p.lineItemId,
+    name: p.description !== "" ? p.description : (p.sku ?? "Line item"),
+    meta,
+    marketBasis:
+      estimate.kind === "Converted"
+        ? `Estimate, not market data — ${estimate.basis}`
+        : `AI estimate, not market data${estimate.product !== null ? ` — ${estimate.product}` : ""}`,
+    qty: officialized && p.quantity !== null ? formatPlainNumber(p.quantity) : UNOFFICIALIZED_PLACEHOLDER,
+    price: officialized ? formatMoney(p.unitPrice, currency) : UNOFFICIALIZED_PLACEHOLDER,
+    market: `${ESTIMATE_PREFIX}${formatMoney(p50, estimate.currency || currency)}`,
+    marketMeta: kind,
+    marketTitle: [
+      `P25 ${formatMoney(estimate.unitPriceP25, estimate.currency || currency)} – P75 ${formatMoney(estimate.unitPriceP75, estimate.currency || currency)}`,
+      estimate.basis,
+    ]
+      .filter((part) => part !== "")
+      .join(" · "),
+    estimated: true,
+    delta: compared ? `${ESTIMATE_PREFIX}${formatVersusMarket(price, p50)}` : UNOFFICIALIZED_PLACEHOLDER,
+    deltaAccent: compared && price > p50,
+    payWidth: compared ? percentOf(price, max) : price !== null ? "100%" : "0%",
+    marketWidth: compared ? percentOf(p50, max) : "0%",
+    saving: saving === null ? UNOFFICIALIZED_PLACEHOLDER : savingText === null ? "none" : `${ESTIMATE_PREFIX}${savingText}`,
+    savingAccent: savingText !== null,
+    annual: officialized ? formatMoney(p.annualCost, currency) : UNOFFICIALIZED_PLACEHOLDER,
+  };
 }
 
 /** Under the product name, when the market figure is not this line's own product. */

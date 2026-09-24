@@ -57,4 +57,30 @@ public sealed class ContractLineItemMarketPrice : TenantScopedEntity
 
     /// <summary>When this line was last compared with the market (match or no match).</summary>
     public required DateTimeOffset CheckedAt { get; set; }
+
+    /// <summary>The market corpus fingerprint this row was compared against
+    /// (<see cref="IMarketPriceMatcher.GetCorpusVersionAsync"/>): a re-ingested corpus re-prices the
+    /// line on its next read.</summary>
+    public string? CorpusVersion { get; set; }
+
+    // ---- Estimate: only for a line with no match, never mixed with the matched band above ----
+
+    /// <summary>How the estimate was obtained; <see langword="null"/> when the line has none (it was
+    /// matched, or not even an estimate could be made).</summary>
+    public MarketEstimateKind? EstimateKind { get; set; }
+
+    public string? EstimateCurrency { get; set; }
+    public decimal? EstimateUnitPriceP25 { get; set; }
+    public decimal? EstimateUnitPriceP50 { get; set; }
+    public decimal? EstimateUnitPriceP75 { get; set; }
+
+    /// <summary>What the estimate rests on, in plain words.</summary>
+    public string? EstimateBasis { get; set; }
+
+    /// <summary>The product the estimate is for.</summary>
+    public string? EstimateProduct { get; set; }
+
+    /// <summary>When an estimate was last attempted for this line (with or without a result), so a
+    /// read does not ask for one again until the corpus or the line changes.</summary>
+    public DateTimeOffset? EstimatedAt { get; set; }
 }

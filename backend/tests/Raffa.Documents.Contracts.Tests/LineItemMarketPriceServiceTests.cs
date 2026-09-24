@@ -335,6 +335,106 @@ public sealed class LineItemMarketPriceServiceTests : IAsyncLifetime
         }
     }
 
+    private static MarketPriceEstimate SupportEstimate() => new(
+        MarketEstimateKind.AiEstimate, "GBP", 20_000m, 25_000m, 30_000m, "Typical premium support tier.", "Premium Support");
+
+    [Fact]
+    public async Task Only_an_unmatched_line_gets_an_estimate_kept_apart_from_the_match_and_a_later_match_drops_it()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var supplierId = EntityId.New();
+        var (contractId, unlimited, support) = await SeedAsync(tenantContext, tenantId, supplierId);
+
+        var clock = new MutableClock(T0);
+        var names = new FakeSupplierNames(supplierId, "Salesforce");
+        var matcher = new FakeMatcher(line => line.Description.Contains("Unlimited", StringComparison.Ordinal) ? UnlimitedBand() : null);
+        var estimator = new FakeEstimator(_ => SupportEstimate());
+
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var priced = await new LineItemMarketPriceService(db, tenantContext, clock, matcher, names, estimator: estimator)
+                .PriceContractAsync(tenantId, contractId, CancellationToken.None);
+
+            Assert.True(priced[unlimited].Matched);
+            Assert.Null(priced[unlimited].Estimate);
+
+            // The estimate never becomes the matched band: the line is still unmatched.
+            Assert.False(priced[support].Matched);
+            Assert.Null(priced[support].UnitPriceP50);
+            Assert.Equal(SupportEstimate(), priced[support].Estimate);
+        }
+
+        // Asked for the unmatched line only.
+        Assert.Equal(1, estimator.LinesEstimated);
+
+        // A read inside the refresh window keeps the stored estimate without asking again.
+        clock.Now = T0.AddHours(1);
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var current = await new LineItemMarketPriceService(db, tenantContext, clock, matcher, names, estimator: estimator)
+                .GetCurrentAsync(tenantId, contractId, CancellationToken.None);
+            Assert.Equal(25_000m, current[support].Estimate?.UnitPriceP50);
+        }
+
+        Assert.Equal(1, estimator.LinesEstimated);
+
+        // Once the corpus has a real match for the line, the estimate is gone.
+        var matchesAll = new FakeMatcher(_ => UnlimitedBand());
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var repriced = await new LineItemMarketPriceService(db, tenantContext, clock, matchesAll, names, estimator: estimator)
+                .PriceContractAsync(tenantId, contractId, CancellationToken.None);
+            Assert.True(repriced[support].Matched);
+            Assert.Null(repriced[support].Estimate);
+        }
+
+        Assert.Equal(1, estimator.LinesEstimated);
+    }
+
+    [Fact]
+    public async Task A_reingested_corpus_reprices_a_fresh_comparison_on_the_next_read()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var supplierId = EntityId.New();
+        var (contractId, _, support) = await SeedAsync(tenantContext, tenantId, supplierId);
+
+        var clock = new MutableClock(T0);
+        var names = new FakeSupplierNames(supplierId, "Salesforce");
+        var matcher = new FakeMatcher(_ => null) { CorpusVersion = "mock-1:10" };
+
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            await new LineItemMarketPriceService(db, tenantContext, clock, matcher, names)
+                .PriceContractAsync(tenantId, contractId, CancellationToken.None);
+        }
+
+        Assert.Equal(2, matcher.LinesPriced);
+
+        // Same corpus, inside the refresh window: nothing re-priced.
+        clock.Now = T0.AddMinutes(30);
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            await new LineItemMarketPriceService(db, tenantContext, clock, matcher, names)
+                .GetCurrentAsync(tenantId, contractId, CancellationToken.None);
+        }
+
+        Assert.Equal(2, matcher.LinesPriced);
+
+        // The corpus was re-ingested: the stored no-match is re-priced at once.
+        var reingested = new FakeMatcher(_ => UnlimitedBand()) { CorpusVersion = "mock-2:1456" };
+        clock.Now = T0.AddMinutes(31);
+        await using (var db = CreateAppContext(tenantContext))
+        {
+            var current = await new LineItemMarketPriceService(db, tenantContext, clock, reingested, names)
+                .GetCurrentAsync(tenantId, contractId, CancellationToken.None);
+            Assert.True(current[support].Matched);
+        }
+
+        Assert.Equal(2, reingested.LinesPriced);
+    }
+
     private sealed class MutableClock(DateTimeOffset now) : IClock
     {
         public DateTimeOffset Now { get; set; } = now;
@@ -348,12 +448,29 @@ public sealed class LineItemMarketPriceServiceTests : IAsyncLifetime
 
         public int LinesPriced { get; private set; }
 
+        public string? CorpusVersion { get; init; }
+
+        public Task<string?> GetCorpusVersionAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(CorpusVersion);
+
         public Task<IReadOnlyList<MarketPriceMatch?>> MatchAsync(
             MarketPriceContext context, IReadOnlyList<MarketPriceLine> lines, CancellationToken cancellationToken)
         {
             Contexts.Add(context);
             LinesPriced += lines.Count;
             return Task.FromResult<IReadOnlyList<MarketPriceMatch?>>(lines.Select(price).ToList());
+        }
+    }
+
+    private sealed class FakeEstimator(Func<MarketPriceLine, MarketPriceEstimate?> estimate) : IMarketPriceEstimator
+    {
+        public int LinesEstimated { get; private set; }
+
+        public Task<IReadOnlyList<MarketPriceEstimate?>> EstimateAsync(
+            MarketPriceContext context, IReadOnlyList<MarketPriceLine> lines, CancellationToken cancellationToken)
+        {
+            LinesEstimated += lines.Count;
+            return Task.FromResult<IReadOnlyList<MarketPriceEstimate?>>(lines.Select(estimate).ToList());
         }
     }
 

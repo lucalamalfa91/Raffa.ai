@@ -19,6 +19,7 @@ import {
   SAVING_COLUMN_EXPLAINED,
   buildProductNote,
   buildProductSavingTotal,
+  buildEstimatedSavingTotal,
   buildObligationColumns,
   buildProductLines,
   buildRiskItems,
@@ -98,6 +99,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
   const lines = buildProductLines(contract.tabs.products, currency, autoAcceptThreshold);
   const total = contract.header.annualSpend === null ? "—" : formatCompactAmount(contract.header.annualSpend, currency);
   const saving = buildProductSavingTotal(contract.tabs.products, currency, autoAcceptThreshold);
+  const estimatedSaving = buildEstimatedSavingTotal(contract.tabs.products, currency, autoAcceptThreshold);
   const note = buildProductNote(contract.tabs.products);
   return (
     <SectionFrame copy={SECTION_COPY.products} label="Products & pricing">
@@ -129,7 +131,7 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
               <span className="is-right">Annual</span>
             </div>
             {lines.map((line) => (
-              <div key={line.key} className="contract360-product" role="row">
+              <div key={line.key} className={`contract360-product${line.estimated ? " is-estimated" : ""}`} role="row">
                 <div>
                   <div className="contract360-product-name">{line.name}</div>
                   {line.meta !== "" && <div className="contract360-product-meta">{line.meta}</div>}
@@ -158,6 +160,12 @@ export function ProductsSection({ contract, autoAcceptThreshold }: { contract: C
                 <span className="contract360-products-total contract360-products-total-saving">
                   <span className="contract360-products-total-label">Could save / yr</span>
                   {saving}
+                </span>
+              )}
+              {estimatedSaving !== null && (
+                <span className="contract360-products-total contract360-products-total-estimated" title="From estimates, not market data: not counted in Could save.">
+                  <span className="contract360-products-total-label">Estimated saving / yr</span>
+                  {estimatedSaving}
                 </span>
               )}
               <span className="contract360-products-total">

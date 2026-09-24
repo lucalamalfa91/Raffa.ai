@@ -644,7 +644,9 @@
 
 .contract360-products-foot {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr;
+  grid-auto-flow: column;
+  grid-auto-columns: auto;
   gap: 24px;
   padding: 12px 0 0;
   font-size: 13px;
@@ -667,6 +669,35 @@
 
 .contract360-products-total-saving {
   color: var(--color-accent-700);
+}
+
+/* An estimate is never market data: muted, italic figures and a hatched market bar. */
+.contract360-product.is-estimated .contract360-product-market,
+.contract360-product.is-estimated .contract360-product-delta-value,
+.contract360-product.is-estimated .contract360-product-saving {
+  font-style: italic;
+  color: var(--color-neutral-600);
+}
+
+.contract360-product.is-estimated .contract360-product-basis {
+  color: var(--color-neutral-600);
+}
+
+.contract360-product.is-estimated .contract360-product-bar-market {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-neutral-500) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.contract360-product.is-estimated .contract360-product-bar-pay {
+  opacity: 0.45;
+}
+
+.contract360-products-total-estimated {
+  font-style: italic;
+  color: var(--color-neutral-600);
 }
 
 .contract360-products-total-label {

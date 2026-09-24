@@ -477,7 +477,9 @@ public static class ContractsEndpointExtensions
     /// comparable record exists, otherwise the record's P25/P50/P75 with the provenance every
     /// market figure must carry (ADR-001 w17 clause 4: source, sample size, region/term, as-of) and
     /// <c>matchKind</c>: <c>Exact</c> (the line's own product), <c>Bundle</c> (the products the line
-    /// names, summed) or <c>Similar</c> (a similar product, never the line's own price).
+    /// names, summed) or <c>Similar</c> (a similar product, never the line's own price). An
+    /// unmatched line may carry an <c>estimate</c> (converted or AI) — never market data, and only
+    /// here: no other reader of the comparison sees it.
     /// </summary>
     private static object? ToMarketResponse(LineItemMarketPrice? price) =>
         price is null
@@ -498,6 +500,18 @@ public static class ContractsEndpointExtensions
                 marketUpdatedAt = price.MarketUpdatedAt,
                 checkedAt = price.CheckedAt,
                 matchKind = price.Kind?.ToString(),
+                estimate = price.Estimate is not { } estimate
+                    ? null
+                    : new
+                    {
+                        kind = estimate.Kind.ToString(),
+                        currency = estimate.Currency,
+                        unitPriceP25 = estimate.UnitPriceP25,
+                        unitPriceP50 = estimate.UnitPriceP50,
+                        unitPriceP75 = estimate.UnitPriceP75,
+                        basis = estimate.Basis,
+                        product = estimate.Product,
+                    },
             };
 
     private static async Task<IResult> CorrectContractAsync(

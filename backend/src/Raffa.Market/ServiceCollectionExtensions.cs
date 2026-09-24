@@ -153,6 +153,13 @@ public static class ServiceCollectionExtensions
         // IMarketDealLookup, which is Scoped when backed by MarketDbContext.
         services.TryAddScoped<IMarketPriceMatcher, MarketPriceMatcher>();
 
+        // The last resort behind the market column, for lines the matcher could not price: a
+        // converted band, else an AI estimate (the gateway is optional -- no gateway, no AI step).
+        services.TryAddScoped<IMarketPriceEstimator>(sp => new MarketPriceEstimator(
+            sp.GetRequiredService<IMarketDealLookup>(),
+            sp.GetService<Raffa.AiGateway.IAiGateway>(),
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<MarketPriceEstimator>>()));
+
         MakeMarketFeedTheDefaultActiveAdapter(services);
 
         return services;

@@ -1131,5 +1131,77 @@ BEGIN
     VALUES ('20260923122306_AddContractLineItemMarketPriceMatchKind', '10.0.4');
     END IF;
 END $EF$;
+
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD corpus_version character varying(100);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD estimate_basis character varying(600);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD estimate_currency character varying(3);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD estimate_kind character varying(20);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD estimate_product character varying(300);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD estimate_unit_price_p25 numeric(18,4);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD estimate_unit_price_p50 numeric(18,4);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD estimate_unit_price_p75 numeric(18,4);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    ALTER TABLE contract_line_item_market_price ADD estimated_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260924153558_AddContractLineItemMarketPriceEstimate') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20260924153558_AddContractLineItemMarketPriceEstimate', '10.0.4');
+    END IF;
+END $EF$;
 COMMIT;
 

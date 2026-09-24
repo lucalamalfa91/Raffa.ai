@@ -13,8 +13,10 @@ namespace Raffa.Documents.Contracts.Application;
 /// <summary>
 /// One line item's stored market comparison, as Contract 360 reads it. <see cref="Matched"/> is
 /// <see langword="false"/> for a checked line with no comparable market record — every other
-/// member is then <see langword="null"/>. <see cref="Kind"/> says whether the band is the line's own
-/// product, a bundle of the products it names, or only a similar product.
+/// member but <see cref="Estimate"/> is then <see langword="null"/>. <see cref="Kind"/> says whether the band is the line's own
+/// product, a bundle of the products it names, or only a similar product. <see cref="Estimate"/> is
+/// an unmatched line's estimated band (converted, or AI) — never market data, kept apart from the
+/// matched band so a reader that only knows <see cref="Matched"/> never sees it.
 /// </summary>
 public sealed record LineItemMarketPrice(
     EntityId LineItemId,
@@ -31,7 +33,8 @@ public sealed record LineItemMarketPrice(
     string? Provenance,
     DateTimeOffset? MarketUpdatedAt,
     DateTimeOffset CheckedAt,
-    MarketMatchKind? Kind = null);
+    MarketMatchKind? Kind = null,
+    MarketPriceEstimate? Estimate = null);
 
 /// <summary>
 /// Compares a contract's line items with the shared market corpus and keeps the result on
@@ -60,7 +63,8 @@ public sealed class LineItemMarketPriceService(
     IClock clock,
     IMarketPriceMatcher? matcher = null,
     ISupplierNameLookup? supplierNames = null,
-    ILogger<LineItemMarketPriceService>? logger = null)
+    ILogger<LineItemMarketPriceService>? logger = null,
+    IMarketPriceEstimator? estimator = null)
 {
     /// <summary>How long a stored comparison is trusted before a read re-prices the line.</summary>
     public static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(6);
@@ -114,14 +118,26 @@ public sealed class LineItemMarketPriceService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        string? corpusVersion = null;
+        try
+        {
+            corpusVersion = await matcher.GetCorpusVersionAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Market corpus version unavailable; stored comparisons age out by time only.");
+        }
+
         // A match stored before the match kind was recorded is re-priced at once: it may be one
-        // product of a bundle line read as the whole line's price.
+        // product of a bundle line read as the whole line's price. So is any line compared against
+        // an older corpus: a re-ingested feed reaches the screen on the next read.
         var staleBefore = clock.UtcNow - RefreshAfter;
         var toPrice = lineItems
             .Where(l => force
                 || !stored.TryGetValue(l.Id, out var row)
                 || row.CheckedAt < staleBefore
-                || (row.RecordId is not null && row.MatchKind is null))
+                || (row.RecordId is not null && row.MatchKind is null)
+                || (corpusVersion is not null && row.CorpusVersion != corpusVersion))
             .ToList();
         if (toPrice.Count == 0)
         {
@@ -129,6 +145,7 @@ public sealed class LineItemMarketPriceService(
         }
 
         IReadOnlyList<MarketPriceMatch?> matches;
+        MarketPriceContext priceContext;
         try
         {
             var supplierName = await ResolveSupplierNameAsync(tenantId, contract.SupplierId, cancellationToken)
@@ -137,9 +154,10 @@ public sealed class LineItemMarketPriceService(
             // sum of its lines' own annual costs when the header carries none.
             var annualValue = contract.AnnualSpend
                 ?? (lineItems.Any(l => l.AnnualCost is not null) ? lineItems.Sum(l => l.AnnualCost ?? 0m) : null);
+            priceContext = new MarketPriceContext(supplierName, contract.Currency, contract.RenewalTermMonths, annualValue);
             matches = await matcher
                 .MatchAsync(
-                    new MarketPriceContext(supplierName, contract.Currency, contract.RenewalTermMonths, annualValue),
+                    priceContext,
                     toPrice.Select(l => new MarketPriceLine(l.Description, l.Sku)).ToList(),
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -151,6 +169,13 @@ public sealed class LineItemMarketPriceService(
         }
 
         var now = clock.UtcNow;
+        var estimates = await EstimateUnmatchedAsync(
+                priceContext, toPrice.Select(l => new MarketPriceLine(l.Description, l.Sku)).ToList(), matches,
+                i => force || !stored.TryGetValue(toPrice[i].Id, out var row) || row.EstimatedAt is null
+                    || (corpusVersion is not null && row.CorpusVersion != corpusVersion),
+                contractId, cancellationToken)
+            .ConfigureAwait(false);
+
         for (var i = 0; i < toPrice.Count; i++)
         {
             var lineItemId = toPrice[i].Id;
@@ -167,7 +192,18 @@ public sealed class LineItemMarketPriceService(
                 stored[lineItemId] = row;
             }
 
-            Apply(row, i < matches.Count ? matches[i] : null, now);
+            var match = i < matches.Count ? matches[i] : null;
+            Apply(row, match, now);
+            row.CorpusVersion = corpusVersion;
+            if (match is not null)
+            {
+                // A real match always wins: no estimate is kept beside it.
+                ApplyEstimate(row, null, estimatedAt: null);
+            }
+            else if (estimates.TryGetValue(i, out var estimate))
+            {
+                ApplyEstimate(row, estimate, now);
+            }
         }
 
         try
@@ -187,6 +223,73 @@ public sealed class LineItemMarketPriceService(
 
         return ToResult(stored.Values);
     }
+
+    /// <summary>
+    /// Estimates for the lines with no match that <paramref name="needsEstimate"/> says need a
+    /// fresh one (keyed by their index in <paramref name="lines"/>; a missing key keeps the stored
+    /// estimate). Only ever the unmatched lines: an estimate never sits beside a match.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<int, MarketPriceEstimate?>> EstimateUnmatchedAsync(
+        MarketPriceContext context,
+        IReadOnlyList<MarketPriceLine> lines,
+        IReadOnlyList<MarketPriceMatch?> matches,
+        Func<int, bool> needsEstimate,
+        EntityId contractId,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<int, MarketPriceEstimate?>();
+        if (estimator is null)
+        {
+            return result;
+        }
+
+        var open = Enumerable.Range(0, lines.Count)
+            .Where(i => (i >= matches.Count || matches[i] is null) && needsEstimate(i))
+            .ToList();
+        if (open.Count == 0)
+        {
+            return result;
+        }
+
+        try
+        {
+            var estimates = await estimator
+                .EstimateAsync(context, open.Select(i => lines[i]).ToList(), cancellationToken)
+                .ConfigureAwait(false);
+            for (var k = 0; k < open.Count; k++)
+            {
+                result[open[k]] = k < estimates.Count ? estimates[k] : null;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // No estimate recorded: the lines are asked again on the next refresh.
+            _logger.LogWarning(ex, "Market estimate failed for contract {ContractId}; the lines keep no estimate.", contractId);
+        }
+
+        return result;
+    }
+
+    private static void ApplyEstimate(ContractLineItemMarketPrice row, MarketPriceEstimate? estimate, DateTimeOffset? estimatedAt)
+    {
+        row.EstimatedAt = estimatedAt;
+        row.EstimateKind = estimate?.Kind;
+        row.EstimateCurrency = estimate?.Currency;
+        row.EstimateUnitPriceP25 = estimate?.UnitPriceP25;
+        row.EstimateUnitPriceP50 = estimate?.UnitPriceP50;
+        row.EstimateUnitPriceP75 = estimate?.UnitPriceP75;
+        row.EstimateBasis = estimate?.Basis;
+        row.EstimateProduct = estimate?.Product;
+    }
+
+    private static MarketPriceEstimate? ToEstimate(ContractLineItemMarketPrice row) =>
+        row.RecordId is null
+        && row.EstimateKind is { } kind
+        && row.EstimateUnitPriceP25 is { } p25
+        && row.EstimateUnitPriceP50 is { } p50
+        && row.EstimateUnitPriceP75 is { } p75
+            ? new MarketPriceEstimate(kind, row.EstimateCurrency ?? string.Empty, p25, p50, p75, row.EstimateBasis ?? string.Empty, row.EstimateProduct)
+            : null;
 
     private async Task<string?> ResolveSupplierNameAsync(
         TenantId tenantId, EntityId? supplierId, CancellationToken cancellationToken)
@@ -235,5 +338,6 @@ public sealed class LineItemMarketPriceService(
                 r.Provenance,
                 r.MarketUpdatedAt,
                 r.CheckedAt,
-                r.RecordId is null ? null : r.MatchKind ?? MarketMatchKind.Exact));
+                r.RecordId is null ? null : r.MatchKind ?? MarketMatchKind.Exact,
+                ToEstimate(r)));
 }
