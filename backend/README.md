@@ -744,19 +744,22 @@ test/golden oracles (Salesforce, Microsoft, AWS, Snowflake, ServiceNow,
 Slack, Zoom, Notion, HubSpot, Workday, SAP, Adobe, Atlassian, Google
 Workspace, DocuSign, Okta, Allianz, AXA, Zurich, Swiss Re, facilities,
 telco, logistics, professional services). The generated rows come from
-`backend/scripts/generate_market_intelligence_mock.py` (deterministic seed):
-a catalog of ~120 products / SKU editions anchored on 2026 public list
-prices (Salesforce editions, Microsoft 365 E3/E5/F3, ServiceNow ITSM tiers,
-Slack, Zoom, Atlassian, Workday, SAP, Oracle, Adobe, DocuSign, Okta, Google
-Workspace, Datadog, Zendesk, GitHub, HubSpot, Snowflake credits, Databricks
-DBUs, Tableau, AWS/Azure/GCP instance hours and storage, Big Four and IT
-services day rates, telco sites and SIMs, insurance premiums, freight and
-facility rates) spread across **US / EU / UK / CH / APAC** (USD / EUR / GBP /
-CHF), 12/24/36-month terms and five company-size bands, with bands modelled
-from the typical negotiated discount per category, size and term, plus
-negotiated clauses, uplift caps, notice and payment terms. Generated ids
-start with `MKT-ZZ-` (they sort after every hand-written id, so a tie never
-shadows an oracle) and never add to a hand-written supplier/product pair.
+`backend/scripts/generate_market_benchmark_corpus.py` (deterministic seed;
+**synthetic test data**, Vendr/Tropic-shaped, not real deals): ~25,700
+records over ~280 products from ~150 suppliers (SaaS suites and seats,
+security, cloud, supplier support plans and onboarding fees, professional
+services, telco, insurance, logistics, facilities), **20 countries** as
+the record's `geography` (US, CA, UK, IE, DE, FR, IT, ES, NL, BE, AT, SE,
+DK, PL, CH, AU, SG, JP, IN, BR; priced in USD / EUR / GBP / CHF), five
+company-size bands, ten industries (`industry`), 12/24/36-month terms.
+Bands are modelled from list price, a country price-book and labour-cost
+index, and the negotiated discount by category, size and term; support
+plans are priced as a share of the licences they cover (category
+`Support & Services`, never matched across suppliers). The script also
+writes aggregated benchmark reports by country, size and category to
+`backend/fixtures/market-benchmarks/`. Generated ids start with `MKT-ZZ-`
+(they sort after every hand-written id, so a tie never shadows an oracle)
+and never add to a hand-written supplier/product pair.
 Re-run the script after editing the catalog; it keeps the hand-written rows
 byte-identical. 9 hand-written rows deliberately carry
 `sampleSize < 5` so the abstain path below is exercised — every record
@@ -3349,7 +3352,7 @@ ConnectionStrings__Renewals=<npgsql> \
 ConnectionStrings__Market=<npgsql> \
   dotnet run --project backend/src/Raffa.Worker -- \
     ingest-market --feed backend/fixtures/market-intelligence.mock.json
-# Ingested feed 'mock-2026.09.2': 1456 inserted, 0 updated, 0 unchanged.
+# Ingested feed 'mock-2026.09.3': 25727 inserted, 0 updated, 0 unchanged.
 ```
 
 The first three connection strings are what `Raffa.Worker/Program.cs`
