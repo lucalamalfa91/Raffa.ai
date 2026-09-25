@@ -172,6 +172,8 @@
 
 .ask-thread {
   max-width: 900px;
+  width: 100%;
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: 30px;
@@ -317,23 +319,35 @@
 
 /* ---- Composer ---------------------------------------------------------------- */
 
+/* Claude.ai-style composer: one rounded paper card holding the input and its tools, in the same
+ * quiet --chat-* chrome as the thread above -- no hard rule, no underline. */
 .ask-composer {
-  padding: 14px 32px 16px;
-  border-top: 2px solid var(--color-text);
-  background: var(--color-surface);
+  padding: 8px 32px 16px;
+  background: transparent;
 }
 
 .ask-composer-row {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
+  max-width: 900px;
+  width: 100%;
+  margin-inline: auto;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: 16px;
+  background: var(--chat-paper);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%), 0 4px 16px rgb(0 0 0 / 4%);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.ask-composer-row:focus-within {
+  border-color: var(--chat-hairline-strong);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 6px 20px rgb(0 0 0 / 7%);
 }
 
 .ask-composer-mark {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  background: var(--color-accent);
+  display: none;
 }
 
 .input.ask-composer-input {
@@ -341,38 +355,39 @@
   min-width: 0;
   background: transparent;
   border: 0;
-  border-bottom: 2px solid var(--color-text);
   border-radius: 0;
-  font-family: var(--font-heading);
-  font-weight: var(--weight-body-strong);
-  font-size: 18px;
+  font-size: 15px;
   padding: 8px 0;
-  min-height: 44px;
+  min-height: 40px;
 }
 
 .input.ask-composer-input:focus-visible {
   outline: none;
-  border-bottom-color: var(--color-accent);
 }
 
 .btn.ask-composer-send {
-  min-height: 44px;
-  padding: 0 18px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
 }
 
 .ask-composer-chips {
   display: flex;
-  gap: 6px 18px;
+  gap: 6px 8px;
   flex-wrap: wrap;
-  align-items: baseline;
-  padding: 10px 0 0 28px;
+  align-items: center;
+  max-width: 900px;
+  width: 100%;
+  margin-inline: auto;
+  padding: 10px 4px 0;
   min-height: 22px;
 }
 
 .ask-suggestion {
-  border: 0;
+  border: 1px solid var(--chat-hairline);
+  border-radius: 999px;
   background: transparent;
-  padding: 0;
+  padding: 4px 10px;
   font-size: 12px;
   color: var(--color-neutral-600);
   text-align: left;
@@ -380,8 +395,9 @@
 }
 
 .ask-suggestion:hover:not(:disabled) {
-  color: var(--color-accent);
-  background: transparent;
+  color: var(--color-text);
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
 }
 
 /* This chat is still answering: a chip would be refused, so it reads as unavailable. */
@@ -465,11 +481,11 @@
   }
 
   .ask-composer-row:has(.ask-web-toggle) .ask-composer-input {
-    flex-basis: calc(100% - 28px);
+    flex-basis: 100%;
   }
 
   .ask-composer-row:has(.ask-web-toggle) .ask-web-toggle {
-    margin-left: 28px;
+    margin-left: auto;
   }
 }
 

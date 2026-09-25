@@ -51,8 +51,10 @@ public interface IMarketPriceMatcher
 /// deal) is preferred over one from a bigger or smaller buyer.</param>
 public sealed record MarketPriceContext(string? SupplierName, string Currency, int? TermMonths, decimal? AnnualValue = null);
 
-/// <summary>One line item to price: its description and SKU as extracted.</summary>
-public sealed record MarketPriceLine(string Description, string? Sku);
+/// <summary>One line item to price: its description and SKU as extracted, plus (when known) its
+/// quantity and annual cost — used only as context for estimates (volume tier, support priced as a
+/// share of the licences it covers), never as the market price itself.</summary>
+public sealed record MarketPriceLine(string Description, string? Sku, decimal? Quantity = null, decimal? AnnualCost = null);
 
 /// <summary>How closely a <see cref="MarketPriceMatch"/> describes the line it prices.</summary>
 public enum MarketMatchKind
