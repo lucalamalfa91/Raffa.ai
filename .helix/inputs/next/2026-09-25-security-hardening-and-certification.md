@@ -8,6 +8,20 @@ e NESSUNO li potrà mai toccare o consultare senza specifica autorizzazione
 arrivare a ottenere una certificazione che Raffa ha degli standard di
 sicurezza altissimi."*
 
+**Goal of this file, decided by the founders on 2026-09-25: Raffa is ready
+for the ISO/IEC 27001:2022 certification audit.** Every item below is a
+control the auditor will look for, or the evidence that proves it. "Done"
+for this file means an accredited body can be booked for Stage 1 without a
+gap assessment finding a missing control.
+
+**Deferred to a separate governance/legal input (founders, forthcoming):**
+the data-flywheel governance — what Raffa learns from customer data
+(aggregated, anonymised benchmarks and correction signals, never raw
+contract text), under which contractual consent, with which anonymisation
+thresholds, and the exact sentence the customer contract and the trust page
+may carry. That input will reference this file's SEC-04, SEC-05 and SEC-26;
+this file does not pre-empt it.
+
 IDs are new and stable (`SEC-nn`); they do not collide with `NW-*`, `CS-*`
 or `SR-*`. This file is **active now**, not deferred: almost every control
 below is code, CI or infrastructure that can be built and proven on `dev`
@@ -20,7 +34,7 @@ cross-referenced to the deferred file, not duplicated.
 | Companion inputs | `2026-09-25-saas-readiness-and-integrations.md` (SR-01 data residency, SR-04/SR-11 connectors — this file adds their security requirements); `2026-09-25-production-readiness-deferred.md` (SR-03 backups/DR, SR-08 trust page/DPA); `2026-09-25-customer-success-concierge.md` (CS-03/CS-04 operator access to tenant objects — this file sets the rule they must obey) |
 | Product oracles | `inputs/product-spec.md` §3.2 (tenancy: "No cross-tenant query path is acceptable"), §14 (security, AI privacy, data lifecycle), §15.4 (backup/recovery) |
 | ADRs in force | ADR-009 (RLS), ADR-010 (identity), ADR-011 (secrets, RAG isolation, audit carries outcomes never content), ADR-015 (CI OIDC, no stored secrets), ADR-022 (interim `X-Tenant-Id` posture — **this file retires it**), ADR-030/031/032 (web research isolation, public-issue scrub) |
-| Standards this file targets | ISO/IEC 27001:2022 (Annex A controls) as the certification; OWASP ASVS 4.0 **Level 2** as the application bar; OWASP Top 10 (2021) and OWASP Top 10 for LLM Applications as checklists; CIS Microsoft Azure Foundations Benchmark for the infra; GDPR art. 25 and 32 (privacy by design, security of processing) |
+| Standards this file targets | **ISO/IEC 27001:2022 is the decided certification target (founders, 2026-09-25) — the end state of this file is audit-readiness for Stage 1 and Stage 2.** Annex A controls as the control set; OWASP ASVS 4.0 **Level 2** as the application bar; OWASP Top 10 (2021) and OWASP Top 10 for LLM Applications as checklists; CIS Microsoft Azure Foundations Benchmark for the infra; GDPR art. 25 and 32 (privacy by design, security of processing) |
 
 ## 0. What is already true today (credit, with evidence — do not rebuild)
 
@@ -619,10 +633,10 @@ Priority order is within each track; the phasing across tracks is in §3.
 - **Seats:** security-architect, product-owner, founders (legal counsel
   review — budget a lawyer for the DPA and DPIA).
 
-#### SEC-27 — Certification path and honest public statements (must)
+#### SEC-27 — ISO/IEC 27001:2022 audit readiness and honest public statements (must)
 
-- **Recommendation, for the founders to confirm:** target **ISO/IEC
-  27001:2022** as the certification. It is what Italian, Swiss, German and
+- **Decided (founders, 2026-09-25):** the certification target is **ISO/IEC
+  27001:2022**; this file's completion criterion is audit readiness. It is what Italian, Swiss, German and
   Austrian enterprise procurement and their IT-security questionnaires
   actually ask for; SOC 2 Type II is US/UK-centric and can be added later
   with the same controls if a buyer requires it. Steps: gap assessment
@@ -645,9 +659,12 @@ Priority order is within each track; the phasing across tracks is in §3.
   customer data"; after Tracks A–E — the specific controls, each with
   its test; after CSA STAR L1 — "CSA STAR Level 1 self-assessed"; after
   Stage 2 — "ISO/IEC 27001:2022 certified, scope: …". Never earlier.
-- **Acceptance:** the founders confirm the target and the budget; the gap
-  assessment is done; the CAIQ is published on the trust page once SR-08
-  is activated.
+- **Acceptance (audit-readiness gate):** an independent gap assessment
+  against Annex A and clauses 4–10 finds no missing control (only
+  evidence-maturity remarks); the Statement of Applicability, risk
+  register, internal-audit report and management-review minutes exist and
+  are dated; an accredited certification body is selected and Stage 1 is
+  booked; the CAIQ is published on the trust page once SR-08 is activated.
 - **Seats:** founders (decision, budget), security-architect.
 
 ## 3. Phasing and order constraints
@@ -665,9 +682,11 @@ Priority order is within each track; the phasing across tracks is in §3.
   start in the first wave (the threat model informs Phase 1's tests) and
   never close; SEC-22, SEC-26, SEC-05, SEC-13, SEC-14 follow in Phase 2 or
   3 as capacity allows.
-- **Phase 4 — external validation:** SEC-23 (pen test) after Phases 1–2
-  are on `demo`; SEC-27 (Stage 1/2 audit) when production exists or the
-  founders decide `demo` is the in-scope service.
+- **Phase 4 — external validation and the audit:** SEC-23 (pen test)
+  after Phases 1–2 are on `demo`; then the SEC-27 gap assessment; Stage 1
+  and Stage 2 booked when production exists (deferred file, SR-03) or the
+  founders declare `demo` the in-scope service. This phase is the finish
+  line of the file, not an optional extra.
 - Hard rules: SEC-11 must ship in the same wave as the first connector or
   webhook (SR-04/SR-05), never after. SEC-03 must ship before CS-04's
   operator queue is used on a real customer's tenant. No `must` in this
