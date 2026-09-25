@@ -200,6 +200,76 @@ attached, and the human answers **inside the product**, not by email.
   the weekly split.
 - **Seats (hint):** client-architect, software-architect.
 
+### CS-10 — Raffa mascot: an animated nudge into the concierge (should)
+
+- **What you see today:** the concierge (CS-01…CS-07) only answers once the
+  user already typed into Ask. A stuck user who never opens the composer —
+  staring at a stalled upload, an empty Renewals list, an error toast — gets
+  nothing. Nothing on screen ever *offers* help; the user has to think to
+  ask for it.
+- **What it should be:** a small animated mascot (the Raffa mark, not a new
+  brand asset — reuse the square mark already in the Ask bar per the design
+  brief) that appears as a **corner bubble**, never a modal, never blocking
+  the screen underneath. It has exactly two jobs: **surface a support
+  opportunity**, and **hand off to Ask** — it never answers anything itself,
+  never opens its own text box, never calls the AI gateway directly. All
+  intelligence stays in Ask (CS-01/CS-02); the mascot is a trigger, not a
+  second assistant.
+  - **Reactive appearance** (system-detected friction, client-side only,
+    no new AI call): a document stuck in `Processing`/`Uploaded` past the
+    existing retry windows (reusing CS-02's `document_stuck` state, polled
+    by the Documents screen that already tracks it); an API call returning
+    a client error the user did not dismiss within ~10s; three failed
+    attempts at the same action (e.g. quote SKU mapping); an empty state
+    the user has stared at for over 45s with no navigation (Renewals,
+    Savings, Portfolio with zero rows). Each trigger maps 1:1 to a CS-02
+    sub-intent — the mascot never invents a reason to appear that the
+    concierge cannot resolve.
+  - **Proactive appearance** (server-computed, reuses CS-07's three
+    triggers): on sign-in, if CS-07 has a system message waiting, the
+    mascot appears once with a one-line preview ("Il tuo documento X non è
+    passato, vuoi vedere perché?") instead of silently dropping the message
+    into a new conversation the user has to notice in the rail.
+  - **The bubble copy is always the same shape**: one short sentence
+    naming the *specific* thing it noticed (never "Do you need help?" with
+    no context — that trains the user to dismiss it), one primary button
+    **Chiedi a Raffa** and one dismiss (×, no "don't show again" nagging,
+    but a per-object cooldown: the same document/screen does not re-trigger
+    for 30 minutes after a dismiss).
+  - **The handoff**: clicking the primary button opens Ask in a **new
+    conversation** (per the global Ask bar's existing "always opens a new
+    chat" rule) with the matching CS-02 resolver already invoked — the user
+    lands on the answer (stage, reason, action), not on an empty composer
+    they have to re-explain themselves into. This is the one hard
+    requirement: the mascot must never be a decorative dead end that opens
+    Ask empty.
+  - **Animation**: a light entrance (slide/fade, ≤300ms), a subtle idle
+    breathing loop while the bubble is open, no sound, respects
+    `prefers-reduced-motion` (static fade only). Built as a client-side
+    component (`web/src/components/concierge-mascot/`), no new backend
+    surface beyond what CS-02/CS-07 already expose — this item is UI-only
+    wiring plus the 45s-empty-state and click-error client detectors.
+  - **Frequency discipline**: at most one mascot bubble on screen at a
+    time; at most 3 reactive appearances per session; never on `/ask`
+    itself (Ask is already open); never during onboarding's first empty
+    state (percorso-pilota-v1.md §2 — "Carica → Elabora → Chiedi" owns that
+    moment, the mascot would compete with it). An Admin can turn the
+    reactive mascot off entirely per workspace (Workspace & members
+    setting, alongside the existing web-search toggle) — some users find a
+    proactive avatar intrusive and the setting costs one boolean.
+- **Acceptance:** force a document into `Processing` past the retry window
+  on `dev` → mascot bubble appears within one poll cycle, names the file,
+  **Chiedi a Raffa** opens a new Ask conversation already showing the
+  `document_stuck` resolver's answer; dismissing it suppresses that same
+  document's bubble for 30 minutes but not other documents'; toggling the
+  Admin setting off removes all reactive bubbles for that workspace on
+  next load; `prefers-reduced-motion` gives a static, non-breathing bubble;
+  no more than one bubble is ever visible at once across three simultaneous
+  triggers.
+- **Seats (hint):** ux-ui-designer (the asset, motion spec, copy shape),
+  client-architect (detectors, cooldown state, the Admin toggle wiring),
+  product-owner (which triggers are worth it — cut any that nag in testing).
+
 ### CS-09 — Response-time measurement before any promise (could)
 
 - **What it should be:** the scheduler records time-to-first-human-reply per
@@ -215,8 +285,14 @@ attached, and the human answers **inside the product**, not by email.
 - CS-01 before CS-02 before CS-03 before CS-04 (each consumes the previous).
 - CS-05 can run in parallel with CS-02 (the `how_do_i` resolver consumes it).
 - CS-06, CS-07, CS-08, CS-09 after CS-04.
-- If the wave cap is reached, CS-07…CS-09 become the **head of the next
-  wave**, never dropped.
+- CS-10 depends on CS-02 (its reactive triggers reuse the resolver states)
+  and on CS-07 (its proactive appearance previews CS-07's system messages).
+  It does not depend on CS-03/CS-04/CS-06 — the mascot only ever routes into
+  Ask, never opens a ticket directly.
+- If the wave cap is reached, CS-07…CS-10 become the **head of the next
+  wave**, never dropped. If only one of CS-07/CS-10 fits, CS-07 goes first —
+  the mascot without proactive messages to preview is a weaker version of
+  itself, not a broken one.
 
 ## 4. Cancels / touches
 
@@ -241,3 +317,9 @@ attached, and the human answers **inside the product**, not by email.
    chat and gets one mail without content; another tenant gets 404 on the
    ticket id.
 6. Thumbs down on a resolver reply → **Send to a person** offered.
+7. Force a document into `Processing` past the retry window → the mascot
+   bubble appears naming the file → **Chiedi a Raffa** opens a new Ask
+   conversation already showing the stage, reason and **Reprocess now** —
+   never an empty composer. Dismiss it, force the same state again within
+   30 minutes → no bubble. Toggle the Admin setting off → no bubble at all
+   on next load, for any trigger.
