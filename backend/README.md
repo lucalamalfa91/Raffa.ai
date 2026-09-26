@@ -544,6 +544,22 @@ dev upload to this path. Turning it on requires both the `Enabled` flag and
 a real OpenRouter API key; either one missing keeps the pilot inert (an
 unset key fails only the classify call itself, gracefully, never the host).
 
+The same `AiGateway:Jev:Enabled`/`AiGateway:Jev:ApiKey` switch also covers
+`Raffa.Chat.Application.Gaps.CapabilityInvestigator` (ADR-031): the real
+classification -- verdict/knownGapKey/nearestCapabilityKey -- is asked of
+Jev as "choice" decisions (`Raffa.Chat.Application.Gaps.JevVerdictClient`),
+never the LLM. `question`/`supported`/`known-gap` verdicts never touch
+Foundry at all once Jev decides them; a `gap` verdict still makes one
+Foundry `analyst` call, but only to write the free-text feature description
+Jev's primitives cannot produce -- Foundry's own verdict/confidence on that
+call are discarded, Jev's stand. A Jev failure of any kind falls back to
+the pre-existing Foundry-only path unchanged (same fail-open guarantee
+ADR-031 already had). Jev's raw confidence is bucketed into the existing
+high/medium/low vocabulary by `GapInvestigationOptions.JevHighConfidenceThreshold`/
+`JevMediumConfidenceThreshold` -- starting points, not a measured
+calibration for this four-way verdict (see `AiGatewayJevOptions`'s own doc
+comment on why Jev needs per-question calibration).
+
 `Raffa.Documents.Contracts.Application.Extraction.HybridDocumentParsingService`
 implements the hybrid OCR pre-pass (ADR-017): native text extraction
 (`NativeDocumentTextExtractor` — real `DocumentFormat.OpenXml` for

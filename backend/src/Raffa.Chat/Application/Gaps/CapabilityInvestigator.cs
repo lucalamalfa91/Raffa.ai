@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Raffa.AiGateway;
+using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Language;
@@ -59,8 +60,20 @@ public sealed record GapInvestigation(
 /// all return <see cref="GapVerdict.None"/>: no follow-up, and the answer never waited for it. The
 /// investigator never answers, never retrieves and never sees tenant data beyond the supplier
 /// names it is handed to scrub.</para>
+///
+/// <para><b>Jev decides the verdict; Foundry only ever writes.</b> When the Jev classify-role
+/// pilot is on (<see cref="AiGatewayJevOptions.Enabled"/>), the actual classification —
+/// verdict/knownGapKey/nearestCapabilityKey — is asked of Jev as real "choice" decisions
+/// (<see cref="JevVerdictClient"/>), never the LLM. The `analyst`-role Foundry call
+/// (<see cref="IAiGateway.AnalyzeAsync"/>) only ever runs afterwards, and only for a <c>gap</c>
+/// verdict, to write the free-text feature description Jev's choice/noul/score primitives cannot
+/// produce (<c>Raffa.AiGateway.Configuration.AiGatewayJevOptions</c>'s own doc comment) — Foundry's
+/// own verdict/confidence on that call are discarded, Jev's stand. A Jev failure of any kind falls
+/// back to the pre-existing Foundry-only path unchanged, so this pilot can never leave a turn worse
+/// off than before it existed.</para>
 /// </summary>
-public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigationOptions options)
+public sealed class CapabilityInvestigator(
+    IAiGateway aiGateway, GapInvestigationOptions options, AiGatewayJevOptions jevOptions, JevVerdictClient jevVerdictClient)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -81,18 +94,57 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
         }
 
         var language = QuestionLanguage.Detect(question);
+        var capabilities = CapabilityCatalog.All.Select(c => new CapabilityDto(c.Key, c.Title, c.Description)).ToList();
+        var knownGaps = CapabilityGapCatalog.All.Select(g => new KnownGapDto(g.Key, g.OperationEn, g.AlternativeEn)).ToList();
         var input = JsonSerializer.Serialize(
-            new InvestigatorInput(
-                question.Trim(),
-                language,
-                CapabilityCatalog.All.Select(c => new CapabilityDto(c.Key, c.Title, c.Description)).ToList(),
-                CapabilityInvestigatorAgent.AskAbilities,
-                CapabilityGapCatalog.All.Select(g => new KnownGapDto(g.Key, g.OperationEn, g.AlternativeEn)).ToList()),
+            new InvestigatorInput(question.Trim(), language, capabilities, CapabilityInvestigatorAgent.AskAbilities, knownGaps),
             JsonOptions);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, options.TimeoutSeconds)));
 
+        if (jevOptions.Enabled)
+        {
+            JevVerdictAnswer jevAnswer;
+            try
+            {
+                var jevResult = await jevVerdictClient
+                    .DecideAsync(
+                        input,
+                        BuildVerdictCriteria(),
+                        BuildKeyedCriteria(knownGaps, g => g.Key, g => g.Operation),
+                        BuildKeyedCriteria(capabilities, c => c.Key, c => c.Title),
+                        timeout.Token)
+                    .ConfigureAwait(false);
+
+                if (jevResult.IsFailure)
+                {
+                    // Jev itself is unreachable/misconfigured/unparseable this call -- fall back to
+                    // the pre-existing path exactly as if this pilot did not exist.
+                    return await InvestigateWithFoundryAsync(input, question, knownSupplierNames, timeout.Token)
+                        .ConfigureAwait(false);
+                }
+
+                jevAnswer = jevResult.Value;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return GapInvestigation.NotFound("failed", $"timed out after {options.TimeoutSeconds}s.");
+            }
+
+            return await InterpretJevAsync(jevAnswer, question, knownSupplierNames, input, timeout.Token)
+                .ConfigureAwait(false);
+        }
+
+        return await InvestigateWithFoundryAsync(input, question, knownSupplierNames, timeout.Token).ConfigureAwait(false);
+    }
+
+    /// <summary>The pre-existing (pre-Jev-pilot) path: one Foundry `analyst` call decides
+    /// everything -- verdict, confidence and, for a gap, the feature description. Unchanged
+    /// behaviour, used whenever the Jev pilot is off or fails.</summary>
+    private async Task<GapInvestigation> InvestigateWithFoundryAsync(
+        string input, string question, IReadOnlyCollection<string> knownSupplierNames, CancellationToken cancellationToken)
+    {
         AiAnalysisResult analysis;
         try
         {
@@ -103,7 +155,7 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
                         input,
                         CapabilityInvestigatorAgent.Schema,
                         CapabilityInvestigatorAgent.Version),
-                    timeout.Token)
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             if (result.IsFailure)
@@ -136,6 +188,119 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
         return Interpret(payload, question, knownSupplierNames, analysis.Metadata);
     }
 
+    /// <summary>Interprets a Jev-decided verdict. <c>question</c>/<c>supported</c>/<c>known-gap</c>
+    /// never touch Foundry at all; <c>gap</c> makes exactly one Foundry call, only to write the
+    /// feature description -- see this type's own doc comment.</summary>
+    private async Task<GapInvestigation> InterpretJevAsync(
+        JevVerdictAnswer jevAnswer,
+        string question,
+        IReadOnlyCollection<string> knownSupplierNames,
+        string input,
+        CancellationToken cancellationToken)
+    {
+        var verdict = jevAnswer.Verdict;
+
+        if (verdict is CapabilityInvestigatorAgent.VerdictQuestion or CapabilityInvestigatorAgent.VerdictSupported)
+        {
+            return new GapInvestigation(GapVerdict.Supported, verdict, null, [], null, jevAnswer.Metadata);
+        }
+
+        if (verdict is not (CapabilityInvestigatorAgent.VerdictKnownGap or CapabilityInvestigatorAgent.VerdictGap))
+        {
+            return GapInvestigation.NotFound("failed", $"Jev named an unrecognized verdict '{verdict}'.", jevAnswer.Metadata);
+        }
+
+        var confidence = BucketConfidence(jevAnswer.Confidence);
+        if (!MeetsThreshold(confidence))
+        {
+            return GapInvestigation.NotFound("low-confidence", null, jevAnswer.Metadata);
+        }
+
+        if (verdict == CapabilityInvestigatorAgent.VerdictKnownGap)
+        {
+            var known = CapabilityGapCatalog.Find((jevAnswer.KnownGapKey ?? string.Empty).Trim());
+            return known is null || known.IsVetoed(question)
+                ? GapInvestigation.NotFound(
+                    "unusable", $"known-gap key '{jevAnswer.KnownGapKey}' is not in the catalog or is vetoed.", jevAnswer.Metadata)
+                : new GapInvestigation(GapVerdict.KnownGap, "known-gap", known, [], null, jevAnswer.Metadata);
+        }
+
+        // verdict == gap: write the feature description on Foundry -- the one thing Jev's
+        // choice/noul/score primitives cannot produce. Jev's own verdict/confidence already
+        // decided this is a gap; this call's own verdict/confidence/knownGapKey/
+        // nearestCapabilityKey fields are ignored on purpose (Interpret's Foundry-only sibling
+        // reads them; this path reads only Feature/AlternativeQuestions from the same payload).
+        AiAnalysisResult featureAnalysis;
+        try
+        {
+            var result = await aiGateway.AnalyzeAsync(
+                    new AiAnalysisRequest(
+                        CapabilityInvestigatorAgent.Name,
+                        CapabilityInvestigatorAgent.Prompt,
+                        input,
+                        CapabilityInvestigatorAgent.Schema,
+                        CapabilityInvestigatorAgent.Version),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                return GapInvestigation.NotFound("failed", result.Error, jevAnswer.Metadata);
+            }
+
+            featureAnalysis = result.Value;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return GapInvestigation.NotFound("failed", "timed out writing the gap description.", jevAnswer.Metadata);
+        }
+
+        InvestigatorPayload? payload;
+        try
+        {
+            payload = JsonSerializer.Deserialize<InvestigatorPayload>(featureAnalysis.PayloadJson, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            return GapInvestigation.NotFound(
+                "failed", $"gap-description payload was not valid JSON — {ex.Message}", featureAnalysis.Metadata);
+        }
+
+        if (payload is null)
+        {
+            return GapInvestigation.NotFound("failed", "gap-description payload parsed to null.", featureAnalysis.Metadata);
+        }
+
+        return BuildGapInvestigation(
+            payload.Feature, jevAnswer.NearestCapabilityKey, confidence, payload.AlternativeQuestions,
+            question, knownSupplierNames, featureAnalysis.Metadata);
+    }
+
+    /// <summary>Buckets Jev's raw <c>[0,1]</c> calibrated confidence into the existing
+    /// high/medium/low vocabulary <see cref="MeetsThreshold"/> already gates on -- see
+    /// <see cref="GapInvestigationOptions.JevHighConfidenceThreshold"/>'s own doc comment for why
+    /// these thresholds are a starting point, not a measured calibration.</summary>
+    private string BucketConfidence(double confidence) =>
+        confidence >= options.JevHighConfidenceThreshold ? CapabilityInvestigatorAgent.ConfidenceHigh
+        : confidence >= options.JevMediumConfidenceThreshold ? CapabilityInvestigatorAgent.ConfidenceMedium
+        : CapabilityInvestigatorAgent.ConfidenceLow;
+
+    private static IReadOnlyDictionary<string, string> BuildVerdictCriteria() => new Dictionary<string, string>
+    {
+        [CapabilityInvestigatorAgent.VerdictQuestion] =
+            "An ordinary question, analysis, ranking, comparison or explanation Ask can already give in the chat or a screen already shows.",
+        [CapabilityInvestigatorAgent.VerdictSupported] =
+            "An operation a screen or an Ask ability already performs (upload a contract, review a field, check a quote, invite a teammate).",
+        [CapabilityInvestigatorAgent.VerdictKnownGap] =
+            "One of the fixed known-gap operations already in the catalog.",
+        [CapabilityInvestigatorAgent.VerdictGap] =
+            "An operation or deliverable nothing in Raffa performs today -- a new feature the product team could build.",
+    };
+
+    private static IReadOnlyDictionary<string, string> BuildKeyedCriteria<T>(
+        IReadOnlyList<T> items, Func<T, string> key, Func<T, string> description) =>
+        items.ToDictionary(key, description);
+
     private GapInvestigation Interpret(
         InvestigatorPayload payload, string question, IReadOnlyCollection<string> knownSupplierNames, AiCallMetadata metadata)
     {
@@ -167,7 +332,26 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
                 : new GapInvestigation(GapVerdict.KnownGap, "known-gap", known, [], null, metadata);
         }
 
-        var feature = payload.Feature;
+        return BuildGapInvestigation(
+            payload.Feature, payload.NearestCapabilityKey, confidence, payload.AlternativeQuestions,
+            question, knownSupplierNames, metadata);
+    }
+
+    /// <summary>Shared "gap" construction: cleans the feature texts, resolves the nearest
+    /// capability key and the alternative questions, and builds the discovered
+    /// <see cref="CapabilityGap"/>. Shared by <see cref="Interpret"/> (the Foundry-only path,
+    /// which reads every field from one payload) and <see cref="InterpretJevAsync"/> (which reads
+    /// <paramref name="nearestCapabilityKey"/>/<paramref name="confidence"/> from Jev's own
+    /// verdict and only <see cref="FeaturePayload"/>/alternative questions from Foundry).</summary>
+    private GapInvestigation BuildGapInvestigation(
+        FeaturePayload? feature,
+        string? nearestCapabilityKey,
+        string confidence,
+        IReadOnlyList<string>? alternativeQuestions,
+        string question,
+        IReadOnlyCollection<string> knownSupplierNames,
+        AiCallMetadata metadata)
+    {
         var titleEn = DiscoveredGapText.Clean(feature?.TitleEn, knownSupplierNames, DiscoveredGapText.MaxTitleLength);
         var titleIt = DiscoveredGapText.Clean(feature?.TitleIt, knownSupplierNames, DiscoveredGapText.MaxTitleLength);
         var operationEn = DiscoveredGapText.Clean(feature?.OperationEn, knownSupplierNames, DiscoveredGapText.MaxOperationLength);
@@ -181,7 +365,7 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
             return GapInvestigation.NotFound("unusable", "a feature text was empty once cleaned.", metadata);
         }
 
-        var nearestKey = (payload.NearestCapabilityKey ?? string.Empty).Trim();
+        var nearestKey = (nearestCapabilityKey ?? string.Empty).Trim();
         var nearest = CapabilityCatalog.Find(nearestKey) is not null ? nearestKey : null;
 
         var gap = CapabilityGap.Discovered(
@@ -196,7 +380,7 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
             confidence,
             CapabilityInvestigatorAgent.Version);
 
-        var alternativeQuestions = (payload.AlternativeQuestions ?? [])
+        var cleanedAlternativeQuestions = (alternativeQuestions ?? [])
             .Select(DiscoveredGapText.CleanQuestion)
             .Where(q => q is not null)
             .Select(q => q!)
@@ -204,7 +388,7 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
             .Take(DiscoveredGapText.MaxAlternativeQuestions)
             .ToList();
 
-        return new GapInvestigation(GapVerdict.Gap, "gap", gap, alternativeQuestions, null, metadata);
+        return new GapInvestigation(GapVerdict.Gap, "gap", gap, cleanedAlternativeQuestions, null, metadata);
     }
 
     private bool MeetsThreshold(string confidence) =>

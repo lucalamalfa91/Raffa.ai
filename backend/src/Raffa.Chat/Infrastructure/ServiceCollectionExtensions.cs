@@ -1,3 +1,5 @@
+using Raffa.AiGateway.Configuration;
+using Raffa.AiGateway.Jev;
 using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
@@ -114,10 +116,23 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new DraftingOptions());
         services.AddScoped<NegotiationDraftingWorkflow>();
 
-        // The capability investigator (Application.Gaps, ADR-031): one analyst-role agent that
-        // decides whether a fresh turn asks for a feature Raffa does not have; the host binds
-        // Chat:GapInvestigation before calling this.
+        // The capability investigator (Application.Gaps, ADR-031): the verdict is decided by the
+        // Jev classify-role pilot when it is on (never the LLM -- CapabilityInvestigator's own doc
+        // comment); the analyst-role Foundry call only ever writes a gap's free-text description.
+        // The host binds Chat:GapInvestigation before calling this.
         services.TryAddSingleton(new GapInvestigationOptions());
+        // AiGatewayJevOptions/JevHttpJsonClient are normally registered (config-bound) by
+        // Raffa.AiGateway.ServiceCollectionExtensions.AddAiGatewayModule, called before this one by
+        // every real host (same ordering IAiGateway itself already relies on). TryAdd here is the
+        // same defensive fallback every other option in this method already gets -- a host or test
+        // that calls only AddChatModule still gets a safe, Jev-off default rather than a missing
+        // registration (Raffa.Chat.Tests.ServiceCollectionExtensionsTests never registers
+        // IConfiguration at all, so this cannot be a config-binding factory here).
+        services.TryAddSingleton(new AiGatewayJevOptions());
+        services.TryAddSingleton(sp => new JevHttpJsonClient(
+            new HttpClient { Timeout = TimeSpan.FromSeconds(180) },
+            sp.GetRequiredService<AiGatewayJevOptions>()));
+        services.TryAddSingleton<JevVerdictClient>();
         services.AddScoped<CapabilityInvestigator>();
 
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
