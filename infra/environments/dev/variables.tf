@@ -77,6 +77,26 @@ variable "feedback_github_enabled" {
   default     = true
 }
 
+# Jev (TypeSafe AI) classify-role pilot -- dev-only trial (AiGatewayJevOptions's
+# own doc comment). Same "SENSITIVE HCP workspace variable of category
+# Terraform variable, never a .tf literal" rule as github_feedback_token
+# above: an "Environment variable" of this name is never read by Terraform.
+# Empty (the default) means no secret; with jev_enabled = true and no key,
+# the classify call fails gracefully per request rather than crashing either
+# host -- see ServiceCollectionExtensions.AddAiGatewayModule.
+variable "jev_api_key" {
+  description = "OpenRouter API key for the Jev classify-role pilot (dev only). Set as a sensitive HCP workspace variable of category Terraform; empty = every classify call fails gracefully even if jev_enabled is true."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "jev_enabled" {
+  description = "Publishes AiGateway__Jev__Enabled = \"true\"|\"false\" to both Container Apps via extra_gateway_env (module.foundry). Flips the classify-role pilot on for this environment; effective only once jev_api_key also carries a real key."
+  type        = bool
+  default     = false
+}
+
 variable "invitation_mail_enabled" {
   description = "Publishes Invitations__Mail__Enabled to the API app (ADR-005 w15 footer). dev: true from this apply."
   type        = bool

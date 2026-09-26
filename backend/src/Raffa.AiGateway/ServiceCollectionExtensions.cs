@@ -3,6 +3,7 @@ using Azure.Identity;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.AiGateway.Foundry;
+using Raffa.AiGateway.Jev;
 using Raffa.AiGateway.Logging;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
@@ -113,6 +114,32 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton(sp => new FoundryRetryPolicy(sp.GetRequiredService<AiGatewayResilienceOptions>()));
 
+        // Jev pilot (classify role only -- AiGatewayJevOptions's own doc comment). Bound and
+        // registered unconditionally, same "never touches the network unless resolved" posture as
+        // the Foundry registrations below: nothing here runs unless AiGateway:Jev:Enabled is true
+        // (see the IAiGateway factory at the bottom of this method).
+        services.TryAddSingleton(sp =>
+        {
+            var options = new AiGatewayJevOptions();
+            sp.GetRequiredService<IConfiguration>()
+                .GetSection(AiGatewayJevOptions.SectionName)
+                .Bind(options);
+            return options;
+        });
+        // A dedicated HttpClient constructed inline, never registered as the bare `HttpClient`
+        // service type: that slot already belongs to Foundry's own singleton below (different
+        // BaseAddress/Timeout), and Foundry's factory throws when AiGateway:Endpoint is unset --
+        // sharing the slot would break this pilot in exactly the environments (fixture/local) that
+        // never configure Foundry at all.
+        services.TryAddSingleton(sp => new JevHttpJsonClient(
+            new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(
+                    Math.Max(1, sp.GetRequiredService<AiGatewayResilienceOptions>().RequestTimeoutSeconds)),
+            },
+            sp.GetRequiredService<AiGatewayJevOptions>()));
+        services.TryAddSingleton<JevClassifyClient>();
+
         // Fixture path (unchanged): still registered so a FixtureAiGateway singleton exists to
         // wrap whenever AiGateway:Endpoint is unset (local dev, CI, every existing fixture test).
         services.TryAddSingleton<FixtureAiGateway>();
@@ -198,6 +225,22 @@ public static class ServiceCollectionExtensions
             IAiGateway inner = string.IsNullOrWhiteSpace(foundryOptions.Endpoint)
                 ? sp.GetRequiredService<FixtureAiGateway>()
                 : sp.GetRequiredService<FoundryAiGateway>();
+
+            // Jev pilot (classify role only). A dev-only opt-in decorator around whichever
+            // gateway was just picked above -- see AiGatewayJevOptions's own doc comment for
+            // scope. Deliberately does NOT throw when Enabled is true but ApiKey is blank: this
+            // gateway is shared by the API (the only real classify caller,
+            // DocumentAdmissionGate) and the Worker (which never calls ClassifyAsync but does
+            // resolve IAiGateway for extraction/embedding) -- crashing container construction on
+            // a config gap neither container may ever exercise would take the Worker down for a
+            // pilot it does not use. JevHttpJsonClient itself already reports a missing key as a
+            // graceful Result failure (IAiGateway's own "Result, never throw for an expected
+            // failure" convention) the first time -- and only when -- classify is actually called.
+            var jevOptions = sp.GetRequiredService<AiGatewayJevOptions>();
+            if (jevOptions.Enabled)
+            {
+                inner = new JevAiGateway(inner, sp.GetRequiredService<JevClassifyClient>());
+            }
 
             return new LoggingAiGateway(
                 inner,

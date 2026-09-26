@@ -218,6 +218,16 @@ variable "github_feedback_token_secret_id" {
   default     = null
 }
 
+# Jev (TypeSafe AI) classify-role pilot -- API app only (that app is the only
+# caller of DocumentAdmissionGate.EvaluateAsync; the Worker never re-runs
+# admission). null when this environment has no key, the same
+# count-gated-secret shape as github_feedback_token_secret_id above.
+variable "jev_api_key_secret_id" {
+  description = "Versionless Key Vault secret ID for jev-api-key (modules/keyvault jev_api_key_secret_versionless_id), or null when this environment has no key."
+  type        = string
+  default     = null
+}
+
 variable "feedback_github_enabled" {
   description = "Publishes Feedback__GitHub__Enabled on the API app -- true only when this is true AND a token secret exists (true on both dev and demo -- infra/environments/{dev,demo}/variables.tf; the token's presence in each HCP workspace is the real gate)."
   type        = bool

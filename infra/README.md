@@ -228,8 +228,14 @@ flipping it to `true` by pull request publishes, on both Container Apps:
 | `ai_gateway_extra_env` entries | any `AiGateway:*` knob | per-role settings settled by the live probe (e.g. `AiGateway__Models__Extract__ReasoningEffort`) |
 | `AiGateway__Models__Research__{ModelId,ModelVersion}` | `AiGateway:Models:Research:*` | **optional** (ADR-030): published only when the root binds the `research` key of `model_roles` -- the Responses API + `web_search` deployment Ask Raffa's opt-in web research runs on, never the `answer` deployment. Absent, the research role does not exist and the backend refuses it (no fallback). |
 | `Chat__WebResearch__Enabled` (via `ai_gateway_extra_env`) | `Chat:WebResearch:Enabled` | the web-research **kill switch** (ADR-030, default `false` when absent). Siblings: `Chat__WebResearch__DailyCallsPerTenant` (20), `__MaxSources` (5), `__MaxQueryChars` (300), `__RequireWorkspaceOptIn` (true). Even when `true`, nothing is searched until the workspace Admin opts in and the user consents on each question. |
+| `AiGateway__Jev__Enabled` (via `ai_gateway_extra_env` on `dev`, `var.jev_enabled`) | `AiGateway:Jev:Enabled` | the Jev classify-role pilot's **kill switch** (dev-only trial, default `false`). See `backend/README.md` "AI Gateway" for scope. |
 
-None are Key Vault secrets (ADR-011). `scripts/foundry_connection_verify.py`
+None of the rows above are Key Vault secrets (ADR-011) -- the one exception
+in this module's own scope is `AiGateway__Jev__ApiKey`, wired the same way
+as `Feedback__GitHub__Token` (a `jev-api-key` secret, API app only, `dev`
+only; `modules/keyvault` `jev_api_key` / `modules/containerapps`
+`jev_api_key_secret_id`), never through `ai_gateway_extra_env`.
+`scripts/foundry_connection_verify.py`
 holds the module and both roots to this shape (single owner, gated
 outputs, per-env deployment names, allowed SKUs, both roles, no hub) and
 `scripts/bootstrap_hcp_org.py` records the names it compares against.

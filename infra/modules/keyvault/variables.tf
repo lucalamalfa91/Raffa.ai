@@ -76,3 +76,13 @@ variable "github_feedback_token" {
   sensitive   = true
   default     = ""
 }
+
+# Jev (TypeSafe AI) classify-role pilot: an OpenRouter API key, same "empty = no
+# secret" lifecycle as github_feedback_token above -- this is a dev-only trial
+# (AiGatewayJevOptions's own doc comment), never a demo/prod secret.
+variable "jev_api_key" {
+  description = "OpenRouter API key for the Jev classify-role pilot, written to this vault as jev-api-key. Empty = no secret (a classify call then fails gracefully -- not a host crash -- rather than silently falling back to Foundry; see AiGatewayJevOptions)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

@@ -40,3 +40,12 @@ output "github_feedback_token_secret_versionless_id" {
   value       = length(azurerm_key_vault_secret.github_feedback_token) > 0 ? azurerm_key_vault_secret.github_feedback_token[0].versionless_id : null
   sensitive   = true
 }
+
+# Jev classify-role pilot: null when no key was supplied (the secret is
+# count-gated), which modules/containerapps reads as "no jev-api-key secret,
+# pilot cannot start even if AiGateway:Jev:Enabled is true".
+output "jev_api_key_secret_versionless_id" {
+  description = "Versionless Key Vault secret ID for jev-api-key, consumed by the API Container App's secret { key_vault_secret_id }; null when no key was supplied."
+  value       = length(azurerm_key_vault_secret.jev_api_key) > 0 ? azurerm_key_vault_secret.jev_api_key[0].versionless_id : null
+  sensitive   = true
+}

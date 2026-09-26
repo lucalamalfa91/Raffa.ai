@@ -2,6 +2,7 @@ using System.Reflection;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.AiGateway.Foundry;
+using Raffa.AiGateway.Jev;
 using Raffa.AiGateway.Logging;
 using Raffa.SharedKernel;
 using Microsoft.Extensions.Configuration;
@@ -222,6 +223,80 @@ public class ServiceCollectionExtensionsTests
 
         Assert.IsType<LoggingAiGateway>(gateway);
         Assert.IsType<FoundryAiGateway>(GetInnerGateway(gateway));
+    }
+
+    [Fact]
+    public void AddAiGatewayModule_with_Jev_disabled_never_wraps_with_JevAiGateway()
+    {
+        // Default configuration: AiGateway:Jev:Enabled is absent, so it binds to false
+        // (AiGatewayJevOptions's own default) -- the pilot must add no behavior at all until an
+        // operator deliberately turns it on.
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        services.AddScoped<IAuditWriter, NoOpAuditWriter>();
+
+        services.AddAiGatewayModule();
+
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+        using var scope = provider.CreateScope();
+
+        var gateway = scope.ServiceProvider.GetRequiredService<IAiGateway>();
+
+        Assert.IsType<FixtureAiGateway>(GetInnerGateway(gateway));
+    }
+
+    [Fact]
+    public void AddAiGatewayModule_with_Jev_enabled_wraps_the_inner_gateway_with_JevAiGateway()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AiGateway:Jev:Enabled"] = "true",
+                ["AiGateway:Jev:ApiKey"] = "fake-openrouter-key",
+            })
+            .Build();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddScoped<IAuditWriter, NoOpAuditWriter>();
+
+        services.AddAiGatewayModule();
+
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+        using var scope = provider.CreateScope();
+
+        var gateway = scope.ServiceProvider.GetRequiredService<IAiGateway>();
+
+        // LoggingAiGateway wraps JevAiGateway wraps FixtureAiGateway (no AiGateway:Endpoint
+        // configured here) -- classify goes to Jev, every other role still reaches the fixture.
+        Assert.IsType<JevAiGateway>(GetInnerGateway(gateway));
+    }
+
+    [Fact]
+    public void AddAiGatewayModule_binds_Jev_options_from_the_configured_AiGateway_Jev_section()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AiGateway:Jev:Enabled"] = "true",
+                ["AiGateway:Jev:ApiKey"] = "fake-openrouter-key",
+                ["AiGateway:Jev:Model"] = "typesafe/jev-router",
+            })
+            .Build();
+        services.AddSingleton<IConfiguration>(configuration);
+
+        services.AddAiGatewayModule();
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<AiGatewayJevOptions>();
+
+        Assert.True(options.Enabled);
+        Assert.Equal("fake-openrouter-key", options.ApiKey);
+        Assert.Equal("typesafe/jev-router", options.Model);
+        // Unconfigured knobs keep their own defaults -- Bind only overlays present keys.
+        Assert.Equal("https://openrouter.ai/api/v1/systemone", options.Endpoint);
     }
 
     [Fact]

@@ -526,6 +526,24 @@ budget (ADR-017: fail visibly, never silently truncate) is its own
 `AiGateway:Ocr:MaxPagesPerDocument` section (default 300 — see
 `AiGatewayOcrOptions`).
 
+**Jev classify-role pilot (dev-only trial, not an ADR-004 model swap).**
+`AiGateway:Jev:Enabled` (default `false`, only ever `true` on `dev`) wraps
+whichever gateway `AiGateway:Endpoint` picked with `Jev.JevAiGateway`: the
+`classify` role (document-admission taxonomy) is asked as a single
+`"choice"` question against TypeSafe AI's Jev model through OpenRouter's
+Decisions API (`AiGateway:Jev:ApiKey`, a Container Apps secret — never a
+plain env var), and every other role passes straight through to Foundry/
+Fixture unchanged. Scoped to `classify` only on purpose: Jev's three
+question primitives (choice/noul/score) cannot produce the free-value
+output (dates, amounts, verbatim clause text) the `extract` role needs, so
+this pilot never touches extraction. `Jev.JevHttpJsonClient`'s
+request/response shape was built from OpenRouter's published documentation
+and third-party write-ups, not a live call — see
+`Configuration.AiGatewayJevOptions`'s own doc comment before trusting any
+dev upload to this path. Turning it on requires both the `Enabled` flag and
+a real OpenRouter API key; either one missing keeps the pilot inert (an
+unset key fails only the classify call itself, gracefully, never the host).
+
 `Raffa.Documents.Contracts.Application.Extraction.HybridDocumentParsingService`
 implements the hybrid OCR pre-pass (ADR-017): native text extraction
 (`NativeDocumentTextExtractor` — real `DocumentFormat.OpenXml` for

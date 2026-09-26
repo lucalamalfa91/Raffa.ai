@@ -174,6 +174,10 @@ module "containerapps" {
   # instance only -- never the other environment's.
   github_feedback_token_secret_id = module.keyvault.github_feedback_token_secret_versionless_id
   feedback_github_enabled         = var.feedback_github_enabled
+  # Jev classify-role pilot (dev-only trial): this root's OWN module.keyvault
+  # instance only -- never demo's. AiGateway:Jev:Enabled itself rides
+  # extra_gateway_env on module.foundry below, not this variable.
+  jev_api_key_secret_id = module.keyvault.jev_api_key_secret_versionless_id
   # Task E16/F01/US01/T01 (NW-05, NW-67): this root's OWN module.identity
   # instance only -- never demo's.
   azuread_authority          = module.identity.issuer
@@ -211,6 +215,12 @@ module "foundry" {
   extra_gateway_env = merge(
     var.ai_gateway_extra_env,
     { Chat__WebResearch__Enabled = var.web_research_enabled ? "true" : "false" },
+    # Jev classify-role pilot (dev-only trial, AiGatewayJevOptions): the kill
+    # switch itself needs no Key Vault secret, so it rides this generic map
+    # like Chat__WebResearch__Enabled above rather than a dedicated
+    # containerapps variable. AiGateway__Jev__ApiKey is wired separately
+    # (module.containerapps jev_api_key_secret_id, Key Vault-backed).
+    { AiGateway__Jev__Enabled = var.jev_enabled ? "true" : "false" },
   )
 
   model_deployments = {
@@ -260,6 +270,10 @@ module "keyvault" {
   # ADR-030 D5 (Ask Raffa feedback loop): this root's own HCP workspace
   # variable; empty keeps the secret uncreated.
   github_feedback_token = var.github_feedback_token
+  # Jev classify-role pilot (dev-only trial): this root's own HCP workspace
+  # variable; empty keeps the secret uncreated, same lifecycle as
+  # github_feedback_token above.
+  jev_api_key = var.jev_api_key
 }
 
 module "acr" {
