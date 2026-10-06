@@ -261,6 +261,85 @@ public sealed class HybridDocumentParsingServiceTests
         Assert.True(result.IsFailure);
     }
 
+    /// <summary>
+    /// NW-106's OCR half: <see cref="AiOcrRequest.KnownPageCount"/> lets the gateway reject an
+    /// over-budget document, or run its two Document Intelligence calls concurrently, without a
+    /// network round trip first — but only when this service actually has a trustworthy local
+    /// count to hand it. A PDF pdfium could open (even with insufficient text, the OCR-fallback
+    /// case) has one: the same count <see cref="NativeTextExtractionResult.Pages"/> already carries.
+    /// </summary>
+    [Fact]
+    public async Task Insufficient_native_pdf_text_passes_pdfiums_own_page_count_as_the_gateways_known_page_count()
+    {
+        var nativePages = new List<DocumentPageText> { new(1, "x"), new(2, "y"), new(3, "z") };
+        var extractor = new ScriptedNativeTextExtractor(
+            canHandle: true, new NativeTextExtractionResult(nativePages, IsSufficient: false));
+        var metadata = new AiCallMetadata("test-model", "1", "test-v1", Now, "hash");
+        int? seenKnownPageCount = null;
+        var gateway = new OcrOnlyAiGateway(onOcr: request =>
+        {
+            seenKnownPageCount = request.KnownPageCount;
+            return Result<AiOcrResult>.Success(new AiOcrResult([new AiOcrPage(1, "ocr text")], metadata));
+        });
+        var service = new HybridDocumentParsingService(gateway, extractor);
+
+        var result = await service.ParseAsync("scanned.pdf", "application/pdf", "bytes"u8.ToArray());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, seenKnownPageCount);
+    }
+
+    /// <summary>
+    /// A PDF pdfium could not open at all (<c>NativeDocumentTextExtractor.ExtractPdf</c>'s
+    /// catch-and-return-empty path) reports zero pages, but that zero means "unknown", not "a
+    /// real zero-page document" — passing it on as <see cref="AiOcrRequest.KnownPageCount"/> would
+    /// let an over-budget document through the gateway's own cheap local rejection and straight
+    /// into its concurrent-calls path instead.
+    /// </summary>
+    [Fact]
+    public async Task A_pdf_pdfium_could_not_open_passes_no_known_page_count_to_the_gateway()
+    {
+        var extractor = new ScriptedNativeTextExtractor(
+            canHandle: true, new NativeTextExtractionResult([], IsSufficient: false));
+        int? seenKnownPageCount = -1; // sentinel distinct from both null and any real page count
+        var metadata = new AiCallMetadata("test-model", "1", "test-v1", Now, "hash");
+        var gateway = new OcrOnlyAiGateway(onOcr: request =>
+        {
+            seenKnownPageCount = request.KnownPageCount;
+            return Result<AiOcrResult>.Success(new AiOcrResult([new AiOcrPage(1, "ocr text")], metadata));
+        });
+        var service = new HybridDocumentParsingService(gateway, extractor);
+
+        var result = await service.ParseAsync("corrupt.pdf", "application/pdf", "bytes"u8.ToArray());
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(seenKnownPageCount);
+    }
+
+    /// <summary>
+    /// A format nothing has locally paginated (no native extractor can handle it, e.g. an image)
+    /// must never hand the gateway a guessed page count — <see langword="null"/> keeps the
+    /// gateway on its own sequential "read, then check the budget" path.
+    /// </summary>
+    [Fact]
+    public async Task Unrecognized_mime_type_passes_no_known_page_count_to_the_gateway()
+    {
+        var extractor = new ScriptedNativeTextExtractor(canHandle: false);
+        int? seenKnownPageCount = -1; // sentinel distinct from both null and any real page count
+        var metadata = new AiCallMetadata("test-model", "1", "test-v1", Now, "hash");
+        var gateway = new OcrOnlyAiGateway(onOcr: request =>
+        {
+            seenKnownPageCount = request.KnownPageCount;
+            return Result<AiOcrResult>.Success(new AiOcrResult([new AiOcrPage(1, "ocr text")], metadata));
+        });
+        var service = new HybridDocumentParsingService(gateway, extractor);
+
+        var result = await service.ParseAsync("photo.png", "image/png", "bytes"u8.ToArray());
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(seenKnownPageCount);
+    }
+
     [Fact]
     public async Task Empty_content_fails_fast_before_touching_native_extractor_or_gateway()
     {

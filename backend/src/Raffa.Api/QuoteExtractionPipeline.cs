@@ -173,8 +173,8 @@ internal sealed class QuoteExtractionPipeline(
         {
             // The gateway does not validate the model's output against the schema it was given
             // (IAiGateway.ExtractAsync's own doc comment) — mirrors
-            // StagedExtractionService.RunStageAsync's identical guard against malformed JSON from
-            // a real (non-fixture) model.
+            // StagedExtractionService.ApplyStageResultAsync's identical guard against malformed
+            // JSON from a real (non-fixture) model.
             return await FailAsync(
                 quote, job, $"Malformed extraction payload: {ex.Message}", cancellationToken)
                 .ConfigureAwait(false);
@@ -214,7 +214,7 @@ internal sealed class QuoteExtractionPipeline(
         // Human-in-the-loop principle: nothing extracted, something skipped, or any line below the
         // confidence threshold all mean a person should look at this quote before it is trusted,
         // even though the AI Gateway call itself succeeded — mirrors
-        // StagedExtractionService.RunStageAsync's identical decision rule. Deliberately does not
+        // StagedExtractionService.ApplyStageResultAsync's identical decision rule. Deliberately does not
         // also factor in unmatched SKUs: that is a product-mapping gap for a person to resolve via
         // task E05/F01/US02/T02's manual mapping, not an extraction-confidence problem, so it does
         // not change this job's own Completed/NeedsReview outcome.

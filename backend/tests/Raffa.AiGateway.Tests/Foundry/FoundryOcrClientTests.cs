@@ -13,8 +13,10 @@ namespace Raffa.AiGateway.Tests.Foundry;
 /// long-running-operation contract: submit (202 + <c>Operation-Location</c>) then poll until a
 /// terminal status honouring <c>Retry-After</c>, the page map derived from <c>pages[].spans</c>
 /// over the concatenated <c>content</c> (the real response carries no page delimiter), page count
-/// in metadata, transient-status retries, and the ADR-017 page-budget safety mechanism ("fail
-/// visibly... never silently truncate").
+/// in metadata, transient-status retries, the ADR-017 page-budget safety mechanism ("fail
+/// visibly... never silently truncate"), and NW-106's <see cref="AiOcrRequest.KnownPageCount"/>
+/// path (zero calls for a known-over-budget document; concurrent read+layout for a known-in-budget
+/// one, with the budget re-checked against the real result either way).
 /// </summary>
 public class FoundryOcrClientTests
 {
@@ -52,6 +54,96 @@ public class FoundryOcrClientTests
             }));
 
         return (client, handler, delays);
+    }
+
+    /// <summary>
+    /// Builds a client over <paramref name="handler"/> directly (not <see cref="CreateClient"/>'s
+    /// <see cref="FakeHttpMessageHandler"/>, which indexes responses by call order): the known-
+    /// page-count path fires `prebuilt-read` and `prebuilt-layout` concurrently, so a test proving
+    /// that needs a handler that answers by URL, not by which request happened to arrive first.
+    /// </summary>
+    private static FoundryOcrClient CreateConcurrentClient(HttpMessageHandler handler, AiGatewayOcrOptions ocrOptions)
+    {
+        var httpClient = new HttpClient(handler) { BaseAddress = FoundryBaseAddress };
+        var tokenProvider = new FoundryTokenProvider(new FakeTokenCredential());
+        return new FoundryOcrClient(
+            httpClient,
+            tokenProvider,
+            new AiGatewayFoundryOptions { Endpoint = FoundryBaseAddress.ToString() },
+            new AiGatewayModelOptions(),
+            ocrOptions,
+            new FixedClock(Now),
+            TestRetryPolicies.NoDelay(),
+            (_, _) => Task.CompletedTask);
+    }
+
+    /// <summary>
+    /// NW-106's OCR-half concurrency witness, mirroring
+    /// <c>Raffa.Documents.Contracts.Tests.StagedExtractionServiceTests.ConcurrencyTrackingGateway</c>:
+    /// an artificial delay plus an interlocked high-water mark on every request proves two calls
+    /// actually overlapped, not just that both eventually ran. Dispatches by URL/operation location
+    /// rather than call order, since <c>prebuilt-read</c> and <c>prebuilt-layout</c> are in flight
+    /// at the same time and may arrive in either order.
+    /// </summary>
+    private sealed class ConcurrentOcrHandler(params string[] readPageTexts) : HttpMessageHandler
+    {
+        private const string ReadOperationLocation = "https://fake-foundry.example.com/op/read";
+        private const string LayoutOperationLocation = "https://fake-foundry.example.com/op/layout";
+
+        private readonly object _requestsLock = new();
+        private int _inFlight;
+        private int _maxConcurrent;
+
+        public int MaxConcurrent => _maxConcurrent;
+        public List<HttpRequestMessage> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            lock (_requestsLock)
+            {
+                Requests.Add(request);
+            }
+
+            var current = Interlocked.Increment(ref _inFlight);
+            Bump(ref _maxConcurrent, current);
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+            Interlocked.Decrement(ref _inFlight);
+
+            var url = request.RequestUri!.ToString();
+
+            if (request.Method == HttpMethod.Post)
+            {
+                var isLayout = url.Contains("prebuilt-layout", StringComparison.Ordinal);
+                var response = new HttpResponseMessage(HttpStatusCode.Accepted);
+                response.Headers.TryAddWithoutValidation(
+                    "Operation-Location", isLayout ? LayoutOperationLocation : ReadOperationLocation);
+                return response;
+            }
+
+            var body = url == LayoutOperationLocation
+                ? """{"status":"succeeded","analyzeResult":{"pages":[]}}"""
+                : $$"""{"status":"succeeded","analyzeResult":{{AnalyzeResult(readPageTexts)}}}""";
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+        }
+
+        private static void Bump(ref int target, int value)
+        {
+            int initial;
+            do
+            {
+                initial = target;
+                if (value <= initial)
+                {
+                    return;
+                }
+            }
+            while (Interlocked.CompareExchange(ref target, value, initial) != initial);
+        }
     }
 
     private static Func<HttpRequestMessage, HttpResponseMessage> SubmitAccepted(params (string Name, string Value)[] extraHeaders) =>
@@ -257,6 +349,53 @@ public class FoundryOcrClientTests
 
         var result = await client.OcrAsync(
             new AiOcrRequest("huge.pdf", "application/pdf", "bytes"u8.ToArray()), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Contains("budget", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("2", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ocr_with_a_known_page_count_over_budget_fails_without_calling_Foundry_at_all()
+    {
+        var (client, handler, _) = CreateClient(new AiGatewayOcrOptions { MaxPagesPerDocument = 1 });
+
+        var result = await client.OcrAsync(
+            new AiOcrRequest("huge.pdf", "application/pdf", "bytes"u8.ToArray(), KnownPageCount: 5),
+            CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Contains("budget", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("5", result.Error, StringComparison.Ordinal);
+        Assert.Empty(handler.Requests); // rejected on the known count alone — zero Document Intelligence calls
+    }
+
+    [Fact]
+    public async Task Ocr_with_a_known_in_budget_page_count_runs_read_and_layout_concurrently()
+    {
+        var handler = new ConcurrentOcrHandler("only page");
+        var client = CreateConcurrentClient(handler, new AiGatewayOcrOptions());
+
+        var result = await client.OcrAsync(
+            new AiOcrRequest("contract.pdf", "application/pdf", "bytes"u8.ToArray(), KnownPageCount: 1),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error : null);
+        Assert.True(
+            handler.MaxConcurrent > 1,
+            "expected prebuilt-read and prebuilt-layout to overlap, not run one after another");
+        Assert.Equal(4, handler.Requests.Count); // 2 submits + 2 polls, read and layout concurrently
+    }
+
+    [Fact]
+    public async Task Ocr_re_checks_the_budget_against_the_real_read_result_even_when_the_known_count_said_it_was_fine()
+    {
+        var handler = new ConcurrentOcrHandler("page one", "page two");
+        var client = CreateConcurrentClient(handler, new AiGatewayOcrOptions { MaxPagesPerDocument = 1 });
+
+        var result = await client.OcrAsync(
+            new AiOcrRequest("huge.pdf", "application/pdf", "bytes"u8.ToArray(), KnownPageCount: 1),
+            CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Contains("budget", result.Error, StringComparison.OrdinalIgnoreCase);
