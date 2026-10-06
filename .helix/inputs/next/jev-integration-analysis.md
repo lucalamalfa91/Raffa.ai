@@ -247,30 +247,48 @@ chain, done specifically to answer this question, found:
 
 **Verdict carried into §2: add a new item ahead of NW-101...105.**
 
-### NW-106 — Parallelize the 7 extraction stages (not a Jev item)
+### NW-106 — Parallelize the 7 extraction stages, and the OCR calls too (not a Jev item)
 
-- **Status: implemented** (branch `claude/parallelize-extraction-ocr`, not
-  merged). `StagedExtractionService` now fires all seven `extract` calls
-  concurrently (`StartStagesAsync`) and awaits/persists them one at a time
-  afterward (`ApplyStageResultAsync`) — `DbContext` is not safe for
-  concurrent use, so only the network wait is parallelized, never the
-  persistence. A new test (`NW_106_fires_all_seven_extraction_stages_concurrently_not_one_after_another`)
+- **Status: implemented, both halves** (branch
+  `claude/parallelize-extraction-ocr`, not merged). `StagedExtractionService`
+  fires all seven `extract` calls concurrently (`StartStagesAsync`) and
+  awaits/persists them one at a time afterward (`ApplyStageResultAsync`) —
+  `DbContext` is not safe for concurrent use, so only the network wait is
+  parallelized, never the persistence. A test
+  (`NW_106_fires_all_seven_extraction_stages_concurrently_not_one_after_another`)
   proves the overlap directly rather than inferring it from wall-clock time.
-- **Narrowed from the original proposal**: the OCR half is **not** done.
-  Closer reading of `FoundryOcrClient.OcrAsync` found a real dependency the
-  first pass of this file missed: the ADR-017 page-budget check reads
-  `prebuilt-read`'s own page count *before* deciding whether to call
-  `prebuilt-layout` at all, specifically so an over-budget document (about
-  to be rejected) never also pays for the more expensive layout call. Firing
-  both concurrently would pay for layout on every over-budget document
-  instead of none — a real cost regression, not a free win — and an
-  existing test (`Ocr_fails_visibly_when_the_page_budget_is_exceeded_instead_of_truncating`)
-  already encodes this exact guarantee. Left sequential.
+- **The OCR half, first narrowed then completed.** The first pass of this
+  file missed a real dependency in `FoundryOcrClient.OcrAsync`: the ADR-017
+  page-budget check reads `prebuilt-read`'s own page count *before* deciding
+  whether to call `prebuilt-layout` at all, specifically so an over-budget
+  document (about to be rejected) never also pays for the more expensive
+  layout call. Firing both naively concurrently would pay for layout on
+  every over-budget document instead of none — a real cost regression, not
+  a free win — and an existing test
+  (`Ocr_fails_visibly_when_the_page_budget_is_exceeded_instead_of_truncating`)
+  already encoded this exact guarantee, so the first implementation left
+  OCR sequential rather than break it.
+  `HybridDocumentParsingService` already runs pdfium natively on every PDF
+  *before* OCR is even considered (even on the OCR-fallback path, where the
+  native text is insufficient) — it already has a trustworthy local page
+  count for the common case, from the same library and the same page notion
+  the budget already uses. `AiOcrRequest` gained a `KnownPageCount` field
+  carrying that count; `FoundryOcrClient.OcrAsync` now rejects an
+  over-budget document *before any Document Intelligence call at all*
+  (cheaper than before: zero calls, not one) when it is given one, and runs
+  `prebuilt-read`/`prebuilt-layout` concurrently once the known count has
+  confirmed the document is within budget — re-checking the budget against
+  `prebuilt-read`'s own reported count afterward either way, so a wrong
+  local count can only waste a layout call, never let an over-budget result
+  through. A format with no reliable local count (an image, or a PDF pdfium
+  genuinely failed to open — its own zero-page result is treated as
+  "unknown", not "really zero pages") gets `KnownPageCount: null` and keeps
+  the original sequential behavior as the only safe fallback.
 - **Why it still came first:** zero new vendor, zero new calibration, zero
-  data-governance question (§3) for the half that *was* safe to do — and it
-  dwarfs anything Pattern A-E can plausibly claim on wall-clock time
-  specifically. NW-101...105 remain worth doing for their own reasons
-  (quality, cost, integrity) — just not as the answer to "why is this slow".
+  data-governance question (§3) for either half — and it dwarfs anything
+  Pattern A-E can plausibly claim on wall-clock time specifically. NW-101...105
+  remain worth doing for their own reasons (quality, cost, integrity) — just
+  not as the answer to "why is this slow".
 - **Seats:** software-architect, delivery-manager (regression risk on a
   hot, already-productionized path — wants a careful rollout, not a Jev
   question).
