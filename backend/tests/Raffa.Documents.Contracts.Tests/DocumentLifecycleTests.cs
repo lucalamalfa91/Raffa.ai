@@ -636,24 +636,32 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         RecordingDocumentStorage Storage, IAiGateway Gateway, IClock Clock, RecordingAuditWriter Audit);
 
     /// <summary>Counts each role's calls on the way to the real fixture gateway, so "no model call
-    /// on the request path" and "classified once on the Worker path" are facts, not inference.</summary>
+    /// on the request path" and "classified once on the Worker path" are facts, not inference.
+    /// NW-106 fires every extraction stage's <see cref="ExtractAsync"/> call concurrently, so the
+    /// counters use <see cref="Interlocked.Increment(ref int)"/> rather than a plain <c>++</c> —
+    /// a race here would only ever show up as an intermittently wrong count, never a visible
+    /// test failure pointing at the real cause.</summary>
     private sealed class CountingAiGateway(IAiGateway inner) : IAiGateway
     {
-        public int ClassifyCalls { get; private set; }
-        public int ExtractCalls { get; private set; }
-        public int OcrCalls { get; private set; }
+        private int _classifyCalls;
+        private int _extractCalls;
+        private int _ocrCalls;
+
+        public int ClassifyCalls => _classifyCalls;
+        public int ExtractCalls => _extractCalls;
+        public int OcrCalls => _ocrCalls;
 
         public Task<Result<AiClassificationResult>> ClassifyAsync(
             AiClassificationRequest request, CancellationToken cancellationToken = default)
         {
-            ClassifyCalls++;
+            Interlocked.Increment(ref _classifyCalls);
             return inner.ClassifyAsync(request, cancellationToken);
         }
 
         public Task<Result<AiExtractionResult>> ExtractAsync(
             AiExtractionRequest request, CancellationToken cancellationToken = default)
         {
-            ExtractCalls++;
+            Interlocked.Increment(ref _extractCalls);
             return inner.ExtractAsync(request, cancellationToken);
         }
 
@@ -668,7 +676,7 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         public Task<Result<AiOcrResult>> OcrAsync(
             AiOcrRequest request, CancellationToken cancellationToken = default)
         {
-            OcrCalls++;
+            Interlocked.Increment(ref _ocrCalls);
             return inner.OcrAsync(request, cancellationToken);
         }
     }

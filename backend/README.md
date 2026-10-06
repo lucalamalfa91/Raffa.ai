@@ -538,7 +538,16 @@ clauses → obligations → risk) over the resulting page-mapped text
 (`DocumentPageText`) and persists every fact with source span/page +
 confidence (spec §7.3) — directly on `ContractLineItem`/`Clause`/
 `Obligation`/`Risk`, or via the `ExtractionEvidence` table for `Contract`'s
-own scalar fields.
+own scalar fields. The arrows above are the stages' conceptual/display
+order, not their execution order: since NW-106, all seven `extract` calls
+fire concurrently (`StartStagesAsync`) because none depends on another's
+result — a single frontier-model call can already take 100s+
+(`AiGatewayResilienceOptions`'s own doc comment), so seven of them one
+after another was the single largest, purely structural cost in the whole
+pipeline. Every `DbContext` write (job status, evidence rows) still happens
+strictly sequentially afterward (`ApplyStageResultAsync`, one stage at a
+time, in pipeline order) — EF Core's `DbContext` is not safe for concurrent
+use, so only the network wait itself is parallelized, never the persistence.
 
 `Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline`
 (task E02/F06/US01/T01, r1-integration) is that caller: given the just-
