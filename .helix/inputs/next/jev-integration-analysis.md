@@ -247,21 +247,30 @@ chain, done specifically to answer this question, found:
 
 **Verdict carried into §2: add a new item ahead of NW-101...105.**
 
-### NW-106 — Parallelize the 7 extraction stages and the 2 OCR analyze calls (not a Jev item)
+### NW-106 — Parallelize the 7 extraction stages (not a Jev item)
 
-- **Must:** `StagedExtractionService.RunAsync`'s per-stage loop and
-  `FoundryOcrClient`'s read/layout calls both move from sequential `await`
-  to `Task.WhenAll` over the independent calls; each stage/call already
-  writes to its own `ExtractionJob`/result row, so no shared mutable state
-  should need to change — confirm that holds before parallelizing, it is
-  the one thing that could make this unsafe.
-- **Why it comes first:** zero new vendor, zero new calibration, zero data-
-  governance question (§3) — it is the one change in this entire file that
-  needs no validation beyond normal testing, and the agent's own estimate
-  (~7x on extraction, ~2x on OCR) dwarfs anything Pattern A-E can plausibly
-  claim on wall-clock time specifically. NW-101...105 remain worth doing for
-  their own reasons (quality, cost, integrity) — just not as the answer to
-  "why is this slow".
+- **Status: implemented** (branch `claude/parallelize-extraction-ocr`, not
+  merged). `StagedExtractionService` now fires all seven `extract` calls
+  concurrently (`StartStagesAsync`) and awaits/persists them one at a time
+  afterward (`ApplyStageResultAsync`) — `DbContext` is not safe for
+  concurrent use, so only the network wait is parallelized, never the
+  persistence. A new test (`NW_106_fires_all_seven_extraction_stages_concurrently_not_one_after_another`)
+  proves the overlap directly rather than inferring it from wall-clock time.
+- **Narrowed from the original proposal**: the OCR half is **not** done.
+  Closer reading of `FoundryOcrClient.OcrAsync` found a real dependency the
+  first pass of this file missed: the ADR-017 page-budget check reads
+  `prebuilt-read`'s own page count *before* deciding whether to call
+  `prebuilt-layout` at all, specifically so an over-budget document (about
+  to be rejected) never also pays for the more expensive layout call. Firing
+  both concurrently would pay for layout on every over-budget document
+  instead of none — a real cost regression, not a free win — and an
+  existing test (`Ocr_fails_visibly_when_the_page_budget_is_exceeded_instead_of_truncating`)
+  already encodes this exact guarantee. Left sequential.
+- **Why it still came first:** zero new vendor, zero new calibration, zero
+  data-governance question (§3) for the half that *was* safe to do — and it
+  dwarfs anything Pattern A-E can plausibly claim on wall-clock time
+  specifically. NW-101...105 remain worth doing for their own reasons
+  (quality, cost, integrity) — just not as the answer to "why is this slow".
 - **Seats:** software-architect, delivery-manager (regression risk on a
   hot, already-productionized path — wants a careful rollout, not a Jev
   question).
