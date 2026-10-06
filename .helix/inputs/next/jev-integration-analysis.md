@@ -208,16 +208,60 @@ closed by shipping code:
    it was never actually closed (no sign-off is on file) — it does not get
    smaller as more call sites are added, it gets larger.
 
-## 4. A separate, parallel finding: is Jev even the lever on "upload is slow"?
+## 4. Addendum (2026-10-06): is Jev even the lever on "upload is slow"? — No.
 
-A background investigation of the actual upload → admission → OCR →
-staged-extraction call chain is running alongside this analysis, specifically
-to answer the user's own question: of the latency users actually feel, how
-much of it is even in reach of anything on this list, versus coming from
-somewhere no amount of Jev integration can touch (OCR's own latency, the
-synchronous-in-the-request design NW-27/NW-61 already flagged, retry
-backoff, network hops)? That finding will follow as an addendum once the
-investigation completes — the patterns above stand regardless of its answer
-(they are about quality/cost/a narrower Foundry schema as much as raw
-speed), but it decides whether "Jev will make upload feel fast" is a claim
-this file can actually support.
+A full read of the actual upload → admission → OCR → staged-extraction call
+chain, done specifically to answer this question, found:
+
+- The synchronous-upload design NW-27/NW-61 flagged is **already fixed**:
+  `DocumentProcessingPipeline`/`ExtractionRequestedHandler` now run on
+  `Raffa.Worker` behind a durable queue (wave w15/ADR-027). The user's
+  "extremely slow" complaint today is about processing wall-clock time, not
+  the HTTP request.
+- The real cost is **two purely structural, model-independent bottlenecks**:
+  (1) `StagedExtractionService.cs:190-200` runs its 7 extraction stages in a
+  plain sequential `foreach`/`await` — nothing makes stage N depend on stage
+  N-1, so this is pure avoidable serialization, each stage resending the
+  whole document text to its own Foundry call (potentially 100s+ per call
+  on demo's frontier model, `AiGatewayResilienceOptions.cs:27-29`); (2)
+  `FoundryOcrClient.cs:70,93` runs its two Document Intelligence analyze
+  calls (`prebuilt-read`, `prebuilt-layout`) sequentially on the same input
+  bytes, each its own up-to-120s submit+poll loop, with nothing requiring
+  one to wait for the other.
+- **Fixing both with `Task.WhenAll` instead of sequential `await` is a pure
+  orchestration change, zero model/vendor involvement**, and is plausibly
+  the highest-leverage fix available for this complaint — up to ~7x on the
+  extraction phase, roughly halving OCR, before any AI-vendor question even
+  applies.
+- Jev's fit on staged extraction specifically (per §1/§2's own field table)
+  is only 1-2 narrow sub-fields per stage (`autoRenewal`, `riskLevel`/
+  `severity`, `criticality`, `status`) out of each stage's larger set of
+  free-value fields (`rawText`, `description`, dates, amounts, names) that
+  only Foundry can produce — and that Foundry call cannot be skipped
+  regardless of what Jev decides. Each stage's latency is dominated by
+  reading/searching the long document text and writing several free-value
+  fields per array row, not by the one enum field Jev could take off its
+  plate — so even the "Jev decides first, Foundry's schema shrinks"
+  design in §1 Pattern D saves at most a sliver of a 100s+ call, not a
+  meaningful fraction of it.
+
+**Verdict carried into §2: add a new item ahead of NW-101...105.**
+
+### NW-106 — Parallelize the 7 extraction stages and the 2 OCR analyze calls (not a Jev item)
+
+- **Must:** `StagedExtractionService.RunAsync`'s per-stage loop and
+  `FoundryOcrClient`'s read/layout calls both move from sequential `await`
+  to `Task.WhenAll` over the independent calls; each stage/call already
+  writes to its own `ExtractionJob`/result row, so no shared mutable state
+  should need to change — confirm that holds before parallelizing, it is
+  the one thing that could make this unsafe.
+- **Why it comes first:** zero new vendor, zero new calibration, zero data-
+  governance question (§3) — it is the one change in this entire file that
+  needs no validation beyond normal testing, and the agent's own estimate
+  (~7x on extraction, ~2x on OCR) dwarfs anything Pattern A-E can plausibly
+  claim on wall-clock time specifically. NW-101...105 remain worth doing for
+  their own reasons (quality, cost, integrity) — just not as the answer to
+  "why is this slow".
+- **Seats:** software-architect, delivery-manager (regression risk on a
+  hot, already-productionized path — wants a careful rollout, not a Jev
+  question).
