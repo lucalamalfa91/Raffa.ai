@@ -17,7 +17,18 @@ namespace Raffa.AiGateway.Contracts;
 /// <param name="FileName">Original file name, for logging/diagnostics only — never parsed for routing.</param>
 /// <param name="MimeType">Caller-declared content type (e.g. "application/pdf"), so a real provider can pick Read vs Layout.</param>
 /// <param name="Content">The complete, unmodified document bytes.</param>
+/// <param name="KnownPageCount">
+/// The document's page count, when a caller already knows it from a trustworthy local source
+/// (<see cref="Raffa.Documents.Contracts.Application.Extraction.HybridDocumentParsingService"/>
+/// passes pdfium's own count for a PDF it has already parsed natively) — never a guess, and never
+/// set for a format nothing has locally paginated (e.g. an image). <see langword="null"/> when no
+/// such count exists, which keeps the gateway's own sequential "read, then check the budget,
+/// then layout" behavior as the only safe option. A real value lets the gateway skip the call
+/// entirely for a document already known to exceed the page budget, and run `prebuilt-read` and
+/// `prebuilt-layout` concurrently for one already known to be within it.
+/// </param>
 public sealed record AiOcrRequest(
     string FileName,
     string MimeType,
-    ReadOnlyMemory<byte> Content);
+    ReadOnlyMemory<byte> Content,
+    int? KnownPageCount = null);

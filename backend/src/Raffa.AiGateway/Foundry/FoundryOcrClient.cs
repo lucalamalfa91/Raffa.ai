@@ -25,7 +25,19 @@ namespace Raffa.AiGateway.Foundry;
 /// every multi-page document into one page and every citation onto page 1. The ADR-017 page budget
 /// is enforced on the page count <c>prebuilt-read</c> actually reports, before <c>prebuilt-layout</c>
 /// is ever called — a document that is going to be rejected for exceeding the budget must not also
-/// spend the (more expensive, ADR-017 w18) layout call.
+/// spend the (more expensive, ADR-017 w18) layout call. That rule assumed the budget could only be
+/// checked once <c>prebuilt-read</c> had already answered, so the two calls had to be sequential.
+///
+/// <see cref="AiOcrRequest.KnownPageCount"/> (added for NW-106's OCR half) breaks that assumption
+/// for the common case: when a caller already knows the page count from a trustworthy local source,
+/// <see cref="OcrAsync"/> checks it against the budget *before calling Document Intelligence at
+/// all* — a document already known to be over budget costs zero calls, not one — and, once it is
+/// known to be within budget, runs <c>prebuilt-read</c> and <c>prebuilt-layout</c> concurrently,
+/// because nothing is left for their ordering to protect. The known count is still re-checked
+/// against what <c>prebuilt-read</c> itself reports afterward, so a caller whose local count turned
+/// out to be wrong never gets an over-budget result back, only a wasted layout call. Without a known
+/// count (an image, or any format nothing has locally paginated) the original sequential behavior is
+/// the only path and is unchanged.
 ///
 /// <c>prebuilt-layout</c> supplies geometry only (<see cref="AiOcrPage.Words"/>) and is best-effort:
 /// the text path above is what classify/extract depend on, so a layout failure (network, timeout, a
@@ -67,6 +79,13 @@ public sealed class FoundryOcrClient(
         }
 
         var model = modelOptions.Ocr;
+
+        if (request.KnownPageCount is int knownPageCount)
+        {
+            return await OcrWithKnownPageCountAsync(request, model, knownPageCount, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var readAnalysis = await AnalyzeAsync(model.ModelId, request.Content, cancellationToken).ConfigureAwait(false);
         if (readAnalysis.IsFailure)
         {
@@ -81,10 +100,7 @@ public sealed class FoundryOcrClient(
 
         if (textOnlyPages.Value.Count > ocrOptions.MaxPagesPerDocument)
         {
-            return Result<AiOcrResult>.Failure(
-                $"OCR page budget exceeded: document '{request.FileName}' has {textOnlyPages.Value.Count} pages, " +
-                $"configured maximum is {ocrOptions.MaxPagesPerDocument} (ADR-017: fail visibly, " +
-                "never silently truncate).");
+            return Result<AiOcrResult>.Failure(PageBudgetExceededError(request.FileName, textOnlyPages.Value.Count));
         }
 
         // `prebuilt-layout` supplies geometry only (ADR-017 w18) and is best-effort: this class's
@@ -97,6 +113,59 @@ public sealed class FoundryOcrClient(
         var metadata = FoundryCallMetadataFactory.Build(model, PromptVersion, clock, request.Content.Span);
         return Result<AiOcrResult>.Success(new AiOcrResult(pages, metadata));
     }
+
+    /// <summary>
+    /// The <see cref="AiOcrRequest.KnownPageCount"/> path: rejects before any Document
+    /// Intelligence call when the known count alone already exceeds the budget (zero calls, not
+    /// one), otherwise runs <c>prebuilt-read</c> and <c>prebuilt-layout</c> concurrently and
+    /// re-checks the budget against what <c>prebuilt-read</c> itself reports — the known count is
+    /// a trustworthy pre-check, not a replacement for the authoritative one.
+    /// </summary>
+    private async Task<Result<AiOcrResult>> OcrWithKnownPageCountAsync(
+        AiOcrRequest request, AiModelSelection model, int knownPageCount, CancellationToken cancellationToken)
+    {
+        if (knownPageCount > ocrOptions.MaxPagesPerDocument)
+        {
+            return Result<AiOcrResult>.Failure(PageBudgetExceededError(request.FileName, knownPageCount));
+        }
+
+        var readTask = AnalyzeAsync(model.ModelId, request.Content, cancellationToken);
+        var layoutTask = AnalyzeAsync(LayoutModelId, request.Content, cancellationToken);
+        await Task.WhenAll(readTask, layoutTask).ConfigureAwait(false);
+
+        var readAnalysis = await readTask.ConfigureAwait(false);
+        if (readAnalysis.IsFailure)
+        {
+            return Result<AiOcrResult>.Failure(readAnalysis.Error);
+        }
+
+        var textOnlyPages = MapPages(readAnalysis.Value);
+        if (textOnlyPages.IsFailure)
+        {
+            return Result<AiOcrResult>.Failure(textOnlyPages.Error);
+        }
+
+        if (textOnlyPages.Value.Count > ocrOptions.MaxPagesPerDocument)
+        {
+            return Result<AiOcrResult>.Failure(PageBudgetExceededError(request.FileName, textOnlyPages.Value.Count));
+        }
+
+        // `prebuilt-layout` already ran concurrently with `prebuilt-read` above; its own
+        // best-effort contract (ADR-017 w18, see this class's doc comment) is unchanged by that —
+        // a failure here still degrades to a null box on every page rather than failing the
+        // already-validated, in-budget text result.
+        var layoutAnalysis = await layoutTask.ConfigureAwait(false);
+        var merged = layoutAnalysis.IsSuccess ? MapPages(readAnalysis.Value, layoutAnalysis.Value) : textOnlyPages;
+        var pages = merged.IsSuccess ? merged.Value : textOnlyPages.Value;
+
+        var metadata = FoundryCallMetadataFactory.Build(model, PromptVersion, clock, request.Content.Span);
+        return Result<AiOcrResult>.Success(new AiOcrResult(pages, metadata));
+    }
+
+    private string PageBudgetExceededError(string fileName, int pageCount) =>
+        $"OCR page budget exceeded: document '{fileName}' has {pageCount} pages, " +
+        $"configured maximum is {ocrOptions.MaxPagesPerDocument} (ADR-017: fail visibly, " +
+        "never silently truncate).";
 
     /// <summary>
     /// Submits one <c>documentModels/{modelId}:analyze</c> long-running operation and polls it to a
