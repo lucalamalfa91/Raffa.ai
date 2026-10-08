@@ -41,9 +41,18 @@ public static class AgentTelemetry
     public const string ModelVersion = "raffa.model.version";
     public const string LatencyMs = "raffa.latency_ms";
 
+    // The step runner's own span (plan A-01, Raffa.AiGateway.Agents.StepRunner): one per step, the
+    // parent of the gateway call spans it makes.
+    public const string StepStatus = "raffa.step.status";
+    public const string StepReason = "raffa.step.reason";
+    public const string StepAttempts = "raffa.step.attempts";
+    public const string VerifierIntervened = "raffa.verifier.intervened";
+
     public const string OutcomeOk = "ok";
     public const string OutcomeError = "error";
     public const string OutcomeCancelled = "cancelled";
+    public const string OutcomeSkipped = "skipped";
+    public const string OutcomeFellBack = "fallback";
 
     /// <summary>A short, stable, non-reversible handle for a tenant: enough to group spans per
     /// tenant, never the tenant id itself (the first 8 bytes of its SHA-256, hex).</summary>

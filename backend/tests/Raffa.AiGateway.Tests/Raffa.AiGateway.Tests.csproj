@@ -29,6 +29,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- A-01: the prompt-as-file drift demonstration reads this folder as embedded resources, the
+         way a module's Prompts/<flow>/<agent>/vN.md are read at run time. -->
+    <EmbeddedResource Include="Agents\Prompts\**\*.md" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

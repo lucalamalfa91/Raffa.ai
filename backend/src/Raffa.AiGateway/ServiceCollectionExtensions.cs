@@ -1,5 +1,6 @@
 using Azure.Core;
 using Azure.Identity;
+using Raffa.AiGateway.Agents;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.AiGateway.Foundry;
@@ -205,6 +206,13 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<ITenantContext>(),
                 sp.GetRequiredService<AiGatewayComplianceOptions>());
         });
+
+        // Plan A-01: the agent step runner. Scoped with the Scoped IAiGateway it calls (one per
+        // request or turn, one concurrency cap and one default run id per turn); the options are an
+        // immutable singleton a host may replace before this method runs. It reaches a model only
+        // through IAiGateway, so the logging decorator's tenant scope and audit are untouched.
+        services.TryAddSingleton(new AgentRunnerOptions());
+        services.TryAddScoped<StepRunner>();
 
         return services;
     }
