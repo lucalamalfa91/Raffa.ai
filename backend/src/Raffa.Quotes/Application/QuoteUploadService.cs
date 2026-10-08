@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
 using Raffa.Quotes.Domain;
 using Raffa.Quotes.Infrastructure;
 using Raffa.SharedKernel;
@@ -78,6 +79,26 @@ public sealed class QuoteUploadService(
 
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
+        // Task F6-T04 (dedup by checksum): the same bytes, with the same caller-supplied header
+        // fields, that this tenant already extracted successfully are answered with the existing
+        // quote instead of storing a second blob, queuing a second job and paying for a second
+        // model call. Deliberately narrow so it can never make a flow worse:
+        //   * only a quote that reached Completed/NeedsReview is reused -- a Failed, Uploaded or
+        //     Processing one (including a row orphaned by an older crash) never blocks a retry;
+        //   * the header fields must match, because they decide whether the benchmark can match
+        //     the lines at all: re-uploading the same file *with* the supplier filled in is a
+        //     different request, not a duplicate;
+        //   * purchaseDate is compared only when the caller sent one (otherwise it defaults to the
+        //     upload day, which is never a reason to treat two uploads as different).
+        var existing = await FindReusableQuoteAsync(
+            tenantId, checksum, supplier, currency, geography, purchaseDate, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is not null)
+        {
+            return await BuildDuplicateResultAsync(tenantId, existing, actor, now, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         buffer.Position = 0;
         // DocumentStoragePath is deliberately generic over "an uploaded document's id" (its own
         // doc comment: "no implementation constructs a path by hand"), not specific to
@@ -142,5 +163,78 @@ public sealed class QuoteUploadService(
             quote.Currency,
             quote.Geography,
             quote.PurchaseDate));
+    }
+
+    private async Task<Quote?> FindReusableQuoteAsync(
+        TenantId tenantId,
+        string checksum,
+        string? supplier,
+        string? currency,
+        string? geography,
+        DateOnly? purchaseDate,
+        CancellationToken cancellationToken)
+    {
+        // AsNoTracking: the caller only reads this row. Filtering on TenantId explicitly is
+        // belt-and-braces beside RLS (ADR-009), the convention every query in this module follows.
+        var candidates = dbContext.Quotes.AsNoTracking()
+            .Where(q => q.TenantId == tenantId
+                && q.Checksum == checksum
+                && (q.ProcessingStatus == QuoteProcessingStatus.Completed
+                    || q.ProcessingStatus == QuoteProcessingStatus.NeedsReview)
+                && q.Supplier == supplier
+                && q.Currency == currency
+                && q.Geography == geography);
+
+        if (purchaseDate is not null)
+        {
+            candidates = candidates.Where(q => q.PurchaseDate == purchaseDate);
+        }
+
+        return await candidates
+            .OrderByDescending(q => q.CreatedAt)
+            .ThenBy(q => q.Id)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<Result<QuoteUploadResult>> BuildDuplicateResultAsync(
+        TenantId tenantId,
+        Quote existing,
+        string actor,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var lines = await dbContext.QuoteLines.AsNoTracking()
+            .Where(l => l.TenantId == tenantId && l.QuoteId == existing.Id)
+            .Select(l => new { l.NormalizedAnnualUnitPrice, l.MatchStatus })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        // Trace the dedup without content: same resource, a distinct action, so "why did this
+        // upload not create a quote" is answerable from the audit trail.
+        await auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId,
+                actor,
+                "quote.upload.deduplicated",
+                "quote",
+                existing.Id.Value.ToString(),
+                now),
+            cancellationToken).ConfigureAwait(false);
+
+        return Result<QuoteUploadResult>.Success(new QuoteUploadResult(
+            existing.Id,
+            existing.FileName,
+            existing.MimeType,
+            existing.ProcessingStatus,
+            existing.CreatedAt,
+            existing.Supplier,
+            existing.Currency,
+            existing.Geography,
+            existing.PurchaseDate,
+            IsDuplicate: true,
+            LineItemCount: lines.Count,
+            NormalizedLineItemCount: lines.Count(l => l.NormalizedAnnualUnitPrice is not null),
+            UnmatchedSkuCount: lines.Count(l => l.MatchStatus == SkuMatchStatus.Unmatched)));
     }
 }

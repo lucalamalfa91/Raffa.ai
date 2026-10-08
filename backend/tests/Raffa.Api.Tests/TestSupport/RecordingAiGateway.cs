@@ -105,11 +105,18 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
         return inner.ClassifyAsync(request, cancellationToken);
     }
 
+    /// <summary>Optional replacement for the <c>extract</c> role (task F6-T02): lets a test script
+    /// the payload the model "returns", or make the call throw to simulate a crash. Unset, the
+    /// call delegates to the inner gateway unchanged.</summary>
+    public Func<AiExtractionRequest, CancellationToken, Task<Result<AiExtractionResult>>>? ExtractOverride { get; set; }
+
     public Task<Result<AiExtractionResult>> ExtractAsync(
         AiExtractionRequest request, CancellationToken cancellationToken = default)
     {
         Record(nameof(ExtractAsync));
-        return inner.ExtractAsync(request, cancellationToken);
+        return ExtractOverride is { } over
+            ? over(request, cancellationToken)
+            : inner.ExtractAsync(request, cancellationToken);
     }
 
     public Task<Result<AiEmbeddingResult>> EmbedAsync(

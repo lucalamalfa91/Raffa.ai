@@ -180,4 +180,82 @@ public sealed class QuoteUploadServiceTests : IAsyncLifetime
             Assert.Empty(await dbAsTenantB.QuoteExtractionJobs.ToListAsync());
         }
     }
+
+    // ----- Task F6-T04: dedup by checksum (needs Docker/Postgres: not runnable in a sandbox without it;
+    // the same behaviour is also proven over HTTP on the in-memory host by
+    // Raffa.Api.Tests.QuoteUploadRobustnessTests) -----
+
+    private async Task<QuoteUploadResult> UploadAsync(
+        TenantId tenantId, byte[] bytes, RecordingDocumentStorage storage, string? supplier = null)
+    {
+        var tenantContext = new TenantContext();
+        await using var db = CreateAppContext(tenantContext);
+        var service = new QuoteUploadService(
+            db, storage, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new RecordingAuditWriter());
+        using var content = new MemoryStream(bytes);
+        var result = await service.UploadAsync(
+            tenantId, "quote.pdf", "application/pdf", content, "test-actor@example.com", supplier: supplier);
+        Assert.True(result.IsSuccess);
+        return result.Value;
+    }
+
+    private async Task SetStatusAsync(TenantId tenantId, EntityId quoteId, QuoteProcessingStatus status)
+    {
+        var tenantContext = new TenantContext();
+        using var scope = tenantContext.BeginScope(tenantId);
+        await using var db = CreateAppContext(tenantContext);
+        var quote = await db.Quotes.SingleAsync(q => q.Id == quoteId);
+        quote.ProcessingStatus = status;
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Uploading_the_same_bytes_again_returns_the_extracted_quote_and_stores_nothing()
+    {
+        var tenantId = TenantId.New();
+        var storage = new RecordingDocumentStorage();
+        var bytes = Encoding.UTF8.GetBytes("%PDF-1.4 dedup sample");
+
+        var first = await UploadAsync(tenantId, bytes, storage);
+        await SetStatusAsync(tenantId, first.QuoteId, QuoteProcessingStatus.Completed);
+        var second = await UploadAsync(tenantId, bytes, storage);
+
+        Assert.False(first.IsDuplicate);
+        Assert.True(second.IsDuplicate);
+        Assert.Equal(first.QuoteId, second.QuoteId);
+        Assert.Single(storage.Saved);
+    }
+
+    [Theory]
+    [InlineData(QuoteProcessingStatus.Failed)]
+    [InlineData(QuoteProcessingStatus.Uploaded)]
+    [InlineData(QuoteProcessingStatus.Processing)]
+    public async Task A_quote_that_never_finished_extraction_is_not_reused(QuoteProcessingStatus status)
+    {
+        var tenantId = TenantId.New();
+        var storage = new RecordingDocumentStorage();
+        var bytes = Encoding.UTF8.GetBytes($"%PDF-1.4 retry sample {status}");
+
+        var first = await UploadAsync(tenantId, bytes, storage);
+        await SetStatusAsync(tenantId, first.QuoteId, status);
+        var second = await UploadAsync(tenantId, bytes, storage);
+
+        Assert.False(second.IsDuplicate);
+        Assert.NotEqual(first.QuoteId, second.QuoteId);
+    }
+
+    [Fact]
+    public async Task The_same_bytes_with_a_different_supplier_are_not_a_duplicate()
+    {
+        var tenantId = TenantId.New();
+        var storage = new RecordingDocumentStorage();
+        var bytes = Encoding.UTF8.GetBytes("%PDF-1.4 supplier sample");
+
+        var first = await UploadAsync(tenantId, bytes, storage);
+        await SetStatusAsync(tenantId, first.QuoteId, QuoteProcessingStatus.Completed);
+        var second = await UploadAsync(tenantId, bytes, storage, supplier: "Northwind Traders");
+
+        Assert.False(second.IsDuplicate);
+        Assert.NotEqual(first.QuoteId, second.QuoteId);
+    }
 }

@@ -552,10 +552,20 @@ export interface operations {
     responses: {
       201: {
         content: {
-          "application/json": { id: string; fileName: string; mimeType: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; lineItemCount: number; normalizedLineItemCount: number; unresolvedNormalizationCount: number; unmatchedSkuCount: number; supplier: string | null; currency: string | null; geography: string | null; purchaseDate: string | null; createdAt: string };
+          "application/json": { id: string; fileName: string; mimeType: string; processingStatus: "Uploaded" | "Processing" | "NeedsReview" | "Completed" | "Failed" | "Rejected"; lineItemCount: number; normalizedLineItemCount: number; unresolvedNormalizationCount: number; unmatchedSkuCount: number; supplier: string | null; currency: string | null; geography: string | null; purchaseDate: string | null; createdAt: string; skippedLineCount?: number; invalidLineCount?: number; deduplicated?: boolean };
         };
       };
       400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      413: {
+        content: {
+          "application/json": string;
+        };
+      };
+      415: {
         content: {
           "application/json": string;
         };
