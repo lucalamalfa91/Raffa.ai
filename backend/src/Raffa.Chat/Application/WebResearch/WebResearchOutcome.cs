@@ -38,6 +38,9 @@ public enum WebResearchOutcomeKind
 /// <param name="GuardViolation">The violation, diagnostics only (ADR-011: never in the audit trail's
 /// free text, never shown).</param>
 /// <param name="Error">The gateway failure when <see cref="Kind"/> is <see cref="WebResearchOutcomeKind.Failed"/>.</param>
+/// <param name="ReleaseBudget">F3-T03: the research call failed for transport or configuration
+/// reasons (not a content-filter verdict, not unusable output), so the caller hands the budget unit it
+/// reserved before the call back.</param>
 public sealed record WebResearchOutcome(
     WebResearchOutcomeKind Kind,
     string Markdown,
@@ -46,7 +49,8 @@ public sealed record WebResearchOutcome(
     int SourceCount,
     bool GuardIntervened,
     string? GuardViolation,
-    string? Error)
+    string? Error,
+    bool ReleaseBudget = false)
 {
     public ReplyKind AsReplyKind => Kind switch
     {

@@ -196,21 +196,23 @@ internal sealed partial class AskCopilotService
                 $"queryHash={queryHash} purpose={WebModeLexicon.Purpose} queryLength={query.Length} {WebModeAuditTag}", cancellationToken)
             .ConfigureAwait(false);
 
-        if (!await webResearchBudget.TryConsumeAsync(tenantId, cancellationToken).ConfigureAwait(false))
+        var reservation = await webResearchBudget.TryReserveAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        if (reservation is not { } reserved)
         {
             await WriteWebResearchAuditAsync(tenantId, AuditWebResearchRefusedAction, actor, $"gate={WebGate.Budget} stage=run queryHash={queryHash} {WebModeAuditTag}", cancellationToken)
                 .ConfigureAwait(false);
             return null;
         }
 
-        var outcome = await webResearchComposer
-            .ComposeAsync(query, WebModeLexicon.Purpose, WebModeReplyBuilder.IsItalian(question) ? "it" : "en", cancellationToken)
+        var (outcome, released) = await ComposeReservedAsync(
+                reserved, query, WebModeLexicon.Purpose, WebModeReplyBuilder.IsItalian(question) ? "it" : "en", cancellationToken)
             .ConfigureAwait(false);
 
         await WriteWebResearchAuditAsync(
                 tenantId, AuditWebResearchedAction, actor,
                 $"queryHash={queryHash} outcome={outcome.Kind} sourceCount={outcome.SourceCount} " +
-                $"guardIntervened={outcome.GuardIntervened} promptVersion={outcome.Provenance.PromptVersion} {WebModeAuditTag}",
+                $"guardIntervened={outcome.GuardIntervened} promptVersion={outcome.Provenance.PromptVersion} " +
+                $"budgetReleased={released} {WebModeAuditTag}",
                 cancellationToken)
             .ConfigureAwait(false);
 

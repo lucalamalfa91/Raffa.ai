@@ -56,7 +56,8 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
                 SourceCount: 0,
                 GuardIntervened: false,
                 GuardViolation: null,
-                Error: result.Error);
+                Error: result.Error,
+                ReleaseBudget: AiGatewayErrors.ResearchFailureReleasesBudget(result.Error));
         }
 
         var research = result.Value;
