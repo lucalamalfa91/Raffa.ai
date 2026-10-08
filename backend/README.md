@@ -1680,10 +1680,25 @@ and **no pack** — isolation is in the type. In `Raffa.Chat`,
 language)` is the only caller of `ResearchAsync` and the only producer of
 `PackCorpus.Web` (`WebResearchIsolationTests`); it runs `Guards.WebGuard`
 (≥ 1 source, https + public DNS host only, `[n]` in range, no foreign URL in
-the prose), then `NumericGuard` against the sources' snippets, then
-`GroundingGuard`; a failure is an abstain naming the hosts (no retry — every
-call is budgeted), `offTopic` is a refusal. The persona is
-`Prompts/research/v1.md` (`WebResearchPrompt`, `research-v1`). The query is
+the prose), then `Guards.WebFigureGuard` (F3-T01), then `GroundingGuard`; a
+failure is an abstain naming the hosts (no retry — every call is budgeted),
+`offTopic` is a refusal. The hosted search tool returns a URL and a title and
+**no page text** (`AiWebSource.Snippet` is always empty in production), so the
+research role's strict JSON carries `sources[].quote` — the passage the model
+copied verbatim — onto `AiWebSource.Quote`, and the web pack's snippet (the
+citation's excerpt) is that quote. `WebFigureGuard` reads each sentence of the
+summary: every figure (percentage, amount as ISO code, symbol, word or `40k` /
+`1,5M`, full date in the five languages or US order, month and year, a
+percentage spelled out, both bounds of a range) must share its sentence with a
+`[n]` marker and appear — same value, same currency, any of the five
+languages' number formats — in the quote (or title or snippet) of a source that
+sentence cites. Three states: *verified*; *reported* (an explicit figure — a
+percentage, an ISO-coded amount, a full date — with no cited source quote at
+all; kept only with `Chat:WebResearch:AllowReportedFigures`, default false);
+*rejected*. A sentence stating a rejected figure is removed, not the whole
+answer (`WebResearchOutcome.SentencesRemoved`, `GuardIntervened`); when no
+sentence with a marker is left the reply is the usual abstain. The persona is
+`Prompts/research/v2.md` (`WebResearchPrompt`, `research-v2`; v1 stays on disk). The query is
 `WebQuerySanitizer`'s: the user's words minus the "search the web" phrase and
 every amount, percentage, date, money shorthand, e-mail and URL.
 
@@ -1713,8 +1728,9 @@ root's `web_research_enabled` variable; `scripts/foundry_research_probe.py`
 is the pre-flight/diagnostic and `AiGateway:ResearchWebSearchToolType`
 (default `web_search`) covers the tool's earlier `web_search_preview` name
 (see `infra/README.md`). The fixture gateway's `ResearchAsync` returns two
-example.com/.org sources (off-topic without a procurement word), which is
-what `AskWebResearchConsentTests` exercises.
+example.com/.org sources shaped like production's (empty `Snippet`, the text in
+`Quote`; off-topic without a procurement word), which is what
+`AskWebResearchConsentTests` exercises.
 
 ## Ask Raffa — capability catalog
 

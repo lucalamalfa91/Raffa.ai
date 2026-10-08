@@ -5,7 +5,7 @@ using Raffa.AiGateway.Contracts;
 namespace Raffa.AiGateway.Foundry;
 
 /// <summary>One entry of the model's own <c>sources[]</c> list: the number its <c>[n]</c> markers use.</summary>
-public sealed record ResearchModelSource(int N, string? Url, string? Title);
+public sealed record ResearchModelSource(int N, string? Url, string? Title, string? Quote = null);
 
 /// <summary>One <c>url_citation</c> annotation the web-search tool itself attached to the output.</summary>
 public sealed record ResearchToolCitation(string? Url, string? Title);
@@ -55,7 +55,7 @@ public static class WebSourceReconciler
         }
 
         var entries = (modelSources ?? [])
-            .Select((source, index) => (source.N, Url: WebSourceUrl.Normalize(source.Url), source.Title, Index: index))
+            .Select((source, index) => (source.N, Url: WebSourceUrl.Normalize(source.Url), source.Title, source.Quote, Index: index))
             .Where(e => e.Url is not null)
             .OrderBy(e => e.N)
             .ThenBy(e => e.Index)
@@ -71,6 +71,7 @@ public static class WebSourceReconciler
         var numberToUrl = new Dictionary<int, string>();
         var candidates = new List<string>();
         var modelTitles = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var modelQuotes = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
             var url = entry.Url!;
@@ -88,6 +89,21 @@ public static class WebSourceReconciler
             if (!modelTitles.TryGetValue(url, out var title) || string.IsNullOrWhiteSpace(title))
             {
                 modelTitles[url] = entry.Title;
+            }
+
+            // F3-T01: the same page listed under two numbers keeps both passages (deduplicated).
+            if (CleanQuote(entry.Quote) is { Length: > 0 } quote)
+            {
+                if (!modelQuotes.TryGetValue(url, out var quotes))
+                {
+                    quotes = [];
+                    modelQuotes[url] = quotes;
+                }
+
+                if (!quotes.Contains(quote, StringComparer.Ordinal))
+                {
+                    quotes.Add(quote);
+                }
             }
         }
 
@@ -142,11 +158,36 @@ public static class WebSourceReconciler
         });
 
         var sources = final
-            .Select(url => new AiWebSource(url, Title(cited[url], modelTitles.GetValueOrDefault(url), url), Snippet: string.Empty))
+            .Select(url => new AiWebSource(
+                url,
+                Title(cited[url], modelTitles.GetValueOrDefault(url), url),
+                Snippet: string.Empty,
+                Quote: JoinQuotes(modelQuotes.GetValueOrDefault(url))))
             .ToList();
 
         return new ReconciledResearch(rewritten, sources);
     }
+
+    /// <summary>The longest quote kept per source: a verbatim passage, not a copy of the page.</summary>
+    public const int MaxQuoteChars = 800;
+
+    private static readonly Regex WhitespaceRun = new(@"\s+", RegexOptions.Compiled);
+
+    /// <summary>Whitespace collapsed to single spaces and the text capped at <see cref="MaxQuoteChars"/>.
+    /// Nothing else is changed: the quote must stay the characters the model copied.</summary>
+    private static string CleanQuote(string? quote)
+    {
+        if (string.IsNullOrWhiteSpace(quote))
+        {
+            return string.Empty;
+        }
+
+        var collapsed = WhitespaceRun.Replace(quote.Trim(), " ");
+        return collapsed.Length <= MaxQuoteChars ? collapsed : collapsed[..MaxQuoteChars];
+    }
+
+    private static string JoinQuotes(List<string>? quotes) =>
+        quotes is null ? string.Empty : string.Join(" ", quotes);
 
     private static bool TryNumber(Match marker, out int number) =>
         int.TryParse(marker.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out number);

@@ -186,7 +186,7 @@ public sealed class AskWebModeTests : IClassFixture<RaffaApiFactory>
         Assert.Contains("mode=toggle", authorized.Detail, StringComparison.Ordinal);
         Assert.DoesNotContain("uplift", authorized.Detail, StringComparison.OrdinalIgnoreCase);
         var researched = Assert.Single(audit.Entries, e => e.Action == "chat.web_researched");
-        Assert.Contains("promptVersion=research-open-v1", researched.Detail, StringComparison.Ordinal);
+        Assert.Contains("promptVersion=research-open-v2", researched.Detail, StringComparison.Ordinal);
         Assert.DoesNotContain(audit.Entries, e => e.Action == "chat.interviewed");
     }
 
@@ -210,7 +210,7 @@ public sealed class AskWebModeTests : IClassFixture<RaffaApiFactory>
         Assert.NotEmpty(citations);
         Assert.All(citations, c => Assert.Equal("web", c.GetProperty("corpus").GetString()));
         Assert.Equal(["web"], root.GetProperty("provenance").GetProperty("sources").EnumerateArray().Select(s => s.GetString()).ToList());
-        Assert.Equal("research-open-v1", root.GetProperty("provenance").GetProperty("promptVersion").GetString());
+        Assert.Equal("research-open-v2", root.GetProperty("provenance").GetProperty("promptVersion").GetString());
     }
 
     [Fact]

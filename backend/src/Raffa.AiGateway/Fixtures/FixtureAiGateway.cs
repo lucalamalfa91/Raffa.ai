@@ -696,10 +696,12 @@ public sealed class FixtureAiGateway(
         @"barzellett[ae]|joke|lyrics)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>ADR-030: the CI double of the research role. Two fixed public sources with snippets
-    /// that carry every figure the summary quotes (so <c>NumericGuard</c> grounds them), an
-    /// off-topic refusal when the query has no procurement word — or, for the open web-mode purpose
-    /// (ADR-032), only when it is plainly leisure — never a real HTTP call.</summary>
+    /// <summary>ADR-030: the CI double of the research role. Two fixed public sources shaped like
+    /// production's (F3-T01): the hosted search tool gives no page excerpt, so <c>Snippet</c> is empty
+    /// and the figures the summary quotes sit in <c>Quote</c>, the passage the model copies from the
+    /// page (the web figure guard checks them there). An off-topic refusal when the query has no
+    /// procurement word — or, for the open web-mode purpose (ADR-032), only when it is plainly
+    /// leisure — never a real HTTP call.</summary>
     public Task<Result<AiResearchResult>> ResearchAsync(
         AiResearchRequest request, CancellationToken cancellationToken = default)
     {
@@ -720,11 +722,13 @@ public sealed class FixtureAiGateway(
                 new AiWebSource(
                     "https://example.com/procurement/saas-renewals",
                     "SaaS renewal benchmarks — example.com",
-                    "Typical enterprise SaaS renewals close with a 5-10% uplift cap and 60 to 90 days of notice."),
+                    Snippet: string.Empty,
+                    Quote: "Typical enterprise SaaS renewals close with a 5-10% uplift cap and 60 to 90 days of notice."),
                 new AiWebSource(
                     "https://example.org/negotiation/levers",
                     "Negotiation levers buyers cite most — example.org",
-                    "Multi-year commitments and volume tiers are the levers buyers cite most often."),
+                    Snippet: string.Empty,
+                    Quote: "Multi-year commitments and volume tiers are the levers buyers cite most often."),
             ];
 
         var summary = offTopic

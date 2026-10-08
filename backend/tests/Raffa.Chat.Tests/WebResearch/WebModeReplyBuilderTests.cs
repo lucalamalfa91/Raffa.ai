@@ -93,7 +93,7 @@ public sealed class WebModeReplyBuilderTests
         Assert.Equal([PackCorpus.Tenant, PackCorpus.Market, PackCorpus.Web], reply.Provenance.Sources);
         Assert.True(reply.Provenance.Unverified);
         Assert.Equal("gpt-answer", reply.Provenance.ModelId);
-        Assert.Equal("answer-v2.5+research-open-v1", reply.Provenance.PromptVersion);
+        Assert.Equal($"answer-v2.5+{WebResearchPrompt.OpenVersion}", reply.Provenance.PromptVersion);
         Assert.Equal(["Open Contract 360 →", "Open Quote check →"], reply.Actions.Select(a => a.Label).ToList());
         Assert.Equal(["What are my levers?"], reply.FollowUps);
     }
