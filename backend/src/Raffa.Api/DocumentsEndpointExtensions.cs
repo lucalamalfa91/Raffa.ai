@@ -279,6 +279,24 @@ public static class DocumentsEndpointExtensions
 
         var uploaded = result.Value;
 
+        // F5-D01: the same file (same SHA-256) was already uploaded by this tenant. 200, not 201:
+        // nothing was created. The body keeps the 201 shape and adds `alreadyUploaded` plus a link
+        // to the existing document, so a client that only reads `id` still lands on the right row.
+        if (uploaded.AlreadyUploaded)
+        {
+            return Results.Ok(new
+            {
+                id = uploaded.DocumentId.Value,
+                contractId = uploaded.ContractId?.Value,
+                fileName = uploaded.FileName,
+                mimeType = uploaded.MimeType,
+                processingStatus = uploaded.ProcessingStatus.ToString(),
+                createdAt = uploaded.CreatedAt,
+                alreadyUploaded = true,
+                existingDocumentUrl = $"/api/documents/{uploaded.DocumentId}",
+            });
+        }
+
         return Results.Created($"/api/documents/{uploaded.DocumentId}", new
         {
             id = uploaded.DocumentId.Value,
@@ -442,6 +460,9 @@ public static class DocumentsEndpointExtensions
                 // the sentence (ADR-020 w15 §6); this API never authors user-facing prose.
                 rejectionReason = item.RejectionReason?.ToApiValue(),
                 errorDetail = item.ErrorDetail,
+                // F5-T02: the extraction stages that stand failed (empty unless the document is
+                // partial). Stage names only; the reason is in errorDetail.
+                partialStages = item.PartialStages ?? [],
             }),
             page = result.Page,
             pageSize = result.PageSize,

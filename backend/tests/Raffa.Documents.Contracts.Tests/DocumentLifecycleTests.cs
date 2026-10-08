@@ -552,7 +552,9 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
     private async Task<EntityId> UploadAndProcessAsync(
         Harness harness, ITenantContext tenantContext, TenantId tenantId, string fileName, DateTimeOffset now)
     {
-        var bytes = BuildPdf(ContractText);
+        // F5-D01: the same bytes uploaded twice by one tenant are one document; the tests that upload
+        // several files here need distinct documents, so each carries its own name in the text.
+        var bytes = BuildPdf($"{ContractText} Ref {fileName}.");
 
         EntityId documentId;
         await using (var db = CreateAppContext(tenantContext))
