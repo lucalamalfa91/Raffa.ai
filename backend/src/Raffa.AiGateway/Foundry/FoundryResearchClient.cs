@@ -15,7 +15,10 @@ namespace Raffa.AiGateway.Foundry;
 /// normalised URL (<see cref="WebSourceReconciler"/>, F3-T02). The call must end <c>completed</c>;
 /// it has its own retry count and attempt timeout (F3-T03). Strict JSON
 /// output (<c>summaryMarkdown</c>, <c>offTopic</c>, <c>sources</c>), the same structured-output
-/// discipline every other role already uses.
+/// discipline every other role already uses. F3-T01: a <c>url_citation</c> annotation carries a URL
+/// and a title and no page text, so each <c>sources[]</c> entry also carries <c>quote</c> — the
+/// passage the model copied verbatim from that page — and the caller checks every figure of the
+/// summary against it.
 /// </summary>
 public sealed class FoundryResearchClient(
     FoundryHttpJsonClient httpJsonClient,
@@ -46,11 +49,12 @@ public sealed class FoundryResearchClient(
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["n", "url", "title"],
+                "required": ["n", "url", "title", "quote"],
                 "properties": {
                   "n": { "type": "integer" },
                   "url": { "type": "string" },
-                  "title": { "type": "string" }
+                  "title": { "type": "string" },
+                  "quote": { "type": "string" }
                 }
               }
             }
@@ -175,7 +179,7 @@ public sealed class FoundryResearchClient(
             ? new ReconciledResearch(string.Empty, [])
             : WebSourceReconciler.Reconcile(
                 payload.SummaryMarkdown,
-                (payload.Sources ?? []).Select(s => new ResearchModelSource(s.N, s.Url, s.Title)).ToList(),
+                (payload.Sources ?? []).Select(s => new ResearchModelSource(s.N, s.Url, s.Title, s.Quote)).ToList(),
                 (content.Annotations ?? [])
                     .Where(a => string.Equals(a.Type, "url_citation", StringComparison.OrdinalIgnoreCase))
                     .Select(a => new ResearchToolCitation(a.Url, a.Title))
@@ -191,5 +195,5 @@ public sealed class FoundryResearchClient(
 
     private sealed record ResearchPayload(string? SummaryMarkdown, bool OffTopic, IReadOnlyList<ResearchPayloadSource>? Sources);
 
-    private sealed record ResearchPayloadSource(int N, string? Url, string? Title);
+    private sealed record ResearchPayloadSource(int N, string? Url, string? Title, string? Quote);
 }
