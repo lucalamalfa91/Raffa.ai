@@ -24,6 +24,26 @@ public interface IFeatureRequestPublisher
     Task<FeatureRequestPublishResult> TryPublishAsync(FeatureRequestIssue issue, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// F4-T01: the names the free text of a feedback answer must not carry into a public issue — the
+/// tenant's suppliers. The module cannot read them itself (its allow-list excludes the modules that
+/// hold suppliers and contracts), so the host supplies them through this seam; the module's
+/// default knows none, and the scrub then works by the shape of a name alone.
+/// </summary>
+public interface IFeedbackNameSource
+{
+    /// <summary>Every supplier name this tenant has on file. Best effort: the caller treats a
+    /// failure as "none known".</summary>
+    Task<IReadOnlyList<string>> GetSupplierNamesAsync(Raffa.SharedKernel.TenantId tenantId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>The module's default: no names are known.</summary>
+public sealed class NullFeedbackNameSource : IFeedbackNameSource
+{
+    public Task<IReadOnlyList<string>> GetSupplierNamesAsync(Raffa.SharedKernel.TenantId tenantId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+}
+
 /// <summary>The module's default: nothing is published, every request stays "recorded".</summary>
 public sealed class NullFeatureRequestPublisher : IFeatureRequestPublisher
 {

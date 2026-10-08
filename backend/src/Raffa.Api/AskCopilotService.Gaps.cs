@@ -1,4 +1,5 @@
 using Raffa.AiGateway.Telemetry;
+using System.Globalization;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
@@ -95,6 +96,52 @@ internal sealed partial class AskCopilotService
         return CapabilityGapReplyBuilder.Redirect(gap, language, CapabilityGapCopy.Preface(gap, language), actions, []);
     }
 
+    /// <summary>What an in-domain turn tells the caller about itself while it is built: the plan
+    /// (trigger T1 reads its basis). Filled by <see cref="BuildInDomainReplyAsync"/>; stays empty
+    /// for a turn that never reached the planner.</summary>
+    private sealed class InDomainTurnTrace
+    {
+        public IntentPlanResult? Plan { get; set; }
+    }
+
+    /// <summary>
+    /// INV-03: the turn's <c>ask.capability_trigger</c> audit row — the mode, T1/T2/T3, whether the
+    /// check ran and why. Written for every fresh in-domain turn the check could look at (also when
+    /// the kill switch is off, and in Always mode, where the flags say what Triggered would have
+    /// done). Never the question, never any text; the matching <c>ask.capability_outcome</c> row
+    /// carries the verdict once the check finishes (<see cref="CapabilityCheckDispatcher"/>). Telemetry
+    /// never fails a turn.
+    /// </summary>
+    private async Task WriteTriggerAuditAsync(
+        TenantId tenantId,
+        string actor,
+        Guid turnId,
+        string mode,
+        TriggerVerdict verdict,
+        bool ran,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId,
+                    actor,
+                    CapabilityCheckDispatcher.TriggerAuditAction,
+                    CapabilityCheckDispatcher.TriggerAuditResourceType,
+                    turnId.ToString("D", CultureInfo.InvariantCulture),
+                    clock.UtcNow,
+                    $"turnId={turnId:D} mode={mode} t1={verdict.T1} t2={verdict.T2} t3={verdict.T3} " +
+                    $"ran={ran} reason={verdict.Reason} t3Language={verdict.T3Language ?? "none"} " +
+                    $"lexicon={investigatorTrigger.LexiconVersion}"),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Fail-open: the answer is already built; a missing telemetry row must not lose it.
+        }
+    }
+
     /// <summary>A turn the capability investigator may look at (ADR-031): typed by the user, not
     /// resolved by key from an earlier turn (an interview option, a web consent or a decline),
     /// which continues a turn that was already investigated.</summary>
@@ -145,9 +192,11 @@ internal sealed partial class AskCopilotService
     }
 
     /// <summary>
-    /// The drafted email: the Q3 renewal-strategy pack with evidence (<c>persistTodos: true</c> —
-    /// the user is negotiating this renewal, so the Renewals link the reply offers is true after
-    /// the turn), Ask's agentic flow exactly as <see cref="BuildInDomainReplyAsync"/> runs it (the
+    /// The drafted email: the Q3 renewal-strategy pack with evidence (<c>persistTodos: false</c> —
+    /// F1-D07, decision D7: a draft is a copyable text with no side effect, so building its pack
+    /// writes no negotiation todo; the Renewals link the reply offers opens the screen, whose
+    /// todos the user creates by asking the renewal-strategy question or from the screen itself),
+    /// Ask's agentic flow exactly as <see cref="BuildInDomainReplyAsync"/> runs it (the
     /// market data check and the market researcher's items appended, the council's plays inserted),
     /// the pack budget, then <see cref="NegotiationDraftingWorkflow.DraftAsync"/>. A
     /// template fallback or a retried writer is audited as a guard intervention
@@ -170,7 +219,7 @@ internal sealed partial class AskCopilotService
         var goal = SavingsGoalParser.Parse(question);
 
         IReadOnlyList<Raffa.Chat.Application.Pack.PackItem> packItems =
-            await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, goal)
+            await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, goal, persistTodos: false)
                 .ConfigureAwait(false);
 
         if (disambiguationItem is not null)

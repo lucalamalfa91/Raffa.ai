@@ -505,7 +505,7 @@ public static class ConversationsEndpointExtensions
                 if (await check.ConfigureAwait(false) is { } followUp)
                 {
                     var appended = await capabilityCheckDispatcher
-                        .AppendAsync(tenantId, userId, conversationId, raffaMessage.MessageId, followUp, cancellationToken, capabilityCheck.TurnId)
+                        .AppendAsync(tenantId, userId, conversationId, raffaMessage.MessageId, followUp, capabilityCheck.TurnId, cancellationToken)
                         .ConfigureAwait(false);
                     followUpMessage = appended is null ? null : ToMessageResponse(appended, hasLaterTurn: false);
                 }

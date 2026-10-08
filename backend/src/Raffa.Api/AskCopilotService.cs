@@ -212,8 +212,13 @@ internal sealed partial class AskCopilotService(
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock,
-    LineItemMarketPriceService? lineItemMarketPriceService = null)
+    LineItemMarketPriceService? lineItemMarketPriceService = null,
+    InvestigatorTrigger? investigatorTriggerOverride = null)
 {
+    /// <summary>INV-01: the deterministic trigger of the capability investigator (the shared
+    /// instance over the embedded lexicon unless a test supplies its own).</summary>
+    private readonly InvestigatorTrigger investigatorTrigger = investigatorTriggerOverride ?? InvestigatorTrigger.Default;
+
     private const int ClauseTopK = 5;
 
     /// <summary>Task E28/F02/US01/T01 (NW-81 AC-2 "lower K"): the labelled "similar types" peer
@@ -377,39 +382,73 @@ internal sealed partial class AskCopilotService(
             };
         }
 
-        // ADR-031: Raffa's own judgement on whether this turn asks for an operation nothing in
-        // Raffa performs — started here, beside the answer, never in front of it: the answer below
-        // is computed while the investigator's model call is in flight, and the endpoint appends
-        // any proposal as a separate message after the answer (CapabilityCheckDispatcher). Only a
-        // fresh, typed InDomain turn is checked: the fixed catalog already had its say in the gate;
-        // Greeting/OffDomain/Legal/Capability/NeedsDocument make no AI Gateway call and stay that
-        // way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an interview
-        // option, a web consent) continues one that was already checked; and only a caller that
-        // will persist a follow-up (the conversation endpoints) passes a slot.
+        // ADR-031 / INV-02: Raffa's own judgement on whether this turn asks for an operation nothing
+        // in Raffa performs. It runs beside the answer, never in front of it, and since decision D3
+        // it costs a model call only when the deterministic InvestigatorTrigger says the turn is
+        // worth one (Chat:GapInvestigation:Mode = Triggered, the default; Always keeps the old
+        // call-on-every-turn behaviour for diagnosis):
+        //   - T3 (an operational request the catalog does not cover) reads the question alone, so
+        //     the check starts HERE and runs in parallel with the answer, as it always did;
+        //   - T1 (no intent recognised) and T2 (Raffa could not answer) need the planner and the
+        //     composer, so they are decided right after the reply below, and the check starts then:
+        //     the answer is never delayed, and the follow-up still lands as a separate message
+        //     through CapabilityCheckDispatcher.AppendWhenDone.
+        // Only a fresh, typed InDomain turn is eligible: the fixed catalog already had its say in
+        // the gate; Greeting/OffDomain/Legal/Capability/NeedsDocument make no AI Gateway call and
+        // stay that way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an
+        // interview option, a web consent) continues one that was already checked; and only a
+        // caller that will persist a follow-up (the conversation endpoints) passes a slot.
         var gapInvestigation = "skipped";
-        if (capabilityCheck is not null && gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints))
+        var turnTrace = new InDomainTurnTrace();
+        var investigatorEligible = false;
+        var investigatorStarted = false;
+        var investigatorMode = GapInvestigationMode.Triggered;
+        var triggerVerdict = TriggerVerdict.None;
+        var turnId = Guid.NewGuid();
+
+        void StartInvestigator()
         {
+            var (namedItem, _, _) = ResolveNamedContractItem(scopedContractItem, gate.NamedSupplier, portfolio, supplierNames);
+            var namedSupplier = namedItem?.SupplierId is { } namedSupplierId &&
+                supplierNames.TryGetValue(new EntityId(namedSupplierId), out var namedSupplierName)
+                    ? namedSupplierName
+                    : null;
+
+            capabilityCheck!.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
+                tenantId,
+                question,
+                supplierNames.Values.ToList(),
+                portfolio.TotalCount,
+                namedSupplier,
+                namedItem?.ContractId,
+                turnId,
+                actor));
+            investigatorStarted = true;
+            gapInvestigation = "started";
+        }
+
+        var investigatorTurn = capabilityCheck is not null && gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints);
+        if (investigatorTurn)
+        {
+            capabilityCheck!.TurnId = turnId;
+
             if (!capabilityCheckDispatcher.Enabled)
             {
                 gapInvestigation = "off";
+                triggerVerdict = new TriggerVerdict(false, false, false, InvestigatorTrigger.ReasonKillSwitch);
             }
             else
             {
-                var (namedItem, _, _) = ResolveNamedContractItem(scopedContractItem, gate.NamedSupplier, portfolio, supplierNames);
-                var namedSupplier = namedItem?.SupplierId is { } namedSupplierId &&
-                    supplierNames.TryGetValue(new EntityId(namedSupplierId), out var namedSupplierName)
-                        ? namedSupplierName
-                        : null;
+                investigatorEligible = true;
+                investigatorMode = capabilityCheckDispatcher.Mode;
 
-                capabilityCheck.TurnId = RunContext.Current?.TurnId;
-                capabilityCheck.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
-                    tenantId,
-                    question,
-                    supplierNames.Values.ToList(),
-                    portfolio.TotalCount,
-                    namedSupplier,
-                    namedItem?.ContractId));
-                gapInvestigation = "started";
+                // T3 reads the question alone: it (and Always mode) starts the check now, in
+                // parallel with the answer. T1/T2 are decided after the reply, below.
+                if (investigatorMode == GapInvestigationMode.Always ||
+                    investigatorTrigger.Evaluate(plan: null, replyOutcome: null, question).ShouldRun)
+                {
+                    StartInvestigator();
+                }
             }
         }
 
@@ -435,13 +474,46 @@ internal sealed partial class AskCopilotService(
                     .ConfigureAwait(false),
                 GateLabel.InDomain => await BuildInDomainReplyAsync(
                     tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
-                    scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken)
+                    scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken,
+                    turnTrace)
                     .ConfigureAwait(false),
                 _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
             };
 
+        // INV-02: T1 (the planner found no intent) and T2 (Raffa could not answer) are known only
+        // now. The check starts after the reply is built — never before it, so the answer's
+        // latency is unchanged — and the endpoint appends its follow-up as a separate message.
+        if (investigatorEligible)
+        {
+            // The full verdict (T3 again, now with what T1 and T2 found), also in Always mode: the
+            // audit then shows what Triggered would have done, which is how the reduction in
+            // gaps-v1 calls is measured (plan 5.4).
+            triggerVerdict = investigatorTrigger.Evaluate(
+                turnTrace.Plan, new ReplyOutcome(reply.Kind, guardIntervened, fallbackUsed), question);
+
+            if (!investigatorStarted)
+            {
+                if (triggerVerdict.ShouldRun)
+                {
+                    StartInvestigator();
+                }
+                else
+                {
+                    gapInvestigation = "not-triggered";
+                }
+            }
+        }
+
         await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, gapInvestigation, turnHints.WebMode, actor, cancellationToken)
             .ConfigureAwait(false);
+
+        if (investigatorTurn)
+        {
+            await WriteTriggerAuditAsync(
+                    tenantId, actor, turnId, investigatorEligible ? investigatorMode.ToString() : "off",
+                    triggerVerdict, investigatorStarted, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
         // answer above), so "asked, said no" is visible without the query ever being logged.
@@ -555,7 +627,8 @@ internal sealed partial class AskCopilotService(
         string actor,
         AskTurnHints hints,
         bool previousRaffaTurnWasInterview,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        InDomainTurnTrace? trace = null)
     {
         // A bare follow-up ("non mi hai risposto", "e quindi?") is planned on the previous user
         // question too, so it inherits that turn's intent and saving goal instead of falling
@@ -568,6 +641,13 @@ internal sealed partial class AskCopilotService(
         var plan = hints.ForcedIntent is { } forcedIntent
             ? intentPlanner.Plan(question, namedSupplier, previousUserQuestion, forcedIntent)
             : intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
+
+        // INV-02: hand the plan to the caller, which decides trigger T1 (no intent recognised)
+        // from it once the reply exists. Observation only: nothing below reads the trace.
+        if (trace is not null)
+        {
+            trace.Plan = plan;
+        }
 
         // ADR-030: an interview option that named one contract narrows this turn to it exactly as
         // a scoped conversation would; an id this tenant cannot see refuses (the NW-76 posture),
@@ -2330,6 +2410,13 @@ internal sealed partial class AskCopilotService(
     /// with <c>persistTodos: true</c> so the ranked set is upserted before
     /// <see cref="AnswerComposer.AnswerAsync"/>. Tenant evidence is appended, not prepended: the
     /// calc corpus's own "when you must move" item must stay first (AC-3).
+    ///
+    /// <para>
+    /// <paramref name="persistTodos"/> is <see langword="true"/> for the live Q3 turn (the user is
+    /// asking what to negotiate, and the Renewals link the reply offers is true after the turn) and
+    /// <see langword="false"/> for the drafted email (F1-D07, decision D7): a draft is a copyable
+    /// text with no side effect, so building its pack writes nothing.
+    /// </para>
     /// </summary>
     internal async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyWithEvidenceAsync(
         TenantId tenantId,
@@ -2337,10 +2424,11 @@ internal sealed partial class AskCopilotService(
         PortfolioListItem namedContractItem,
         string actor,
         CancellationToken cancellationToken,
-        SavingsGoal? goal = null)
+        SavingsGoal? goal = null,
+        bool persistTodos = true)
     {
         var strategyItems = (await BuildRenewalStrategyPackAsync(
-                namedContractItem, cancellationToken, persistTodos: true, actor)
+                namedContractItem, cancellationToken, persistTodos, persistTodos ? actor : string.Empty)
             .ConfigureAwait(false)).ToList();
 
         // The money behind the strategy: the target verdict, the grounded levers, the supplier's

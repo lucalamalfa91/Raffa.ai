@@ -125,9 +125,11 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal("navigate", reviewAction.GetProperty("kind").GetString());
         Assert.Equal($"/contracts/{contract.Id}", reviewAction.GetProperty("href").GetString());
 
-        // NW-94: fully server-decided -- beyond ADR-031's one capability check on the typed turn,
-        // the AI gateway is never called for a notice question (no retrieval, no answer role).
-        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        // NW-94: fully server-decided -- the AI gateway is never called for a notice question (no
+        // retrieval, no answer role). INV-02: the investigator is Triggered, so an ANSWERED notice
+        // question starts no capability check either (it is neither T1, T2 nor T3); the abstain
+        // cases below still start one (T2).
+        Assert.Equal(0, recordingGateway.CapabilityChecks);
         Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 
@@ -182,7 +184,7 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         var reviewAction = Assert.Single(actions);
         Assert.Equal($"/contracts/{contract.Id}", reviewAction.GetProperty("href").GetString());
 
-        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        Assert.Equal(0, recordingGateway.CapabilityChecks); // INV-02: an answered notice question is no trigger
         Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 
@@ -249,7 +251,7 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
         var reviewAction = Assert.Single(actions);
         Assert.Equal($"/contracts/{contract.Id}", reviewAction.GetProperty("href").GetString());
 
-        Assert.Equal(1, recordingGateway.CapabilityChecks);
+        Assert.Equal(0, recordingGateway.CapabilityChecks); // INV-02: an answered notice question is no trigger
         Assert.Empty(recordingGateway.CallsBeyondCapabilityCheck);
     }
 

@@ -122,10 +122,12 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
         Assert.Contains(titles, t => t.StartsWith("Play 1 —", StringComparison.Ordinal));
         Assert.Contains("20000", raw, StringComparison.Ordinal);
 
-        // ADR-031's capability check, then Ask's agentic flow: the market researcher, then two
-        // analysts + one strategist, then the answer role.
-        Assert.Equal(RecordingAiGateway.CapabilityInvestigatorAgent, gateway.Agents[0]);
-        Assert.Equal(5, gateway.Calls.Count(c => c == "AnalyzeAsync"));
+        // Ask's agentic flow: the market researcher, then two analysts + one strategist, then the
+        // answer role. INV-02: a savings question that gets its answer is neither T1, T2 nor T3, so
+        // the Triggered capability investigator (ADR-031) makes no call of its own on this turn.
+        Assert.Equal("market-researcher", gateway.Agents[0]);
+        Assert.Equal(0, gateway.CapabilityChecks);
+        Assert.Equal(4, gateway.Calls.Count(c => c == "AnalyzeAsync"));
         Assert.Equal(1, gateway.Calls.Count(c => c == "AnswerAsync"));
 
         using var scope = host.Services.CreateScope();
@@ -268,7 +270,8 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
         Assert.Equal("answer", reply.RootElement.GetProperty("kind").GetString());
         Assert.Contains(CitationTitles(reply), t => t.Contains("saving target and lever coverage", StringComparison.Ordinal));
         Assert.Contains("20000", raw, StringComparison.Ordinal);
-        // The capability check plus the same four agents again.
-        Assert.Equal(analyzeCallsAfterFirstTurn + 5, gateway.Calls.Count(c => c == "AnalyzeAsync"));
+        // The same four agents again (INV-02: a bare follow-up answered from the pack starts no
+        // capability check).
+        Assert.Equal(analyzeCallsAfterFirstTurn + 4, gateway.Calls.Count(c => c == "AnalyzeAsync"));
     }
 }

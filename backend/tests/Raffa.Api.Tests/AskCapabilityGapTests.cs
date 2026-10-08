@@ -14,6 +14,7 @@ using Raffa.SharedKernel.Tenancy;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Raffa.Api.Tests;
 
@@ -51,7 +52,8 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
                 services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(supplierNames));
                 if (gapInvestigation is not null)
                 {
-                    services.AddSingleton(gapInvestigation);
+                    // INV-03: the options are read through IOptionsMonitor.
+                    services.AddSingleton<IOptionsMonitor<GapInvestigationOptions>>(new StaticGapInvestigationOptions(gapInvestigation));
                 }
             }));
 

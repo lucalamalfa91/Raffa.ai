@@ -33,6 +33,9 @@
          not available (a packaged/CI run), while GoldenSet.cs prefers the source-tree copy so an
          edit is picked up without a rebuild of the JSON itself. -->
     <Content Include="golden\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- INV-04: the investigator trigger's evaluation set is data too (30 labelled phrases per
+         language), copied the same way. -->
+    <Content Include="investigator-set\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

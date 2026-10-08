@@ -116,15 +116,24 @@ public static class ServiceCollectionExtensions
 
         // The capability investigator (Application.Gaps, ADR-031): one analyst-role agent that
         // decides whether a fresh turn asks for a feature Raffa does not have; the host binds
-        // Chat:GapInvestigation before calling this.
-        services.TryAddSingleton(new GapInvestigationOptions());
-        services.AddScoped<CapabilityInvestigator>();
+        // Chat:GapInvestigation (as IOptionsMonitor, so the mode and the kill switch change without
+        // a restart) before calling this; absent that, the defaults: Triggered, enabled.
+        services.AddOptions<GapInvestigationOptions>();
+        // A factory, not constructor selection: the investigator has a second, options-instance
+        // constructor for tests and tools, and the container must not weigh the two.
+        services.AddScoped(sp => new CapabilityInvestigator(
+            sp.GetRequiredService<Raffa.AiGateway.IAiGateway>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>()));
 
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
         // GitHub publisher and binds Feedback:* before calling this when a token is configured;
         // otherwise these defaults keep every submission "recorded" with no outbound call.
         services.TryAddSingleton(new FeedbackOptions());
         services.TryAddScoped<IFeatureRequestPublisher, NullFeatureRequestPublisher>();
+
+        // F4-T01: the host supplies the tenant's supplier names so the free text of a feedback
+        // answer is scrubbed of them before it is published; without a host source none are known.
+        services.TryAddScoped<IFeedbackNameSource, NullFeedbackNameSource>();
 
         // ADR-030: the interview (kill switch + bounds) — a configured value registered before
         // this call wins, same TryAdd contract as CouncilOptions above.
