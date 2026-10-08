@@ -4375,7 +4375,7 @@
       "post": {
         "operationId": "uploadQuote",
         "summary": "Upload a supplier quote for line-item extraction.",
-        "description": "Maps to UploadQuoteAsync in backend/src/Raffa.Api/QuotesEndpointExtensions.cs (task E05/F01/US01/T01, quote-extraction AC-1/AC-2/AC-4), which stores the file (QuoteUploadService) then synchronously runs QuoteExtractionPipeline -- the same hybrid parse/AI-extraction path POST /api/documents uses for contracts, reused verbatim (ADR-017). 'supplier'/'currency'/'geography'/'purchaseDate' are optional form fields (task E05/F02/US01/T01, market-assessment): a quote uploaded without them is stored and extracted normally but every line's GET .../assessment call reports MarketAssessmentStatus.QuoteDataUnresolved (Quote.cs's own doc comment -- 'insufficient data is an honest, expected outcome', never a fabricated match). Same interim X-Tenant-Id header placeholder as POST /api/documents.",
+        "description": "Maps to UploadQuoteAsync in backend/src/Raffa.Api/QuotesEndpointExtensions.cs (task E05/F01/US01/T01, quote-extraction AC-1/AC-2/AC-4), which stores the file (QuoteUploadService) then synchronously runs QuoteExtractionPipeline -- the same hybrid parse/AI-extraction path POST /api/documents uses for contracts, reused verbatim (ADR-017). 'supplier'/'currency'/'geography'/'purchaseDate' are optional form fields (task E05/F02/US01/T01, market-assessment): a quote uploaded without them is stored and extracted normally but every line's GET .../assessment call reports MarketAssessmentStatus.QuoteDataUnresolved (Quote.cs's own doc comment -- 'insufficient data is an honest, expected outcome', never a fabricated match). Same interim X-Tenant-Id header placeholder as POST /api/documents. Task F6-T04: the request is admitted exactly like POST /api/documents -- size <= Documents:MaxFileBytes (413) and format by extension AND magic bytes (415), both before any storage, parse or model call; the sniffed MIME type, not the multipart Content-Type, selects the parse path. The same bytes with the same supplier/currency/geography (and purchaseDate, when sent) that the tenant already extracted successfully (Completed/NeedsReview) are answered with the existing quote (`deduplicated: true`, still 201) and nothing is stored or extracted again; a Failed/Uploaded/Processing quote is never reused. Task F6-T02: if the synchronous extraction throws or is cancelled the quote and its job end Failed with a typed ErrorDetail ('[Kind] ...') and the response says processingStatus Failed -- a job is never left Queued/Running.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -4507,6 +4507,18 @@
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "skippedLineCount": {
+                      "type": "integer",
+                      "description": "Rows the model returned that were not persisted (blank description, or a value outside its valid range)."
+                    },
+                    "invalidLineCount": {
+                      "type": "integer",
+                      "description": "Subset of skippedLineCount discarded for an impossible value: negative quantity/price, discountPercent outside 0-100, confidence outside 0-1."
+                    },
+                    "deduplicated": {
+                      "type": "boolean",
+                      "description": "True when this upload matched an already-extracted quote of the tenant and `id` is that existing quote."
                     }
                   }
                 }
@@ -4520,6 +4532,28 @@
                 "schema": {
                   "type": "string"
                 }
+              }
+            }
+          },
+          "413": {
+            "description": "Task E13/F04/US01/T01 (documents-admission): file exceeds `Documents:MaxFileBytes` (50 MB), rejected before any parse or AI-gateway call -- both the declared `Content-Length` and the received part are checked (`Raffa.Api.DocumentsEndpointExtensions`). Plain-string body, same `Results.Json(string)` shape as the 415 below and the 400 above.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Raffa accepts files up to 50 MB. This file is larger."
+              }
+            }
+          },
+          "415": {
+            "description": "Task E13/F04/US01/T01: format rejected by extension **and** magic-byte sniffing (`Raffa.Documents.Contracts.Application.Admission.DocumentFormatSniffer`) before any parse or AI-gateway call -- a `.zip` renamed `.pdf` lands here, never a 422 (R-DOC-02 AC-1), and so does a PNG renamed `.pdf`. Accepted: `.pdf` (`%PDF-` header), `.docx`/`.xlsx` (OOXML package holding `word/document.xml` / `xl/workbook.xml`), `.png`, `.jpg`/`.jpeg`. Plain-string body, quoted verbatim from `inputs/requirements.md` R-DOC-02.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "Raffa reads PDF, Word, Excel and scanned images"
               }
             }
           }
