@@ -183,10 +183,10 @@ public static class ServiceCollectionExtensions
         // ServiceProviderOptions.ValidateOnBuild (enabled by default for the Development
         // environment WebApplicationFactory-based tests this solution already runs under) rejects
         // at startup — the same captive-dependency reasoning
-        // Raffa.Chat.Infrastructure.ServiceCollectionExtensions's own doc comment already states
-        // for RagAnswerService. Every current IAiGateway consumer is already registered Scoped
+        // Raffa.Chat.Infrastructure.ServiceCollectionExtensions's own doc comment already states.
+        // Every current IAiGateway consumer is already registered Scoped
         // (DocumentProcessingPipeline, StagedExtractionService, EmbeddingRetrievalService,
-        // HybridDocumentParsingService, QuoteExtractionPipeline, RagAnswerService) or resolved from
+        // HybridDocumentParsingService, QuoteExtractionPipeline) or resolved from
         // a fresh DI scope, so Scoped-consuming-Scoped is safe. The concrete Foundry/Fixture
         // gateways and their per-role clients stay Singleton above (no per-request state of their
         // own — HttpClient/TokenCredential/options are all safely shared), so only this thin

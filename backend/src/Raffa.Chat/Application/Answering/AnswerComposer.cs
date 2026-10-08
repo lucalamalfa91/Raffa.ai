@@ -21,8 +21,7 @@ namespace Raffa.Chat.Application.Answering;
 /// Never retrieves anything itself — <paramref name="pack"/> (see <see cref="AnswerAsync"/>) must
 /// already be authorized, tenant-scoped context assembled by the composition root (ADR-011
 /// "authorization before retrieval" — the same "operate on caller-supplied data" shape
-/// <c>RagAnswerService</c> and <c>DeterministicQueryHandler</c> already use, generalized here from
-/// an evidence list to a context pack).
+/// <c>DeterministicQueryHandler</c> already uses, generalized here to a context pack).
 /// </para>
 ///
 /// <para>

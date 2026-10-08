@@ -2989,10 +2989,8 @@ internal sealed partial class AskCopilotService(
         var packHash = ComputeHash(string.Join('|', reply.Citations.Select(c => c.N + ":" + c.Corpus)));
 
         // AC-7 / R-ASK-09: "audit records abstainGuardIntervened=true" when Guards.RegenerateOnce's
-        // retry-then-downgrade path fired — same field name Application.RagAnswerService's own
-        // (older, evidence-only) audit entry already uses, see that type's own WriteAsync call, so
-        // an operator/query filters on one consistent key regardless of which Ask path produced the
-        // row.
+        // retry-then-downgrade path fired — the field name every Ask audit entry carries,
+        // so an operator/query filters on one consistent key.
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,

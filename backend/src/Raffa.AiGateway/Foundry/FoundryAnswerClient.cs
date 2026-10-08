@@ -11,8 +11,8 @@ namespace Raffa.AiGateway.Foundry;
 /// `answer` role (ADR-004 amendment / ADR-024: structured JSON, no tools, no grounding,
 /// temperature &lt;= 0.2 whenever one is sent — see <see cref="AiModelSelection.Temperature"/>).
 /// Grounds in whichever of <see cref="AiAnswerRequest.PackJson"/> (ADR-024's context-pack shape)
-/// and/or <see cref="AiAnswerRequest.Evidence"/> (the pre-existing evidence-list shape
-/// <c>Raffa.Chat.Application.RagAnswerService</c> still sends) the caller supplied — see
+/// and/or <see cref="AiAnswerRequest.Evidence"/> (the pre-existing evidence-list shape)
+/// the caller supplied — see
 /// <see cref="AiAnswerRequest"/>'s own doc comment for why both are supported side by side.
 ///
 /// Mirrors <c>Fixtures.FixtureAiGateway.AnswerAsync</c>'s own "abstain rather than call the model

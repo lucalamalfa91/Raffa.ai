@@ -8,7 +8,7 @@ namespace Raffa.Chat.Application.Conversations;
 /// <c>Raffa.AiGateway</c> or a retrieval pipeline itself (see
 /// <see cref="Domain.Conversations.ConversationMessage"/>'s own doc comment); it only persists
 /// what the caller hands it, the same "caller already did the work" shape
-/// <c>RagAnswerService.AnswerAsync</c>'s <c>evidence</c> parameter already uses.
+/// the answer pipeline's evidence/pack parameters already use.
 /// </summary>
 /// <param name="Role">Who authored this turn.</param>
 /// <param name="Kind">The reply shape — irrelevant (but still required) for a

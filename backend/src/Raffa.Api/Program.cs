@@ -210,7 +210,7 @@ builder.Services.AddAuditModule(auditConnectionString);
 // Raffa.Api.csproj already carried a ProjectReference to Raffa.Chat.csproj in anticipation.
 // Depends on IAuditWriter (just registered by AddAuditModule above) and IAiGateway (registered
 // transitively by AddDocumentsContractsModule above, via its own AddAiGatewayModule call) — both
-// already resolvable in this container by the time RagAnswerService is first requested; DI
+// already resolvable in this container by the time the first Chat service is requested; DI
 // registration order does not matter, only that every AddXxxModule call below happens before
 // builder.Build().
 //

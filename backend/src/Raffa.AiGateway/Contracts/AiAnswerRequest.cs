@@ -8,9 +8,8 @@ namespace Raffa.AiGateway.Contracts;
 /// §8.4; Appendix C rule 10).
 ///
 /// <see cref="SystemPrompt"/> and <see cref="PackJson"/> are ADR-024's (epic-13/ask-v2) additions,
-/// both optional and defaulted so every existing call site (<c>Raffa.Chat.Application
-/// .RagAnswerService</c>, every <c>Raffa.Chat.Tests</c>/<c>Raffa.AiGateway.Tests</c> fixture
-/// test) keeps compiling unchanged (task E13/F01/US01/T02, foundry-gateway). They exist for the
+/// both optional and defaulted so every existing call site (every
+/// <c>Raffa.Chat.Tests</c>/<c>Raffa.AiGateway.Tests</c> fixture test) keeps compiling unchanged (task E13/F01/US01/T02, foundry-gateway). They exist for the
 /// Foundry-backed `answer` role's new, versioned-persona-prompt-plus-context-pack shape (ADR-024
 /// "a versioned persona prompt"); the gap note on that task names the caller that will actually
 /// populate them: "F06 replaces the chunk-concat by supplying a prompt + pack" — until then both
