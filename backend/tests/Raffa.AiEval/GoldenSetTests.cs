@@ -112,6 +112,30 @@ public sealed class GoldenSetTests(GoldenSetRunner runner)
     }
 
     /// <summary>
+    /// Plan F2-T01: the council and the market researcher run in the golden set (they are always
+    /// on), and every such turn's one audit row says which steps ran, how many failed and how many
+    /// market queries were issued -- names and counts, with no failure text.
+    /// </summary>
+    [Fact]
+    public void Agentic_turns_record_steps_failures_and_market_queries_in_their_audit_row()
+    {
+        var agentic = GoldenSet.Cases
+            .Select(c => runner.Outcome(c.Id))
+            .Where(o => o.AuditDetail.Contains("stepsRun=", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.NotEmpty(agentic);
+        Assert.Contains(agentic, o => o.AuditDetail.Contains("lever-strategist", StringComparison.Ordinal));
+
+        foreach (var outcome in agentic)
+        {
+            var detail = outcome.AuditDetail;
+            Assert.Matches(@"\bstepsRun=\d+ steps=\S+ failures=\d+ failedSteps=\S+ marketQueries=\d+", detail);
+            Assert.Matches(@"\brunId=[0-9a-f]{16}\b", detail);
+        }
+    }
+
+    /// <summary>
     /// The intents every case declares come from the fixed R-ASK-02/R-ASK-03 vocabulary, and every
     /// intent named by the task is actually covered. Without this, a typo in a JSON file would
     /// silently create a phantom intent that looks like coverage in the report but tests nothing

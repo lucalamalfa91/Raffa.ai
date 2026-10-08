@@ -505,14 +505,14 @@ public static class ConversationsEndpointExtensions
                 if (await check.ConfigureAwait(false) is { } followUp)
                 {
                     var appended = await capabilityCheckDispatcher
-                        .AppendAsync(tenantId, userId, conversationId, raffaMessage.MessageId, followUp, cancellationToken)
+                        .AppendAsync(tenantId, userId, conversationId, raffaMessage.MessageId, followUp, cancellationToken, capabilityCheck.TurnId)
                         .ConfigureAwait(false);
                     followUpMessage = appended is null ? null : ToMessageResponse(appended, hasLaterTurn: false);
                 }
             }
             else
             {
-                capabilityCheckDispatcher.AppendWhenDone(check, tenantId, userId, conversationId, raffaMessage.MessageId);
+                capabilityCheckDispatcher.AppendWhenDone(check, tenantId, userId, conversationId, raffaMessage.MessageId, capabilityCheck.TurnId);
                 capabilityCheckState = "pending";
             }
         }

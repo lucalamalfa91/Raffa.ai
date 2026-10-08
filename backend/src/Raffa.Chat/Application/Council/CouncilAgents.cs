@@ -12,8 +12,10 @@ namespace Raffa.Chat.Application.Council;
 public static class CouncilAgents
 {
     /// <summary>v2: the market researcher joins; the market analyst reads the market data check's
-    /// estimates and the RAG's similar contracts, and keeps ranges narrow.</summary>
-    public const string Version = "council-v2";
+    /// estimates and the RAG's similar contracts, and keeps ranges narrow. v3: the strategist no
+    /// longer returns a verdict on the goal (<see cref="CouncilVerdict"/> computes it from the
+    /// calculators' items, one owner); plays and findings are unchanged.</summary>
+    public const string Version = "council-v3";
 
     public const string MarketResearcherName = "market-researcher";
     public const string ContractAnalystName = "contract-analyst";
@@ -124,9 +126,8 @@ public static class CouncilAgents
         value first, then by ease. Combine levers that reinforce each other (a term commitment in
         exchange for a discount and a cap). At most four plays.
 
-        Then a verdict: is the goal reachable with these plays (true/false), and one or two
-        sentences of reason that name the biggest lever and what is missing, if anything. If no goal
-        was named, judge whether a meaningful saving is available.
+        Do not judge whether the goal is reachable: the verdict is computed from the deterministic
+        lever calculations, not by you. Return the plays only.
 
         """ + CommonLaws;
 
@@ -203,18 +204,9 @@ public static class CouncilAgents
                 "required": ["rank", "lever", "ask", "expectedValueKeys", "fallback", "timing", "citationKeys"],
                 "additionalProperties": false
               }
-            },
-            "verdict": {
-              "type": "object",
-              "properties": {
-                "targetReachable": { "type": "boolean" },
-                "reason": { "type": "string" }
-              },
-              "required": ["targetReachable", "reason"],
-              "additionalProperties": false
             }
           },
-          "required": ["plays", "verdict"],
+          "required": ["plays"],
           "additionalProperties": false
         }
         """;

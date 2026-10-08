@@ -439,15 +439,9 @@ public sealed class FixtureAiGateway(
                 citationKeys = new[] { item.CitationKey },
             });
 
-            var targetItem = items.FirstOrDefault(i => i.CitationKey is "calc:savings-target" or "calc:portfolio-target");
-            var reachable = targetItem?.Subtitle?.Contains("reachable", StringComparison.OrdinalIgnoreCase) == true
-                && targetItem.Subtitle?.Contains("not", StringComparison.OrdinalIgnoreCase) != true;
-            var verdict = new
-            {
-                targetReachable = reachable,
-                reason = targetItem?.Snippet ?? "No target was named.",
-            };
-            payload = JsonSerializer.Serialize(new { plays, verdict }, PackJsonOptions);
+            // No verdict: the strategist schema carries plays only (the verdict is computed by
+            // the council from the calculators' items, plan F2-D03).
+            payload = JsonSerializer.Serialize(new { plays }, PackJsonOptions);
         }
 
         var result = new AiAnalysisResult(

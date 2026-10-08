@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 
@@ -33,13 +36,39 @@ public sealed record AskFlowRequest(
 
 /// <summary>What the flow produced: the market items to append to the pack (steps 1 and 2), the
 /// council's plays and verdict to insert (step 3), every step that ran, in order, and every failure
-/// (a failed step degrades the flow, never the turn).</summary>
+/// (a failed step degrades the flow, never the turn). <see cref="RunId"/> is the
+/// <see cref="RunContext"/> run the flow's AI calls were audited under.</summary>
 public sealed record AskFlowOutcome(
     IReadOnlyList<PackItem> MarketItems,
     IReadOnlyList<PackItem> CouncilItems,
     IReadOnlyList<string> StepsRun,
     IReadOnlyList<string> Failures,
-    IReadOnlyList<string> MarketQueries);
+    IReadOnlyList<string> MarketQueries,
+    string? RunId = null)
+{
+    private static readonly Regex StepNamePattern = new("^[a-z][a-z0-9-]{0,39}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// The flow's audit detail (plan F2-T01): the run id, which steps ran and how many, which steps
+    /// failed and how many, and how many market queries the researcher issued. Names and counts
+    /// only -- never a query, a failure message (it can quote model output) or any pack text.
+    /// </summary>
+    public string ToAuditDetail()
+    {
+        var failedSteps = Failures
+            .Select(f => f.Split(':', 2)[0].Trim())
+            .Select(name => StepNamePattern.IsMatch(name) ? name : "unknown")
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return string.Create(CultureInfo.InvariantCulture,
+            $"runId={RunId ?? "none"} stepsRun={StepsRun.Count} steps={Join(StepsRun)} " +
+            $"failures={Failures.Count} failedSteps={Join(failedSteps)} " +
+            $"marketQueries={MarketQueries.Count} marketItems={MarketItems.Count} councilItems={CouncilItems.Count}");
+    }
+
+    private static string Join(IReadOnlyList<string> names) => names.Count == 0 ? "none" : string.Join(',', names);
+}
 
 /// <summary>
 /// The agentic process behind an Ask turn, one coordinated sequence before the answer role writes:
@@ -71,6 +100,12 @@ public sealed class AskAgentFlow(MarketResearcher marketResearcher, NegotiationC
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Question);
         ArgumentNullException.ThrowIfNull(request.Pack);
 
+        // Every AI call below is audited with a run id and its step's name (plan T-01 / F2-D01),
+        // inside the turn the caller opened: the caller's run when it opened one (an Ask turn is one
+        // run), a run of its own otherwise.
+        using var run = RunContext.Current?.RunId is null ? RunContext.BeginRun() : null;
+        var runId = RunContext.Current?.RunId;
+
         var steps = new List<string>();
         var failures = new List<string>();
         var seen = request.Pack.Select(i => i.CitationKey).ToHashSet(StringComparer.Ordinal);
@@ -82,7 +117,11 @@ public sealed class AskAgentFlow(MarketResearcher marketResearcher, NegotiationC
         var check = MarketDataCheckResult.None;
         if (request.MarketDataCheck is { } dataCheck)
         {
-            check = await dataCheck(cancellationToken).ConfigureAwait(false);
+            using (RunContext.BeginStep(MarketDataCheckStepName))
+            {
+                check = await dataCheck(cancellationToken).ConfigureAwait(false);
+            }
+
             steps.Add(MarketDataCheckStepName);
             AddNew(check.Items);
         }
@@ -91,9 +130,13 @@ public sealed class AskAgentFlow(MarketResearcher marketResearcher, NegotiationC
         IReadOnlyList<string> queries = [];
         if (request.RunMarketResearch)
         {
-            var research = await marketResearcher
-                .QueryMarketRagAsync(request.Question, request.Goal, [.. request.Pack, .. marketItems], check.MissingFields, cancellationToken)
-                .ConfigureAwait(false);
+            MarketResearchOutcome research;
+            using (RunContext.BeginStep(CouncilAgents.MarketResearcherName))
+            {
+                research = await marketResearcher
+                    .QueryMarketRagAsync(request.Question, request.Goal, [.. request.Pack, .. marketItems], check.MissingFields, cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             if (research.Ran)
             {
@@ -122,6 +165,6 @@ public sealed class AskAgentFlow(MarketResearcher marketResearcher, NegotiationC
             councilItems = council.Items;
         }
 
-        return new AskFlowOutcome(marketItems, councilItems, steps, failures, queries);
+        return new AskFlowOutcome(marketItems, councilItems, steps, failures, queries, runId);
     }
 }

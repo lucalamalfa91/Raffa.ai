@@ -34,7 +34,8 @@ internal sealed record GoldenCaseOutcome(
     bool GuardIntervened,
     string AuditAction,
     IReadOnlyList<string> Failures,
-    IReadOnlyList<string> GapNotes);
+    IReadOnlyList<string> GapNotes,
+    string AuditDetail = "");
 
 /// <summary>
 /// Scores one Ask turn against one golden case (task E13/F06/US01/T02, ask-golden-set; R-EVD-03).
@@ -128,7 +129,8 @@ internal static class GoldenCaseEvaluator
         return new GoldenCaseOutcome(
             goldenCase, verdict, kind, markdown, corpora, actionHrefs, citations.Count,
             turn.GatewayCalls?.Count ?? 0, guardIntervened, auditAction,
-            verdict == GoldenVerdict.Fail ? [.. always, .. expectation] : always, gapNotes);
+            verdict == GoldenVerdict.Fail ? [.. always, .. expectation] : always, gapNotes,
+            turn.AuditEntries.Count == 1 ? turn.AuditEntries[0].Detail : string.Empty);
     }
 
     /// <summary>
@@ -212,6 +214,11 @@ internal static class GoldenCaseEvaluator
         }
     }
 
+    /// <summary>True when the audit detail has a real turn id and the flow's outcome (or its explicit absence).</summary>
+    internal static bool AuditCarriesTurnTelemetry(string detail) =>
+        System.Text.RegularExpressions.Regex.IsMatch(detail, @"\bturnId=(?!none\b)[A-Za-z0-9._:\-\[\]]+") &&
+        (detail.Contains("stepsRun=", StringComparison.Ordinal) || detail.Contains("flow=none", StringComparison.Ordinal));
+
     private static void AppendAlwaysChecks(
         AskTurnResult turn,
         string kind,
@@ -233,6 +240,13 @@ internal static class GoldenCaseEvaluator
         if (turn.AuditEntries.Count != 1)
         {
             failures.Add($"expected exactly one audit row for the turn (R-ASK-09), saw {turn.AuditEntries.Count}.");
+        }
+        else if (!AuditCarriesTurnTelemetry(turn.AuditEntries[0].Detail))
+        {
+            // Plan T-01 / F2-T01: every Ask turn row names its turn, and says what its agentic
+            // flow did (steps, failures, market queries) or that it ran none.
+            failures.Add(
+                "the turn's audit row lacks 'turnId=<id>' and either the flow outcome ('stepsRun=') or 'flow=none'.");
         }
         else
         {
