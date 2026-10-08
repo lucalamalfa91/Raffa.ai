@@ -13,10 +13,12 @@ namespace Raffa.Chat.Application.WebResearch;
 /// <see cref="PackCorpus.Web"/> items (ADR-030; a source-scan test in <c>Raffa.Chat.Tests</c>
 /// holds both). Its input is deliberately three strings — the already-sanitised query, the purpose
 /// and the language — so no context pack, evidence or tenant text can reach the web by
-/// construction. On the way back the summary goes through <see cref="WebGuard"/> (sources and
-/// markers), <see cref="NumericGuard"/> (every figure verbatim in a cited snippet) and
-/// <see cref="GroundingGuard"/> (every citation key in the web pack); a failure is an honest
-/// abstain that names the sources found, never a retry (each call is budgeted). Results are never
+/// construction. On the way back the summary goes through <see cref="WebGuard"/> (at least one
+/// source, every <c>[n]</c> marker within the source list, no URL that is not a source) and
+/// <see cref="NumericGuard"/> (every figure verbatim in a cited snippet). The web pack is built from
+/// those same sources and its keys are the only keys cited, so a further citation-key check would be
+/// a tautology and is not run; a failure is an honest abstain that names the sources found, never a
+/// retry (each call is budgeted). Results are never
 /// indexed and never merged into an <c>answer</c>-role pack.
 /// </summary>
 public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions options, IClock clock)
@@ -95,24 +97,9 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
             return Abstained(sources, provenanceBase, italian, numericVerdict.Violation!);
         }
 
-        var answer = new AiAnswerResult(
-            CanDetermine: true,
-            Answer: research.SummaryMarkdown,
-            Citations: [],
-            Metadata: research.Metadata,
-            AnswerMarkdown: research.SummaryMarkdown,
-            CitationKeys: pack.Select(item => item.CitationKey).ToList(),
-            ActionKeys: [],
-            AbstainReason: null,
-            FollowUps: []);
-
-        var groundingVerdict = GroundingGuard.Validate(answer, pack);
-        if (!groundingVerdict.Passed)
-        {
-            return Abstained(sources, provenanceBase, italian, groundingVerdict.Violation!);
-        }
-
-        var citations = CopilotReplyBuilder.BuildCitations(answer.CitationKeys!, pack);
+        // Every pack key is cited: the pack is made of exactly the sources WebGuard just accepted
+        // (non-empty, markers inside the list), so there is no key left for a grounding check to catch.
+        var citations = CopilotReplyBuilder.BuildCitations(pack.Select(item => item.CitationKey).ToList(), pack);
 
         return new WebResearchOutcome(
             WebResearchOutcomeKind.Answered,
