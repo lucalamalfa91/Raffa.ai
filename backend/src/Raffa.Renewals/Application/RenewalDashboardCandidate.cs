@@ -40,6 +40,13 @@ namespace Raffa.Renewals.Application;
 /// (plain <c>DateOnly</c> arithmetic against the same <c>IClock</c> — Appendix C rule 6), since
 /// <see cref="RenewalEngine"/> exposes no method that accepts an already-known deadline.
 /// </param>
+/// <param name="CancellationNoticeDays">
+/// The source <c>Contract.NoticePeriodDays</c> (F5-D08): the notice period, in calendar days,
+/// extracted from the document. Forwarded to <see cref="RenewalEngine"/> through
+/// <see cref="ContractRenewalTerms.CancellationNoticeDays"/> so it derives
+/// <c>EndDate - CancellationNoticeDays</c> itself; <see langword="null"/> when the contract states
+/// none (the engine then reports the deadline as undeterminable, as before).
+/// </param>
 /// <param name="MarketBand">
 /// The resolved market position band, or <see langword="null"/> when the key was incomplete or
 /// the benchmark adapter abstained (insufficient comparables). Resolved by
@@ -56,7 +63,8 @@ public sealed record RenewalDashboardCandidate(
     bool AutoRenewal,
     decimal? AnnualSpend,
     DateOnly? CancellationDeadline,
-    ResolvedMarketBand? MarketBand = null);
+    ResolvedMarketBand? MarketBand = null,
+    int? CancellationNoticeDays = null);
 
 /// <summary>
 /// A resolved market position band carried on <see cref="RenewalDashboardCandidate"/> and

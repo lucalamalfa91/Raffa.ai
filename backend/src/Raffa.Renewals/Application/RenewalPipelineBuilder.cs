@@ -67,14 +67,19 @@ public sealed class RenewalPipelineBuilder(RenewalEngine renewalEngine, IClock c
     {
         ArgumentNullException.ThrowIfNull(candidate);
 
-        // CancellationNoticeDays is deliberately null: Contract has no persisted column for it yet
-        // (ContractRenewalTerms's own doc comment) — RenewalDashboardCandidate.CancellationDeadline
-        // (the raw extracted fact) covers that gap independently, below.
+        // F5-D08: the notice period the extraction read (Contract.NoticePeriodDays) is what the engine
+        // derives the deadline from. When a contract has none, RenewalDashboardCandidate.CancellationDeadline
+        // (the raw extracted fact) still covers it independently, below.
         var terms = new ContractRenewalTerms(
-            candidate.ContractId, candidate.EndDate, candidate.AutoRenewal, CancellationNoticeDays: null);
+            candidate.ContractId, candidate.EndDate, candidate.AutoRenewal, candidate.CancellationNoticeDays);
         var calculation = renewalEngine.Calculate(terms);
 
-        var daysUntilCancellationDeadline = DaysUntil(candidate.CancellationDeadline);
+        // The stored deadline wins (it is the same EndDate - notice, or a value a human set); the
+        // engine's own derivation fills in only when none is stored.
+        var cancellationDeadline = candidate.CancellationDeadline ?? calculation.CancellationDeadline;
+        var daysUntilCancellationDeadline = candidate.CancellationDeadline is not null
+            ? DaysUntil(candidate.CancellationDeadline)
+            : calculation.DaysUntilCancellationDeadline;
 
         var (action, explanation) = DetermineRecommendation(calculation, daysUntilCancellationDeadline);
 
@@ -83,7 +88,7 @@ public sealed class RenewalPipelineBuilder(RenewalEngine renewalEngine, IClock c
             calculation.RenewalDate,
             calculation.DaysUntilRenewal,
             candidate.AnnualSpend,
-            candidate.CancellationDeadline,
+            cancellationDeadline,
             daysUntilCancellationDeadline);
 
         // MarketPosition: carry the resolved band from the candidate (task E21/F02/US01/T01, NW-22).
@@ -104,7 +109,7 @@ public sealed class RenewalPipelineBuilder(RenewalEngine renewalEngine, IClock c
             calculation.RenewalDate,
             calculation.DaysUntilRenewal,
             candidate.AnnualSpend,
-            candidate.CancellationDeadline,
+            cancellationDeadline,
             daysUntilCancellationDeadline,
             candidate.AutoRenewal,
             new RenewalInsightCard(facts, recommendations));

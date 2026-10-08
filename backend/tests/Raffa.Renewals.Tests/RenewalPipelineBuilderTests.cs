@@ -44,6 +44,43 @@ public sealed class RenewalPipelineBuilderTests
     }
 
     [Fact]
+    public void F5_D08_the_extracted_notice_period_gives_the_engine_its_cancellation_deadline()
+    {
+        // Contract.NoticePeriodDays (extracted, F5-D08) reaches the engine as CancellationNoticeDays:
+        // the deadline is EndDate - notice, derived here instead of left unknown.
+        var endDate = AsOf.AddDays(134);
+        var candidate = new RenewalDashboardCandidate(
+            EntityId.New(), SupplierId: null, endDate, AutoRenewal: true,
+            AnnualSpend: 640_000m, CancellationDeadline: null, CancellationNoticeDays: 90);
+
+        var item = Assert.Single(_builder.Build([candidate]));
+
+        Assert.Equal(endDate.AddDays(-90), item.CancellationDeadline);
+        Assert.Equal(44, item.DaysUntilCancellationDeadline);
+        Assert.Equal(endDate.AddDays(-90), item.InsightCard.Facts.CancellationDeadline);
+        Assert.Equal("Start negotiation now", item.InsightCard.Recommendations.RecommendedAction);
+    }
+
+    [Fact]
+    public void F5_D08_a_stored_cancellation_deadline_is_kept_and_a_missing_notice_period_changes_nothing()
+    {
+        var withoutNotice = new RenewalDashboardCandidate(
+            EntityId.New(), null, AsOf.AddDays(134), AutoRenewal: true, AnnualSpend: null,
+            CancellationDeadline: AsOf.AddDays(40));
+        var withBoth = new RenewalDashboardCandidate(
+            EntityId.New(), null, AsOf.AddDays(134), AutoRenewal: true, AnnualSpend: null,
+            CancellationDeadline: AsOf.AddDays(40), CancellationNoticeDays: 90);
+        var withNothing = new RenewalDashboardCandidate(
+            EntityId.New(), null, AsOf.AddDays(134), AutoRenewal: true, AnnualSpend: null, CancellationDeadline: null);
+
+        var items = _builder.Build([withoutNotice, withBoth, withNothing]).ToDictionary(i => i.ContractId);
+
+        Assert.Equal(AsOf.AddDays(40), items[withoutNotice.ContractId].CancellationDeadline);
+        Assert.Equal(AsOf.AddDays(40), items[withBoth.ContractId].CancellationDeadline); // the stored fact wins
+        Assert.Null(items[withNothing.ContractId].CancellationDeadline); // still honest: nothing to derive from
+    }
+
+    [Fact]
     public void Insight_card_separates_facts_from_recommendations()
     {
         var supplierId = EntityId.New();

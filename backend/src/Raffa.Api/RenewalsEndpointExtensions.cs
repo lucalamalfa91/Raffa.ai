@@ -215,7 +215,7 @@ public static class RenewalsEndpointExtensions
                     ? null
                     : ComputePriority(
                         item.ContractId, portfolioItem.EndDate, portfolioItem.AutoRenewal, portfolioItem.AnnualSpend,
-                        portfolioItem.Risk, renewalEngine, priorityScoreCalculator);
+                        portfolioItem.Risk, renewalEngine, priorityScoreCalculator, portfolioItem.NoticePeriodDays);
                 return ToPipelineResponse(item, supplierNames, savedActions, portfolioItem, priority);
             }),
             totalCount = portfolioPage.TotalCount,
@@ -289,7 +289,8 @@ public static class RenewalsEndpointExtensions
             item.AutoRenewal,
             item.AnnualSpend,
             item.CancellationDeadline,
-            band);
+            band,
+            item.NoticePeriodDays);
 
     /// <summary>
     /// Resolves the market position band for one portfolio row (task E21/F02/US01/T01, NW-22).
@@ -461,15 +462,13 @@ public static class RenewalsEndpointExtensions
     /// (<see cref="ContractRenewalTerms"/>, <see cref="RenewalPriorityInputs"/>) and runs both —
     /// the same "map here, in the one project allowed to reference every module" pattern
     /// <see cref="ToCandidate"/> already uses for the dashboard endpoint. <c>CancellationNoticeDays</c>
-    /// is deliberately null (same gap <c>Raffa.Renewals.Application.ContractRenewalTerms</c>'s
-    /// own doc comment documents: <c>Contract</c> has no persisted column for it yet) — this
-    /// endpoint only needs the priority score, not a cancellation deadline.
+    /// is <c>Contract.NoticePeriodDays</c> (F5-D08), null when the document states no notice period.
     /// </summary>
     private static PriorityScoreResult ComputePriority(
         Contract360Header header, RenewalEngine renewalEngine, PriorityScoreCalculator priorityScoreCalculator) =>
         ComputePriority(
             header.ContractId, header.EndDate, header.AutoRenewal, header.AnnualSpend, header.Risk,
-            renewalEngine, priorityScoreCalculator);
+            renewalEngine, priorityScoreCalculator, header.NoticePeriodDays);
 
     /// <summary>
     /// The one priority computation both <c>GET /api/renewals/{contractId}/priority</c> and every
@@ -483,9 +482,10 @@ public static class RenewalsEndpointExtensions
         decimal? annualSpend,
         RiskSeverity? risk,
         RenewalEngine renewalEngine,
-        PriorityScoreCalculator priorityScoreCalculator)
+        PriorityScoreCalculator priorityScoreCalculator,
+        int? noticePeriodDays = null)
     {
-        var terms = new ContractRenewalTerms(contractId, endDate, autoRenewal, CancellationNoticeDays: null);
+        var terms = new ContractRenewalTerms(contractId, endDate, autoRenewal, noticePeriodDays);
         var calculation = renewalEngine.Calculate(terms);
 
         var inputs = new RenewalPriorityInputs(
