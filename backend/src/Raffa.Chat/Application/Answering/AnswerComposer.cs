@@ -192,7 +192,7 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
     private static GuardVerdict Validate(AiAnswerResult result, IReadOnlyList<PackItem> pack)
     {
         var grounding = GroundingGuard.Validate(result, pack, allowUncitedGuidance: true);
-        return grounding.Passed ? NumericGuard.Validate(result.AnswerMarkdown, pack) : grounding;
+        return grounding.Passed ? NumericGuard.Validate(result.AnswerMarkdown, pack, result.CitationKeys) : grounding;
     }
 
     private static string BuildQuestionWithHistory(

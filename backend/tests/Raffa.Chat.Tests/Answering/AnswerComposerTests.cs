@@ -244,6 +244,44 @@ public sealed class AnswerComposerTests
         Assert.DoesNotContain("=", result.Value.Result.AbstainReason!, StringComparison.Ordinal);
     }
 
+    private static PackItem ClauseItem(string key, string snippet) =>
+        new(key, PackCorpus.Tenant, "Salesforce · MSA", null, null, null, snippet, null, null, null, "validated contract", []);
+
+    [Fact]
+    public async Task An_amount_in_the_italian_format_is_grounded_on_the_first_attempt_without_a_regeneration()
+    {
+        // F1-T07: "EUR 667.000,00" used to be read as 667, rejected, regenerated and downgraded.
+        var pack = new[] { ClauseItem("tenant:a", "The annual fee is EUR 667,000.00 payable in advance.") };
+        var gateway = new ScriptedAnswerGateway(Answer("Il canone annuo è EUR 667.000,00 [1].", ["tenant:a"]));
+
+        var result = await new AnswerComposer(gateway).AnswerAsync("Quanto paghiamo ogni anno?", pack, []);
+
+        Assert.Equal(1, gateway.Calls);
+        Assert.False(result.Value.GuardIntervened);
+        Assert.True(result.Value.Result.CanDetermine);
+    }
+
+    [Fact]
+    public async Task A_figure_taken_from_an_item_the_answer_does_not_cite_is_regenerated()
+    {
+        // F1-T07: the verbatim-snippet fallback looks only inside the cited items.
+        var pack = new[]
+        {
+            ClauseItem("tenant:a", "The renewal fee is EUR 12,000."),
+            ClauseItem("tenant:b", "The liability cap is EUR 1,000,000."),
+        };
+        var gateway = new ScriptedAnswerGateway(
+            Answer("The liability cap is EUR 1,000,000 [1].", ["tenant:a"]),
+            Answer("The liability cap is EUR 1,000,000 [1].", ["tenant:b"]));
+
+        var result = await new AnswerComposer(gateway).AnswerAsync("What is the cap?", pack, []);
+
+        Assert.Equal(2, gateway.Calls);
+        Assert.True(result.Value.GuardIntervened);
+        Assert.Contains("1,000,000", result.Value.GuardViolation!, StringComparison.Ordinal);
+        Assert.Equal(["tenant:b"], result.Value.Result.CitationKeys);
+    }
+
     [Fact]
     public async Task Every_gateway_call_declares_the_version_of_the_prompt_it_sends_the_retry_included()
     {
