@@ -640,9 +640,9 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Metadata].Status);
         Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Risk].Status);
 
-        // Every field that was found cleared the bar, so there is no field a reviewer could decide
-        // on: the document completes instead of asking anyone to "Review 0 fields".
-        Assert.Equal(DocumentProcessingStatus.Completed, result.Value.DocumentProcessingStatus);
+        // F5-T02: every field that was found cleared the bar, but a whole stage is missing -- the
+        // document is partial and never Completed (it used to complete here).
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, result.Value.DocumentProcessingStatus);
     }
 
     [Fact]
@@ -1020,10 +1020,11 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
     /// <summary>
     /// A stage that fails entirely (model/network error) is a missing signal — an auto-accepted
-    /// supplier does not compensate for absent data, so the document still needs review.
+    /// supplier does not compensate for absent data, so the document is partial (F5-T02): it stays
+    /// on review, never <c>Completed</c>, even when no weak field is left to show.
     /// </summary>
     [Fact]
-    public async Task B2_a_failed_stage_with_no_weak_field_completes_instead_of_review_0_fields()
+    public async Task B2_a_failed_stage_with_no_weak_field_leaves_the_document_partial_never_completed()
     {
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
@@ -1050,9 +1051,10 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.True(result.IsSuccess);
         var summary = result.Value;
 
-        // A failed stage with every found field above the bar leaves nothing a reviewer could
-        // decide on: the document completes; the failed stage itself stays recorded as Failed.
-        Assert.Equal(DocumentProcessingStatus.Completed, summary.DocumentProcessingStatus);
+        // A failed stage with every found field above the bar leaves no field to review, but the
+        // stage's facts are missing: the document stays on review (partial) and the failed stage
+        // stays recorded as Failed, so a retry runs it alone.
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, summary.DocumentProcessingStatus);
         Assert.Equal(SupplierLegalName, summary.AcceptedSupplierName);
 
         var commercialStage = summary.Stages.Single(s => s.Stage == ExtractionStage.CommercialTerms);

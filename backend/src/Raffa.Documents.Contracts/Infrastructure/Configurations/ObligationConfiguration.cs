@@ -33,6 +33,7 @@ public sealed class ObligationConfiguration : IEntityTypeConfiguration<Obligatio
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.ContractId);
         builder.HasIndex(e => e.SourceDocumentId);
+        builder.HasIndex(e => e.ExtractionRunId);
         builder.HasIndex(e => e.DueDate);
 
         // Owned by the contract: an obligation has no meaning without it.

@@ -187,7 +187,8 @@ public sealed class PortfolioQueryService(
                 c.Status,
                 maxSeverityByContract.TryGetValue(c.Id, out var severity) ? severity : null,
                 doc?.FileName,
-                doc?.ProcessingStatus);
+                doc?.ProcessingStatus,
+                c.NoticePeriodDays);
         });
 
         // Risk severity filters the *computed* column above, so — unlike every other filter —

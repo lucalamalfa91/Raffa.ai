@@ -31,6 +31,16 @@ public sealed class Contract : TenantScopedEntity
     public decimal? TotalContractValue { get; set; }
     public bool AutoRenewal { get; set; }
     public int? RenewalTermMonths { get; set; }
+
+    /// <summary>
+    /// F5-D08: the notice period, in calendar days, that must be given before <see cref="EndDate"/> to
+    /// cancel or not renew (extracted as the <c>noticePeriodDays</c> fact, or corrected by a human).
+    /// <see cref="CancellationDeadline"/> is derived from it deterministically
+    /// (<c>EndDate - NoticePeriodDays</c>), and the Renewals engine takes it as its
+    /// <c>CancellationNoticeDays</c>. Null when the document states none (and on rows written before
+    /// this column existed).
+    /// </summary>
+    public int? NoticePeriodDays { get; set; }
     public string? PaymentTerms { get; set; }
     public string? GoverningLaw { get; set; }
 

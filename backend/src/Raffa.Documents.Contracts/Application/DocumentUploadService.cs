@@ -5,6 +5,7 @@ using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
 using Raffa.SharedKernel.Tenancy;
+using Microsoft.EntityFrameworkCore;
 
 namespace Raffa.Documents.Contracts.Application;
 
@@ -108,6 +109,16 @@ public sealed class DocumentUploadService(
 
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
+        // F5-D01: the same file twice is one document and one Contract. Checked before anything is
+        // stored, queued or created, so a repeat upload costs nothing and cannot double the spend and
+        // renewals this tenant sees in Portfolio, Renewals and Ask.
+        var alreadyUploaded = await FindExistingAsync(tenantId, checksum, cancellationToken).ConfigureAwait(false);
+        if (alreadyUploaded is not null)
+        {
+            await WriteDuplicateAuditAsync(tenantId, actor, alreadyUploaded, now, cancellationToken).ConfigureAwait(false);
+            return Result<DocumentUploadResult>.Success(ToAlreadyUploaded(alreadyUploaded));
+        }
+
         buffer.Position = 0;
         var storagePath = await storage
             .SaveAsync(tenantId, documentId, InitialVersionNumber, fileName, buffer, cancellationToken)
@@ -181,7 +192,27 @@ public sealed class DocumentUploadService(
                 ExtractionRequested.CurrentSchemaVersion),
             cancellationToken).ConfigureAwait(false);
 
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException)
+        {
+            // Two uploads of the same file racing past the check above: the unique index
+            // (tenant, checksum) let exactly one commit. This one lost -- answer with the winner,
+            // drop the bytes it stored, and let the extraction pointer it published find no job (the
+            // Worker completes such a phantom, ADR-027 §D3/§C6).
+            dbContext.ChangeTracker.Clear();
+            var winner = await FindExistingAsync(tenantId, checksum, cancellationToken).ConfigureAwait(false);
+            if (winner is null)
+            {
+                throw;
+            }
+
+            await storage.DeleteAsync(tenantId, storagePath, cancellationToken).ConfigureAwait(false);
+            await WriteDuplicateAuditAsync(tenantId, actor, winner, now, cancellationToken).ConfigureAwait(false);
+            return Result<DocumentUploadResult>.Success(ToAlreadyUploaded(winner));
+        }
 
         // AC-1 "upload document -> audit event": recorded only once the upload itself is
         // durable, still inside this call's own tenant scope (see the type doc comment). A
@@ -200,4 +231,33 @@ public sealed class DocumentUploadService(
         return Result<DocumentUploadResult>.Success(new DocumentUploadResult(
             document.Id, document.FileName, document.MimeType, document.ProcessingStatus, document.CreatedAt));
     }
+
+    /// <summary>F5-D01: the document this tenant already holds for <paramref name="checksum"/>, oldest
+    /// first. A <see cref="DocumentProcessingStatus.Rejected"/> row does not count: its bytes are gone
+    /// and the way forward for it is a fresh upload (<see cref="DocumentReprocessService"/>).</summary>
+    private Task<Document?> FindExistingAsync(TenantId tenantId, string checksum, CancellationToken cancellationToken) =>
+        dbContext.Documents
+            .AsNoTracking()
+            .Where(d => d.TenantId == tenantId
+                && d.Checksum == checksum
+                && d.ProcessingStatus != DocumentProcessingStatus.Rejected)
+            .OrderBy(d => d.CreatedAt)
+            .ThenBy(d => d.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private static DocumentUploadResult ToAlreadyUploaded(Document existing) =>
+        new(existing.Id, existing.FileName, existing.MimeType, existing.ProcessingStatus, existing.CreatedAt,
+            AlreadyUploaded: true, ContractId: existing.ContractId);
+
+    private Task WriteDuplicateAuditAsync(
+        TenantId tenantId, string actor, Document existing, DateTimeOffset now, CancellationToken cancellationToken) =>
+        auditWriter.WriteAsync(
+            new AuditEntry(
+                tenantId,
+                actor,
+                "document.upload_deduplicated",
+                "document",
+                existing.Id.Value.ToString(),
+                now),
+            cancellationToken);
 }

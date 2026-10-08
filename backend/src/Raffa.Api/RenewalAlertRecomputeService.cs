@@ -81,7 +81,7 @@ internal sealed class RenewalAlertRecomputeService(
     /// change what <see cref="RenewalEngine.Calculate"/> computes for this contract — see the type
     /// doc comment's "Only recomputes when it could matter" section.</summary>
     public static readonly IReadOnlyCollection<string> RenewalRelevantFields =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "endDate", "autoRenewal" };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "endDate", "autoRenewal", "noticePeriodDays" };
 
     /// <summary>
     /// Re-reads the tenant-scoped <c>Contract</c> named by <paramref name="contractId"/> and, when
@@ -109,7 +109,7 @@ internal sealed class RenewalAlertRecomputeService(
         }
 
         var terms = new ContractRenewalTerms(
-            contract.Id, contract.EndDate, contract.AutoRenewal, CancellationNoticeDays: null);
+            contract.Id, contract.EndDate, contract.AutoRenewal, contract.NoticePeriodDays);
 
         return await renewalAlertService
             .RecomputeForContractAsync(tenantId, terms, cancellationToken)
