@@ -170,6 +170,15 @@ public sealed class DocumentQueryService(
                 .ToList(),
             cancellationToken).ConfigureAwait(false);
 
+        // F5-T02: stages that stand failed on a NeedsReview document -- what makes it "partial".
+        var partialByDocument = await Extraction.ExtractionPartialState
+            .LoadAsync(
+                dbContext,
+                tenantId,
+                documents.Where(d => d.ProcessingStatus == DocumentProcessingStatus.NeedsReview).Select(d => d.Id).ToList(),
+                cancellationToken)
+            .ConfigureAwait(false);
+
         var weakFactsByContract = await NothingToReviewAutoValidator.WeakFactCountsAsync(dbContext, tenantId, contractIds, cancellationToken)
             .ConfigureAwait(false);
         var supplierNamesByContract = await SupplierNamesByContractAsync(tenantId, contractIds, cancellationToken)
@@ -192,6 +201,9 @@ public sealed class DocumentQueryService(
                 d.RejectionReason,
                 d.ProcessingStatus is DocumentProcessingStatus.Failed or DocumentProcessingStatus.NeedsReview
                     ? errorByDocument.GetValueOrDefault(d.Id)
+                    : null,
+                partialByDocument.TryGetValue(d.Id, out var partialStages)
+                    ? partialStages.Select(p => p.Stage.ToString()).ToList()
                     : null))
             .ToList();
 
