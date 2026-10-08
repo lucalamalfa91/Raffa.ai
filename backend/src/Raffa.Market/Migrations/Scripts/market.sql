@@ -5,7 +5,9 @@
 -- backend/src/Raffa.Worker -- ingest-market`) ever writes them. Generated with `dotnet ef
 -- migrations script --idempotent` from backend/src/Raffa.Market (task E13/F02/US01/T02);
 -- applied by `.github/workflows/backend.yml`'s ADR-021 schema-apply step, in that workflow's
--- fixed module order.
+-- fixed module order. 20261008152734_AddEmbeddingFixtureFlagAndHnswIndex (F7-T01/F7-T06) adds the
+-- HNSW cosine index behind the `ORDER BY vector <=> @q LIMIT k` query and the nullable `is_fixture`
+-- flag the query-time embedding guard reads.
 --
 -- Grant model (task objective: "grants read to the application role and restricts writes to the
 -- ingestion role when the CI role model allows it"): Terraform (`infra/modules/postgres/main.tf`)
@@ -89,6 +91,31 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260909011226_Initial') THEN
     INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
     VALUES ('20260909011226_Initial', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008152734_AddEmbeddingFixtureFlagAndHnswIndex') THEN
+    ALTER TABLE market_embedding ADD is_fixture boolean;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008152734_AddEmbeddingFixtureFlagAndHnswIndex') THEN
+    CREATE INDEX ix_market_embedding_vector ON market_embedding USING hnsw (vector vector_cosine_ops) WITH (ef_construction=64, m=16);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008152734_AddEmbeddingFixtureFlagAndHnswIndex') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261008152734_AddEmbeddingFixtureFlagAndHnswIndex', '10.0.4');
     END IF;
 END $EF$;
 COMMIT;

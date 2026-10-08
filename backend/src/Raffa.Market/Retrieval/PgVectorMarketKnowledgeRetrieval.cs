@@ -1,12 +1,16 @@
+using System.Globalization;
 using System.Text.Json;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Market.Contracts;
 using Raffa.Market.Infrastructure;
+using Raffa.Market.Infrastructure.Entities;
 using Raffa.Market.Ingestion;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 
@@ -34,13 +38,31 @@ namespace Raffa.Market.Retrieval;
 /// <c>IEnumerable&lt;IBenchmarkProviderAdapter&gt;</c> constructor injection, and never needing
 /// <see cref="IAiGateway"/> at all), nothing forces this interface's own registration to stay
 /// Singleton once a real dependency requires otherwise.
+///
+/// <para>
+/// F7-T01: the vector query is <c>ORDER BY distance LIMIT window</c> answered from the HNSW index
+/// (<see cref="NearestNeighbours"/>), not a materialization of the whole table;
+/// <see cref="MarketRetrievalWindow"/> sizes the window and the search widens it (exactly) only when
+/// the post-filters leave too few hits. F7-T06: before ranking, the query's embedding identity is
+/// checked against what the index holds (<see cref="MarketEmbeddingCompatibility"/>); an index built
+/// with another model, or with fixture vectors, is refused with an explicit error instead of
+/// returning noise.
+/// </para>
 /// </summary>
 public sealed class PgVectorMarketKnowledgeRetrieval(
     MarketDbContext dbContext,
     IAiGateway aiGateway,
-    ITenantContext tenantContext) : IMarketKnowledgeRetrieval
+    ITenantContext tenantContext,
+    ILogger<PgVectorMarketKnowledgeRetrieval>? logger = null) : IMarketKnowledgeRetrieval
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly ILogger _logger = (ILogger?)logger ?? NullLogger.Instance;
+
+    // One search at a time per instance: a MarketDbContext is not thread-safe, and a search is now
+    // several statements inside one transaction. The instance is Scoped, so this only serializes
+    // callers that share a request/scope -- never searches across requests.
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <inheritdoc/>
     public async Task<Result<IReadOnlyList<MarketNote>>> SearchAsync(
@@ -77,32 +99,182 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         }
 
         var queryVector = new Vector(embedResult.Value.Vector.ToArray());
+        var queryIdentity = MarketEmbeddingIdentity.From(embedResult.Value.Metadata);
 
-        // Distance is projected once here and reused for the score below, rather than calling
-        // CosineDistance twice, so Postgres computes it once per row (same reasoning
-        // Raffa.Documents.Contracts.Application.EmbeddingRetrievalService.SearchAsync's own
-        // identical comment gives). No SQL-side Take(topK): category/geography filtering happens
-        // in-memory below (MarketDeal.Category/.Geography live inside MarketRecordEntity's own
-        // jsonb payload, not a queryable column -- see MarketRecordEntity's own doc comment for
-        // why only Provider is denormalized), so every candidate, nearest-first, must be
-        // considered before this method knows which topK actually pass the filter. The mock
-        // feed's own ~65-row scale (R-MKT-02) makes materializing every candidate cheap; this is
-        // not expected to scale to a materially larger shared index unchanged.
-        var candidates = await dbContext.MarketEmbeddings
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await SearchIndexAsync(queryVector, queryIdentity, topK, filters, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<Result<IReadOnlyList<MarketNote>>> SearchIndexAsync(
+        Vector queryVector,
+        MarketEmbeddingIdentity queryIdentity,
+        int topK,
+        MarketKnowledgeSearchFilters? filters,
+        CancellationToken cancellationToken)
+    {
+        // F7-T06 guard: what the index holds, by (model, fixture-or-not). A GROUP BY over two narrow
+        // columns -- cheap next to the vector query it protects. A query embedded with another model
+        // (or a fixture query against a real index, and the reverse) has no meaningful distance to
+        // these rows; ranking it anyway would return noise that looks like an answer, so refuse.
+        var populations = await dbContext.MarketEmbeddings
             .AsNoTracking()
-            .Join(
-                dbContext.MarketRecords.AsNoTracking(),
-                embedding => embedding.RecordId,
-                record => record.RecordId,
-                (embedding, record) => new { record.PayloadJson, Distance = embedding.Vector.CosineDistance(queryVector) })
-            .OrderBy(x => x.Distance)
+            .GroupBy(e => new { e.Model, e.IsFixture })
+            .Select(g => new MarketEmbeddingPopulation(g.Key.Model, g.Key.IsFixture, g.Count()))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        var hits = new List<MarketNote>(Math.Min(topK, candidates.Count));
+        var state = MarketEmbeddingCompatibility.Evaluate(populations, queryIdentity);
+        if (state == MarketEmbeddingIndexState.Empty)
+        {
+            return Result<IReadOnlyList<MarketNote>>.Success([]);
+        }
+
+        if (state == MarketEmbeddingIndexState.Incompatible)
+        {
+            var error = MarketEmbeddingCompatibility.DescribeIncompatibility(populations, queryIdentity);
+            _logger.LogWarning("{Error}", error);
+            return Result<IReadOnlyList<MarketNote>>.Failure(error);
+        }
+
+        var mixed = state == MarketEmbeddingIndexState.Mixed;
+        if (mixed)
+        {
+            _logger.LogWarning(
+                "The market index mixes embeddings of different models or kinds; ranking only the rows " +
+                "comparable with the query ({Model}, fixture={IsFixture}). Re-run `ingest-market`.",
+                queryIdentity.Model,
+                queryIdentity.IsFixture);
+        }
+
+        var comparable = MarketEmbeddingCompatibility.ComparableCount(populations, queryIdentity);
+        var filtered = filters?.Category is not null || filters?.Geography is not null;
+
+        // F7-T01: `ORDER BY distance LIMIT window`, not "materialize every candidate". The category /
+        // geography filters live inside the jsonb payload (no queryable column yet), so they are
+        // applied after the vector query: over-fetch a window, filter, and widen only when too few
+        // rows survived. The widening is exact (no ANN index) and ends at the whole comparable
+        // index, so a filtered search still finds every match the unbounded version did.
+        var window = MarketRetrievalWindow.Initial(topK, filtered, comparable);
+        var useIndex = !mixed;
+
+        while (true)
+        {
+            useIndex &= window <= MarketRetrievalWindow.MaxIndexWindow;
+
+            var neighbours = await FetchNeighboursAsync(
+                    queryVector, queryIdentity, window, useIndex, restrictToComparable: mixed, cancellationToken)
+                .ConfigureAwait(false);
+
+            var hits = CollectHits(neighbours, topK, filters);
+
+            var exhausted = neighbours.Count < window || window >= comparable;
+            if (hits.Count >= topK || exhausted)
+            {
+                return Result<IReadOnlyList<MarketNote>>.Success(hits);
+            }
+
+            // Too few survivors and more rows exist beyond the window: widen, exactly.
+            window = MarketRetrievalWindow.Next(window, comparable);
+            useIndex = false;
+        }
+    }
+
+    private async Task<IReadOnlyList<MarketNeighbour>> FetchNeighboursAsync(
+        Vector queryVector,
+        MarketEmbeddingIdentity queryIdentity,
+        int window,
+        bool useIndex,
+        bool restrictToComparable,
+        CancellationToken cancellationToken)
+    {
+        // SET LOCAL needs a transaction; it also keeps the setting from leaking onto the pooled
+        // connection. Read-only, so the commit is a formality.
+        await using var transaction = await dbContext.Database
+            .BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (useIndex)
+        {
+            // hnsw.ef_search (default 40) caps how many rows an HNSW scan can return, whatever the
+            // LIMIT says; raise it to the window or `LIMIT 100` would quietly return 40.
+            var efSearch = MarketRetrievalWindow.EfSearch(window).ToString(CultureInfo.InvariantCulture);
+            await dbContext.Database
+                .ExecuteSqlAsync($"SELECT set_config('hnsw.ef_search', {efSearch}, true)", cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            // Exact scan: switch the index off for this statement so the widened (or part-re-embedded)
+            // pass is a true top-N, not an approximate one.
+            await dbContext.Database
+                .ExecuteSqlRawAsync("SET LOCAL enable_indexscan = off", cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var neighbours = await NearestNeighbours(
+                dbContext, queryVector, window, restrictToComparable ? queryIdentity : null)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return neighbours;
+    }
+
+    /// <summary>
+    /// The nearest-neighbour query (F7-T01): the <paramref name="limit"/> embeddings closest to
+    /// <paramref name="queryVector"/> by cosine distance, joined to their record payload.
+    /// <para>
+    /// The <c>ORDER BY vector &lt;=&gt; @q LIMIT n</c> sits in a subquery over <c>market_embedding</c>
+    /// alone -- the one shape in which Postgres can answer from the HNSW index
+    /// (<c>vector_cosine_ops</c>) -- and the join to <c>market_record</c> happens on those n rows only.
+    /// With <paramref name="restrictTo"/> set, only rows comparable with that embedding identity are
+    /// considered (a part-re-embedded index).
+    /// </para>
+    /// Public so the generated SQL can be asserted without a database (<c>ToQueryString()</c>).
+    /// </summary>
+    public static IQueryable<MarketNeighbour> NearestNeighbours(
+        MarketDbContext db, Vector queryVector, int limit, MarketEmbeddingIdentity? restrictTo = null)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+
+        IQueryable<MarketEmbeddingEntity> source = db.MarketEmbeddings.AsNoTracking();
+        if (restrictTo is { } identity)
+        {
+            var model = identity.Model;
+            var isFixture = identity.IsFixture;
+            source = source.Where(e => e.Model == model && (e.IsFixture == null || e.IsFixture == isFixture));
+        }
+
+        var nearest = source
+            .OrderBy(e => e.Vector.CosineDistance(queryVector))
+            .Take(limit)
+            .Select(e => new { e.RecordId, Distance = e.Vector.CosineDistance(queryVector) });
+
+        return nearest
+            .Join(
+                db.MarketRecords.AsNoTracking(),
+                n => n.RecordId,
+                record => record.RecordId,
+                (n, record) => new { record.PayloadJson, n.Distance })
+            .OrderBy(x => x.Distance)
+            .Select(x => new MarketNeighbour(x.PayloadJson, x.Distance));
+    }
+
+    private static List<MarketNote> CollectHits(
+        IReadOnlyList<MarketNeighbour> neighbours, int topK, MarketKnowledgeSearchFilters? filters)
+    {
+        var hits = new List<MarketNote>(Math.Min(topK, neighbours.Count));
         var seenRecordIds = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var candidate in candidates)
+        foreach (var candidate in neighbours)
         {
             var deal = JsonSerializer.Deserialize<MarketDeal>(candidate.PayloadJson, JsonOptions);
             if (deal is null || !seenRecordIds.Add(deal.RecordId))
@@ -146,6 +318,59 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
             }
         }
 
-        return Result<IReadOnlyList<MarketNote>>.Success(hits);
+        return hits;
     }
+}
+
+/// <summary>One row of the nearest-neighbour query: the record payload and its cosine distance to the query.</summary>
+/// <param name="PayloadJson">The record's <c>payload_json</c>.</param>
+/// <param name="Distance">pgvector cosine distance, <c>[0, 2]</c>, lower is closer.</param>
+public sealed record MarketNeighbour(string PayloadJson, double Distance);
+
+/// <summary>
+/// How many rows one vector query fetches (F7-T01) -- pure arithmetic, so the policy is testable
+/// without a database.
+/// </summary>
+public static class MarketRetrievalWindow
+{
+    /// <summary>pgvector's ceiling for <c>hnsw.ef_search</c>: an HNSW scan returns at most this many
+    /// rows, so a larger window is answered by an exact scan instead.</summary>
+    public const int MaxIndexWindow = 1000;
+
+    /// <summary>pgvector's default <c>hnsw.ef_search</c>; never set lower than this.</summary>
+    public const int DefaultEfSearch = 40;
+
+    /// <summary>Rows fetched per wanted hit when no filter is applied after the query (a record can
+    /// only repeat once a record is split into several chunks).</summary>
+    public const int UnfilteredOverFetch = 2;
+
+    /// <summary>Rows fetched per wanted hit when category / geography are filtered afterwards.</summary>
+    public const int FilteredOverFetch = 10;
+
+    /// <summary>Smallest first window of a filtered search.</summary>
+    public const int MinFilteredWindow = 100;
+
+    /// <summary>How much each widening multiplies the window by.</summary>
+    public const int GrowthFactor = 8;
+
+    /// <summary>The first window: at least <paramref name="topK"/>, at most the rows that can match.</summary>
+    public static int Initial(int topK, bool filtered, int comparableRows)
+    {
+        var wanted = (long)topK * (filtered ? FilteredOverFetch : UnfilteredOverFetch);
+        var window = filtered ? Math.Max(wanted, MinFilteredWindow) : wanted;
+
+        window = Math.Min(window, MaxIndexWindow);
+        window = Math.Max(window, topK);
+        return (int)Math.Max(1, Math.Min(window, Math.Max(comparableRows, 1)));
+    }
+
+    /// <summary>The next, wider window after <paramref name="window"/> returned too few survivors.</summary>
+    public static int Next(int window, int comparableRows)
+    {
+        var grown = Math.Max((long)window * GrowthFactor, window + 1L);
+        return (int)Math.Min(Math.Max(comparableRows, 1), grown);
+    }
+
+    /// <summary><c>hnsw.ef_search</c> for a window: the window itself, never below the default nor above the ceiling.</summary>
+    public static int EfSearch(int window) => Math.Clamp(window, DefaultEfSearch, MaxIndexWindow);
 }

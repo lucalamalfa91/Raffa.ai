@@ -72,6 +72,10 @@ public sealed class MarketIngestionServiceTests : IAsyncLifetime
 
         public bool FailNextEmbed { get; set; }
 
+        /// <summary>The prompt version the stub reports; <c>"fixture-v1"</c> makes it look like the
+        /// fixture gateway (F7-T06).</summary>
+        public string PromptVersion { get; set; } = "stub-v1";
+
         public Task<Result<AiClassificationResult>> ClassifyAsync(
             AiClassificationRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("Not exercised by MarketIngestionService.");
@@ -98,7 +102,7 @@ public sealed class MarketIngestionServiceTests : IAsyncLifetime
             }
 
             var result = new AiEmbeddingResult(
-                vector, new AiCallMetadata("stub-embed-model", "v1", "stub-v1", DateTimeOffset.UtcNow, "n/a"));
+                vector, new AiCallMetadata("stub-embed-model", "v1", PromptVersion, DateTimeOffset.UtcNow, "n/a"));
             return Task.FromResult(Result<AiEmbeddingResult>.Success(result));
         }
 
@@ -258,5 +262,123 @@ public sealed class MarketIngestionServiceTests : IAsyncLifetime
         await using var verifyDb = CreateDbContext();
         Assert.Equal(0, await verifyDb.MarketRecords.CountAsync());
         Assert.Equal(0, await verifyDb.MarketEmbeddings.CountAsync());
+    }
+
+    // ---- F7-T06: embeddings record who produced them --------------------------------------
+
+    [Fact]
+    public async Task Ingested_embeddings_record_their_model_and_that_they_are_real()
+    {
+        var gateway = new StubEmbeddingGateway();
+        await using (var db = CreateDbContext())
+        {
+            var service = new MarketIngestionService(
+                db, new StubMarketIntelligenceProvider("v1", ThreeSampleDeals()), gateway, new TenantContext(),
+                new FixedClock(DateTimeOffset.UtcNow));
+            Assert.True((await service.IngestAsync()).IsSuccess);
+        }
+
+        await using var verifyDb = CreateDbContext();
+        var embeddings = await verifyDb.MarketEmbeddings.ToListAsync();
+        Assert.Equal(3, embeddings.Count);
+        Assert.All(embeddings, e =>
+        {
+            Assert.Equal("stub-embed-model", e.Model);
+            Assert.False(e.IsFixture);
+        });
+    }
+
+    [Fact]
+    public async Task Embeddings_from_the_fixture_gateway_are_marked_as_fixture()
+    {
+        var gateway = new StubEmbeddingGateway { PromptVersion = "fixture-v1" };
+        await using (var db = CreateDbContext())
+        {
+            var service = new MarketIngestionService(
+                db, new StubMarketIntelligenceProvider("v1", ThreeSampleDeals()), gateway, new TenantContext(),
+                new FixedClock(DateTimeOffset.UtcNow));
+            Assert.True((await service.IngestAsync()).IsSuccess);
+        }
+
+        await using var verifyDb = CreateDbContext();
+        Assert.All(await verifyDb.MarketEmbeddings.ToListAsync(), e => Assert.True(e.IsFixture));
+    }
+
+    // ---- fields outside the narrative do not cost an embedding --------------------------------
+
+    [Fact]
+    public async Task A_change_outside_the_composed_note_keeps_the_embedding_and_skips_the_embed_call()
+    {
+        var originalDeals = ThreeSampleDeals();
+        var gateway = new StubEmbeddingGateway();
+        var tenantContext = new TenantContext();
+
+        await using (var firstDb = CreateDbContext())
+        {
+            await new MarketIngestionService(
+                firstDb, new StubMarketIntelligenceProvider("v1", originalDeals), gateway, tenantContext,
+                new FixedClock(DateTimeOffset.UtcNow)).IngestAsync();
+        }
+
+        Dictionary<string, Guid> originalIds;
+        await using (var readDb = CreateDbContext())
+        {
+            originalIds = (await readDb.MarketEmbeddings.ToListAsync())
+                .ToDictionary(e => e.RecordId, e => e.Id.Value, StringComparer.Ordinal);
+        }
+
+        // industry / unitMetric are payload fields the narrative does not mention: every record
+        // changes, none of their notes does.
+        var enrichedDeals = originalDeals
+            .Select(d => d with { Industry = "Financial Services", UnitMetric = "per user / year" })
+            .ToList();
+
+        await using var secondDb = CreateDbContext();
+        var result = await new MarketIngestionService(
+            secondDb, new StubMarketIntelligenceProvider("v1", enrichedDeals), gateway, tenantContext,
+            new FixedClock(DateTimeOffset.UtcNow)).IngestAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, result.Value.Updated);
+
+        // The run learns which model it embeds with from its first embed call, so one record is
+        // re-embedded; the other two reuse their vector. Without reuse this would be 3 more calls.
+        Assert.Equal(4, gateway.EmbeddedTexts.Count);
+
+        await using var verifyDb = CreateDbContext();
+        var embeddings = await verifyDb.MarketEmbeddings.ToListAsync();
+        Assert.Equal(3, embeddings.Count);
+        Assert.Equal(2, embeddings.Count(e => originalIds[e.RecordId] == e.Id.Value));
+
+        var records = await verifyDb.MarketRecords.ToListAsync();
+        Assert.All(records, r => Assert.Contains("Financial Services", r.PayloadJson, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_embedding_made_by_another_kind_of_gateway_is_never_reused()
+    {
+        var originalDeals = ThreeSampleDeals();
+        var tenantContext = new TenantContext();
+
+        await using (var firstDb = CreateDbContext())
+        {
+            await new MarketIngestionService(
+                firstDb, new StubMarketIntelligenceProvider("v1", originalDeals), new StubEmbeddingGateway(), tenantContext,
+                new FixedClock(DateTimeOffset.UtcNow)).IngestAsync();
+        }
+
+        var fixtureGateway = new StubEmbeddingGateway { PromptVersion = "fixture-v1" };
+        var enrichedDeals = originalDeals.Select(d => d with { Industry = "Retail" }).ToList();
+
+        await using var secondDb = CreateDbContext();
+        var result = await new MarketIngestionService(
+            secondDb, new StubMarketIntelligenceProvider("v1", enrichedDeals), fixtureGateway, tenantContext,
+            new FixedClock(DateTimeOffset.UtcNow)).IngestAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, fixtureGateway.EmbeddedTexts.Count);
+
+        await using var verifyDb = CreateDbContext();
+        Assert.All(await verifyDb.MarketEmbeddings.ToListAsync(), e => Assert.True(e.IsFixture));
     }
 }

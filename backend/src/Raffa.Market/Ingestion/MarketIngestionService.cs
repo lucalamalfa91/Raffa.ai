@@ -74,6 +74,24 @@ public sealed class MarketIngestionService(
             .ToDictionaryAsync(r => r.RecordId, StringComparer.Ordinal, cancellationToken)
             .ConfigureAwait(false);
 
+        // What each record's embedding was made from (text, model, kind) -- no vectors, so this stays
+        // small. Lets a record whose payload changed but whose composed note did not (a new
+        // non-narrative field, such as industry or unitMetric) keep its embedding instead of paying
+        // for a new embed call.
+        var existingEmbeddings = (await dbContext.MarketEmbeddings
+                .AsNoTracking()
+                .Where(e => e.ChunkIndex == 0)
+                .Select(e => new { e.RecordId, e.ChunkText, e.Model, e.IsFixture })
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false))
+            .GroupBy(e => e.RecordId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+
+        // The embedding identity (model, fixture-or-not) this run actually embeds with, learnt from
+        // the first embed call of the run. Until it is known nothing can be reused, so the first
+        // changed record always embeds.
+        MarketEmbeddingIdentity? runIdentity = null;
+
         var inserted = 0;
         var updated = 0;
         var unchanged = 0;
@@ -117,28 +135,50 @@ public sealed class MarketIngestionService(
             var provenanceLabel = MarketProvenance.Label(deal);
             var note = MarketNoteComposer.Compose(deal);
 
-            var embedResult = await aiGateway
-                .EmbedAsync(new AiEmbeddingRequest(note.Snippet), cancellationToken)
-                .ConfigureAwait(false);
+            // Keep the embedding when the narrative it was made from is unchanged, and it was made by
+            // the same model and kind this run embeds with: only a payload field outside the note
+            // moved, so a new vector would be identical. Never for a new record, and never before this
+            // run has embedded once (the run's identity is unknown until then).
+            var reuseEmbedding = existing is not null
+                && runIdentity is { } known
+                && existingEmbeddings.TryGetValue(deal.RecordId, out var previous)
+                && string.Equals(previous.ChunkText, note.Snippet, StringComparison.Ordinal)
+                && previous.IsFixture == known.IsFixture
+                && string.Equals(previous.Model, known.Model, StringComparison.Ordinal);
 
-            if (embedResult.IsFailure)
+            IReadOnlyList<float>? vectorValues = null;
+            var identity = default(MarketEmbeddingIdentity);
+
+            if (!reuseEmbedding)
             {
-                return Result<IngestionSummary>.Failure(
-                    $"Ingestion failed embedding record '{deal.RecordId}': {embedResult.Error}");
-            }
+                var embedResult = await aiGateway
+                    .EmbedAsync(new AiEmbeddingRequest(note.Snippet), cancellationToken)
+                    .ConfigureAwait(false);
 
-            var vectorValues = embedResult.Value.Vector;
+                if (embedResult.IsFailure)
+                {
+                    return Result<IngestionSummary>.Failure(
+                        $"Ingestion failed embedding record '{deal.RecordId}': {embedResult.Error}");
+                }
 
-            // Defensive, not redundant -- same "two independently-maintained constants that MUST
-            // agree, never a shared reference" reasoning
-            // Raffa.Documents.Contracts.Application.EmbeddingRetrievalService.IndexChunkAsync's
-            // own identical check already documents for ADR-004.
-            if (vectorValues.Count != MarketEmbeddingEntity.VectorDimensions)
-            {
-                return Result<IngestionSummary>.Failure(
-                    $"Embed model returned a {vectorValues.Count}-dimension vector for record " +
-                    $"'{deal.RecordId}'; expected {MarketEmbeddingEntity.VectorDimensions} " +
-                    "(MarketEmbeddingEntity.VectorDimensions, ADR-004).");
+                vectorValues = embedResult.Value.Vector;
+
+                // Defensive, not redundant -- same "two independently-maintained constants that MUST
+                // agree, never a shared reference" reasoning
+                // Raffa.Documents.Contracts.Application.EmbeddingRetrievalService.IndexChunkAsync's
+                // own identical check already documents for ADR-004.
+                if (vectorValues.Count != MarketEmbeddingEntity.VectorDimensions)
+                {
+                    return Result<IngestionSummary>.Failure(
+                        $"Embed model returned a {vectorValues.Count}-dimension vector for record " +
+                        $"'{deal.RecordId}'; expected {MarketEmbeddingEntity.VectorDimensions} " +
+                        "(MarketEmbeddingEntity.VectorDimensions, ADR-004).");
+                }
+
+                // F7-T06: record who produced the vector (model + fixture-or-not) so query time can
+                // refuse an index built with something the query is not comparable with.
+                identity = MarketEmbeddingIdentity.From(embedResult.Value.Metadata);
+                runIdentity = identity;
             }
 
             var now = clock.UtcNow;
@@ -168,25 +208,32 @@ public sealed class MarketIngestionService(
                 // chunk(s) never linger next to the freshly-embedded one added below. Never reached
                 // for a brand-new record (existing is null there), so this never queries against a
                 // record that cannot yet own any embedding rows.
-                var staleEmbeddings = await dbContext.MarketEmbeddings
-                    .Where(e => e.RecordId == deal.RecordId)
-                    .ToListAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                dbContext.MarketEmbeddings.RemoveRange(staleEmbeddings);
+                if (!reuseEmbedding)
+                {
+                    var staleEmbeddings = await dbContext.MarketEmbeddings
+                        .Where(e => e.RecordId == deal.RecordId)
+                        .ToListAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    dbContext.MarketEmbeddings.RemoveRange(staleEmbeddings);
+                }
 
                 updated++;
             }
 
-            dbContext.MarketEmbeddings.Add(new MarketEmbeddingEntity
+            if (!reuseEmbedding)
             {
-                Id = EntityId.New(),
-                RecordId = deal.RecordId,
-                ChunkIndex = 0,
-                ChunkText = note.Snippet,
-                Vector = new Vector(vectorValues.ToArray()),
-                Model = embedResult.Value.Metadata.ModelId,
-                CreatedAt = now,
-            });
+                dbContext.MarketEmbeddings.Add(new MarketEmbeddingEntity
+                {
+                    Id = EntityId.New(),
+                    RecordId = deal.RecordId,
+                    ChunkIndex = 0,
+                    ChunkText = note.Snippet,
+                    Vector = new Vector(vectorValues!.ToArray()),
+                    Model = identity.Model,
+                    IsFixture = identity.IsFixture,
+                    CreatedAt = now,
+                });
+            }
         }
 
         // One SaveChangesAsync for the whole run: when every record was unchanged, the change
