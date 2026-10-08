@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Gaps;
@@ -38,6 +39,10 @@ internal sealed class CapabilityCheckSlot
     /// <summary>Completes with the follow-up to append after the answer, or null when the check
     /// found nothing to propose (or failed — the check is fail-open).</summary>
     public Task<CopilotReply?>? FollowUp { get; set; }
+
+    /// <summary>The turn the check was started in (plan T-01): the endpoint hands it back to
+    /// <see cref="CapabilityCheckDispatcher.AppendAsync"/> so the follow-up's audit row carries it.</summary>
+    public string? TurnId { get; set; }
 }
 
 /// <summary>
@@ -81,7 +86,8 @@ internal sealed class CapabilityCheckDispatcher(
         EntityId conversationId,
         EntityId answeredMessageId,
         CopilotReply followUp,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? turnId = null)
     {
         ArgumentNullException.ThrowIfNull(followUp);
 
@@ -122,7 +128,7 @@ internal sealed class CapabilityCheckDispatcher(
                         appended.MessageId.Value.ToString(),
                         clock.UtcNow,
                         $"conversationId={conversationId} answeredMessageId={answeredMessageId} " +
-                        $"gapKey={stamped.Payload?.Gap?.Key ?? "none"}"),
+                        $"gapKey={stamped.Payload?.Gap?.Key ?? "none"} turnId={turnId ?? "none"}"),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -133,7 +139,8 @@ internal sealed class CapabilityCheckDispatcher(
     /// <summary>The check is still running when the answer is persisted: append its follow-up from
     /// the background once it completes. Failures are logged, never surfaced.</summary>
     public void AppendWhenDone(
-        Task<CopilotReply?> check, TenantId tenantId, string userId, EntityId conversationId, EntityId answeredMessageId)
+        Task<CopilotReply?> check, TenantId tenantId, string userId, EntityId conversationId, EntityId answeredMessageId,
+        string? turnId = null)
     {
         ArgumentNullException.ThrowIfNull(check);
 
@@ -144,7 +151,7 @@ internal sealed class CapabilityCheckDispatcher(
                 var followUp = await check.ConfigureAwait(false);
                 if (followUp is not null)
                 {
-                    await AppendAsync(tenantId, userId, conversationId, answeredMessageId, followUp).ConfigureAwait(false);
+                    await AppendAsync(tenantId, userId, conversationId, answeredMessageId, followUp, turnId: turnId).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -168,6 +175,11 @@ internal sealed class CapabilityCheckDispatcher(
             await using var scope = scopeFactory.CreateAsyncScope();
             var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
             using var tenantScope = tenantContext.BeginScope(request.TenantId);
+
+            // Its own run inside the turn that started it (the turn id flows in from AskAsync), so
+            // the investigator's ai.* row reads run=<id> step=capability-investigator.
+            using var run = RunContext.BeginRun();
+            using var step = RunContext.BeginStep("capability-investigator");
 
             var investigator = scope.ServiceProvider.GetRequiredService<CapabilityInvestigator>();
             var investigation = await investigator

@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
@@ -197,6 +198,8 @@ internal sealed partial class AskCopilotService
     private Task WriteWebResearchAuditAsync(
         TenantId tenantId, string action, string actor, string detail, CancellationToken cancellationToken) =>
         auditWriter.WriteAsync(
-            new AuditEntry(tenantId, actor, action, AuditResourceType, WebResearchAuditResourceId, clock.UtcNow, detail),
+            new AuditEntry(
+                tenantId, actor, action, AuditResourceType, WebResearchAuditResourceId, clock.UtcNow,
+                $"{detail} turnId={RunContext.Current?.TurnId ?? "none"}"),
             cancellationToken);
 }

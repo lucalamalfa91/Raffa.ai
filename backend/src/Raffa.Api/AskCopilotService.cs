@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Raffa.AiGateway.Telemetry;
 using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application;
@@ -291,6 +292,11 @@ internal sealed partial class AskCopilotService(
 
         using var scope = tenantContext.BeginScope(tenantId);
 
+        // One id for the whole turn (plan T-01): every ask.* / chat.* audit row of the turn and every
+        // ai.* row its AI calls write carry it, so a turn can be followed end to end.
+        using var turn = RunContext.BeginTurn();
+        using var run = RunContext.BeginRun();
+
         var portfolio = await portfolioQueryService
             .GetPortfolioAsync(tenantId, PortfolioFilter.None, new PortfolioPageRequest(1, PortfolioPageRequest.MaxPageSize), cancellationToken)
             .ConfigureAwait(false);
@@ -395,6 +401,7 @@ internal sealed partial class AskCopilotService(
                         ? namedSupplierName
                         : null;
 
+                capabilityCheck.TurnId = RunContext.Current?.TurnId;
                 capabilityCheck.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
                     tenantId,
                     question,
@@ -740,6 +747,9 @@ internal sealed partial class AskCopilotService(
                     ConveneCouncil: IsCouncilIntent(plan.Intent, namedContractItem)),
                 cancellationToken)
             .ConfigureAwait(false);
+
+        // F2-T01: the flow's steps, failures and market queries (names and counts) ride on the turn's one audit row.
+        RunContext.AddTurnDetail(flow.ToAuditDetail());
 
         if (flow.MarketItems.Count > 0)
         {
@@ -3008,7 +3018,9 @@ internal sealed partial class AskCopilotService(
                 $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
                 $"unverified={reply.Provenance.Unverified} " +
                 $"gapInvestigation={gapInvestigation} " +
-                $"webMode={webMode}"),
+                $"webMode={webMode} " +
+                $"turnId={RunContext.Current?.TurnId ?? "none"} " +
+                (RunContext.TurnDetail ?? "flow=none")),
             cancellationToken).ConfigureAwait(false);
     }
 

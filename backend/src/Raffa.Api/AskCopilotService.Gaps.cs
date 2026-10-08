@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
@@ -191,6 +192,9 @@ internal sealed partial class AskCopilotService
                     ConveneCouncil: true),
                 cancellationToken)
             .ConfigureAwait(false);
+
+        // F2-T01: see the in-domain turn; the draft turn's one audit row carries the flow's outcome too.
+        RunContext.AddTurnDetail(flow.ToAuditDetail());
 
         if (flow.MarketItems.Count > 0)
         {
