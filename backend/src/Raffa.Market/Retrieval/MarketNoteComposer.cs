@@ -35,7 +35,8 @@ public static class MarketNoteComposer
             Geography: deal.Geography,
             UpdatedAt: deal.UpdatedAt,
             Provenance: MarketProvenance.Label(deal),
-            Score: 0d);
+            Score: 0d,
+            ProvenanceInfo: MarketProvenance.Info(deal));
     }
 
     private static string BuildTitle(MarketDeal deal) =>

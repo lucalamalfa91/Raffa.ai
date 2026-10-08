@@ -36,7 +36,9 @@ internal static class SampleDeal
         double? upliftCapPct = 4,
         int? noticeDays = 90,
         string? paymentTerms = "Net 30",
-        string? licenseRestrictions = null) =>
+        string? licenseRestrictions = null,
+        string? industry = null,
+        string? unitMetric = null) =>
         new(
             Provider: provider,
             RecordId: recordId,
@@ -62,5 +64,7 @@ internal static class SampleDeal
             UpliftCapPct: upliftCapPct,
             NoticeDays: noticeDays,
             PaymentTerms: paymentTerms,
-            LicenseRestrictions: licenseRestrictions);
+            LicenseRestrictions: licenseRestrictions,
+            Industry: industry,
+            UnitMetric: unitMetric);
 }

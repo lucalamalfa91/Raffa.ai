@@ -100,11 +100,32 @@ public static class MarketEndpointExtensions
             provenance = provenance ?? note.Provenance,
             updatedAt = deal.UpdatedAt,
 
+            // F7-T11 / F7-D04: structured provenance {sourceClass,isDemo,n,asOf,unit,source} so web
+            // and tests stop parsing the label above. Internal metadata -- the web client does not
+            // render it (decision D5: no "demo" badge); `provenanceDisplay` is null unless the
+            // Market:Provenance configuration switches a label or a real source name on.
+            provenanceInfo = note.ProvenanceInfo is { } info
+                ? new
+                {
+                    sourceClass = info.SourceClass,
+                    isDemo = info.IsDemo,
+                    n = info.N,
+                    asOf = info.AsOf,
+                    unit = info.Unit,
+                    source = info.Source,
+                }
+                : null,
+            provenanceDisplay = note.ProvenanceInfo is { } shown
+                ? MarketProvenance.Display(shown, httpContext.RequestServices.GetService<MarketProvenanceOptions>())
+                : null,
+
             // Raw deal fields (superset kept from both original handlers).
             provider = deal.Provider,
             supplier = deal.Supplier,
             product = deal.Product,
             sku = deal.Sku,
+            industry = deal.Industry,
+            unitMetric = deal.UnitMetric,
             currency = deal.Currency,
             companySizeBand = deal.CompanySizeBand,
             termMonths = deal.TermMonths,
