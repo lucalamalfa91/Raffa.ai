@@ -31,9 +31,6 @@ internal sealed partial class AskCopilotService
 {
     private const string AuditDraftedAction = "chat.drafted";
 
-    /// <summary>How many validated suppliers the "which contract?" reply offers as follow-ups.</summary>
-    private const int MaxDraftSupplierFollowUps = 5;
-
     private async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildCapabilityGapReplyAsync(
         TenantId tenantId,
         string question,
@@ -172,23 +169,12 @@ internal sealed partial class AskCopilotService
                 ? namedSupplier
                 : null;
 
-        var markdown = CapabilityGapCopy.AskWhichContract(gap, language, unknownSupplier, portfolioIsEmpty);
-
-        var actions = portfolioIsEmpty
-            ? capabilityRouting.ResolveActions([CapabilityIntent.UnknownSupplier], routingContext)
-            : capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)], routingContext);
-
-        var followUps = portfolio.Items
+        var suppliersOnFile = portfolio.Items
             .Where(item => item.SupplierId is not null)
-            .Select(item => supplierNames.TryGetValue(new EntityId(item.SupplierId!.Value), out var name) ? name : null)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-            .Take(MaxDraftSupplierFollowUps)
-            .Select(name => CapabilityGapCopy.DraftFollowUp(language, name!))
-            .ToList();
+            .Select(item => supplierNames.TryGetValue(new EntityId(item.SupplierId!.Value), out var name) ? name : null);
 
-        return CapabilityGapReplyBuilder.Redirect(gap, language, markdown, actions, followUps);
+        return CapabilityGapReplyBuilder.WhichContract(
+            gap, language, opening: null, unknownSupplier, portfolioIsEmpty, suppliersOnFile, capabilityRouting, routingContext);
     }
 
     /// <summary>

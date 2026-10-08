@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -136,33 +137,29 @@ namespace Raffa.Api;
 /// NW-91/NW-92; ADR-024 — this task's own citation is "w19 cl. 22; lock 8", not yet folded into
 /// this ADR's own amendment history on disk, so <c>reports/architecture/waves/w19.md</c>'s
 /// NW-91/NW-92 rows are the verifiable source cited from the methods below instead of a clause
-/// number this file cannot confirm): <see cref="BuildNoticePackAsync"/> answers a notice/preavviso/
-/// disdetta question (<see cref="IntentPlanner"/>'s own notice lexicon, mirrored locally because
-/// <c>IntentPlanner.cs</c> is outside this task's file scope) from the scoped contract's own
-/// <see cref="Contract360Renewal"/> fact, a host-computed day count (<see cref="RenewalEngine"/>/
-/// <see cref="IClock"/>, the same fallback <see cref="BuildRenewalStrategyPackAsync"/> already uses
-/// via <see cref="InsightsEndpointExtensions.ToStrategyInputs"/>), <see cref="StrategyPackBuilder"/>'s
-/// own "when you must move" explanation, and — only when this contract's own extracted clauses name
-/// one — a matching-clause citation built from <see cref="Contract360Result.Clauses"/>, never from
-/// <see cref="EmbeddingRetrievalService"/> (every notice question this pack answers is exactly the
-/// shape a full HTTP round trip already exercises under this project's InMemory EF Core provider,
-/// which cannot translate <c>Embedding.Vector.CosineDistance</c> — <c>InMemoryAskEngineFactory</c>'s
-/// own doc comment). Every date is a <see cref="PackValueKind.Date"/> value; "N days" is only ever a
-/// calculator-produced <see cref="PackValueKind.Number"/> value, never <c>EndDate − CancellationDeadline</c>
-/// and never model arithmetic (NW-92).
+/// number this file cannot confirm): <see cref="BuildNoticeFallbackReplyAsync"/> answers a notice/preavviso/
+/// disdetta question (<see cref="IntentPlanner.IsNoticeQuestion"/>, the one notice lexicon) from the
+/// scoped contract's own <see cref="Contract360Renewal"/> fact and — only when this contract's own
+/// extracted clauses name one — a matching-clause citation built from
+/// <see cref="Contract360Result.Clauses"/>, never from <see cref="EmbeddingRetrievalService"/> (every
+/// notice question is exactly the shape a full HTTP round trip already exercises under this
+/// project's InMemory EF Core provider, which cannot translate
+/// <c>Embedding.Vector.CosineDistance</c> — <c>InMemoryAskEngineFactory</c>'s own doc comment).
+/// Every date is a <see cref="PackValueKind.Date"/> value, read straight off the fact and never
+/// re-derived or model arithmetic (NW-92).
 /// </para>
 ///
 /// <para>
 /// <b>Five server-decided notice fallbacks</b> (task E30/F02/US01/T01, NW-94; parent story
 /// us-01-notice-fallbacks, "a scoped notice turn never asks 'which supplier'"; this task's own
 /// citation is "ADR-024 w19 cl. 22", the same not-yet-folded-in clause number
-/// <see cref="BuildNoticePackAsync"/>'s own doc comment already notes, so
+/// the notice pack's doc comment noted, so
 /// <c>reports/architecture/waves/w19.md</c>'s NW-94 row is again the verifiable source):
 /// <see cref="BuildNoticeFallbackReplyAsync"/> intercepts every notice question — before any pack
 /// is built and before <see cref="AnswerComposer"/> ever runs, the same short-circuit shape
 /// <see cref="BuildRoutingOnlyReply"/> already uses for <see cref="AskIntent.Navigate"/>/
 /// <see cref="AskIntent.QuoteRoute"/> — and decides one of five outcomes purely from facts
-/// <see cref="BuildNoticePackAsync"/>'s own helpers already compute: a resolved deadline plus a
+/// <see cref="BuildNoticeFactItem"/>/<see cref="BuildMatchingClauseItem"/> compute: a resolved deadline plus a
 /// span-anchored clause answers with the deep-link (two-CTA ids, NW-83/NW-93); a deadline with no
 /// span answers the date alone, never a fabricated page; no deadline but a matching clause quotes
 /// it verbatim; neither abstains, naming the contract; and no contract resolved at all (an
@@ -726,7 +723,7 @@ internal sealed partial class AskCopilotService(
                 NamedSupplierContractCount: supplierMatches.Count,
                 PortfolioIsEmpty: portfolio.Items.Count == 0,
                 PreviousRaffaTurnWasInterview: previousRaffaTurnWasInterview,
-                IsNoticeQuestion: NoticeQuestionPattern.IsMatch(question));
+                IsNoticeQuestion: IntentPlanner.IsNoticeQuestion(question));
             var signals = AmbiguityDetector.Detect(question, plan, interviewContext, interviewOptions);
             if (signals.Verdict == AmbiguityVerdict.Ambiguous)
             {
@@ -749,13 +746,10 @@ internal sealed partial class AskCopilotService(
         // above already uses. Deliberately checked before namedContractItem is known to be
         // resolved or not: BuildNoticeFallbackReplyAsync itself is what tells "a resolved contract"
         // (cases 1-4) apart from "an unscoped notice question" (case 5, NW-94's own "unscoped
-        // deictic" abstain), so both must reach it rather than only the scoped half. This makes
-        // BuildStructuredFactOrNoticePackAsync's own "namedContractItem is not null &&
-        // NoticeQuestionPattern.IsMatch(question)" branch unreachable from this call site --
-        // feature-01's own method, left exactly as written (this task's "do not touch the pack"),
-        // the same "unreachable in practice, kept exhaustive" shape DescribeStructuredResult's own
-        // default case below already documents for an identical reason.
-        if (plan.Intent == AskIntent.StructuredFact && NoticeQuestionPattern.IsMatch(question))
+        // deictic" abstain), so both must reach it rather than only the scoped half. Because every
+        // notice question leaves here, the pack switch below never sees one: the structured-fact
+        // pack is the plain one, with no notice branch of its own.
+        if (plan.Intent == AskIntent.StructuredFact && IntentPlanner.IsNoticeQuestion(question))
         {
             return (
                 await BuildNoticeFallbackReplyAsync(question, namedContractItem, disambiguationItem, routingContext, cancellationToken)
@@ -766,7 +760,7 @@ internal sealed partial class AskCopilotService(
 
         var packItems = plan.Intent switch
         {
-            AskIntent.StructuredFact => await BuildStructuredFactOrNoticePackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken)
+            AskIntent.StructuredFact => await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken)
                 .ConfigureAwait(false),
             AskIntent.Clause => await BuildClausePackAsync(tenantId, question, namedContractItem, cancellationToken)
                 .ConfigureAwait(false),
@@ -1383,24 +1377,13 @@ internal sealed partial class AskCopilotService(
                     : $"Total annual spend across {result.MatchedContractIds.Count} validated " +
                       "contract(s) with a recorded figure."),
 
-            // Unreachable in practice — BuildStructuredFactPackAsync only ever calls this helper
-            // inside its own "result.Kind != DeterministicQueryKind.Unsupported" branch — but kept
-            // exhaustive and just as chrome-free as the two real cases above, never a default that
-            // silently reintroduces developer trace text if a future DeterministicQueryKind member
-            // ever reaches here uncovered.
-            _ => ("Portfolio query result", "Raffa computed this from your validated contracts."),
+            // BuildStructuredFactPackAsync only ever calls this helper inside its own
+            // "result.Kind != DeterministicQueryKind.Unsupported" branch, so no other member can
+            // reach here. A new DeterministicQueryKind member must get its own chrome-free copy
+            // above: failing loudly beats a default that silently reintroduces developer trace text.
+            _ => throw new UnreachableException(
+                $"DescribeStructuredResult is only called for a supported deterministic query, not {result.Kind}."),
         };
-
-    // Task E30/F01/US01/T01 (NW-91/NW-92): the same notice/preavviso/disdetta/cancellation-deadline
-    // lexicon IntentPlanner.NoticePattern already matches to steer this question to
-    // AskIntent.StructuredFact in the first place (task E27/F01/US01/T01, NW-79/NW-91) --
-    // duplicated here, not referenced, because IntentPlanner.cs is outside this task's own "Files
-    // to create or modify" (the same "each composition file owns its own copy" shape
-    // InsightsEndpointExtensions.ComputeRenewal's own doc comment already accepts for an identical
-    // reason).
-    private static readonly Regex NoticeQuestionPattern = new(
-        @"\b(notice|preavviso|disdetta(\s+period)?|cancellation\s+deadline)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // The matching-clause evidence item's own vocabulary (task E30/F01/US01/T01): a notice question
     // is supported by whichever of this contract's own extracted clauses actually discusses when or
@@ -1409,92 +1392,6 @@ internal sealed partial class AskCopilotService(
     private static readonly Regex NoticeClauseTypePattern = new(
         @"notice|cancellat|terminat|auto.?renew|renewal",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    /// <summary>
-    /// Task E30/F01/US01/T01 (NW-91/NW-92): <see cref="AskIntent.StructuredFact"/> covers both a
-    /// plain structured-fact question and a notice/preavviso/disdetta one — <see cref="IntentPlanner"/>
-    /// deliberately reuses the one intent for both (its own notice-lexicon doc comment) rather than
-    /// adding an eleventh <see cref="AskIntent"/> member. This is the split point: a notice question
-    /// about a resolved, named contract gets the structured notice pack
-    /// (<see cref="BuildNoticePackAsync"/>); everything else (no contract in scope, or a plain
-    /// dates/spend question) keeps the pre-existing <see cref="BuildStructuredFactPackAsync"/>
-    /// behaviour unchanged.
-    /// </summary>
-    private async Task<IReadOnlyList<PackItem>> BuildStructuredFactOrNoticePackAsync(
-        string question,
-        PortfolioListItem? namedContractItem,
-        PortfolioPage portfolio,
-        IReadOnlyDictionary<EntityId, string> supplierNames,
-        CancellationToken cancellationToken) =>
-        namedContractItem is not null && NoticeQuestionPattern.IsMatch(question)
-            ? await BuildNoticePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
-            : await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken).ConfigureAwait(false);
-
-    /// <summary>
-    /// Task E30/F01/US01/T01 (NW-91/NW-92, parent story us-01-notice-pack AC-1/AC-2/AC-3): the
-    /// structured notice pack, in the task's own pack order — the scoped fact
-    /// (<c>endDate</c>/<c>cancellationDeadline</c>/<c>autoRenewal</c>/<c>renewalTermMonths</c>), the
-    /// host-computed day count, <see cref="StrategyPackBuilder"/>'s own "when you must move"
-    /// explanation, then a matching-clause evidence item when one exists. See this type's own doc
-    /// comment for the full rationale (why RAG is never called from here despite the coding
-    /// objective naming it a fallback).
-    ///
-    /// <para>
-    /// <b>Never model arithmetic (AC-2, NW-92)</b>: every date below is read straight off
-    /// <see cref="Contract360Renewal"/> (never re-derived), and the day count is
-    /// <see cref="InsightsEndpointExtensions.ToStrategyInputs"/>'s own fallback — the same
-    /// <see cref="RenewalEngine"/> result <see cref="BuildRenewalStrategyPackAsync"/> already
-    /// computes, falling back to this contract's own asOf-relative day count only because
-    /// <see cref="Raffa.Renewals.Application.ContractRenewalTerms.CancellationNoticeDays"/> has no
-    /// persisted column this wave (that record's own doc comment) — never
-    /// <c>EndDate − CancellationDeadline</c>, which this task's own coding objective forbids
-    /// outright.
-    /// </para>
-    /// </summary>
-    internal async Task<IReadOnlyList<PackItem>> BuildNoticePackAsync(
-        PortfolioListItem namedContractItem, CancellationToken cancellationToken)
-    {
-        var contract360 = await contract360QueryService
-            .GetByIdAsync(CurrentTenantId, new EntityId(namedContractItem.ContractId), cancellationToken)
-            .ConfigureAwait(false);
-
-        if (contract360 is null)
-        {
-            return [];
-        }
-
-        var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
-        var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
-
-        // Same RenewalEngine + IClock composition BuildRenewalStrategyPackAsync already uses (this
-        // task's own "daysUntilNotice computed host-side via RenewalEngine/IClock") --
-        // ToStrategyInputs' own fallback (that method's doc comment: "the cancellation deadline
-        // comes from two places") is what actually produces a day count when, as always this wave,
-        // no notice-day count is on file: it falls back to Contract360Header.CancellationDeadline
-        // (the same raw fact Contract360Renewal.CancellationDeadline carries) with the days-left
-        // count derived from asOfDate the same way the engine would -- never EndDate minus
-        // CancellationDeadline.
-        var renewal = InsightsEndpointExtensions.ComputeRenewal(contract360.Header, renewalEngine);
-        var strategyInputs = InsightsEndpointExtensions
-            .ToStrategyInputs(contract360, renewal, pricedLines: [], criticalFacts: [], asOfDate)
-            with
-            { SupplierName = supplierName };
-        var whenYouMustMove = StrategyPackBuilder.Build(strategyInputs).WhenYouMustMove;
-
-        var items = new List<PackItem>
-        {
-            BuildNoticeFactItem(namedContractItem, contract360.Renewal, supplierName),
-            BuildWhenYouMustMoveItem(namedContractItem.ContractId, supplierName, whenYouMustMove),
-        };
-
-        var clauseItem = BuildMatchingClauseItem(contract360, namedContractItem.ContractId);
-        if (clauseItem is not null)
-        {
-            items.Add(clauseItem);
-        }
-
-        return items;
-    }
 
     /// <summary>
     /// Task E30/F01/US01/T01: the notice pack's first item — the scoped fact itself
@@ -1565,41 +1462,6 @@ internal sealed partial class AskCopilotService(
     }
 
     /// <summary>
-    /// Task E30/F01/US01/T01: the notice pack's second item — <see cref="StrategyPackBuilder"/>'s
-    /// own "when you must move" explanation (task text: "miss / passed / no auto-renew"), the same
-    /// honest narration <see cref="BuildRenewalStrategyPackAsync"/> already cites verbatim, never
-    /// re-worded here. <c>daysUntilNotice</c> is the one new <see cref="PackValue"/> this item
-    /// carries beyond <see cref="BuildDateValues"/>'s existing two dates — AC-3's "deadline passed N
-    /// days ago" names an N that must itself be a pack value, and
-    /// <see cref="WhenYouMustMove.DaysLeft"/> (signed — negative means already passed, never floored
-    /// to zero, that record's own doc comment) is exactly that N, computed by the calculators, never
-    /// restated by a model.
-    /// </summary>
-    private static PackItem BuildWhenYouMustMoveItem(Guid contractId, string displayName, WhenYouMustMove whenYouMustMove)
-    {
-        var values = new List<PackValue>(BuildDateValues(whenYouMustMove.RenewalDate, whenYouMustMove.CancellationDeadline));
-        if (whenYouMustMove.DaysLeft is { } daysLeft)
-        {
-            values.Add(new PackValue("daysUntilNotice", daysLeft.ToString(CultureInfo.InvariantCulture), PackValueKind.Number));
-        }
-
-        return new PackItem(
-            InsightsCitationKeys.Calc("when-you-must-move"),
-            PackCorpus.Calc,
-            $"{displayName} — when you must move",
-            null,
-            null,
-            null,
-            whenYouMustMove.Explanation,
-            $"/contracts/{contractId}",
-            null,
-            null,
-            "deterministic calculator",
-            values,
-            contractId.ToString());
-    }
-
-    /// <summary>
     /// Task E30/F01/US01/T01: the notice pack's optional third item — supporting evidence for the
     /// <c>cancellationDeadline</c> fact above, the first of this contract's own extracted
     /// <see cref="Contract360Clause"/> rows whose <see cref="Contract360Clause.ClauseType"/> or
@@ -1648,10 +1510,8 @@ internal sealed partial class AskCopilotService(
     /// Task E30/F02/US01/T01 (NW-94; parent story us-01-notice-fallbacks AC-1/AC-2/AC-3, "a scoped
     /// notice turn never asks 'which supplier'"): the five server-decided outcomes for a notice
     /// question, called directly from <see cref="BuildInDomainReplyAsync"/>'s own short-circuit
-    /// (see that method's own comment at the call site) rather than through
-    /// <see cref="BuildStructuredFactOrNoticePackAsync"/>'s wrapper -- this method reuses
-    /// <see cref="BuildNoticeFactItem"/>/<see cref="BuildMatchingClauseItem"/> directly (the same
-    /// two feature-01 helpers <see cref="BuildNoticePackAsync"/> itself calls) so it gets each
+    /// (see that method's own comment at the call site) -- this method uses
+    /// <see cref="BuildNoticeFactItem"/>/<see cref="BuildMatchingClauseItem"/> directly so it gets each
     /// item typed instead of re-parsing a flattened <see cref="PackItem"/> list, and resolves
     /// <see cref="Contract360Result"/> exactly once, the same "one fetch per intent" shape every
     /// other <c>BuildXxxPackAsync</c> method in this file already follows.
@@ -1697,8 +1557,7 @@ internal sealed partial class AskCopilotService(
     /// named, never the generic <see cref="ResolveAbstainRecoveryActions"/> hint.</item>
     /// </list>
     /// A contract resolved by <see cref="ResolveNamedContractItem"/> but since vanished from
-    /// <see cref="Contract360QueryService"/> (deleted mid-call -- the same rare race
-    /// <see cref="BuildNoticePackAsync"/> itself already answers with an empty pack) falls straight
+    /// <see cref="Contract360QueryService"/> (deleted mid-call -- a rare race) falls straight
     /// into the "neither" branch: there is no fact and no evidence either way, so it is
     /// indistinguishable from a contract that genuinely has neither.
     /// </para>
@@ -2437,8 +2296,8 @@ internal sealed partial class AskCopilotService(
         strategyItems.AddRange(await BuildLeverAddendumAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false));
 
         // Tenant clause evidence (AC-2). SearchByContractAsync uses CosineDistance, which
-        // InMemory EF cannot translate — the same constraint BuildNoticePackAsync documents
-        // and therefore never calls embeddings. A translation miss is empty tenant corpus,
+        // InMemory EF cannot translate — the same constraint the notice fallbacks document
+        // and therefore never call embeddings. A translation miss is empty tenant corpus,
         // never a failed Q3 turn: calc/market/raffa + persist already completed above.
         IReadOnlyList<PackItem> clauseItems;
         try
@@ -3088,10 +2947,8 @@ internal sealed partial class AskCopilotService(
         var packHash = ComputeHash(string.Join('|', reply.Citations.Select(c => c.N + ":" + c.Corpus)));
 
         // AC-7 / R-ASK-09: "audit records abstainGuardIntervened=true" when Guards.RegenerateOnce's
-        // retry-then-downgrade path fired — same field name Application.RagAnswerService's own
-        // (older, evidence-only) audit entry already uses, see that type's own WriteAsync call, so
-        // an operator/query filters on one consistent key regardless of which Ask path produced the
-        // row.
+        // retry-then-downgrade path fired — the field name every Ask audit entry carries,
+        // so an operator/query filters on one consistent key.
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,

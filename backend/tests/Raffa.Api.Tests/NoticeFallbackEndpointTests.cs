@@ -26,7 +26,7 @@ namespace Raffa.Api.Tests;
 /// contract?" (or the unscoped sibling without "for this contract") -- it matches both
 /// <c>IntentPlanner</c>'s notice lexicon (keeping the eventual intent <c>StructuredFact</c>, the
 /// same safe InMemory-provider path <see cref="ScopedAskEndpointTests"/>'s own doc comment already
-/// relies on) and <c>AskCopilotService.NoticeQuestionPattern</c>'s local mirror of it.
+/// relies on), which <c>AskCopilotService</c> now reads through <c>IntentPlanner.IsNoticeQuestion</c>.
 /// </summary>
 public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
 {

@@ -31,7 +31,7 @@ backend/
     Raffa.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Raffa.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Raffa.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) + read-back: `QuoteQueryService` (stored fields only, computes nothing) backing GET /api/quotes (tenant list) and GET /api/quotes/{id} (the quote with its recorded negotiation outcomes embedded, newest first) — task E19/F02/US01/T01, quote-read-api, wave w16 NW-12, ADR-028 §D2 — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
-    Raffa.Chat/                # Ask Raffa structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + RagAnswerService (task E02/F04/US02/T01) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Raffa.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Raffa — conversations store" below
+    Raffa.Chat/                # Ask Raffa structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Raffa.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Raffa — conversations store" below
   tests/                         # per-module + architecture + R0-R4 integration
 ```
 
@@ -639,7 +639,7 @@ on — `LoggingAiGateway` depends on the Scoped `IAuditWriter`
 (`Raffa.Audit`'s own registration), and every current `IAiGateway`
 consumer (`DocumentProcessingPipeline`, `StagedExtractionService`,
 `EmbeddingRetrievalService`, `HybridDocumentParsingService`,
-`QuoteExtractionPipeline`, `RagAnswerService`) was already Scoped, so this
+`QuoteExtractionPipeline`) was already Scoped, so this
 is a captive-dependency fix, not a behaviour change for any of them; see
 `ServiceCollectionExtensions`'s own doc comment for the full reasoning.
 Auth is `Azure.Identity.DefaultAzureCredential` (managed identity on
@@ -658,10 +658,10 @@ ADR-024's structured-answer fields (`SystemPrompt`/`PackJson` on the
 request; `AnswerMarkdown`/`CitationKeys`/`ActionKeys`/`AbstainReason`/
 `FollowUps` on the result), all optional/nullable additions — the existing
 `Answer`/`Citations` fields and every pre-existing call site
-(`RagAnswerService`, `AbstainGuard`, and their own tests) keep compiling
-and behaving unchanged; a later task ("F06") replaces
-`RagAnswerService`'s own evidence-chunk-concat with the versioned persona
-prompt + context pack ADR-024 describes. New root-level `AiGateway`
+(`AbstainGuard`, and their own tests) keep compiling
+and behaving unchanged; a later task ("F06") replaced
+the evidence-chunk-concat of the (since removed) `RagAnswerService` with the
+versioned persona prompt + context pack ADR-024 describes. New root-level `AiGateway`
 configuration keys (siblings of `AiGateway:Models`/`AiGateway:Ocr`, bound
 by `Configuration.AiGatewayFoundryOptions`): `AiGateway:Endpoint`,
 `AiGateway:ProjectName`, `AiGateway:DocumentIntelligenceConnection`
@@ -787,7 +787,8 @@ index, and the negotiated discount by category, size and term; support
 plans are priced as a share of the licences they cover (category
 `Support & Services`, never matched across suppliers). The script also
 writes aggregated benchmark reports by country, size and category to
-`backend/fixtures/market-benchmarks/`. Generated ids start with `MKT-ZZ-`
+`backend/fixtures/market-benchmarks/` (a git-ignored development artefact: nothing reads it,
+so it is regenerated on demand and not tracked). Generated ids start with `MKT-ZZ-`
 (they sort after every hand-written id, so a tie never shadows an oracle)
 and never add to a hand-written supplier/product pair.
 Re-run the script after editing the catalog; it keeps the hand-written rows
@@ -1067,16 +1068,16 @@ contract value") is reported as `Unsupported` rather than answered against
 the wrong field.
 
 `Raffa.Chat.Application.RagAnswerService` (task E02/F04/US02/T01,
-us-02-rag-citations, AC-1/AC-2/AC-3) turns a `Semantic` decision plus
-already-retrieved, already-authorized evidence into a grounded answer with
-citations via `IAiGateway.AnswerAsync` (ADR-004 `answer` role) — citations
-or an explicit "cannot determine" (spec §8.4 "no evidence, no claim"), never
-a fabricated answer. It also writes one `IAuditWriter` entry per successful
-call (`chat.answered` — ADR-011 "audit of access"), never the raw
-question/evidence/answer text.
+us-02-rag-citations) used to turn a `Semantic` decision plus already-retrieved,
+already-authorized evidence into a grounded answer with citations via
+`IAiGateway.AnswerAsync`. It was never called by any host once
+`AskCopilotService` took over (see "Superseded by the V2 engine" below) and
+has been removed together with its `chat.answered` audit row and the reserved
+`system:rag-answer` principal; the grounding and abstain rules it enforced
+live on in `AbstainGuard` and `GroundingGuard`.
 
 `Raffa.Chat.Application.AbstainGuard` (task E02/F04/US02/T02, abstain-guard)
-is the no-fabrication guard `RagAnswerService.AnswerAsync` runs on every
+is the no-fabrication guard that runs on every
 gateway result before it is audited or returned: a "cannot determine" result
 passes straight through, but a "determined" result is only trusted when it
 carries at least one citation, has non-empty answer text, and every citation's
@@ -1094,9 +1095,9 @@ free-text reason itself is deliberately not logged (ADR-011: no model
 output/content in audit rows).
 
 `Raffa.Chat` cannot reference `Raffa.Documents.Contracts` (see
-"Dependency direction" below), so neither `DeterministicQueryHandler` nor
-`RagAnswerService` retrieves anything itself: both operate on caller-supplied
-data (`ContractFact` / a pre-retrieved evidence list respectively) — small
+"Dependency direction" below), so `DeterministicQueryHandler` does not
+retrieve anything itself: it operates on caller-supplied
+data (`ContractFact`) — small
 DTOs/parameters the module owns or accepts, never the real `Contract`/
 `Embedding` entities. `DocumentId` on an `AiEvidenceSnippet` built from an
 `Embedding` hit is a `{SourceType}:{SourceId}` composite (not a bare id): a
@@ -1108,13 +1109,13 @@ and silently relabelling one as the other would misattribute the citation.
 `Raffa.Api.ChatEndpointExtensions` (`POST /api/chat/query`) used to be the
 composition root that closed the gap above directly — it resolved the
 tenant, called `EmbeddingRetrievalService.SearchAsync` itself, and called
-`RagAnswerService` for the `Semantic` branch only, with the `Structured`
+`RagAnswerService` (since removed) for the `Semantic` branch only, with the `Structured`
 branch left as an honest "not wired yet" (no `ContractFact` mapping existed).
 `POST /api/chat/query` now instead delegates into `AskCopilotService`, the
 new V2 pack-composition root that reuses this router/planner/handler trio as
 one of several intents — see "Ask Raffa — conversations store" below for
 where that composition now lives; `AskRaffaQueryRouter`/
-`DeterministicQueryPlanner`/`DeterministicQueryHandler`/`RagAnswerService`/
+`DeterministicQueryPlanner`/`DeterministicQueryHandler`/
 `AbstainGuard` themselves are unchanged, still pure, and still directly
 unit-tested exactly as this section describes.
 
@@ -1270,8 +1271,8 @@ attempt and forced `Guards.RegenerateOnce`'s retry-then-downgrade path — and
 `chat.answered`), never
 just because the reply happens to be `abstain` (an empty pack or a failed
 gateway call both also produce `kind=abstain` but leave this field `false` —
-the same field name/shape `RagAnswerService`'s older, evidence-only audit
-entry already uses; see this file's "Ask Raffa — query router" section
+the same field name/shape the older, evidence-only audit
+entry used; see this file's "Ask Raffa — query router" section
 above). Since task T-01 / F2-T01 the same row also carries `turnId=<id>`
 (random, 16 hex) and, for a turn that ran Ask's agentic flow, the flow's
 outcome as names and counts only -- `runId=`, `stepsRun=N steps=a,b,c`,

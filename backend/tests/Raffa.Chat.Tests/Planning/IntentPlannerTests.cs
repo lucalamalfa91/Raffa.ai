@@ -181,6 +181,34 @@ public sealed class IntentPlannerTests
         Assert.Equal(AskIntent.StructuredFact, result.Intent);
     }
 
+    // R1-02: the notice lexicon has one definition (IntentPlanner), which the composition root reads
+    // through IsNoticeQuestion instead of keeping a copy of its own.
+    [Theory]
+    [InlineData("What is the notice period for this contract?")]
+    [InlineData("What's the cancellation deadline for this contract?")]
+    [InlineData("Quando dobbiamo dare il preavviso di disdetta a questo fornitore?")]
+    [InlineData("qual e il periodo di DISDETTA period")]
+    public void IsNoticeQuestion_matches_the_notice_lexicon_and_agrees_with_the_planner(string question)
+    {
+        Assert.True(IntentPlanner.IsNoticeQuestion(question));
+        Assert.Equal(AskIntent.StructuredFact, _planner.Plan(question, namedSupplier: null).Intent);
+    }
+
+    [Theory]
+    [InlineData("What liability coverage do we have on file?")]
+    [InlineData("Is my Allianz contract above market?")]
+    [InlineData("noticeable savings")]
+    public void IsNoticeQuestion_does_not_match_questions_outside_the_notice_lexicon(string question)
+    {
+        Assert.False(IntentPlanner.IsNoticeQuestion(question));
+    }
+
+    [Fact]
+    public void IsNoticeQuestion_rejects_a_null_question()
+    {
+        Assert.Throws<ArgumentNullException>(() => IntentPlanner.IsNoticeQuestion(null!));
+    }
+
     [Fact]
     public void Screenshot_Q3_italian_astercloud_negotiation_question_plans_to_renewal_strategy()
     {

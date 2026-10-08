@@ -1,4 +1,3 @@
-using Raffa.Chat.Application;
 using Raffa.Savings.Application;
 
 namespace Raffa.Api.Tests;
@@ -6,9 +5,10 @@ namespace Raffa.Api.Tests;
 /// <summary>
 /// S-T29 (task E18/F03/US02/T01, NW-32; ADR-011 w16 clause 16): "the two caller-less sites write
 /// the reserved <c>system:&lt;component&gt;</c> principal, and that string is rejected as a token
-/// subject — the two namespaces provably cannot collide." <see cref="RagAnswerService.AnswerAsync"/>
-/// and <see cref="SavingsOpportunityService.CreateAsync"/> are the two write sites with no HTTP
-/// caller (see each type's own <c>SystemActor</c> doc comment).
+/// subject — the two namespaces provably cannot collide." <see cref="SavingsOpportunityService.CreateAsync"/>
+/// is the public write site with no HTTP caller (see that type's own <c>SystemActor</c> doc comment;
+/// the other one, the legacy evidence-only <c>RagAnswerService</c>, was removed with its never-wired
+/// call path, so the reserved <c>system:rag-answer</c> principal is no longer written by anything).
 ///
 /// <para>
 /// This proves the <b>structural</b> half of the disjointness claim (ADR-011 w16 clause 16a): a
@@ -26,7 +26,6 @@ namespace Raffa.Api.Tests;
 public sealed class ReservedSystemActorTests
 {
     [Theory]
-    [InlineData(RagAnswerService.SystemActor)]
     [InlineData(SavingsOpportunityService.SystemActor)]
     public void Reserved_principal_is_never_a_valid_guid_so_it_can_never_collide_with_a_resolved_token_subject(
         string reservedActor)
@@ -36,10 +35,8 @@ public sealed class ReservedSystemActorTests
     }
 
     [Fact]
-    public void Reserved_principals_use_the_documented_system_prefix_and_are_themselves_distinct()
+    public void Reserved_principals_use_the_documented_system_prefix()
     {
-        Assert.StartsWith("system:", RagAnswerService.SystemActor, StringComparison.Ordinal);
         Assert.StartsWith("system:", SavingsOpportunityService.SystemActor, StringComparison.Ordinal);
-        Assert.NotEqual(RagAnswerService.SystemActor, SavingsOpportunityService.SystemActor);
     }
 }

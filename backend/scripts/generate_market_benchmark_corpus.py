@@ -12,6 +12,7 @@ Writes:
                                                   generated record replaced by this run's.
   backend/fixtures/market-benchmarks/*.md          benchmark reports by country, company size and
                                                   product category, aggregated from the corpus.
+                                                  (git-ignored: a development artefact, not tracked)
 
 Deterministic (fixed seed). Run:  python3 backend/scripts/generate_market_benchmark_corpus.py
 """

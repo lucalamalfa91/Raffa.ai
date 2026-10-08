@@ -5,8 +5,7 @@ namespace Raffa.Chat.Application.Answering;
 /// <summary>
 /// The outcome of <see cref="AnswerComposer.AnswerAsync"/> — the final, guard-approved (or guard
 /// -downgraded) result, plus whether a guard ever intervened for this turn (folded into the
-/// per-turn audit entry as <c>abstainGuardIntervened</c>, mirroring
-/// <c>Application.RagAnswerService</c>'s identical audit field for the older, evidence-only path).
+/// per-turn audit entry as <c>abstainGuardIntervened</c>).
 /// </summary>
 /// <param name="Result">The result callers should actually use — the first attempt when it passed
 /// both guards, the retry when the first failed but the retry passed, the answer

@@ -62,10 +62,6 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
             return CouncilOutcome.Empty;
         }
 
-        var agentsRun = new List<string>();
-        var failures = new List<string>();
-        var goalDto = ToGoalDto(goal);
-
         var tenantItems = pack.Where(i => i.Corpus == PackCorpus.Tenant).Take(options.MaxItemsPerAgent).ToList();
         // The market analyst also reads what the market data check found missing on the contract.
         var marketItems = pack
@@ -74,6 +70,20 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
                 i.CitationKey.StartsWith("calc:contract-gaps", StringComparison.Ordinal))
             .Take(options.MaxItemsPerAgent)
             .ToList();
+
+        // Precondition (R1-05): the council reads the tenant's and the market's evidence. A pack of
+        // calculator and playbook items only (no tenant item, no market item, no lever or gap
+        // calculation for the market analyst) gives both analysts nothing to read, and the
+        // strategist would run on empty findings - a model call with no input of its own. Not
+        // convened: no agent runs, so none is reported in AgentsRun.
+        if (tenantItems.Count == 0 && marketItems.Count == 0)
+        {
+            return CouncilOutcome.Empty;
+        }
+
+        var agentsRun = new List<string>();
+        var failures = new List<string>();
+        var goalDto = ToGoalDto(goal);
 
         // ----- Round one: two analysts, in parallel, over disjoint evidence -----
         var contractTask = tenantItems.Count > 0

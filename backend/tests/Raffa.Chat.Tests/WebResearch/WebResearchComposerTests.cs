@@ -91,6 +91,49 @@ public sealed class WebResearchComposerTests
         Assert.Contains("[3]", outcome.GuardViolation, StringComparison.Ordinal);
     }
 
+    // R1-04: the composer no longer runs GroundingGuard on top of WebGuard (its checks were
+    // tautological over the pack built from the same sources). These pin the cases GroundingGuard
+    // used to catch - an empty summary, a marker numbered 0, a marker past the list - to WebGuard.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task A_blank_summary_is_an_abstain_never_an_empty_answer(string summary)
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(summary, Sources, OffTopic: false, Metadata));
+
+        var outcome = await Compose(gateway).ComposeAsync("saas renewal practice", "MarketPractice", "en");
+
+        Assert.Equal(WebResearchOutcomeKind.Abstained, outcome.Kind);
+        Assert.True(outcome.GuardIntervened);
+        Assert.Empty(outcome.Citations);
+    }
+
+    [Fact]
+    public async Task A_marker_numbered_zero_is_an_abstain()
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(
+            "Common practice [0].", Sources, OffTopic: false, Metadata));
+
+        var outcome = await Compose(gateway).ComposeAsync("saas renewal practice", "MarketPractice", "en");
+
+        Assert.Equal(WebResearchOutcomeKind.Abstained, outcome.Kind);
+        Assert.Contains("[0]", outcome.GuardViolation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_answer_cites_every_source_in_the_tools_own_order_even_when_the_summary_marks_only_one()
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(
+            "Public, unverified: a 5-10% uplift cap is common [1].", Sources, OffTopic: false, Metadata));
+
+        var outcome = await Compose(gateway).ComposeAsync("saas renewal uplift", "MarketPractice", "en");
+
+        Assert.Equal(WebResearchOutcomeKind.Answered, outcome.Kind);
+        Assert.Equal([1, 2], outcome.Citations.Select(c => c.N).ToArray());
+        Assert.Equal("https://example.com/procurement/saas-renewals", outcome.Citations[0].Href);
+        Assert.Equal("https://example.org/negotiation/levers", outcome.Citations[1].Href);
+    }
+
     [Fact]
     public async Task No_sources_at_all_is_an_abstain_never_an_answer()
     {
