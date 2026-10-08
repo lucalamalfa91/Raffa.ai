@@ -201,11 +201,6 @@ internal sealed class CapabilityCheckDispatcher(
     /// <summary>The check is still running when the answer is persisted: append its follow-up from
     /// the background once it completes. Failures are logged, never surfaced.</summary>
     public void AppendWhenDone(
-            // Its own run inside the turn that started it (the turn id flows in from AskAsync), so
-            // the investigator's ai.* row reads run=<id> step=capability-investigator.
-            using var run = RunContext.BeginRun();
-            using var step = RunContext.BeginStep("capability-investigator");
-
         Task<CopilotReply?> check,
         TenantId tenantId,
         string userId,
@@ -246,6 +241,11 @@ internal sealed class CapabilityCheckDispatcher(
             await using var scope = scopeFactory.CreateAsyncScope();
             var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
             using var tenantScope = tenantContext.BeginScope(request.TenantId);
+
+            // Its own run inside the turn that started it (the turn id flows in from AskAsync), so
+            // the investigator's ai.* row reads run=<id> step=capability-investigator.
+            using var run = RunContext.BeginRun();
+            using var step = RunContext.BeginStep("capability-investigator");
 
             string outcome;
             string? confidence = null;
