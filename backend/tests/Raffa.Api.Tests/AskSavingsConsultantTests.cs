@@ -6,6 +6,7 @@ using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Logging;
 using Raffa.AiGateway.Fixtures;
+using Raffa.Chat.Application.Gaps;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Savings.Application;
 using Raffa.SharedKernel;
@@ -178,11 +179,17 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
         var audit = new RecordingAuditWriter();
         var (host, _) = Host(new Dictionary<EntityId, string> { [serviceNowId] = "ServiceNow" }, audit);
         host = host.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            // Triggered mode (default) makes no investigator call on a savings turn; this test
+            // audits the investigator's own run, so it runs in Always mode.
+            services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>(
+                new StaticGapInvestigationOptions(new GapInvestigationOptions { Mode = GapInvestigationMode.Always }));
             services.AddScoped<IAiGateway>(sp => new LoggingAiGateway(
                 new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()),
                 audit,
                 sp.GetRequiredService<ITenantContext>(),
-                new AiGatewayComplianceOptions()))));
+                new AiGatewayComplianceOptions()));
+        }));
 
         var contract = ServiceNowContract(tenantId, serviceNowId, deadlineInDays: 120);
         await host.SeedContractAsync(contract);

@@ -404,7 +404,8 @@ internal sealed partial class AskCopilotService(
         var investigatorStarted = false;
         var investigatorMode = GapInvestigationMode.Triggered;
         var triggerVerdict = TriggerVerdict.None;
-        var turnId = Guid.NewGuid();
+        // One id per turn, shared with the run telemetry (RunContext) so every audit row of the turn agrees.
+        var turnId = RunContext.Current?.TurnId ?? Guid.NewGuid().ToString("N")[..16];
 
         void StartInvestigator()
         {

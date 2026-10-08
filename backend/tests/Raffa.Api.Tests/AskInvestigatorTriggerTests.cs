@@ -204,7 +204,7 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
 
         var offered = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.AuditAction));
         var turnId = Field(trigger, "turnId");
-        Assert.True(Guid.TryParse(turnId, out _));
+        Assert.Matches("^[0-9a-f]{16}$", turnId);
         Assert.Equal(turnId, Field(outcome, "turnId"));
         Assert.Equal(turnId, Field(offered, "turnId"));
 

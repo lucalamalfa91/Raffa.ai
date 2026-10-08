@@ -36,7 +36,7 @@ internal sealed record CapabilityCheckRequest(
     int ValidatedContractCount,
     string? NamedSupplier,
     Guid? NamedContractId,
-    Guid TurnId = default,
+    string? TurnId = null,
     string Actor = "system");
 
 /// <summary>The one-turn hand-off between <see cref="AskCopilotService.AskAsync"/>, which decides
@@ -51,7 +51,7 @@ internal sealed class CapabilityCheckSlot
     /// <summary>Set by <see cref="AskCopilotService.AskAsync"/> for every checked turn (started or
     /// not): the id of the turn's <c>ask.capability_*</c> audit rows. Empty when the turn was not
     /// eligible for a check at all.</summary>
-    public Guid TurnId { get; set; }
+    public string? TurnId { get; set; }
 }
 
 /// <summary>
@@ -145,7 +145,7 @@ internal sealed class CapabilityCheckDispatcher(
         EntityId conversationId,
         EntityId answeredMessageId,
         CopilotReply followUp,
-        Guid turnId = default,
+        string? turnId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(followUp);
@@ -206,7 +206,7 @@ internal sealed class CapabilityCheckDispatcher(
         string userId,
         EntityId conversationId,
         EntityId answeredMessageId,
-        Guid turnId = default)
+        string? turnId = null)
     {
         ArgumentNullException.ThrowIfNull(check);
 
@@ -296,7 +296,7 @@ internal sealed class CapabilityCheckDispatcher(
     /// never fails a check: a writer that throws is logged and swallowed.
     /// </summary>
     private async Task TryAuditOutcomeAsync(
-        IServiceProvider services, TenantId tenantId, string actor, Guid turnId, string outcome, string? confidence, string? gapKey)
+        IServiceProvider services, TenantId tenantId, string actor, string? turnId, string outcome, string? confidence, string? gapKey)
     {
         try
         {
@@ -320,7 +320,7 @@ internal sealed class CapabilityCheckDispatcher(
         }
     }
 
-    private static string FormatTurnId(Guid turnId) => turnId.ToString("D", CultureInfo.InvariantCulture);
+    private static string FormatTurnId(string? turnId) => turnId ?? "none";
 
     /// <summary>
     /// The follow-up message: "I checked what Raffa.ai can do for your request." then the gap's

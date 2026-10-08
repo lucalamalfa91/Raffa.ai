@@ -115,7 +115,7 @@ internal sealed partial class AskCopilotService
     private async Task WriteTriggerAuditAsync(
         TenantId tenantId,
         string actor,
-        Guid turnId,
+        string turnId,
         string mode,
         TriggerVerdict verdict,
         bool ran,
@@ -129,9 +129,9 @@ internal sealed partial class AskCopilotService
                     actor,
                     CapabilityCheckDispatcher.TriggerAuditAction,
                     CapabilityCheckDispatcher.TriggerAuditResourceType,
-                    turnId.ToString("D", CultureInfo.InvariantCulture),
+                    turnId,
                     clock.UtcNow,
-                    $"turnId={turnId:D} mode={mode} t1={verdict.T1} t2={verdict.T2} t3={verdict.T3} " +
+                    $"turnId={turnId} mode={mode} t1={verdict.T1} t2={verdict.T2} t3={verdict.T3} " +
                     $"ran={ran} reason={verdict.Reason} t3Language={verdict.T3Language ?? "none"} " +
                     $"lexicon={investigatorTrigger.LexiconVersion}"),
                 cancellationToken).ConfigureAwait(false);
