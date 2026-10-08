@@ -98,7 +98,7 @@ public sealed class QuoteEndToEndTests : IClassFixture<QuoteIntegrationFixture>
         Assert.Equal("Completed", body.GetProperty("processingStatus").GetString());
         Assert.Equal(1, body.GetProperty("lineItemCount").GetInt32());
 
-        // AC-4: an image/tiff mime type NativeDocumentTextExtractor.CanHandle always rejects, so
+        // AC-4: an image/png mime type NativeDocumentTextExtractor.CanHandle always rejects, so
         // HybridDocumentParsingService structurally cannot have taken the native path here — this
         // must have gone through the `ocr` gateway role (Document Intelligence, ADR-017).
         Assert.True(

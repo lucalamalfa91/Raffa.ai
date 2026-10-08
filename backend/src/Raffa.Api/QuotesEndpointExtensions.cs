@@ -1,7 +1,10 @@
+using Microsoft.AspNetCore.Http.Features;
 using Raffa.Api.Infrastructure;
+using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Quotes.Application;
 using Raffa.Quotes.Application.Assessment;
 using Raffa.Quotes.Application.Normalization;
+using Raffa.Quotes.Domain;
 using Raffa.SharedKernel;
 
 namespace Raffa.Api;
@@ -67,6 +70,7 @@ public static class QuotesEndpointExtensions
     /// </summary>
     private static async Task<IResult> UploadQuoteAsync(
         HttpRequest request,
+        DocumentAdmissionOptions admissionOptions,
         QuoteUploadService uploadService,
         QuoteExtractionPipeline extractionPipeline,
         ICallerContext callerContext,
@@ -90,11 +94,46 @@ public static class QuotesEndpointExtensions
             return Results.BadRequest("Expected multipart/form-data with a 'file' field.");
         }
 
-        var form = await request.ReadFormAsync(cancellationToken);
+        // Task F6-T04: the same request-level admission `POST /api/documents` applies, in the same
+        // order and with the same answers (413 over `Documents:MaxFileBytes`, 415 for a format the
+        // extension and magic bytes do not agree on), all before any storage, parse or model call.
+        // Previously this endpoint accepted any body of any size and handed it to the parser.
+        var bodyLimit = admissionOptions.MaxFileBytes + DocumentsEndpointExtensions.MultipartFramingAllowanceBytes;
+        if (request.ContentLength is { } declaredLength && declaredLength > bodyLimit)
+        {
+            // The declared body is already over the limit: refuse before reading a single byte.
+            return DocumentsEndpointExtensions.TooLarge(admissionOptions);
+        }
+
+        var bodySizeFeature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (bodySizeFeature is { IsReadOnly: false })
+        {
+            bodySizeFeature.MaxRequestBodySize = bodyLimit;
+        }
+
+        IFormCollection form;
+        try
+        {
+            form = await request.ReadFormAsync(cancellationToken);
+        }
+        catch (BadHttpRequestException exception) when (exception.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            return DocumentsEndpointExtensions.TooLarge(admissionOptions);
+        }
+        catch (InvalidDataException exception)
+        {
+            return Results.BadRequest($"The multipart body could not be read: {exception.Message}");
+        }
+
         var file = form.Files["file"];
         if (file is null || file.Length == 0)
         {
             return Results.BadRequest("A non-empty 'file' form field is required.");
+        }
+
+        if (file.Length > admissionOptions.MaxFileBytes)
+        {
+            return DocumentsEndpointExtensions.TooLarge(admissionOptions);
         }
 
         // Task E05/F02/US01/T01 (market-assessment): optional form fields — see Quote's own doc
@@ -124,13 +163,28 @@ public static class QuotesEndpointExtensions
             fileBytes = buffer.ToArray();
         }
 
+        if (fileBytes.LongLength > admissionOptions.MaxFileBytes)
+        {
+            return DocumentsEndpointExtensions.TooLarge(admissionOptions);
+        }
+
+        if (!DocumentFormatSniffer.TryDetect(file.FileName, fileBytes, out var format))
+        {
+            return Results.Json(
+                DocumentFormatSniffer.RejectionMessage,
+                statusCode: StatusCodes.Status415UnsupportedMediaType);
+        }
+
         var tenantId = new TenantId(tenantGuid);
 
+        // The sniffed, canonical MIME type -- not the unverified multipart Content-Type, which is
+        // often application/octet-stream -- selects the native-vs-OCR parse path, exactly as for
+        // `POST /api/documents`.
         using var storageContent = new MemoryStream(fileBytes);
         var result = await uploadService.UploadAsync(
             tenantId,
             file.FileName,
-            file.ContentType,
+            format.MimeType,
             storageContent,
             caller.Identity!,
             cancellationToken,
@@ -146,12 +200,42 @@ public static class QuotesEndpointExtensions
 
         var uploaded = result.Value;
 
+        // Task F6-T04 (dedup by checksum): the tenant already holds a successfully extracted quote
+        // with these exact bytes and header fields. Answer with it -- same body shape, `201` like
+        // every success of this endpoint (the web client treats only 201 as success) plus
+        // `deduplicated: true` -- and run nothing: no second job, no second model call.
+        if (uploaded.IsDuplicate)
+        {
+            return Results.Created($"/api/quotes/{uploaded.QuoteId}", new
+            {
+                id = uploaded.QuoteId.Value,
+                fileName = uploaded.FileName,
+                mimeType = uploaded.MimeType,
+                processingStatus = uploaded.ProcessingStatus.ToString(),
+                lineItemCount = uploaded.LineItemCount,
+                normalizedLineItemCount = uploaded.NormalizedLineItemCount,
+                unresolvedNormalizationCount = uploaded.LineItemCount - uploaded.NormalizedLineItemCount,
+                unmatchedSkuCount = uploaded.UnmatchedSkuCount,
+                skippedLineCount = 0,
+                invalidLineCount = 0,
+                deduplicated = true,
+                supplier = uploaded.Supplier,
+                currency = uploaded.Currency,
+                geography = uploaded.Geography,
+                purchaseDate = uploaded.PurchaseDate,
+                createdAt = uploaded.CreatedAt,
+            });
+        }
+
         var processingResult = await extractionPipeline.ProcessAsync(
             tenantId, uploaded.QuoteId, uploaded.FileName, uploaded.MimeType, fileBytes, cancellationToken);
 
+        // A pipeline failure has already moved the quote to Failed (task F6-T02: the pipeline always
+        // leaves a terminal state), so say that -- the pre-processing "Uploaded" would describe a
+        // row that no longer exists in that state.
         var processingStatus = processingResult.IsSuccess
             ? processingResult.Value.ProcessingStatus
-            : uploaded.ProcessingStatus;
+            : QuoteProcessingStatus.Failed;
         var lineItemCount = processingResult.IsSuccess ? processingResult.Value.LineItemCount : 0;
         // Task E05/F01/US02/T01 (sku-normalization, AC-2 "Show unmatched SKUs..."): 0 on a pipeline
         // failure, same honest "nothing ran yet" fallback lineItemCount already uses above.
@@ -173,6 +257,11 @@ public static class QuotesEndpointExtensions
             normalizedLineItemCount,
             unresolvedNormalizationCount,
             unmatchedSkuCount,
+            // Task F6-T04: rows the model returned but that were not persisted (blank description,
+            // or a value outside its valid range); invalidLineCount is the out-of-range subset.
+            skippedLineCount = processingResult.IsSuccess ? processingResult.Value.SkippedCount : 0,
+            invalidLineCount = processingResult.IsSuccess ? processingResult.Value.InvalidCount : 0,
+            deduplicated = false,
             // Task E05/F02/US01/T01 (market-assessment): echoes what was actually recorded
             // (including a null, when the caller did not supply one) so a caller can see
             // immediately whether GET .../assessment will be able to match this quote's lines yet.

@@ -83,7 +83,7 @@ public static class DocumentsEndpointExtensions
     /// <summary>Allowance for multipart framing (boundaries, part headers) on top of
     /// <see cref="DocumentAdmissionOptions.MaxFileBytes"/> when sizing the request-body cap; the
     /// file itself is still measured exactly.</summary>
-    private const long MultipartFramingAllowanceBytes = 1024 * 1024;
+    internal const long MultipartFramingAllowanceBytes = 1024 * 1024;
 
     public static IEndpointRouteBuilder MapDocumentsEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -726,7 +726,7 @@ public static class DocumentsEndpointExtensions
         return true;
     }
 
-    private static IResult TooLarge(DocumentAdmissionOptions options) =>
+    internal static IResult TooLarge(DocumentAdmissionOptions options) =>
         Results.Json(
             $"Raffa accepts files up to {options.MaxFileBytes / (1024 * 1024)} MB. This file is larger.",
             statusCode: StatusCodes.Status413PayloadTooLarge);
