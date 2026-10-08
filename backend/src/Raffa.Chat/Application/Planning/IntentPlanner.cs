@@ -139,6 +139,19 @@ public sealed class IntentPlanner
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
+    /// Whether <paramref name="question"/> speaks the notice lexicon (notice / preavviso / disdetta /
+    /// cancellation deadline). The one definition of that lexicon: this planner uses it to steer the
+    /// question to <see cref="AskIntent.StructuredFact"/>, and the composition root
+    /// (<c>Raffa.Api.AskCopilotService</c>) uses it for the notice fallbacks and the interview
+    /// context instead of keeping a copy of its own.
+    /// </summary>
+    public static bool IsNoticeQuestion(string question)
+    {
+        ArgumentNullException.ThrowIfNull(question);
+        return NoticePattern.IsMatch(question);
+    }
+
+    /// <summary>
     /// Plans <paramref name="question"/>, already known to be
     /// <see cref="GateLabel.InDomain"/> (<see cref="Gate.DomainGate.Classify"/>).
     /// </summary>
