@@ -53,7 +53,8 @@ public sealed class FeedbackService(
     FeedbackOptions options,
     ITenantContext tenantContext,
     IClock clock,
-    IAuditWriter auditWriter)
+    IAuditWriter auditWriter,
+    IFeedbackNameSource nameSource)
 {
     public const string AuditSubmittedAction = "conversation.feedback.submitted";
     private const string AuditResourceType = "feature_request";
@@ -111,11 +112,34 @@ public sealed class FeedbackService(
         };
 
         dbContext.FeatureRequests.Add(request);
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // F4-D02: two submissions of the same offer raced past the check above; the unique
+            // index on (tenant, message) let exactly one in. The loser is a 409 with the winner's
+            // row, never a 500 and never a second GitHub issue.
+            dbContext.Entry(request).State = EntityState.Detached;
+            var winner = await dbContext.FeatureRequests
+                .AsNoTracking()
+                .SingleOrDefaultAsync(r => r.TenantId == tenantId && r.MessageId == messageId, cancellationToken)
+                .ConfigureAwait(false);
+            if (winner is null)
+            {
+                throw;
+            }
+
+            return new FeedbackSubmitResult(FeedbackSubmitStatus.AlreadySubmitted, ToResult(winner), null);
+        }
 
         // Best-effort publish: a failing or missing publisher never fails the submission.
+        // F4-T01: the issue carries the names the free text must not leak (the tenant's suppliers,
+        // the submitting user); the issue text scrubs the answer with them when it is composed.
         var issue = new FeatureRequestIssue(
-            gap.Key, gap.Title, gap.Language, options.Environment, request.WorkspaceHash, answers, gap.Discovery);
+            gap.Key, gap.Title, gap.Language, options.Environment, request.WorkspaceHash, answers, gap.Discovery,
+            await KnownNamesAsync(tenantId, userId, cancellationToken).ConfigureAwait(false));
         FeatureRequestPublishResult publish;
         try
         {
@@ -155,6 +179,37 @@ public sealed class FeedbackService(
             cancellationToken).ConfigureAwait(false);
 
         return new FeedbackSubmitResult(FeedbackSubmitStatus.Success, ToResult(request), BuildConfirmation(request, messageId));
+    }
+
+    /// <summary>The tenant's supplier names (best effort: a source that fails knows none) and the
+    /// submitting user — what the scrub removes from the free text by name.</summary>
+    private async Task<IReadOnlyList<string>> KnownNamesAsync(TenantId tenantId, string userId, CancellationToken cancellationToken)
+    {
+        var names = new List<string> { userId };
+        try
+        {
+            names.AddRange(await nameSource.GetSupplierNamesAsync(tenantId, cancellationToken).ConfigureAwait(false));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The scrub still removes every name it can recognise by shape.
+        }
+
+        return names;
+    }
+
+    /// <summary>A unique-index violation (Postgres SQLSTATE 23505) behind an EF Core save.</summary>
+    public static bool IsUniqueViolation(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The confirmation turn: an <see cref="ReplyKind.Answer"/> with no citation, one

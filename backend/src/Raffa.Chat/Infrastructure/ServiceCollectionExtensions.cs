@@ -131,6 +131,10 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new FeedbackOptions());
         services.TryAddScoped<IFeatureRequestPublisher, NullFeatureRequestPublisher>();
 
+        // F4-T01: the host supplies the tenant's supplier names so the free text of a feedback
+        // answer is scrubbed of them before it is published; without a host source none are known.
+        services.TryAddScoped<IFeedbackNameSource, NullFeedbackNameSource>();
+
         // ADR-030: the interview (kill switch + bounds) — a configured value registered before
         // this call wins, same TryAdd contract as CouncilOptions above.
         services.TryAddSingleton(new InterviewOptions());

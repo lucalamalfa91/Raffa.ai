@@ -31,7 +31,8 @@ internal sealed class GitHubIssueFeatureRequestPublisher(
     public const string ApiVersion = "2022-11-28";
     public const string UserAgent = "Raffa.ai-feedback";
 
-    public bool IsConfigured => options.GitHub.Enabled && !string.IsNullOrWhiteSpace(options.GitHub.Token);
+    // F4-D02: never configured in an exposed environment, even if a token and Enabled are set.
+    public bool IsConfigured => options.GitHubPublishingActive && !string.IsNullOrWhiteSpace(options.GitHub.Token);
 
     public async Task<FeatureRequestPublishResult> TryPublishAsync(FeatureRequestIssue issue, CancellationToken cancellationToken = default)
     {

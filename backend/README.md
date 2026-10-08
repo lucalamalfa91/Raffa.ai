@@ -1509,6 +1509,43 @@ It now rides the same route with one branch before the planner:
    refuses to start, `FeedbackHostOptions.ValidateOrThrow`). `FeatureRequestIssueText`
    is the whole allow-list of a public issue. `appsettings.Development.json`
    sets `Feedback:GitHub:Enabled=false`, the stored-only path.
+   **Privacy of the free text (F4-T01)**: the one field a user types is
+   scrubbed by `FeatureRequestScrubber` when the issue is composed — links,
+   addresses, phone numbers, IBAN/tax codes, ids, amounts and any token with a
+   digit become `[link]`/`[email]`/`[number]`/`[id]`, every supplier of the
+   tenant (`IFeedbackNameSource`, the host's `PortfolioFeedbackNameSource`) and
+   the submitting user become `[name]`, and so does any other capitalised run
+   that is not product vocabulary. **One offer, one report (F4-D02)**: the
+   unique index decides a race, the loser gets `AlreadySubmitted` (409) and no
+   second issue. `Feedback__ExposedEnvironment=true` switches the public
+   GitHub channel off whatever `Feedback__GitHub__Enabled` says (no token
+   needed; every submission is stored `recorded`).
+
+6. **The capability investigator** (`Raffa.Chat.Application.Gaps`, ADR-031,
+   INV-01..05, decision D3). It no longer costs a `gaps-v1` call on every
+   typed in-domain turn: `Chat:GapInvestigation:Mode` is `Triggered` by
+   default, and `InvestigatorTrigger` (pure, no model) decides — T1 the
+   planner recognised no intent (`IntentPlanBasis.Fallback`), T2 Raffa could
+   not answer (abstain, fallback answer, guard downgrade), T3 an operational
+   request nothing in the catalog covers (verbs of doing + request formulas +
+   deliverable nouns, in `Gaps/Lexicon/investigator-trigger-lexicon.json`,
+   versioned, it/en baseline and fr/es/de seed; vetoed when the verb belongs
+   to a third party, to the user's own obligation, or the question is about
+   the text of a clause). T3 reads the question alone, so the check starts
+   before the answer and runs beside it; T1/T2 are decided right after the
+   reply, so the answer is never delayed and the follow-up is still a
+   separate message (`CapabilityCheckDispatcher.AppendWhenDone`). `Always`
+   restores the old behaviour for diagnosis, `Enabled=false` is the kill
+   switch, both read through `IOptionsMonitor` (no restart). Audit, never
+   any text: `ask.capability_trigger` (mode, t1/t2/t3, ran, reason, lexicon
+   version) for every eligible turn, `ask.capability_outcome` (question,
+   supported, known-gap, gap, low-confidence, unusable, failed, timeout,
+   drop; confidence; gap key) for every started check, all sharing one
+   `turnId`. The offline evaluation set (150 phrases, 30 per language,
+   `tests/Raffa.AiEval/investigator-set/`) is run by
+   `Raffa.AiEval.Investigator` and writes
+   `reports/investigator-last-run.md` (precision/recall per trigger, per
+   language and overall; the 90/60/70 targets are alarms, not gates).
 
 Golden cases `seeded-capability_gap-email-draft-salesforce-en` (the
 screenshot question, → `draft`), `seeded-capability_gap-email-draft-unscoped-it`,

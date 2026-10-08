@@ -266,7 +266,13 @@ feedbackHostOptions.ValidateOrThrow();
 builder.Services.AddSingleton(feedbackHostOptions);
 builder.Services.AddSingleton(new Raffa.Chat.Application.Feedback.FeedbackOptions { Environment = feedbackHostOptions.Environment });
 
-if (feedbackHostOptions.GitHub.Enabled)
+// F4-T01: the tenant's supplier names, so the free text of an answer is scrubbed of them before
+// it can reach a public issue (registered before AddChatModule, whose default knows none).
+builder.Services.AddScoped<Raffa.Chat.Application.Feedback.IFeedbackNameSource, PortfolioFeedbackNameSource>();
+
+// F4-D02: Feedback:ExposedEnvironment switches the public GitHub channel off whatever
+// GitHub:Enabled says; every submission is then stored "recorded" and nothing leaves the tenant.
+if (feedbackHostOptions.GitHubPublishingActive)
 {
     builder.Services.AddHttpClient<Raffa.Chat.Application.Feedback.IFeatureRequestPublisher, GitHubIssueFeatureRequestPublisher>(client =>
     {
