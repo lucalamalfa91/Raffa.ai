@@ -35,9 +35,11 @@ public sealed class FoundryRetryPolicy(
     public async Task<Result<HttpResponseMessage>> SendAsync(
         HttpClient httpClient,
         Func<CancellationToken, Task<HttpRequestMessage>> requestFactory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? maxRetriesOverride = null,
+        TimeSpan? attemptTimeout = null)
     {
-        var maxRetries = Math.Max(0, options.MaxRetries);
+        var maxRetries = Math.Max(0, maxRetriesOverride ?? options.MaxRetries);
         string? lastOutcome = null;
         string? url = null;
 
@@ -48,20 +50,32 @@ public sealed class FoundryRetryPolicy(
             TimeSpan? retryAfter = null;
             HttpResponseMessage? response = null;
 
+            // A role-specific per-attempt timeout (research) is a linked token cancelled after the
+            // limit; the caller's own token stays distinguishable from it.
+            using var attemptCts = attemptTimeout is null
+                ? null
+                : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptCts?.CancelAfter(attemptTimeout!.Value);
+            var attemptToken = attemptCts?.Token ?? cancellationToken;
+
             try
             {
-                using var request = await requestFactory(cancellationToken).ConfigureAwait(false);
+                using var request = await requestFactory(attemptToken).ConfigureAwait(false);
                 url ??= request.RequestUri?.ToString();
-                response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                response = await httpClient.SendAsync(request, attemptToken).ConfigureAwait(false);
             }
             catch (HttpRequestException exception)
             {
                 lastOutcome = $"{exception.GetType().Name}: {exception.Message}";
             }
-            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // HttpClient.Timeout surfaces as a cancellation that nobody asked for.
-                lastOutcome = $"timed out after {httpClient.Timeout.TotalSeconds:0}s";
+                // HttpClient.Timeout (or the role's own attempt timeout) surfaces as a cancellation
+                // that nobody asked for.
+                var seconds = attemptTimeout is { } limit && limit < httpClient.Timeout
+                    ? limit.TotalSeconds
+                    : httpClient.Timeout.TotalSeconds;
+                lastOutcome = $"timed out after {seconds:0}s";
             }
 
             if (response is not null)

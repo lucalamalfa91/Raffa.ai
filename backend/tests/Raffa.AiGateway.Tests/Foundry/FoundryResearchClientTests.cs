@@ -144,7 +144,8 @@ public class FoundryResearchClientTests
                         sources = new[]
                         {
                             new { n = 1, url = "https://example.com/a", title = "Titled by the model" },
-                            new { n = 2, url = "https://made-up.example/never-visited", title = "Invented" },
+                            new { n = 2, url = "https://example.org/b", title = "B" },
+                            new { n = 3, url = "https://made-up.example/never-visited", title = "Invented" },
                         },
                     },
                     ("https://example.com/a", ""),

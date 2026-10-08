@@ -10,7 +10,10 @@ namespace Raffa.AiGateway.Foundry;
 /// The <c>research</c> role (ADR-030): one Responses API call with exactly one hosted
 /// <c>web_search</c> tool, on its own deployment (<see cref="AiGatewayModelOptions.Research"/>),
 /// never on the answer deployment and never with a context pack. Sources are taken from the tool's
-/// own <c>url_citation</c> annotations — a URL the model merely typed is not a source. Strict JSON
+/// own <c>url_citation</c> annotations — a URL the model merely typed is not a source — and the
+/// summary's <c>[n]</c> markers are resolved against the model's own <c>sources[]</c> list by
+/// normalised URL (<see cref="WebSourceReconciler"/>, F3-T02). The call must end <c>completed</c>;
+/// it has its own retry count and attempt timeout (F3-T03). Strict JSON
 /// output (<c>summaryMarkdown</c>, <c>offTopic</c>, <c>sources</c>), the same structured-output
 /// discipline every other role already uses.
 /// </summary>
@@ -18,8 +21,11 @@ public sealed class FoundryResearchClient(
     FoundryHttpJsonClient httpJsonClient,
     AiGatewayFoundryOptions foundryOptions,
     AiGatewayModelOptions modelOptions,
-    IClock clock)
+    IClock clock,
+    AiGatewayResilienceOptions? resilienceOptions = null)
 {
+    private readonly AiGatewayResilienceOptions _resilience = resilienceOptions ?? new AiGatewayResilienceOptions();
+
     public const string WebSearchToolType = "web_search";
     public const string SchemaName = "raffa_web_research";
     public const string RelativeUrl = "openai/v1/responses";
@@ -111,13 +117,30 @@ public sealed class FoundryResearchClient(
             new ResponsesText(new ResponsesTextFormat("json_schema", SchemaName, Strict: true, OutputSchema)),
             model.MaxCompletionTokens);
 
+        // F3-T03: the research role has its own retry count and per-attempt timeout, apart from
+        // extraction's (AiGateway:Resilience:MaxRetries / RequestTimeoutSeconds).
         var response = await httpJsonClient
-            .PostAsync<ResponsesRequest, ResponsesResponse>(RelativeUrl, wireRequest, cancellationToken)
+            .PostAsync<ResponsesRequest, ResponsesResponse>(
+                RelativeUrl,
+                wireRequest,
+                cancellationToken,
+                maxRetriesOverride: Math.Max(0, _resilience.ResearchMaxRetries),
+                attemptTimeout: TimeSpan.FromSeconds(Math.Max(1, _resilience.ResearchRequestTimeoutSeconds)))
             .ConfigureAwait(false);
 
         if (response.IsFailure)
         {
             return Result<AiResearchResult>.Failure(response.Error);
+        }
+
+        // F3-T02: a Responses API call that stopped short (max_output_tokens, a content stop, a
+        // provider failure) is a handled failure — never a truncated JSON that happens to parse.
+        if (!string.Equals(response.Value.Status, "completed", StringComparison.OrdinalIgnoreCase))
+        {
+            var reason = response.Value.IncompleteDetails?.Reason;
+            return Result<AiResearchResult>.Failure(
+                $"{AiGatewayErrors.ResearchOutputPrefix} Foundry research on deployment '{model.ModelId}' did not complete " +
+                $"(status {response.Value.Status ?? "unknown"}{(string.IsNullOrWhiteSpace(reason) ? string.Empty : ", " + reason)}).");
         }
 
         var message = response.Value.Output?
@@ -128,7 +151,7 @@ public sealed class FoundryResearchClient(
         if (content?.Text is not { Length: > 0 } text)
         {
             return Result<AiResearchResult>.Failure(
-                $"Foundry research on deployment '{model.ModelId}' returned no output text (status {response.Value.Status ?? "unknown"}).");
+                $"{AiGatewayErrors.ResearchOutputPrefix} Foundry research on deployment '{model.ModelId}' returned no output text (status {response.Value.Status ?? "unknown"}).");
         }
 
         ResearchPayload? payload;
@@ -138,52 +161,33 @@ public sealed class FoundryResearchClient(
         }
         catch (JsonException ex)
         {
-            return Result<AiResearchResult>.Failure($"Foundry research output was not the expected JSON: {ex.Message}");
+            return Result<AiResearchResult>.Failure($"{AiGatewayErrors.ResearchOutputPrefix} Foundry research output was not the expected JSON: {ex.Message}");
         }
 
         if (payload is null)
         {
-            return Result<AiResearchResult>.Failure("Foundry research output parsed to null.");
+            return Result<AiResearchResult>.Failure($"{AiGatewayErrors.ResearchOutputPrefix} Foundry research output parsed to null.");
         }
 
-        // Only the tool's own citations count as sources; the payload's list may only re-title them.
-        var titles = (payload.Sources ?? [])
-            .Where(s => !string.IsNullOrWhiteSpace(s.Url))
-            .GroupBy(s => NormalizeUrl(s.Url!), StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => g.First().Title ?? string.Empty, StringComparer.Ordinal);
-
-        var sources = new List<AiWebSource>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var annotation in content.Annotations ?? [])
-        {
-            if (!string.Equals(annotation.Type, "url_citation", StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(annotation.Url)
-                || !seen.Add(NormalizeUrl(annotation.Url)))
-            {
-                continue;
-            }
-
-            var title = !string.IsNullOrWhiteSpace(annotation.Title)
-                ? annotation.Title!
-                : titles.TryGetValue(NormalizeUrl(annotation.Url), out var payloadTitle) && !string.IsNullOrWhiteSpace(payloadTitle)
-                    ? payloadTitle
-                    : annotation.Url;
-
-            sources.Add(new AiWebSource(annotation.Url, title, Snippet: string.Empty));
-            if (sources.Count == request.MaxSources)
-            {
-                break;
-            }
-        }
+        // F3-T02: the final list is the model's own sources[] (ordered by n) intersected, by
+        // normalised URL, with the tool's url_citation annotations; markers are renumbered to it.
+        var reconciled = payload.OffTopic
+            ? new ReconciledResearch(string.Empty, [])
+            : WebSourceReconciler.Reconcile(
+                payload.SummaryMarkdown,
+                (payload.Sources ?? []).Select(s => new ResearchModelSource(s.N, s.Url, s.Title)).ToList(),
+                (content.Annotations ?? [])
+                    .Where(a => string.Equals(a.Type, "url_citation", StringComparison.OrdinalIgnoreCase))
+                    .Select(a => new ResearchToolCitation(a.Url, a.Title))
+                    .ToList(),
+                request.MaxSources);
 
         var usage = response.Value.Usage is { } u ? new AiTokenUsage(u.InputTokens, u.OutputTokens) : null;
         var metadata = FoundryCallMetadataFactory.Build(model, request.PromptVersion, clock, request.SystemPrompt + " " + input, usage);
 
         return Result<AiResearchResult>.Success(
-            new AiResearchResult(payload.OffTopic ? string.Empty : payload.SummaryMarkdown ?? string.Empty, sources, payload.OffTopic, metadata));
+            new AiResearchResult(reconciled.SummaryMarkdown, reconciled.Sources, payload.OffTopic, metadata));
     }
-
-    private static string NormalizeUrl(string url) => url.Trim().TrimEnd('/');
 
     private sealed record ResearchPayload(string? SummaryMarkdown, bool OffTopic, IReadOnlyList<ResearchPayloadSource>? Sources);
 
