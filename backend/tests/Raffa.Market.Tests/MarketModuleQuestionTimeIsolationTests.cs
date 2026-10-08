@@ -116,8 +116,9 @@ public sealed class MarketModuleQuestionTimeIsolationTests : IAsyncLifetime
                 RecordId = deal.RecordId,
                 ChunkIndex = 0,
                 ChunkText = "Salesforce Sales Cloud Enterprise note",
-                Vector = new Vector(new float[MarketEmbeddingEntity.VectorDimensions]),
-                Model = "seed-model",
+                Vector = new Vector(Enumerable.Repeat(0.05f, MarketEmbeddingEntity.VectorDimensions).ToArray()), // non-zero: pgvector HNSW (cosine) skips zero-norm vectors
+                Model = "text-embedding-3-small",
+                IsFixture = true,
                 CreatedAt = DateTimeOffset.UtcNow,
             });
             await dbContext.SaveChangesAsync();

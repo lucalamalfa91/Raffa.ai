@@ -355,7 +355,7 @@ public sealed class MarketMigrationScriptTests : IAsyncLifetime
             "SELECT 'R-' || g, 'v1', 'Internal Dataset', '{}'::jsonb, 'x', now() FROM generate_series(1, 200) AS g; " +
             "INSERT INTO market_embedding (id, record_id, chunk_index, chunk_text, vector, model, created_at) " +
             "SELECT gen_random_uuid(), 'R-' || g, 0, 'note', " +
-            "(SELECT array_agg(random()::real + (g * 0)::real) FROM generate_series(1, 1536))::vector(1536), " +
+            "(SELECT array_agg(random()::real) FROM generate_series(1, 1536) AS s WHERE s > -g)::vector(1536), " +
             "'text-embedding-3-small', now() FROM generate_series(1, 200) AS g;",
             connection))
         {
