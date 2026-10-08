@@ -31,8 +31,17 @@ namespace Raffa.AiGateway.Contracts;
 /// assembled yet — the Foundry `answer` role then grounds only in <see cref="Evidence"/>, same as
 /// the fixture.
 /// </param>
+/// <param name="PromptVersion">
+/// Version tag of <see cref="SystemPrompt"/> (e.g. <c>answer-v2.5</c>), logged as
+/// <see cref="AiCallMetadata.PromptVersion"/> and echoed onto the reply's provenance (F1-T02). The
+/// client no longer assumes the version of its own default persona prompt for a prompt the caller
+/// wrote: a caller that supplies <see cref="SystemPrompt"/> supplies this too. When
+/// <see cref="SystemPrompt"/> is <see langword="null"/> the default prompt's own version is used and
+/// this value is ignored.
+/// </param>
 public sealed record AiAnswerRequest(
     string Question,
     IReadOnlyList<AiEvidenceSnippet> Evidence,
     string? SystemPrompt = null,
-    string? PackJson = null);
+    string? PackJson = null,
+    string? PromptVersion = null);

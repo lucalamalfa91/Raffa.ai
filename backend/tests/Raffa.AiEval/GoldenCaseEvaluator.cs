@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Raffa.AiEval.TenantFixtures;
+using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 
 namespace Raffa.AiEval;
@@ -119,6 +120,7 @@ internal static class GoldenCaseEvaluator
         var auditAction = turn.AuditEntries.Count == 1 ? turn.AuditEntries[0].Action : "<none>";
 
         AppendAlwaysChecks(turn, kind, markdown, actionHrefs, guardIntervened, always);
+        AppendPromptVersionCheck(turn, kind, root, always);
         AppendExpectationChecks(goldenCase, turn, kind, markdown, corpora, actionHrefs, citations.Count, expectation);
 
         var (verdict, gapNotes) = Score(goldenCase, kind, markdown, always, expectation);
@@ -182,6 +184,32 @@ internal static class GoldenCaseEvaluator
             $"{gap.Id}: {gap.Note ?? "no note"} (expected kind '{goldenCase.ExpectedKind}', " +
             $"observed '{kind}')",
         ]);
+    }
+
+    /// <summary>
+    /// F1-T02: an answer composed by the `answer` role carries, in its provenance, the version of the
+    /// prompt that role was actually given (<see cref="AnswerPromptV2.Version"/>) — never the
+    /// gateway's own default tag. Applies to every golden turn that reached the gateway's
+    /// <c>AnswerAsync</c> and came back as an answer.
+    /// </summary>
+    private static void AppendPromptVersionCheck(AskTurnResult turn, string kind, JsonElement root, List<string> failures)
+    {
+        if (!string.Equals(kind, "answer", StringComparison.Ordinal) ||
+            turn.GatewayCalls is not { } calls ||
+            !calls.Contains("AnswerAsync", StringComparer.Ordinal) ||
+            !root.TryGetProperty("provenance", out var provenance) ||
+            !provenance.TryGetProperty("promptVersion", out var version))
+        {
+            return;
+        }
+
+        var observed = version.GetString();
+        if (!string.Equals(observed, AnswerPromptV2.Version, StringComparison.Ordinal))
+        {
+            failures.Add(
+                $"provenance.promptVersion is '{observed}', expected the version of the prompt used " +
+                $"('{AnswerPromptV2.Version}') (F1-T02).");
+        }
     }
 
     private static void AppendAlwaysChecks(

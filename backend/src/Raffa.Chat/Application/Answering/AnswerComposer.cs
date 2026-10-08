@@ -184,7 +184,8 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
 
     private Task<Result<AiAnswerResult>> CallGatewayAsync(
         string question, string packJson, string systemPrompt, CancellationToken cancellationToken) =>
-        aiGateway.AnswerAsync(new AiAnswerRequest(question, Evidence: [], systemPrompt, packJson), cancellationToken);
+        aiGateway.AnswerAsync(
+            new AiAnswerRequest(question, Evidence: [], systemPrompt, packJson, AnswerPromptV2.Version), cancellationToken);
 
     // allowUncitedGuidance: persona v2.4 lets a draft or a plan that relies on no pack item carry no
     // citation; NumericGuard below still rejects any figure the pack does not hold.
