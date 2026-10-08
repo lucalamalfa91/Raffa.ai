@@ -169,13 +169,16 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         {
             useIndex &= window <= MarketRetrievalWindow.MaxIndexWindow;
 
+            var scannedWithIndex = useIndex;
             var neighbours = await FetchNeighboursAsync(
-                    queryVector, queryIdentity, window, useIndex, restrictToComparable: mixed, cancellationToken)
+                    queryVector, queryIdentity, window, scannedWithIndex, restrictToComparable: mixed, cancellationToken)
                 .ConfigureAwait(false);
 
             var hits = CollectHits(neighbours, topK, filters);
 
-            var exhausted = neighbours.Count < window || window >= comparable;
+            // An approximate (HNSW) scan may return fewer rows than the window even though more
+            // exist, so a short result only proves exhaustion for an exact scan.
+            var exhausted = (!scannedWithIndex && neighbours.Count < window) || window >= comparable;
             if (hits.Count >= topK || exhausted)
             {
                 return Result<IReadOnlyList<MarketNote>>.Success(hits);
