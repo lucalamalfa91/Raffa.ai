@@ -145,6 +145,66 @@ public sealed class NegotiationCouncilTests
         Assert.Empty(recording.Agents);
     }
 
+    // R1-05: the council needs something to read. A pack of calculator/playbook items only (no
+    // tenant item, no market item, no lever or gap calculation for the market analyst) is not
+    // convened; any pack with analyst input is unchanged.
+    private static IReadOnlyList<PackItem> ComputedOnlyPack() =>
+    [
+        Item("calc:savings-target", PackCorpus.Calc, "Portfolio saving target", "Target EUR 20000 is 4% of the annual spend of EUR 500000.",
+            new PackValue("targetAmount", "20000", PackValueKind.Amount, "EUR")),
+        Item("calc:criticality[x]", PackCorpus.Calc, "ServiceNow — criticality", "Criticality 50.9 out of 100."),
+        Item("raffa:playbook:anchor-on-market", PackCorpus.Raffa, "Anchor the ask on what peers paid", "Open with the market median."),
+    ];
+
+    [Fact]
+    public async Task A_pack_of_computed_items_only_does_not_convene_the_council()
+    {
+        var recording = new RecordingGateway(Fixture());
+
+        var outcome = await Council(recording).RunAsync("quali leve per risparmiare 20k?", ComputedOnlyPack(), Goal);
+
+        Assert.Empty(recording.Agents);
+        Assert.Empty(outcome.Items);
+        Assert.Empty(outcome.AgentsRun);
+        Assert.Empty(outcome.Failures);
+    }
+
+    [Fact]
+    public async Task A_tenant_item_alone_is_enough_to_convene_the_council()
+    {
+        var recording = new RecordingGateway(Fixture());
+        var pack = ComputedOnlyPack().Append(Pack()[0]).ToList();
+
+        var outcome = await Council(recording).RunAsync("q", pack, Goal);
+
+        Assert.Equal([CouncilAgents.ContractAnalystName, CouncilAgents.LeverStrategistName], recording.Agents);
+        Assert.Equal([CouncilAgents.ContractAnalystName, CouncilAgents.LeverStrategistName], outcome.AgentsRun);
+    }
+
+    [Fact]
+    public async Task A_market_item_alone_is_enough_to_convene_the_council()
+    {
+        var recording = new RecordingGateway(Fixture());
+        var pack = ComputedOnlyPack().Append(Pack()[3]).ToList();
+
+        var outcome = await Council(recording).RunAsync("q", pack, Goal);
+
+        Assert.Equal([CouncilAgents.MarketAnalystName, CouncilAgents.LeverStrategistName], recording.Agents);
+        Assert.Equal([CouncilAgents.MarketAnalystName, CouncilAgents.LeverStrategistName], outcome.AgentsRun);
+    }
+
+    [Fact]
+    public async Task A_lever_calculation_still_feeds_the_market_analyst_so_the_council_still_convenes()
+    {
+        var recording = new RecordingGateway(Fixture());
+        var pack = ComputedOnlyPack().Append(Pack()[2]).ToList();
+
+        var outcome = await Council(recording).RunAsync("q", pack, Goal);
+
+        Assert.Contains(CouncilAgents.MarketAnalystName, recording.Agents);
+        Assert.Contains(CouncilAgents.LeverStrategistName, outcome.AgentsRun);
+    }
+
     // ----- doubles -----
 
     private sealed class RecordingGateway(IAiGateway inner) : IAiGateway
