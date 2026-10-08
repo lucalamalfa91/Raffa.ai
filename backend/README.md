@@ -538,7 +538,37 @@ clauses → obligations → risk) over the resulting page-mapped text
 (`DocumentPageText`) and persists every fact with source span/page +
 confidence (spec §7.3) — directly on `ContractLineItem`/`Clause`/
 `Obligation`/`Risk`, or via the `ExtractionEvidence` table for `Contract`'s
-own scalar fields.
+own scalar fields. The arrows above are the stages' conceptual/display
+order, not their execution order: since NW-106, all seven `extract` calls
+fire concurrently (`StartStagesAsync`) because none depends on another's
+result — a single frontier-model call can already take 100s+
+(`AiGatewayResilienceOptions`'s own doc comment), so seven of them one
+after another was the single largest, purely structural cost in the whole
+pipeline. Every `DbContext` write (job status, evidence rows) still happens
+strictly sequentially afterward (`ApplyStageResultAsync`, one stage at a
+time, in pipeline order) — EF Core's `DbContext` is not safe for concurrent
+use, so only the network wait itself is parallelized, never the persistence.
+
+NW-106's OCR half (`FoundryOcrClient.OcrAsync`) originally stayed sequential:
+the ADR-017 page budget is enforced on the page count `prebuilt-read`
+reports, before the costlier `prebuilt-layout` is ever called, so a naive
+`Task.WhenAll` over both would spend the layout call on documents about to
+be rejected anyway. `AiOcrRequest.KnownPageCount` resolves that without
+weakening the guarantee: `HybridDocumentParsingService` already runs pdfium
+natively on every PDF before OCR is even considered, so it already has a
+trustworthy page count (pdfium's own, used for the exact same budget notion)
+for the common case — a PDF pdfium could open, even one with insufficient
+text (the OCR-fallback case). Handed to the gateway as `KnownPageCount`, an
+over-budget document is rejected before any Document Intelligence call at
+all (cheaper than before: zero calls, not one), and an in-budget document
+gets `prebuilt-read` and `prebuilt-layout` concurrently, because nothing is
+left for their ordering to protect. The known count is only ever a
+pre-check, never a replacement for the authoritative one: the budget is
+re-checked against what `prebuilt-read` itself reports afterward regardless.
+A format with no trustworthy local count — an image, or a PDF pdfium
+genuinely failed to open (its own zero-page result is treated as "unknown",
+not "really zero pages", so it is never passed on) — gets `KnownPageCount:
+null` and keeps the original sequential behavior as the only safe fallback.
 
 `Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline`
 (task E02/F06/US01/T01, r1-integration) is that caller: given the just-

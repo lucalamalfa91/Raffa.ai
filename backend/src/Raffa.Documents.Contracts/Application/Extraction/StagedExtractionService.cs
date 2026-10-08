@@ -19,12 +19,18 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 ///
 /// <b>AC-1</b> ("staged: metadata -&gt; commercial terms -&gt; dates -&gt; price/SKU -&gt; clauses
 /// -&gt; obligations -&gt; risk"): <see cref="RunAsync"/> runs exactly those seven
-/// <see cref="ExtractionStage"/> values, in that order, each as its own <see cref="IAiGateway.ExtractAsync"/>
+/// <see cref="ExtractionStage"/> values, each as its own <see cref="IAiGateway.ExtractAsync"/>
 /// call against its own schema (spec §7.2 "avoid one giant prompt; split extraction into
 /// bounded, schema-constrained tasks") and its own <see cref="ExtractionJob"/> row — one stage's
 /// failure is recorded on that stage's job and does not abort the remaining stages (mirrors
 /// ADR-017's "fail visibly, never silently truncate", generalized from OCR page-budget to any
-/// stage of this pipeline).
+/// stage of this pipeline). <b>NW-106:</b> "in that order" names the pipeline's conceptual/
+/// display order, not its execution order — the seven calls are independent reads over the same
+/// text (none depends on another's result), so <see cref="StartStagesAsync"/> fires all seven at
+/// once instead of one after another (the single largest, purely structural latency in this
+/// pipeline before this fix); <see cref="ApplyStageResultAsync"/> still awaits and persists them
+/// strictly one at a time, in pipeline order, because <see cref="DocumentsContractsDbContext"/>
+/// is not safe for concurrent use.
 ///
 /// <b>AC-2</b> ("every extracted fact carries source span + confidence"): every persisted fact
 /// carries <c>SourceSpan</c>/<c>SourcePage</c>/<c>Confidence</c> — directly on
@@ -184,19 +190,35 @@ public sealed class StagedExtractionService(
 
         document.ProcessingStatus = DocumentProcessingStatus.Processing;
 
+        // NW-106: the seven stages are independent reads over the same text (none depends on
+        // another's result), but every one of them used to run its Foundry call strictly one
+        // after another — on a frontier deployment a single stage can already take 100s+
+        // (AiGatewayResilienceOptions's own doc comment), so seven in sequence was the single
+        // largest, most avoidable cost in the whole pipeline. See StartStagesAsync's own doc
+        // comment for why only the gateway calls (Phase 1) run concurrently while every
+        // dbContext write (Phase 2, here) stays strictly sequential -- EF Core's DbContext is
+        // not safe for concurrent use, and nothing about this fix requires it to be.
+        var jobs = await CreateStageJobsAsync(tenantId, document.Id, cancellationToken).ConfigureAwait(false);
+        var extractTasks = StartStagesAsync(documentText, cancellationToken);
+
         var stageResults = new List<StagedExtractionStageResult>(PipelineStages.Length);
         string? acceptedSupplierName = null;
 
-        foreach (var stage in PipelineStages)
+        using (progressHeartbeat?.BeginMemoryPulses())
         {
-            var (stageResult, stageSupplierName) = await RunStageAsync(
-                    tenantId, document.Id, contract, stage, documentText, pageCount, runEvidence, cancellationToken)
-                .ConfigureAwait(false);
-            stageResults.Add(stageResult);
+            for (var i = 0; i < PipelineStages.Length; i++)
+            {
+                var (stageResult, stageSupplierName) = await ApplyStageResultAsync(
+                        tenantId, document.Id, contract, PipelineStages[i], jobs[i], extractTasks[i],
+                        pageCount, runEvidence, cancellationToken)
+                    .ConfigureAwait(false);
+                stageResults.Add(stageResult);
 
-            // First accepted `supplier` fact wins — only the `metadata` stage can produce one
-            // (MetadataFields), so this never silently picks between competing stages.
-            acceptedSupplierName ??= stageSupplierName;
+                // First accepted `supplier` fact wins — only the `metadata` stage can produce one
+                // (MetadataFields), so this never silently picks between competing stages, in
+                // whatever order their (independent) Foundry calls happen to settle.
+                acceptedSupplierName ??= stageSupplierName;
+            }
         }
 
         OfficializeDerivedStatus(tenantId, document, contract, now, runEvidence);
@@ -330,58 +352,103 @@ public sealed class StagedExtractionService(
         return builder.ToString();
     }
 
-    /// <summary>Runs one stage and reports both its <see cref="StagedExtractionStageResult"/> and
-    /// the `supplier` legal name that stage accepted, if any (see
+    /// <summary>
+    /// NW-106 phase 0: creates and persists all seven <see cref="ExtractionJob"/> rows up front,
+    /// <c>Running</c>, in one <c>SaveChangesAsync</c> — fast, local, sequential writes (never the
+    /// bottleneck), done before any Foundry call so every stage's hang-recovery window starts
+    /// from the same point <see cref="StartStagesAsync"/> fires its gateway call.
+    /// </summary>
+    private async Task<ExtractionJob[]> CreateStageJobsAsync(
+        TenantId tenantId, EntityId documentId, CancellationToken cancellationToken)
+    {
+        var jobs = new ExtractionJob[PipelineStages.Length];
+
+        for (var i = 0; i < PipelineStages.Length; i++)
+        {
+            var startedAt = clock.UtcNow;
+            var job = new ExtractionJob
+            {
+                TenantId = tenantId,
+                DocumentId = documentId,
+                Stage = PipelineStages[i],
+                Status = ExtractionJobStatus.Running,
+                QueuedAt = startedAt,
+                StartedAt = startedAt,
+            };
+            dbContext.ExtractionJobs.Add(job);
+            jobs[i] = job;
+        }
+
+        hangWatch?.Heartbeat();
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return jobs;
+    }
+
+    /// <summary>
+    /// NW-106 phase 1: fires all seven <see cref="IAiGateway.ExtractAsync"/> calls back to back,
+    /// without awaiting any of them — each is an independent, schema-constrained read over the
+    /// same <paramref name="documentText"/> (none depends on another stage's result), so starting
+    /// them together instead of one after another is exactly the fix for the single largest,
+    /// purely structural cost in this pipeline. Returns the (still in-flight) tasks in pipeline
+    /// order; <see cref="ApplyStageResultAsync"/> awaits and applies each one.
+    ///
+    /// <para>
+    /// Deliberately does <b>not</b> bind <see cref="ExtractionProgressHeartbeat.Bind"/> /
+    /// <see cref="ExtractionProgressHeartbeat.BeginFoundryAttempts"/> per stage here: that
+    /// durable, per-retry-attempt heartbeat writes <see cref="ExtractionJob.StartedAt"/> through
+    /// <c>dbContext</c>, which is not safe to touch from seven calls in flight at once. The
+    /// caller wraps the whole await-and-apply phase in one
+    /// <see cref="ExtractionProgressHeartbeat.BeginMemoryPulses"/> scope instead — the in-memory
+    /// hang watch (never dbContext) stays alive for however long the slowest of the seven takes;
+    /// <see cref="Raffa.AiGateway.Foundry.FoundryAttemptHeartbeat.NotifyAsync"/> simply no-ops
+    /// with nothing bound for these calls, the same safe default a caller with no heartbeat
+    /// support at all already got today.
+    /// </para>
+    /// </summary>
+    private Task<Result<AiExtractionResult>>[] StartStagesAsync(string documentText, CancellationToken cancellationToken)
+    {
+        var tasks = new Task<Result<AiExtractionResult>>[PipelineStages.Length];
+
+        for (var i = 0; i < PipelineStages.Length; i++)
+        {
+            var stage = PipelineStages[i];
+            var request = new AiExtractionRequest(
+                StageName: stage.ToString(),
+                DocumentText: documentText,
+                JsonSchema: BuildSchema(stage));
+
+            tasks[i] = aiGateway.ExtractAsync(request, cancellationToken);
+        }
+
+        return tasks;
+    }
+
+    /// <summary>
+    /// NW-106 phase 2: awaits one stage's already-in-flight extraction call and applies it --
+    /// every dbContext write for this stage, exactly as the pre-NW-106 single-stage call used to
+    /// do inline, now separated from the Foundry call itself (phase 1) so the awaiting-and-
+    /// writing stays strictly sequential across stages while the actual network waits already
+    /// overlapped in phase 1. Reports both the <see cref="StagedExtractionStageResult"/> and the
+    /// `supplier` legal name this stage accepted, if any (see
     /// <see cref="StagedExtractionSummary.AcceptedSupplierName"/>) — the two travel together
     /// because whether the fact was accepted at all is decided here, against
-    /// <see cref="ExtractionConfidencePolicy"/>, not by the caller re-reading evidence rows.</summary>
-    private async Task<(StagedExtractionStageResult Result, string? AcceptedSupplierName)> RunStageAsync(
+    /// <see cref="ExtractionConfidencePolicy"/>, not by the caller re-reading evidence rows.
+    /// </summary>
+    private async Task<(StagedExtractionStageResult Result, string? AcceptedSupplierName)> ApplyStageResultAsync(
         TenantId tenantId,
         EntityId documentId,
         Contract contract,
         ExtractionStage stage,
-        string documentText,
+        ExtractionJob job,
+        Task<Result<AiExtractionResult>> extractTask,
         int pageCount,
         List<(string FieldName, double? Confidence)> runEvidence,
         CancellationToken cancellationToken)
     {
-        var startedAt = clock.UtcNow;
-
-        var job = new ExtractionJob
-        {
-            TenantId = tenantId,
-            DocumentId = documentId,
-            Stage = stage,
-            Status = ExtractionJobStatus.Running,
-            QueuedAt = startedAt,
-            StartedAt = startedAt,
-        };
-        dbContext.ExtractionJobs.Add(job);
-        // Persist the Running heartbeat before the gateway call so a hang is visible as this
-        // stage (not the previous one) and hang recovery has a fresh started_at to measure.
-        hangWatch?.Heartbeat();
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        var request = new AiExtractionRequest(
-            StageName: stage.ToString(),
-            DocumentText: documentText,
-            JsonSchema: BuildSchema(stage));
-
-        Result<AiExtractionResult> extractResult;
-        if (progressHeartbeat is null)
-        {
-            extractResult = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            using (progressHeartbeat.Bind(job))
-            using (progressHeartbeat.BeginFoundryAttempts())
-            using (progressHeartbeat.BeginMemoryPulses())
-            {
-                extractResult = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
-            }
-        }
-
+        // Always set by CreateStageJobsAsync for every job this method is ever called with.
+        var startedAt = job.StartedAt!.Value;
+        var extractResult = await extractTask.ConfigureAwait(false);
         var completedAt = clock.UtcNow;
 
         if (extractResult.IsFailure)

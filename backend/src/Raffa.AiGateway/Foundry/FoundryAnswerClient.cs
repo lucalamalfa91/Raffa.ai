@@ -41,6 +41,8 @@ public sealed class FoundryAnswerClient(
         }
 
         var model = modelOptions.Answer;
+        var usesDefaultPrompt = string.IsNullOrWhiteSpace(request.SystemPrompt);
+        var promptVersion = ResolvePromptVersion(request, usesDefaultPrompt);
         var hasPack = !string.IsNullOrWhiteSpace(request.PackJson);
 
         if (!hasPack && request.Evidence.Count == 0)
@@ -54,7 +56,7 @@ public sealed class FoundryAnswerClient(
                 Answer: null,
                 Citations: [],
                 Metadata: FoundryCallMetadataFactory.Build(
-                    model, AnswerPersonaPrompt.Version, clock, request.Question),
+                    model, promptVersion, clock, request.Question),
                 AnswerMarkdown: null,
                 CitationKeys: [],
                 ActionKeys: [],
@@ -64,9 +66,9 @@ public sealed class FoundryAnswerClient(
             return Result<AiAnswerResult>.Success(abstained);
         }
 
-        var systemPrompt = string.IsNullOrWhiteSpace(request.SystemPrompt)
+        var systemPrompt = usesDefaultPrompt
             ? AnswerPersonaPrompt.DefaultSystemPrompt
-            : request.SystemPrompt;
+            : request.SystemPrompt!;
 
         var userPrompt = BuildUserPrompt(request);
 
@@ -101,7 +103,7 @@ public sealed class FoundryAnswerClient(
         }
 
         var metadata = FoundryCallMetadataFactory.Build(
-            model, AnswerPersonaPrompt.Version, clock, userPrompt, completion.Value.Usage);
+            model, promptVersion, clock, userPrompt, completion.Value.Usage);
 
         // Legacy Citations stays meaningful only for the evidence-only path: it is a resolved
         // {documentId, page, section} pointer, which only Evidence carries — CitationKeys is the
@@ -123,6 +125,23 @@ public sealed class FoundryAnswerClient(
 
         return Result<AiAnswerResult>.Success(result);
     }
+
+    /// <summary>The version of the system prompt actually sent (F1-T02): the default persona prompt's
+    /// own <see cref="AnswerPersonaPrompt.Version"/> only when that prompt is the one used; otherwise
+    /// the version the caller declared for the prompt it supplied. A caller-supplied prompt with no
+    /// declared version is tagged <see cref="UnversionedPrompt"/> — never mislabelled as the default.</summary>
+    internal static string ResolvePromptVersion(AiAnswerRequest request, bool usesDefaultPrompt)
+    {
+        if (usesDefaultPrompt)
+        {
+            return AnswerPersonaPrompt.Version;
+        }
+
+        return string.IsNullOrWhiteSpace(request.PromptVersion) ? UnversionedPrompt : request.PromptVersion.Trim();
+    }
+
+    /// <summary>Provenance tag for a caller-supplied system prompt that declared no version.</summary>
+    public const string UnversionedPrompt = "caller-unversioned";
 
     private static string BuildUserPrompt(AiAnswerRequest request)
     {

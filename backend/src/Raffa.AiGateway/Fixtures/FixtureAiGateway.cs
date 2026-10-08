@@ -207,7 +207,7 @@ public sealed class FixtureAiGateway(
                 CanDetermine: false,
                 Answer: null,
                 Citations: [],
-                Metadata: BuildMetadata(modelOptions.Answer, request.Question));
+                Metadata: BuildAnswerMetadata(request, request.Question));
 
             return Task.FromResult(Result<AiAnswerResult>.Success(abstained));
         }
@@ -225,7 +225,7 @@ public sealed class FixtureAiGateway(
             CanDetermine: true,
             Answer: answerText,
             Citations: citations,
-            Metadata: BuildMetadata(modelOptions.Answer, request.Question + " " + answerText));
+            Metadata: BuildAnswerMetadata(request, request.Question + " " + answerText));
 
         return Task.FromResult(Result<AiAnswerResult>.Success(grounded));
     }
@@ -270,7 +270,7 @@ public sealed class FixtureAiGateway(
                 CanDetermine: false,
                 Answer: null,
                 Citations: [],
-                Metadata: BuildMetadata(modelOptions.Answer, request.Question),
+                Metadata: BuildAnswerMetadata(request, request.Question),
                 AnswerMarkdown: null,
                 CitationKeys: [],
                 ActionKeys: [],
@@ -301,7 +301,7 @@ public sealed class FixtureAiGateway(
             CanDetermine: true,
             Answer: answerMarkdown,
             Citations: [],
-            Metadata: BuildMetadata(modelOptions.Answer, request.Question + " " + answerMarkdown),
+            Metadata: BuildAnswerMetadata(request, request.Question + " " + answerMarkdown),
             AnswerMarkdown: answerMarkdown,
             CitationKeys: citationKeys,
             ActionKeys: [],
@@ -843,6 +843,16 @@ public sealed class FixtureAiGateway(
         }
 
         return pages;
+    }
+
+    /// <summary>`answer` metadata: carries the prompt version the caller declared for the prompt it
+    /// sent (F1-T02), like the real client does; the fixture's own tag when none was declared.</summary>
+    private AiCallMetadata BuildAnswerMetadata(AiAnswerRequest request, string input)
+    {
+        var metadata = BuildMetadata(modelOptions.Answer, input);
+        return string.IsNullOrWhiteSpace(request.PromptVersion)
+            ? metadata
+            : metadata with { PromptVersion = request.PromptVersion };
     }
 
     private AiCallMetadata BuildMetadata(AiModelSelection model, string input)
