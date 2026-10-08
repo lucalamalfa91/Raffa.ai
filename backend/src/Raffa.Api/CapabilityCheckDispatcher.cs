@@ -57,9 +57,6 @@ internal sealed class CapabilityCheckDispatcher(
     public const string AuditAction = "ask.capability_follow_up";
     public const string AuditResourceType = "capability_follow_up";
 
-    /// <summary>How many validated suppliers an email follow-up offers as chips.</summary>
-    private const int MaxDraftSupplierFollowUps = 5;
-
     private readonly ConcurrentDictionary<Task, byte> _background = new();
 
     public bool Enabled => options.Enabled;
@@ -232,22 +229,12 @@ internal sealed class CapabilityCheckDispatcher(
 
             case GapAlternative.DraftEmail:
             {
-                var suppliers = request.NamedSupplier is { } named
-                    ? [named]
-                    : request.SupplierNames
-                        .Where(name => !string.IsNullOrWhiteSpace(name))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-                        .Take(MaxDraftSupplierFollowUps)
-                        .ToList();
+                // The named supplier alone when the turn named one; otherwise every supplier on file
+                // (the builder sorts, de-duplicates and caps them).
+                IEnumerable<string?> suppliers = request.NamedSupplier is { } named ? [named] : request.SupplierNames;
 
-                var actions = portfolioIsEmpty
-                    ? routing.ResolveActions([CapabilityIntent.UnknownSupplier], context)
-                    : routing.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)], context);
-
-                var markdown = opening + " " + CapabilityGapCopy.AskWhichContract(gap, language, null, portfolioIsEmpty);
-                return CapabilityGapReplyBuilder.Redirect(
-                    gap, language, markdown, actions, suppliers.Select(name => CapabilityGapCopy.DraftFollowUp(language, name)).ToList());
+                return CapabilityGapReplyBuilder.WhichContract(
+                    gap, language, opening, unknownSupplier: null, portfolioIsEmpty, suppliers, routing, context);
             }
 
             default:

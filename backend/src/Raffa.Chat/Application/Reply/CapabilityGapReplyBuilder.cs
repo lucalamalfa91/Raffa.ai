@@ -39,6 +39,58 @@ public static class CapabilityGapReplyBuilder
                 FeedbackOffer: CapabilityGapCopy.FeedbackOfferFor(gap, language)));
     }
 
+    /// <summary>How many validated suppliers the "which contract?" reply offers as follow-ups.</summary>
+    public const int MaxSupplierFollowUps = 5;
+
+    /// <summary>
+    /// The draft alternative with no contract to draft for: "which contract?", one follow-up chip per
+    /// supplier on file (each re-enters this same gap with the name resolved), Portfolio as the
+    /// action - or the Documents upload (<see cref="CapabilityIntent.UnknownSupplier"/>) when nothing
+    /// is on file. The one component behind both the in-turn reply
+    /// (<c>Raffa.Api.AskCopilotService</c>) and the investigator's follow-up message
+    /// (<c>Raffa.Api.CapabilityCheckDispatcher</c>), which differ only in what they hand it.
+    /// </summary>
+    /// <param name="opening">Optional lead-in sentence put before the question (the follow-up
+    /// message's "I checked what Raffa.ai can do..."); <see langword="null"/> for the in-turn reply.</param>
+    /// <param name="unknownSupplier">A typed name that resolved to no contract of this tenant, named
+    /// back in the question; <see langword="null"/> when there is none.</param>
+    /// <param name="supplierNames">Candidate supplier names, in any order: blank ones are dropped,
+    /// the rest de-duplicated (case-insensitively), sorted by name and capped at
+    /// <see cref="MaxSupplierFollowUps"/>.</param>
+    public static CopilotReply WhichContract(
+        CapabilityGap gap,
+        string language,
+        string? opening,
+        string? unknownSupplier,
+        bool portfolioIsEmpty,
+        IEnumerable<string?> supplierNames,
+        CapabilityRouting routing,
+        RoutingContext context)
+    {
+        ArgumentNullException.ThrowIfNull(gap);
+        ArgumentNullException.ThrowIfNull(supplierNames);
+        ArgumentNullException.ThrowIfNull(routing);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var question = CapabilityGapCopy.AskWhichContract(gap, language, unknownSupplier, portfolioIsEmpty);
+        var markdown = string.IsNullOrEmpty(opening) ? question : opening + " " + question;
+
+        var actions = portfolioIsEmpty
+            ? routing.ResolveActions([CapabilityIntent.UnknownSupplier], context)
+            : routing.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)], context);
+
+        var followUps = supplierNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxSupplierFollowUps)
+            .Select(name => CapabilityGapCopy.DraftFollowUp(language, name))
+            .ToList();
+
+        return Redirect(gap, language, markdown, actions, followUps);
+    }
+
     /// <summary>
     /// The draft turn. Citations are the pack items the email was written from
     /// (<see cref="DraftOutcome.UsedCitationKeys"/>, already proven by <c>Drafting.DraftGuard</c>
