@@ -41,6 +41,11 @@ public enum WebResearchOutcomeKind
 /// <param name="ReleaseBudget">F3-T03: the research call failed for transport or configuration
 /// reasons (not a content-filter verdict, not unusable output), so the caller hands the budget unit it
 /// reserved before the call back.</param>
+/// <param name="FiguresVerified">F3-T01: figures of the shown summary found in a cited quote — telemetry only.</param>
+/// <param name="FiguresReported">F3-T01: explicit figures kept without a quote to check them (only when
+/// <see cref="WebResearchOptions.AllowReportedFigures"/>) — telemetry only.</param>
+/// <param name="SentencesRemoved">F3-T01: sentences cut from the summary because they stated a figure no
+/// cited quote carries; non-zero also sets <see cref="GuardIntervened"/> on an answer.</param>
 public sealed record WebResearchOutcome(
     WebResearchOutcomeKind Kind,
     string Markdown,
@@ -50,7 +55,10 @@ public sealed record WebResearchOutcome(
     bool GuardIntervened,
     string? GuardViolation,
     string? Error,
-    bool ReleaseBudget = false)
+    bool ReleaseBudget = false,
+    int FiguresVerified = 0,
+    int FiguresReported = 0,
+    int SentencesRemoved = 0)
 {
     public ReplyKind AsReplyKind => Kind switch
     {

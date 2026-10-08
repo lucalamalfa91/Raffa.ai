@@ -55,6 +55,17 @@ public sealed class WebHistoryIsolationTests
         Assert.Equal(WebHistoryIsolation.Placeholder, WebHistoryIsolation.ForPrompt([abstain], 6).Single().Markdown);
     }
 
+    [Theory]
+    [InlineData("research-v1")]
+    [InlineData("research-open-v1")]
+    public void F3_T01_a_turn_stored_under_the_previous_persona_version_is_still_a_web_turn(string version)
+    {
+        var stored = Message(ConversationRole.Raffa, "I found these public sources on the topic: example.com.", "[]", version);
+
+        Assert.True(WebHistoryIsolation.IsWebTurn(stored));
+        Assert.Equal(WebHistoryIsolation.Placeholder, WebHistoryIsolation.ForPrompt([stored], 6).Single().Markdown);
+    }
+
     [Fact]
     public void A_combined_reply_keeps_only_its_contracts_half()
     {

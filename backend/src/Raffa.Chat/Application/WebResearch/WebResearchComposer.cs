@@ -14,10 +14,12 @@ namespace Raffa.Chat.Application.WebResearch;
 /// holds both). Its input is deliberately three strings — the already-sanitised query, the purpose
 /// and the language — so no context pack, evidence or tenant text can reach the web by
 /// construction. On the way back the summary goes through <see cref="WebGuard"/> (sources and
-/// markers), <see cref="NumericGuard"/> (every figure verbatim in a cited snippet) and
-/// <see cref="GroundingGuard"/> (every citation key in the web pack); a failure is an honest
-/// abstain that names the sources found, never a retry (each call is budgeted). Results are never
-/// indexed and never merged into an <c>answer</c>-role pack.
+/// markers), <see cref="WebFigureGuard"/> (F3-T01: every figure shares its sentence with a marker and
+/// appears in the verbatim quote of a source that sentence cites; a sentence stating a figure nothing
+/// backs is removed, not the whole answer) and <see cref="GroundingGuard"/> (every citation key in the
+/// web pack); a failure, or a summary left with no cited claim, is an honest abstain that names the
+/// sources found, never a retry (each call is budgeted). Results are never indexed and never merged
+/// into an <c>answer</c>-role pack.
 /// </summary>
 public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions options, IClock clock)
 {
@@ -30,7 +32,7 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
 
         var italian = string.Equals(language, "it", StringComparison.OrdinalIgnoreCase);
-        var lang = italian ? "it" : "en";
+        var lang = SupportedLanguage(language);
 
         // ADR-032: a web-mode turn (the composer toggle) runs the open persona; every other
         // purpose is one of the four procurement purposes of ADR-030.
@@ -90,18 +92,22 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
             return Abstained(sources, provenanceBase, italian, webVerdict.Violation!);
         }
 
-        var numericVerdict = NumericGuard.Validate(research.SummaryMarkdown, pack);
-        if (!numericVerdict.Passed)
+        // F3-T01: the figures are judged one sentence at a time against the quotes of the sources that
+        // sentence cites. A sentence stating a figure nothing backs is dropped; if that leaves no
+        // sentence a source stands behind, the answer is an abstain.
+        var figures = WebFigureGuard.Verify(research.SummaryMarkdown, sources, lang, options.AllowReportedFigures);
+        if (figures.SentencesRemoved > 0 && (!figures.HasCitedClaim || string.IsNullOrWhiteSpace(figures.Markdown)))
         {
-            return Abstained(sources, provenanceBase, italian, numericVerdict.Violation!);
+            return Abstained(sources, provenanceBase, italian, figures.FirstRemovalReason ?? "no figure of the summary could be verified.");
         }
 
+        var summary = figures.Markdown;
         var answer = new AiAnswerResult(
             CanDetermine: true,
-            Answer: research.SummaryMarkdown,
+            Answer: summary,
             Citations: [],
             Metadata: research.Metadata,
-            AnswerMarkdown: research.SummaryMarkdown,
+            AnswerMarkdown: summary,
             CitationKeys: pack.Select(item => item.CitationKey).ToList(),
             ActionKeys: [],
             AbstainReason: null,
@@ -117,13 +123,29 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
 
         return new WebResearchOutcome(
             WebResearchOutcomeKind.Answered,
-            research.SummaryMarkdown,
+            summary,
             citations,
             provenanceBase,
             SourceCount: sources.Count,
-            GuardIntervened: false,
-            GuardViolation: null,
-            Error: null);
+            GuardIntervened: figures.SentencesRemoved > 0,
+            GuardViolation: figures.SentencesRemoved > 0 ? figures.FirstRemovalReason : null,
+            Error: null,
+            FiguresVerified: figures.Verified,
+            FiguresReported: figures.Reported,
+            SentencesRemoved: figures.SentencesRemoved);
+    }
+
+    /// <summary>The request's language: one of the five supported (D6), English for anything else.</summary>
+    private static string SupportedLanguage(string? language)
+    {
+        var tag = language?.Trim() ?? string.Empty;
+        var cut = tag.IndexOfAny(['-', '_']);
+        if (cut > 0)
+        {
+            tag = tag[..cut];
+        }
+
+        return NumericLocale.SupportedLanguages.FirstOrDefault(l => string.Equals(l, tag, StringComparison.OrdinalIgnoreCase)) ?? "en";
     }
 
     /// <summary>One <see cref="PackCorpus.Web"/> item per source, keyed <c>web:n</c> in list order.
@@ -150,7 +172,11 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
                     : null,
                 Page: null,
                 Section: null,
-                Snippet: string.IsNullOrWhiteSpace(source.Snippet) ? title : source.Snippet,
+                // F3-T01: the passage the figures were checked against (production gives no snippet),
+                // then the provider's snippet, then the title.
+                Snippet: !string.IsNullOrWhiteSpace(source.Quote) ? source.Quote
+                    : !string.IsNullOrWhiteSpace(source.Snippet) ? source.Snippet
+                    : title,
                 Href: source.Url,
                 PreviewUrl: null,
                 RecordId: null,

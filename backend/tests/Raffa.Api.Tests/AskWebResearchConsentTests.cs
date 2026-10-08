@@ -230,7 +230,7 @@ public sealed class AskWebResearchConsentTests : IClassFixture<RaffaApiFactory>
         Assert.All(citations, c => Assert.StartsWith("https://", c.GetProperty("href").GetString(), StringComparison.Ordinal));
         Assert.Equal(["web"], root.GetProperty("provenance").GetProperty("sources").EnumerateArray().Select(s => s.GetString()).ToList());
         Assert.True(root.GetProperty("provenance").GetProperty("unverified").GetBoolean());
-        Assert.Equal("research-v1", root.GetProperty("provenance").GetProperty("promptVersion").GetString());
+        Assert.Equal("research-v2", root.GetProperty("provenance").GetProperty("promptVersion").GetString());
         Assert.NotEmpty(root.GetProperty("actions").EnumerateArray());
 
         Assert.Equal(1, gateway.Calls.Count(c => c == nameof(RecordingAiGateway.ResearchAsync)));
