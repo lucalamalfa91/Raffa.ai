@@ -7,6 +7,7 @@ using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
+using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.SharedKernel;
 
@@ -466,10 +467,7 @@ public static class ConversationsEndpointExtensions
         string? youInterviewJson,
         CancellationToken cancellationToken)
     {
-        var recentTurns = conversation.Messages
-            .TakeLast(RecentTurnsLimit)
-            .Select(m => (Role: ToWireRole(m.Role), Markdown: m.Markdown))
-            .ToList();
+        var recentTurns = BuildPromptHistory(conversation);
 
         // A capability follow-up (ADR-031) sits after the turn it follows; it is never what a typed
         // message answers, so an interview right before it still counts as the last Raffa turn.
@@ -542,6 +540,17 @@ public static class ConversationsEndpointExtensions
             followUpMessage,
         };
     }
+
+    /// <summary>
+    /// The conversation's last <see cref="RecentTurnsLimit"/> turns as the Ask engine's prompts see
+    /// them. F3-D03: never with web text — a web-research reply is public and unverified, so it is cut
+    /// (or replaced by a placeholder) before it can be read back as established context
+    /// (<see cref="WebHistoryIsolation"/>). What the user sees in the thread is untouched.
+    /// </summary>
+    internal static IReadOnlyList<(string Role, string Markdown)> BuildPromptHistory(ConversationDetailResult conversation) =>
+        WebHistoryIsolation.ForPrompt(conversation.Messages, RecentTurnsLimit)
+            .Select(m => (Role: ToWireRole(m.Role), Markdown: m.Markdown))
+            .ToList();
 
     /// <summary>ADR-031: a Raffa message appended after an answer by the capability check.</summary>
     private static bool IsCapabilityFollowUp(ConversationMessageResult message) =>

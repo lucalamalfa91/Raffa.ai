@@ -56,7 +56,8 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
                 SourceCount: 0,
                 GuardIntervened: false,
                 GuardViolation: null,
-                Error: result.Error);
+                Error: result.Error,
+                ReleaseBudget: AiGatewayErrors.ResearchFailureReleasesBudget(result.Error));
         }
 
         var research = result.Value;
@@ -125,8 +126,10 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
             Error: null);
     }
 
-    /// <summary>One <see cref="PackCorpus.Web"/> item per source, keyed <c>web:n</c> in the tool's
-    /// own order so the summary's <c>[n]</c> markers resolve positionally.</summary>
+    /// <summary>One <see cref="PackCorpus.Web"/> item per source, keyed <c>web:n</c> in list order.
+    /// The research gateway has already reconciled the list with the summary's markers (F3-T02:
+    /// sources resolved by URL, renumbered 1..k, <c>[n]</c> rewritten to match), so position
+    /// <c>n</c> is the source marker <c>[n]</c> means.</summary>
     private IReadOnlyList<PackItem> BuildWebPack(IReadOnlyList<AiWebSource> sources)
     {
         var fetched = clock.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

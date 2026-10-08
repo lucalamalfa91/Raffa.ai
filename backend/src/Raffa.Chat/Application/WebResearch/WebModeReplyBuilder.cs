@@ -95,7 +95,7 @@ public static class WebModeReplyBuilder
         var markdown =
             $"**{(italian ? "Dai tuoi contratti e dai dati di Raffa" : "From your contracts and Raffa's data")}**\n\n" +
             internalAnswer.AnswerMarkdown.Trim() + "\n\n" +
-            $"**{(italian ? "Dal web pubblico · non verificato" : "From the public web · unverified")}**\n\n" +
+            $"**{WebSectionTitle(italian)}**\n\n" +
             ShiftMarkers(web.Markdown, offset).Trim();
 
         var sources = internalAnswer.Provenance.Sources
@@ -118,6 +118,11 @@ public static class WebModeReplyBuilder
             Provenance = provenance,
         };
     }
+
+    /// <summary>The heading of the web half of a combined reply — the marker
+    /// <see cref="WebHistoryIsolation"/> cuts the stored text at.</summary>
+    public static string WebSectionTitle(bool italian) =>
+        italian ? "Dal web pubblico · non verificato" : "From the public web · unverified";
 
     /// <summary>Every <c>[n]</c> marker moved up by <paramref name="offset"/>.</summary>
     public static string ShiftMarkers(string markdown, int offset) =>

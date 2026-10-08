@@ -327,7 +327,10 @@ public sealed class ConversationService(
     /// <summary>
     /// Marks a single-use interview option (a consent) as taken (ADR-030). Returns
     /// <see cref="InterviewConsumeOutcome.AlreadyConsumed"/> when the row was already stamped —
-    /// the endpoint's 409 — so an authorization can never be replayed.
+    /// the endpoint's 409 — so an authorization can never be replayed. The stamp is atomic (F3-T04):
+    /// on Postgres it is one conditional <c>UPDATE … WHERE interview_json has no consumedAt</c>, so of
+    /// any number of concurrent taps exactly one gets <see cref="InterviewConsumeOutcome.Consumed"/>
+    /// and therefore exactly one research execution is authorised.
     /// </summary>
     public async Task<InterviewConsumeOutcome> MarkInterviewConsumedAsync(
         TenantId tenantId,
@@ -373,7 +376,57 @@ public sealed class ConversationService(
             return InterviewConsumeOutcome.AlreadyConsumed;
         }
 
-        message.InterviewJson = InterviewJsonCodec.MarkConsumed(record, optionKey, clock.UtcNow);
+        var consumedJson = InterviewJsonCodec.MarkConsumed(record, optionKey, clock.UtcNow);
+
+        if (dbContext.Database.IsRelational())
+        {
+            try
+            {
+                // F3-T04: the stamp is a conditional UPDATE, not a read-then-write — the WHERE clause
+                // only matches while the row carries no consumedAt, so of any number of concurrent
+                // taps exactly one writes (affected = 1) and the rest see 0 rows. The read above only
+                // gives the friendly early answer; this statement is the lock.
+                var tenant = tenantId.Value;
+                var conversation = conversationId.Value;
+                var messageKey = messageId.Value;
+                var affected = await dbContext.Database
+                    .ExecuteSqlAsync(
+                        $"""
+                        UPDATE conversation_message
+                        SET interview_json = CAST({consumedJson} AS jsonb)
+                        WHERE tenant_id = {tenant}
+                          AND conversation_id = {conversation}
+                          AND id = {messageKey}
+                          AND interview_json IS NOT NULL
+                          AND (interview_json ->> 'consumedAt') IS NULL
+                        """,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (affected == 1)
+                {
+                    return InterviewConsumeOutcome.Consumed;
+                }
+
+                // Zero rows: someone else stamped it first — or the row went away under us.
+                var stillThere = await dbContext.ConversationMessages
+                    .AsNoTracking()
+                    .AnyAsync(
+                        m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Id == messageId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                return stillThere ? InterviewConsumeOutcome.AlreadyConsumed : InterviewConsumeOutcome.NotFound;
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Relational-specific methods can only be used", StringComparison.Ordinal))
+            {
+                // A test host that swaps in EF InMemory late: fall through to the tracked write.
+            }
+        }
+
+        // EF InMemory (API tests) has no SQL: the same stamp as a tracked write, without the
+        // atomicity only Postgres provides.
+        message.InterviewJson = consumedJson;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         return InterviewConsumeOutcome.Consumed;
