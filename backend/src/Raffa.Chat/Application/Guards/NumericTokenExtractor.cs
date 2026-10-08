@@ -30,10 +30,10 @@ public static class NumericTokenExtractor
     // A number: grouped by a space/no-break space/narrow no-break space/thin space/apostrophe/dot/comma
     // (groups of exactly three digits, never a partial group), optional decimal part; or a plain run
     // of digits with an optional decimal part. Never starts in the middle of another number.
-    private const string Number =
+    internal const string Number =
         @"(?:\d{1,3}(?:[    '’.,]\d{3})+(?!\d)(?:[.,]\d+)?|\d+(?:[.,]\d+)?)(?!\d)";
 
-    private const string Magnitude =
+    internal const string Magnitude =
         @"(?:[ \u00A0\u202F]?(?:(?i:millions?|milioni|milione|millones|millón|millionen|miliardi|miliardo|milliards?|milliarden?|billions?|thousand|tausend|mila|mille|mil)" +
         @"|Mio\.?|mio\.?|Mrd\.?|mrd\.?|Mld\.?|mld\.?|mln\.?|mn|bn|Tsd\.?|[kKM])(?![\p{L}\d]))";
 
@@ -307,6 +307,10 @@ public static class NumericTokenExtractor
 
         return Math.Max(0.01m, step / 2m);
     }
+
+    /// <summary>The month number (1-12) a word names in any of the five languages (full name or common
+    /// abbreviation, diacritics ignored), or <see langword="null"/> when it is not a month word.</summary>
+    public static int? MonthNumber(string? word) => string.IsNullOrWhiteSpace(word) ? null : MonthOf(word);
 
     private static int? MonthOf(string word)
     {
