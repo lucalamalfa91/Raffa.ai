@@ -1272,7 +1272,25 @@ just because the reply happens to be `abstain` (an empty pack or a failed
 gateway call both also produce `kind=abstain` but leave this field `false` —
 the same field name/shape `RagAnswerService`'s older, evidence-only audit
 entry already uses; see this file's "Ask Raffa — query router" section
-above). The context pack's token budget is
+above). Since task T-01 / F2-T01 the same row also carries `turnId=<id>`
+(random, 16 hex) and, for a turn that ran Ask's agentic flow, the flow's
+outcome as names and counts only -- `runId=`, `stepsRun=N steps=a,b,c`,
+`failures=N failedSteps=x,y`, `marketQueries=N` -- or `flow=none`. The
+`ask.capability_follow_up` and `chat.web_research*` rows carry the same
+`turnId=`, and every `ai.*` row of the gateway decorator
+(`LoggingAiGateway`) carries `agent= run= turn= step= latencyMs= outcome=`
+(`run=none`/`turn=none` outside a turn) plus the existing model, token and
+hash fields -- so a turn is followed end to end by `turnId`, and one run by
+`runId`. The ids come from `Raffa.AiGateway.Telemetry.RunContext` (an
+`AsyncLocal` the Ask turn, the agentic flow and, later, the step runner open
+with `BeginTurn`/`BeginRun`/`BeginStep`); every AI call is also a span on
+the `Raffa.Agents` `ActivitySource` (`gen_ai.*` and `raffa.*` attributes, a
+tenant hash, never text; no exporter is registered -- add
+`AddSource("Raffa.Agents")` to an OpenTelemetry tracer provider to collect
+them). The negotiation council's verdict (`calc:council:verdict`) is
+computed by `CouncilVerdict` from the calculators' `calc:savings-target` /
+`calc:portfolio-target` items -- the strategist no longer returns one
+(`council-v3`). The context pack's token budget is
 `Pack.PackBudget`, optionally configured via `Chat:PackTokenBudget`
 (`Chat__PackTokenBudget` env var form) and registered in `Program.cs`
 *before* `AddChatModule`'s own always-usable default so a configured value
