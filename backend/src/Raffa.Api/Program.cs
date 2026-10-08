@@ -236,11 +236,11 @@ var draftingOptions = new Raffa.Chat.Application.Drafting.DraftingOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
 builder.Services.AddSingleton(draftingOptions);
 
-// ADR-031: Chat:GapInvestigation — the capability investigator's kill switch, confidence
-// threshold and time budget, same before-AddChatModule ordering.
-var gapInvestigationOptions = new Raffa.Chat.Application.Gaps.GapInvestigationOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName).Bind(gapInvestigationOptions);
-builder.Services.AddSingleton(gapInvestigationOptions);
+// ADR-031 / INV-03: Chat:GapInvestigation — the capability investigator's mode (Triggered by
+// default, Always for diagnosis), kill switch, confidence threshold and time budget. Read through
+// IOptionsMonitor, so a configuration change applies without a restart.
+builder.Services.Configure<Raffa.Chat.Application.Gaps.GapInvestigationOptions>(
+    builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName));
 builder.Services.AddSingleton<Raffa.Api.CapabilityCheckDispatcher>();
 
 // ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the

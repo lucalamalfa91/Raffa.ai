@@ -17,7 +17,10 @@ public sealed class InvestigatorTriggerLexicon
 {
     internal const string ResourceName = "Raffa.Chat.Gaps.investigator-trigger-lexicon.json";
 
-    private const RegexOptions Options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled;
+    // Interpreted, not compiled: ~170 alternations build in a few milliseconds instead of
+    // paying a one-off compile on the first turn's thread, and a question is a few hundred
+    // characters, so matching is microseconds either way.
+    private const RegexOptions Options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
 
     /// <summary>How many words before a verb are searched for its subject unless a language says
     /// otherwise (a verb-final language such as German needs a wider window).</summary>
@@ -76,12 +79,23 @@ public sealed class InvestigatorTriggerLexicon
         return new InvestigatorTriggerLexicon(version, languages);
     }
 
+    /// <summary>The embedded file, or — should it ever be missing or unreadable — an empty lexicon
+    /// named "unavailable": trigger T3 then never fires (T1 and T2 still do) and Ask carries on.
+    /// The investigator is fail-open by design; a broken data file must never take a turn down.
+    /// The tests assert that the shipped file loads, so the fallback cannot hide a bad build.</summary>
     private static InvestigatorTriggerLexicon LoadEmbedded()
     {
-        using var stream = typeof(InvestigatorTriggerLexicon).Assembly.GetManifestResourceStream(ResourceName)
-            ?? throw new InvalidOperationException($"The embedded resource '{ResourceName}' is missing.");
-        using var reader = new StreamReader(stream);
-        return Parse(reader.ReadToEnd());
+        try
+        {
+            using var stream = typeof(InvestigatorTriggerLexicon).Assembly.GetManifestResourceStream(ResourceName)
+                ?? throw new InvalidOperationException($"The embedded resource '{ResourceName}' is missing.");
+            using var reader = new StreamReader(stream);
+            return Parse(reader.ReadToEnd());
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or InvalidDataException or System.Text.Json.JsonException or KeyNotFoundException or ArgumentException or RegexParseException)
+        {
+            return new InvestigatorTriggerLexicon("unavailable", []);
+        }
     }
 
     private static IReadOnlyList<string> WordList(JsonElement node, string name) =>

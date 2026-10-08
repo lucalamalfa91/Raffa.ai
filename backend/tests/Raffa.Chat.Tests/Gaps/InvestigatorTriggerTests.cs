@@ -204,6 +204,44 @@ public sealed class InvestigatorTriggerTests
         Assert.True(verdict.T3);
     }
 
+    // ----- latency: the answer path pays microseconds -----
+
+    [Fact]
+    public void Evaluating_a_turn_costs_far_less_than_a_millisecond_and_building_the_lexicon_far_less_than_a_second()
+    {
+        using var stream = typeof(InvestigatorTrigger).Assembly.GetManifestResourceStream("Raffa.Chat.Gaps.investigator-trigger-lexicon.json");
+        Assert.NotNull(stream);
+        using var reader = new StreamReader(stream!);
+        var json = reader.ReadToEnd();
+
+        var built = System.Diagnostics.Stopwatch.StartNew();
+        var trigger = new InvestigatorTrigger(InvestigatorTriggerLexicon.Parse(json));
+        trigger.Evaluate(null, null, "warm up");
+        built.Stop();
+        Assert.True(built.ElapsedMilliseconds < 1000, $"Building the lexicon took {built.ElapsedMilliseconds} ms.");
+
+        var questions = new[]
+        {
+            "Quando scade il contratto con Amazon e quanto abbiamo speso nel 2025 con tutti i fornitori cloud?",
+            "Puoi generare un report mensile sui risparmi da mandare al CFO e al comitato di direzione?",
+            "Does the provider have to send the invoice within 30 days of service under the framework agreement?",
+        };
+
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        const int Rounds = 300;
+        for (var round = 0; round < Rounds; round++)
+        {
+            foreach (var question in questions)
+            {
+                trigger.Evaluate(Plan(IntentPlanBasis.Lexicon), Outcome(ReplyKind.Answer), question);
+            }
+        }
+
+        timer.Stop();
+        var averageMilliseconds = timer.Elapsed.TotalMilliseconds / (Rounds * questions.Length);
+        Assert.True(averageMilliseconds < 1.0, $"One evaluation took {averageMilliseconds:F3} ms on average.");
+    }
+
     // ----- no model call, versioned data -----
 
     [Fact]

@@ -116,9 +116,14 @@ public static class ServiceCollectionExtensions
 
         // The capability investigator (Application.Gaps, ADR-031): one analyst-role agent that
         // decides whether a fresh turn asks for a feature Raffa does not have; the host binds
-        // Chat:GapInvestigation before calling this.
-        services.TryAddSingleton(new GapInvestigationOptions());
-        services.AddScoped<CapabilityInvestigator>();
+        // Chat:GapInvestigation (as IOptionsMonitor, so the mode and the kill switch change without
+        // a restart) before calling this; absent that, the defaults: Triggered, enabled.
+        services.AddOptions<GapInvestigationOptions>();
+        // A factory, not constructor selection: the investigator has a second, options-instance
+        // constructor for tests and tools, and the container must not weigh the two.
+        services.AddScoped(sp => new CapabilityInvestigator(
+            sp.GetRequiredService<Raffa.AiGateway.IAiGateway>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>()));
 
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
         // GitHub publisher and binds Feedback:* before calling this when a token is configured;
