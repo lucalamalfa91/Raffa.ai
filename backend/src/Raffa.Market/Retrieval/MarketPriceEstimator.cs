@@ -173,7 +173,8 @@ public sealed class MarketPriceEstimator(
                 match.UnitPriceP50,
                 match.UnitPriceP75,
                 $"{how}: median {from}, converted at an indicative fixed rate ({rates}); no record in {currency}.",
-                match.Product);
+                match.Product,
+                match.ProvenanceInfo is { } matched ? matched with { SourceClass = MarketSourceClasses.Converted } : null);
         }
 
         return results;
@@ -250,7 +251,8 @@ public sealed class MarketPriceEstimator(
                     Math.Round(estimate.P50, 2),
                     Math.Round(estimate.P75, 2),
                     Truncate(string.IsNullOrWhiteSpace(estimate.Rationale) ? "AI estimate, no market record." : estimate.Rationale.Trim(), 500),
-                    string.IsNullOrWhiteSpace(estimate.Product) ? null : Truncate(estimate.Product.Trim(), 300));
+                    string.IsNullOrWhiteSpace(estimate.Product) ? null : Truncate(estimate.Product.Trim(), 300),
+                    new MarketProvenanceInfo(MarketSourceClasses.AiEstimate, false, 0, DateTimeOffset.UtcNow, null, MarketSourceClasses.AiEstimate));
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

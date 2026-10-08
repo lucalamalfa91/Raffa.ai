@@ -2,6 +2,7 @@ using Raffa.AiGateway;
 using Raffa.Benchmark.Adapters;
 using Raffa.Benchmark.Configuration;
 using Raffa.Market.Benchmark;
+using Raffa.Market.Contracts;
 using Raffa.Market.Infrastructure;
 using Raffa.Market.Ingestion;
 using Raffa.Market.Mock;
@@ -68,6 +69,19 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IClock, SystemClock>();
 
         services.TryAddSingleton<IMarketIntelligenceProvider, MockMarketIntelligenceProvider>();
+
+        // F7-T11 / F7-D04: the switches (Market:Provenance) that decide whether a provenance line or a
+        // real source name is ever shown. All off by default -- the structured provenance on every
+        // market figure stays internal metadata (decision D5). Bound lazily, like the other options
+        // of this module, and tolerant of a host without IConfiguration.
+        services.TryAddSingleton(sp =>
+        {
+            var options = new MarketProvenanceOptions();
+            sp.GetService<IConfiguration>()
+                ?.GetSection(MarketProvenanceOptions.SectionName)
+                .Bind(options);
+            return options;
+        });
 
         if (marketConnectionString is not null)
         {

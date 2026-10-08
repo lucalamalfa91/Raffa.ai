@@ -319,7 +319,8 @@ public sealed class MarketPriceMatcher(IMarketDealLookup dealLookup) : IMarketPr
             components.Min(d => d.SampleSize),
             MarketProvenance.Label(oldest),
             oldest.UpdatedAt,
-            MarketMatchKind.Bundle);
+            MarketMatchKind.Bundle,
+            MarketProvenance.Combine(components));
     }
 
     /// <summary>The record in <paramref name="pool"/> most similar to <paramref name="line"/> —
@@ -433,5 +434,6 @@ public sealed class MarketPriceMatcher(IMarketDealLookup dealLookup) : IMarketPr
         deal.SampleSize,
         MarketProvenance.Label(deal),
         deal.UpdatedAt,
-        kind);
+        kind,
+        MarketProvenance.Info(deal));
 }
