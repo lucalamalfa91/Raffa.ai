@@ -787,7 +787,8 @@ index, and the negotiated discount by category, size and term; support
 plans are priced as a share of the licences they cover (category
 `Support & Services`, never matched across suppliers). The script also
 writes aggregated benchmark reports by country, size and category to
-`backend/fixtures/market-benchmarks/`. Generated ids start with `MKT-ZZ-`
+`backend/fixtures/market-benchmarks/` (a git-ignored development artefact: nothing reads it,
+so it is regenerated on demand and not tracked). Generated ids start with `MKT-ZZ-`
 (they sort after every hand-written id, so a tie never shadows an oracle)
 and never add to a hand-written supplier/product pair.
 Re-run the script after editing the catalog; it keeps the hand-written rows

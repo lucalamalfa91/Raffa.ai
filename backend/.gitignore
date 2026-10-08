@@ -3,3 +3,8 @@
 # run artefact regenerated from the checked-in golden/*.json cases, never reviewed as
 # source, so it is deliberately not tracked.
 tests/Raffa.AiEval/reports/
+
+# R1-08: the market-benchmark reports are a development artefact that
+# scripts/generate_market_benchmark_corpus.py regenerates next to the feed; nothing in
+# src, web, .github or docs reads them, so they are not tracked.
+fixtures/market-benchmarks/
