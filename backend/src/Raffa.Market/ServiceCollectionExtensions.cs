@@ -168,8 +168,8 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IMarketPriceMatcher, MarketPriceMatcher>();
 
         // IMarketPriceEstimator (the last resort behind the market column, for lines the matcher
-        // could not price) is the MarketKnowledge AI flow's: Raffa.AiFlows registers it
-        // (AddAiFlows), over this module's IMarketDealLookup.
+        // could not price) is the MarketKnowledge AI flow's: the host's AI flows layer
+        // registers it (AddAiFlows), over this module's IMarketDealLookup.
 
         MakeMarketFeedTheDefaultActiveAdapter(services);
 
