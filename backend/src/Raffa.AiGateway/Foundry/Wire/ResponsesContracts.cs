@@ -50,8 +50,12 @@ public sealed record ResponsesUsage(
     [property: JsonPropertyName("input_tokens")] int InputTokens,
     [property: JsonPropertyName("output_tokens")] int OutputTokens);
 
+public sealed record ResponsesIncompleteDetails(
+    [property: JsonPropertyName("reason")] string? Reason);
+
 public sealed record ResponsesResponse(
     [property: JsonPropertyName("output")] IReadOnlyList<ResponsesOutputItem>? Output,
     [property: JsonPropertyName("usage")] ResponsesUsage? Usage,
     [property: JsonPropertyName("status")] string? Status,
-    [property: JsonPropertyName("model")] string? Model);
+    [property: JsonPropertyName("model")] string? Model,
+    [property: JsonPropertyName("incomplete_details")] ResponsesIncompleteDetails? IncompleteDetails = null);

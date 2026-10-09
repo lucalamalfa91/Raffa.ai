@@ -1203,5 +1203,162 @@ BEGIN
     VALUES ('20260924153558_AddContractLineItemMarketPriceEstimate', '10.0.4');
     END IF;
 END $EF$;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE risk ADD extraction_run_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE obligation ADD extraction_run_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE extraction_job ADD extracted_count integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE extraction_job ADD extraction_run_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE extraction_job ADD failure_kind character varying(20);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE extraction_job ADD input_hash character varying(64);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE extraction_job ADD skipped_count integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE extraction_evidence ADD extraction_run_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE contract_line_item ADD extraction_run_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE contract ADD notice_period_days integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    ALTER TABLE clause ADD extraction_run_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    CREATE INDEX ix_risk_extraction_run_id ON risk (extraction_run_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    CREATE INDEX ix_obligation_extraction_run_id ON obligation (extraction_run_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    CREATE INDEX ix_extraction_job_extraction_run_id ON extraction_job (extraction_run_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    CREATE PROCEDURE ux_document_checksum_setup() LANGUAGE plpgsql AS $f$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM document
+            WHERE processing_status <> 'Rejected' AND created_at >= '2026-10-08T00:00:00+00'
+            GROUP BY tenant_id, checksum HAVING count(*) > 1) THEN
+            EXECUTE format(
+                'CREATE UNIQUE INDEX ux_document_tenant_checksum ON document (tenant_id, checksum) WHERE processing_status <> ''Rejected'' AND created_at >= %L',
+                now());
+        ELSE
+            CREATE UNIQUE INDEX ux_document_tenant_checksum ON document (tenant_id, checksum)
+                WHERE processing_status <> 'Rejected' AND created_at >= '2026-10-08T00:00:00+00';
+        END IF;
+    END
+    $f$;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    CALL ux_document_checksum_setup();
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    DROP PROCEDURE ux_document_checksum_setup();
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    CREATE INDEX ix_contract_line_item_extraction_run_id ON contract_line_item (extraction_run_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    CREATE INDEX ix_clause_extraction_run_id ON clause (extraction_run_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex', '10.0.4');
+    END IF;
+END $EF$;
 COMMIT;
 

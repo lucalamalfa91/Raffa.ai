@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
@@ -132,7 +133,8 @@ internal sealed partial class AskCopilotService
                 $"queryHash={queryHash} purpose={authorized.Purpose} queryLength={authorized.Query.Length}", cancellationToken)
             .ConfigureAwait(false);
 
-        if (!await webResearchBudget.TryConsumeAsync(tenantId, cancellationToken).ConfigureAwait(false))
+        var reservation = await webResearchBudget.TryReserveAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        if (reservation is not { } reserved)
         {
             await WriteWebResearchAuditAsync(tenantId, AuditWebResearchRefusedAction, actor, $"gate={WebGate.Budget} stage=run queryHash={queryHash}", cancellationToken)
                 .ConfigureAwait(false);
@@ -140,14 +142,14 @@ internal sealed partial class AskCopilotService
         }
 
         var language = LanguageHint.IsItalian(question) ? "it" : "en";
-        var outcome = await webResearchComposer
-            .ComposeAsync(authorized.Query, authorized.Purpose, language, cancellationToken)
+        var (outcome, released) = await ComposeReservedAsync(reserved, authorized.Query, authorized.Purpose, language, cancellationToken)
             .ConfigureAwait(false);
 
         await WriteWebResearchAuditAsync(
                 tenantId, AuditWebResearchedAction, actor,
                 $"queryHash={queryHash} outcome={outcome.Kind} sourceCount={outcome.SourceCount} " +
-                $"guardIntervened={outcome.GuardIntervened} promptVersion={outcome.Provenance.PromptVersion}",
+                $"guardIntervened={outcome.GuardIntervened} promptVersion={outcome.Provenance.PromptVersion} " +
+                $"budgetReleased={released}",
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -160,6 +162,53 @@ internal sealed partial class AskCopilotService
         return (
             new CopilotReply(outcome.AsReplyKind, outcome.Markdown, outcome.Citations, actions, outcome.Provenance, []),
             outcome.GuardIntervened);
+    }
+
+    /// <summary>
+    /// F3-T03: the research call under a budget reservation taken before it. When the call fails for
+    /// transport or configuration reasons (<see cref="WebResearchOutcome.ReleaseBudget"/> — never a
+    /// content-filter verdict, never unusable output), or throws, the reserved unit is handed back, so
+    /// an outage never costs the tenant a call. A cancelled caller keeps the unit spent: the provider
+    /// may well have run the search. Shared by the consented and the toggle entry. The release is
+    /// best effort (never cancelled with the request, never fatal to the reply).
+    /// </summary>
+    private async Task<(WebResearchOutcome Outcome, bool Released)> ComposeReservedAsync(
+        WebResearchReservation reservation,
+        string query,
+        string purpose,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        WebResearchOutcome outcome;
+        try
+        {
+            outcome = await webResearchComposer
+                .ComposeAsync(query, purpose, language, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await TryReleaseBudgetAsync(reservation).ConfigureAwait(false);
+            throw;
+        }
+
+        var released = outcome.ReleaseBudget && await TryReleaseBudgetAsync(reservation).ConfigureAwait(false);
+        return (outcome, released);
+    }
+
+    private async Task<bool> TryReleaseBudgetAsync(WebResearchReservation reservation)
+    {
+        try
+        {
+            await webResearchBudget.ReleaseAsync(reservation, CancellationToken.None).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception)
+        {
+            // The reply matters more than the refund; a failed release leaves the unit spent (the
+            // conservative side of the budget) and the audit row says budgetReleased=False.
+            return false;
+        }
     }
 
     private CopilotReply BuildWebGateClosedReply(
@@ -197,6 +246,8 @@ internal sealed partial class AskCopilotService
     private Task WriteWebResearchAuditAsync(
         TenantId tenantId, string action, string actor, string detail, CancellationToken cancellationToken) =>
         auditWriter.WriteAsync(
-            new AuditEntry(tenantId, actor, action, AuditResourceType, WebResearchAuditResourceId, clock.UtcNow, detail),
+            new AuditEntry(
+                tenantId, actor, action, AuditResourceType, WebResearchAuditResourceId, clock.UtcNow,
+                $"{detail} turnId={RunContext.Current?.TurnId ?? "none"}"),
             cancellationToken);
 }

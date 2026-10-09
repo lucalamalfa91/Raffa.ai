@@ -40,4 +40,5 @@ public sealed record StagedExtractionStageResult(
     ExtractionJobStatus Status,
     int ExtractedCount,
     int SkippedCount,
-    string? ErrorDetail);
+    string? ErrorDetail,
+    ExtractionStageFailureKind? FailureKind = null);

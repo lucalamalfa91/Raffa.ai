@@ -139,7 +139,8 @@ public sealed class DocumentsListCountsTests : IClassFixture<RaffaApiFactory>
     }
 
     /// <summary>"Review 0 fields" is never a state the list shows: a NeedsReview document whose
-    /// contract has no weak field left (a weak line item/clause, or a failed stage, parked it there)
+    /// contract has no weak field left (a weak line item/clause parked it there; a document with a
+    /// failed extraction stage is partial and is never validated this way -- F5-T02)
     /// is validated automatically on the next list read, with its own audit trail; one that still
     /// has a weak field stays in review.</summary>
     [Fact]

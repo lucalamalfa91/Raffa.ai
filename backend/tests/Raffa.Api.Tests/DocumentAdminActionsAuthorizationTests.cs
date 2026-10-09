@@ -152,7 +152,9 @@ public sealed class DocumentAdminActionsAuthorizationTests : IClassFixture<Raffa
     private static async Task<Guid> UploadAsync(Host host, Guid tenantId, string fileName)
     {
         var client = host.Factory.CreateClient();
-        var file = new ByteArrayContent(BuildPdf(MsaText));
+        // F5-D01: one tenant uploading the same bytes twice is one document, so every file this helper
+        // uploads carries its own name in the text -- these tests need distinct documents.
+        var file = new ByteArrayContent(BuildPdf($"{MsaText} Ref {fileName}."));
         file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
         using var content = new MultipartFormDataContent { { file, "file", fileName } };
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/documents") { Content = content };

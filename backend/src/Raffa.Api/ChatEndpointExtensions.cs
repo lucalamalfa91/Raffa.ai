@@ -23,9 +23,8 @@ namespace Raffa.Api;
 /// <c>Raffa.Chat.Application.AskRaffaQueryRouter</c> + <c>EmbeddingRetrievalService</c> +
 /// <c>RagAnswerService</c> pipeline this file used to run directly (task E02/F04/US02/T01) is now
 /// composed *inside* <see cref="AskCopilotService"/>'s own intent handling instead (the legacy
-/// router/planner/handler trio is reused there — see that type's own doc comment).
-/// <c>RagAnswerService</c> itself stays registered and independently tested
-/// (<c>Raffa.Chat.Tests.RagAnswerServiceTests</c>) but is no longer this endpoint's own call path
+/// router/planner/handler trio is reused there — see that type's own doc comment). The
+/// evidence-only <c>RagAnswerService</c> was no longer any host's call path and has been removed
 /// — ADR-024 replaces the old `{ question, intent, canDetermine, answer, citations, message }`
 /// response shape entirely with the §6 reply contract <see cref="AskCopilotService"/> now produces.
 /// </para>

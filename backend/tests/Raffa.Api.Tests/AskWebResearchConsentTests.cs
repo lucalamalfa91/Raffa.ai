@@ -200,8 +200,9 @@ public sealed class AskWebResearchConsentTests : IClassFixture<RaffaApiFactory>
         Assert.Equal(["allow", "decline"], keys);
         // The server-authored query is shown verbatim so the user knows exactly what leaves Raffa.
         Assert.Contains("typical uplift caps on saas renewals", question.GetProperty("prompt").GetString(), StringComparison.Ordinal);
-        // Nothing searched yet: the one model call is ADR-031's capability check on the typed turn.
-        Assert.Equal(1, gateway.CapabilityChecks);
+        // Nothing searched yet: no model call at all. (INV-02: an explicit web request that gets
+        // its consent question is neither T1, T2 nor T3, so the Triggered investigator stays out.)
+        Assert.Equal(0, gateway.CapabilityChecks);
         Assert.Empty(gateway.CallsBeyondCapabilityCheck);
         var interviewed = Assert.Single(audit.Entries, e => e.Action == "chat.interviewed");
         Assert.Contains("webConsent=True", interviewed.Detail, StringComparison.Ordinal);
@@ -230,7 +231,7 @@ public sealed class AskWebResearchConsentTests : IClassFixture<RaffaApiFactory>
         Assert.All(citations, c => Assert.StartsWith("https://", c.GetProperty("href").GetString(), StringComparison.Ordinal));
         Assert.Equal(["web"], root.GetProperty("provenance").GetProperty("sources").EnumerateArray().Select(s => s.GetString()).ToList());
         Assert.True(root.GetProperty("provenance").GetProperty("unverified").GetBoolean());
-        Assert.Equal("research-v1", root.GetProperty("provenance").GetProperty("promptVersion").GetString());
+        Assert.Equal("research-v2", root.GetProperty("provenance").GetProperty("promptVersion").GetString());
         Assert.NotEmpty(root.GetProperty("actions").EnumerateArray());
 
         Assert.Equal(1, gateway.Calls.Count(c => c == nameof(RecordingAiGateway.ResearchAsync)));

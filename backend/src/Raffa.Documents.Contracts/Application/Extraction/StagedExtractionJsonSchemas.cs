@@ -59,6 +59,7 @@ internal static class StagedExtractionJsonSchemas
         ["cancellationDeadline"] = "the last date a termination or non-renewal notice can be sent, YYYY-MM-DD (end date minus the notice period, only when both are stated)",
         ["autoRenewal"] = "'true' if the contract renews automatically (tacit renewal) unless a party terminates it, otherwise 'false'",
         ["renewalTermMonths"] = "the length of each renewal term in months, as an integer",
+        ["noticePeriodDays"] = "the notice period required to cancel or not renew, as a whole number of calendar days before the end date (convert weeks x7, months x30); only when the document states one - never compute the cancellation date from it yourself",
     };
 
     /// <summary>

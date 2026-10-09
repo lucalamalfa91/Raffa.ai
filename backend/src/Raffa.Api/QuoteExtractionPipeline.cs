@@ -10,6 +10,7 @@ using Raffa.Quotes.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Raffa.Api;
 
@@ -77,7 +78,8 @@ internal sealed class QuoteExtractionPipeline(
     SkuNormalizationService skuNormalizationService,
     ITenantContext tenantContext,
     IClock clock,
-    IAuditWriter auditWriter)
+    IAuditWriter auditWriter,
+    ILogger<QuoteExtractionPipeline>? logger = null)
 {
     /// <summary>Caller-owned stage label for the AI Gateway's `extract` role (see
     /// <c>IAiGateway.ExtractAsync</c>'s own doc comment: "mirrors, but does not reference,
@@ -90,6 +92,19 @@ internal sealed class QuoteExtractionPipeline(
     /// equivalents.</summary>
     private const string SystemActor = "system:quote-extraction";
 
+    /// <summary>
+    /// Runs one quote through parse, extract, normalize and SKU-match, and always leaves the
+    /// <see cref="Quote"/> and its <see cref="QuoteExtractionJob"/> in a terminal state (task
+    /// F6-T02, "0 job Running orfani"). A <see cref="Result"/> failure and a <em>throw</em>
+    /// (corrupt file in the parser, an unreachable model, a database fault, a client that
+    /// disconnected mid-run) end the same way: both rows go to <c>Failed</c> with a typed
+    /// <c>ErrorDetail</c> (<see cref="QuoteExtractionFailure"/>), the terminal write ignores the
+    /// request's cancellation token (the very reason it is needed may be that the token fired), and
+    /// any line this run already persisted is removed so a <c>Failed</c> quote never carries a
+    /// half-processed set of rows. The one exception is a throw <em>after</em> the final status
+    /// save committed (the audit write): the work is durable and terminal, so it is rethrown
+    /// unchanged rather than overwritten.
+    /// </summary>
     public async Task<Result<QuoteProcessingSummary>> ProcessAsync(
         TenantId tenantId,
         EntityId quoteId,
@@ -100,6 +115,41 @@ internal sealed class QuoteExtractionPipeline(
     {
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
+        var run = new RunState();
+        try
+        {
+            return await RunAsync(run, tenantId, quoteId, fileName, mimeType, content, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (!run.StatusCommitted)
+        {
+            var (kind, detail) = Describe(exception, run.Stage, cancellationToken);
+            if (kind == QuoteExtractionFailureKind.Cancelled)
+            {
+                logger?.LogWarning(
+                    "Quote {QuoteId} extraction was cancelled before it finished; marking it Failed.", quoteId);
+            }
+            else
+            {
+                logger?.LogError(
+                    exception, "Quote {QuoteId} extraction threw at stage {Stage}; marking it Failed.",
+                    quoteId, run.Stage);
+            }
+
+            await FailAsync(run, tenantId, quoteId, kind, detail).ConfigureAwait(false);
+            return Result<QuoteProcessingSummary>.Failure(detail);
+        }
+    }
+
+    private async Task<Result<QuoteProcessingSummary>> RunAsync(
+        RunState run,
+        TenantId tenantId,
+        EntityId quoteId,
+        string fileName,
+        string mimeType,
+        ReadOnlyMemory<byte> content,
+        CancellationToken cancellationToken)
+    {
         var quote = await dbContext.Quotes
             .SingleOrDefaultAsync(q => q.TenantId == tenantId && q.Id == quoteId, cancellationToken)
             .ConfigureAwait(false);
@@ -127,13 +177,16 @@ internal sealed class QuoteExtractionPipeline(
             job.StartedAt = startedAt;
         }
 
+        run.Stage = QuoteExtractionFailureKind.ParseFailed;
         var parseResult = await parsingService
             .ParseAsync(fileName, mimeType, content, cancellationToken)
             .ConfigureAwait(false);
 
         if (parseResult.IsFailure)
         {
-            return await FailAsync(quote, job, parseResult.Error, cancellationToken).ConfigureAwait(false);
+            return await FailAsync(
+                run, tenantId, quoteId, QuoteExtractionFailureKind.ParseFailed, parseResult.Error)
+                .ConfigureAwait(false);
         }
 
         var pages = parseResult.Value;
@@ -143,18 +196,22 @@ internal sealed class QuoteExtractionPipeline(
             // generalized here to "no readable text at all", mirroring
             // StagedExtractionService.RunAsync's identical guard.
             return await FailAsync(
-                quote, job, "Quote extraction requires at least one page of document text.", cancellationToken)
+                run, tenantId, quoteId, QuoteExtractionFailureKind.NoReadableText,
+                "Quote extraction requires at least one page of document text.")
                 .ConfigureAwait(false);
         }
 
         var documentText = BuildPageMarkedText(pages);
 
+        run.Stage = QuoteExtractionFailureKind.ExtractionFailed;
         var extractRequest = new AiExtractionRequest(StageName, documentText, QuoteLineJsonSchema.LineItems());
         var extractResult = await aiGateway.ExtractAsync(extractRequest, cancellationToken).ConfigureAwait(false);
 
         if (extractResult.IsFailure)
         {
-            return await FailAsync(quote, job, extractResult.Error, cancellationToken).ConfigureAwait(false);
+            return await FailAsync(
+                run, tenantId, quoteId, QuoteExtractionFailureKind.ExtractionFailed, extractResult.Error)
+                .ConfigureAwait(false);
         }
 
         if (job is not null)
@@ -164,6 +221,7 @@ internal sealed class QuoteExtractionPipeline(
 
         QuoteLineExtractionOutcome outcome;
         var completedAt = clock.UtcNow;
+        run.Stage = QuoteExtractionFailureKind.PersistenceFailed;
         try
         {
             outcome = lineExtractionService.ApplyExtractedLines(
@@ -176,8 +234,20 @@ internal sealed class QuoteExtractionPipeline(
             // StagedExtractionService.ApplyStageResultAsync's identical guard against malformed
             // JSON from a real (non-fixture) model.
             return await FailAsync(
-                quote, job, $"Malformed extraction payload: {ex.Message}", cancellationToken)
+                run, tenantId, quoteId, QuoteExtractionFailureKind.MalformedPayload,
+                $"Malformed extraction payload: {ex.Message}")
                 .ConfigureAwait(false);
+        }
+
+        // Remember exactly which rows this run is about to persist, so a failure after the first
+        // save removes those and only those (a quote that already held lines from an earlier
+        // successful run must never lose them to a later failed one).
+        foreach (var entry in dbContext.ChangeTracker.Entries<QuoteLine>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                run.PersistedLineIds.Add(entry.Entity.Id);
+            }
         }
 
         // Task E05/F01/US01/T02 (quote-normalization): normalizes the very rows ApplyExtractedLines
@@ -231,6 +301,7 @@ internal sealed class QuoteExtractionPipeline(
         quote.ProcessingStatus = MapStatus(finalJobStatus);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        run.StatusCommitted = true;
 
         await auditWriter.WriteAsync(
                 new AuditEntry(
@@ -251,28 +322,121 @@ internal sealed class QuoteExtractionPipeline(
             pages.Count,
             lineNormalizationOutcome.NormalizedCount,
             lineNormalizationOutcome.UnresolvedCount,
-            skuNormalizationOutcome.UnmatchedCount));
+            skuNormalizationOutcome.UnmatchedCount,
+            outcome.InvalidCount));
     }
 
-    /// <summary>Shared terminal-failure path: marks both rows Failed, persists, and returns the
-    /// honest error — never leaves <paramref name="quote"/> looking like extraction is still in
-    /// flight (mirrors <c>DocumentProcessingPipeline.ProcessAsync</c>'s identical parse-failure
-    /// handling).</summary>
+    /// <summary>
+    /// The one terminal-failure path, for a <see cref="Result"/> failure and a throw alike: marks
+    /// the quote and every still-open job of this quote <c>Failed</c>, removes the lines this run
+    /// persisted, and records the typed error. It deliberately does <em>not</em> reuse the tracked
+    /// entities of the failed run: after a throw the change tracker can hold half-applied or
+    /// Added-but-unsaved rows (a failed <c>SaveChanges</c> leaves them tracked), and saving
+    /// those again would just throw again. It clears the tracker, re-reads the rows and writes with
+    /// <see cref="CancellationToken.None"/> — the request token may be exactly what fired. Best
+    /// effort by construction: if even this write fails (the database is down) it is logged, not
+    /// thrown, because the caller is already reporting the original failure.
+    /// </summary>
     private async Task<Result<QuoteProcessingSummary>> FailAsync(
-        Quote quote, QuoteExtractionJob? job, string error, CancellationToken cancellationToken)
+        RunState run, TenantId tenantId, EntityId quoteId, QuoteExtractionFailureKind kind, string error)
     {
+        var errorDetail = QuoteExtractionFailure.Format(kind, error);
         var now = clock.UtcNow;
-        quote.ProcessingStatus = QuoteProcessingStatus.Failed;
 
-        if (job is not null)
+        try
         {
-            job.Status = QuoteExtractionJobStatus.Failed;
-            job.ErrorDetail = Truncate(error);
-            job.CompletedAt = now;
+            dbContext.ChangeTracker.Clear();
+
+            var quote = await dbContext.Quotes
+                .SingleOrDefaultAsync(q => q.TenantId == tenantId && q.Id == quoteId, CancellationToken.None)
+                .ConfigureAwait(false);
+
+            // Never downgrade a quote that already reached a successful terminal state.
+            if (quote is not null
+                && quote.ProcessingStatus is not (QuoteProcessingStatus.Completed or QuoteProcessingStatus.NeedsReview))
+            {
+                var openJobs = await dbContext.QuoteExtractionJobs
+                    .Where(j => j.TenantId == tenantId
+                        && j.QuoteId == quoteId
+                        && (j.Status == QuoteExtractionJobStatus.Queued
+                            || j.Status == QuoteExtractionJobStatus.Running))
+                    .ToListAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                foreach (var openJob in openJobs)
+                {
+                    openJob.Status = QuoteExtractionJobStatus.Failed;
+                    openJob.StartedAt ??= now;
+                    openJob.CompletedAt = now;
+                    openJob.ErrorDetail = errorDetail;
+                }
+
+                if (run.PersistedLineIds.Count > 0)
+                {
+                    var persisted = run.PersistedLineIds.ToHashSet();
+                    var orphans = (await dbContext.QuoteLines
+                            .Where(l => l.TenantId == tenantId && l.QuoteId == quoteId)
+                            .ToListAsync(CancellationToken.None)
+                            .ConfigureAwait(false))
+                        .Where(l => persisted.Contains(l.Id))
+                        .ToList();
+                    dbContext.QuoteLines.RemoveRange(orphans);
+                }
+
+                quote.ProcessingStatus = QuoteProcessingStatus.Failed;
+                await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception)
+        {
+            logger?.LogError(
+                exception, "Could not record the failure of quote {QuoteId} extraction ({Kind}).", quoteId, kind);
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await auditWriter.WriteAsync(
+                    new AuditEntry(
+                        tenantId,
+                        SystemActor,
+                        "quote.extraction.failed",
+                        "quote",
+                        quoteId.Value.ToString(),
+                        now),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogError(exception, "Could not audit the failure of quote {QuoteId} extraction.", quoteId);
+        }
+
         return Result<QuoteProcessingSummary>.Failure(error);
+    }
+
+    /// <summary>Maps a thrown exception to its typed kind and a short, content-free detail: the
+    /// exception type and message, never the document text.</summary>
+    private static (QuoteExtractionFailureKind Kind, string Detail) Describe(
+        Exception exception, QuoteExtractionFailureKind stage, CancellationToken cancellationToken)
+    {
+        if (exception is OperationCanceledException && cancellationToken.IsCancellationRequested)
+        {
+            return (QuoteExtractionFailureKind.Cancelled, "The request was cancelled before extraction finished.");
+        }
+
+        return (stage, $"{exception.GetType().Name}: {exception.Message}");
+    }
+
+    /// <summary>Mutable bookkeeping of one <see cref="ProcessAsync"/> run, read by its catch
+    /// block: the stage that was executing, the ids of the lines this run persisted, and whether
+    /// the final status save already committed.</summary>
+    private sealed class RunState
+    {
+        public QuoteExtractionFailureKind Stage { get; set; } = QuoteExtractionFailureKind.Unexpected;
+
+        public List<EntityId> PersistedLineIds { get; } = [];
+
+        public bool StatusCommitted { get; set; }
     }
 
     private static QuoteProcessingStatus MapStatus(QuoteExtractionJobStatus status) => status switch
@@ -301,9 +465,6 @@ internal sealed class QuoteExtractionPipeline(
 
         return builder.ToString();
     }
-
-    private static string Truncate(string value, int maxLength = 1000) =>
-        value.Length <= maxLength ? value : value[..maxLength];
 }
 
 /// <summary>Outcome of one <see cref="QuoteExtractionPipeline.ProcessAsync"/> run — the response
@@ -319,6 +480,8 @@ internal sealed class QuoteExtractionPipeline(
 /// made visible over HTTP as well as in the database.</param>
 /// <param name="UnmatchedSkuCount">Added by task E05/F01/US02/T01 (sku-normalization, AC-2's "show
 /// unmatched SKUs" half).</param>
+/// <param name="InvalidCount">Task F6-T04: lines discarded for an out-of-range value; already
+/// included in <see cref="SkippedCount"/>.</param>
 internal sealed record QuoteProcessingSummary(
     EntityId QuoteId,
     QuoteProcessingStatus ProcessingStatus,
@@ -327,4 +490,5 @@ internal sealed record QuoteProcessingSummary(
     int PageCount,
     int NormalizedLineItemCount,
     int UnresolvedNormalizationCount,
-    int UnmatchedSkuCount);
+    int UnmatchedSkuCount,
+    int InvalidCount = 0);

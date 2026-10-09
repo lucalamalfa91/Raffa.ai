@@ -90,6 +90,9 @@ public enum MarketMatchKind
 /// <c>"representative market data · mock feed · updated 2026-07-01"</c>.</param>
 /// <param name="UpdatedAt">When the market record itself was last refreshed.</param>
 /// <param name="Kind">Exact product, bundle or similar product — see <see cref="MarketMatchKind"/>.</param>
+/// <param name="ProvenanceInfo">Structured provenance of this figure (F7-T11): source class, sample,
+/// as-of date, unit. Internal metadata, never rendered by itself; <see langword="null"/> only for a
+/// match built outside the corpus matcher.</param>
 public sealed record MarketPriceMatch(
     string RecordId,
     string Product,
@@ -102,4 +105,5 @@ public sealed record MarketPriceMatch(
     int SampleSize,
     string Provenance,
     DateTimeOffset UpdatedAt,
-    MarketMatchKind Kind = MarketMatchKind.Exact);
+    MarketMatchKind Kind = MarketMatchKind.Exact,
+    MarketProvenanceInfo? ProvenanceInfo = null);

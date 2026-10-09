@@ -48,6 +48,10 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<Guid?>("ExtractionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extraction_run_id");
+
                     b.Property<string>("NormalizedValue")
                         .HasColumnType("text")
                         .HasColumnName("normalized_value");
@@ -91,6 +95,9 @@ namespace Raffa.Documents.Contracts.Migrations
 
                     b.HasIndex("ContractId")
                         .HasDatabaseName("ix_clause_contract_id");
+
+                    b.HasIndex("ExtractionRunId")
+                        .HasDatabaseName("ix_clause_extraction_run_id");
 
                     b.HasIndex("SourceDocumentId")
                         .HasDatabaseName("ix_clause_source_document_id");
@@ -142,6 +149,10 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("governing_law");
+
+                    b.Property<int?>("NoticePeriodDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("notice_period_days");
 
                     b.Property<Guid?>("ParentContractId")
                         .HasColumnType("uuid")
@@ -246,6 +257,10 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("numeric(5,2)")
                         .HasColumnName("discount");
 
+                    b.Property<Guid?>("ExtractionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extraction_run_id");
+
                     b.Property<decimal?>("ListPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)")
@@ -309,6 +324,9 @@ namespace Raffa.Documents.Contracts.Migrations
 
                     b.HasIndex("ContractId")
                         .HasDatabaseName("ix_contract_line_item_contract_id");
+
+                    b.HasIndex("ExtractionRunId")
+                        .HasDatabaseName("ix_contract_line_item_extraction_run_id");
 
                     b.HasIndex("ProductId")
                         .HasDatabaseName("ix_contract_line_item_product_id");
@@ -699,6 +717,11 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_document_tenant_id");
 
+                    b.HasIndex("TenantId", "Checksum")
+                        .IsUnique()
+                        .HasDatabaseName("ux_document_tenant_checksum")
+                        .HasFilter("processing_status <> 'Rejected' AND created_at >= '2026-10-08T00:00:00+00'");
+
                     b.ToTable("document", (string)null);
                 });
 
@@ -867,6 +890,10 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("extraction_job_id");
 
+                    b.Property<Guid?>("ExtractionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extraction_run_id");
+
                     b.Property<string>("FieldName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -949,6 +976,24 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasColumnType("text")
                         .HasColumnName("error_detail");
 
+                    b.Property<int?>("ExtractedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("extracted_count");
+
+                    b.Property<Guid?>("ExtractionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extraction_run_id");
+
+                    b.Property<string>("FailureKind")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("failure_kind");
+
+                    b.Property<string>("InputHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("input_hash");
+
                     b.Property<string>("ModelId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
@@ -961,6 +1006,10 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.Property<DateTimeOffset>("QueuedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("queued_at");
+
+                    b.Property<int?>("SkippedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("skipped_count");
 
                     b.Property<string>("Stage")
                         .IsRequired()
@@ -987,6 +1036,9 @@ namespace Raffa.Documents.Contracts.Migrations
 
                     b.HasIndex("DocumentId")
                         .HasDatabaseName("ix_extraction_job_document_id");
+
+                    b.HasIndex("ExtractionRunId")
+                        .HasDatabaseName("ix_extraction_job_extraction_run_id");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_extraction_job_status");
@@ -1028,6 +1080,10 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("date")
                         .HasColumnName("due_date");
+
+                    b.Property<Guid?>("ExtractionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extraction_run_id");
 
                     b.Property<string>("ObligationType")
                         .IsRequired()
@@ -1083,6 +1139,9 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.HasIndex("DueDate")
                         .HasDatabaseName("ix_obligation_due_date");
 
+                    b.HasIndex("ExtractionRunId")
+                        .HasDatabaseName("ix_obligation_extraction_run_id");
+
                     b.HasIndex("SourceDocumentId")
                         .HasDatabaseName("ix_obligation_source_document_id");
 
@@ -1114,6 +1173,10 @@ namespace Raffa.Documents.Contracts.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("description");
+
+                    b.Property<Guid?>("ExtractionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extraction_run_id");
 
                     b.Property<DateTimeOffset>("IdentifiedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1168,6 +1231,9 @@ namespace Raffa.Documents.Contracts.Migrations
 
                     b.HasIndex("ContractId")
                         .HasDatabaseName("ix_risk_contract_id");
+
+                    b.HasIndex("ExtractionRunId")
+                        .HasDatabaseName("ix_risk_extraction_run_id");
 
                     b.HasIndex("SourceDocumentId")
                         .HasDatabaseName("ix_risk_source_document_id");

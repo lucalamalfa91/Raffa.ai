@@ -6,6 +6,14 @@ namespace Raffa.Documents.Contracts.Infrastructure.Configurations;
 
 public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
 {
+    public const string DocumentChecksumUniqueIndexName = "ux_document_tenant_checksum";
+
+    /// <summary>Instant from which the (tenant, checksum) uniqueness is enforced by the database.</summary>
+    public const string DocumentChecksumUniqueFrom = "2026-10-08T00:00:00+00";
+
+    public const string DocumentChecksumUniqueFilter =
+        "processing_status <> 'Rejected' AND created_at >= '" + DocumentChecksumUniqueFrom + "'";
+
     public void Configure(EntityTypeBuilder<Document> builder)
     {
         builder.ToTable("document");
@@ -39,6 +47,19 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
 
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.ContractId);
+
+        // F5-D01: the same file (same SHA-256) uploaded twice by one tenant is one document and one
+        // Contract. The upload service answers "already uploaded" before anything is created; this
+        // index is the backstop for two uploads racing past that check. Partial on purpose:
+        //   * a Rejected row keeps its checksum but has no blob any more and the only way forward is a
+        //     new upload (DocumentReprocessService), so it must not block that re-upload;
+        //   * rows created before DocumentChecksumUniqueFrom may already hold duplicates (the old
+        //     upload path never checked), and creating a unique index over them would fail the
+        //     migration -- the upload service still treats them as the existing document.
+        builder.HasIndex(e => new { e.TenantId, e.Checksum })
+            .IsUnique()
+            .HasDatabaseName(DocumentChecksumUniqueIndexName)
+            .HasFilter(DocumentChecksumUniqueFilter);
 
         // Cross-entity but intra-module reference (Documents/Contracts owns both Document and
         // Contract); nullable + Restrict because a document may exist before it is classified

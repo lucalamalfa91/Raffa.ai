@@ -13,7 +13,8 @@ namespace Raffa.Chat.Tests;
 /// Proves task E02/F04/US02/T01's own wiring claim (mirrors
 /// <c>Raffa.AiGateway.Tests.ServiceCollectionExtensionsTests</c>): <see cref="AskRaffaQueryRouter"/>,
 /// <see cref="DeterministicQueryPlanner"/>, <see cref="DeterministicQueryHandler"/>,
-/// <see cref="AbstainGuard"/> (task E02/F04/US02/T02) and <see cref="RagAnswerService"/> are all
+/// <see cref="AbstainGuard"/> (task E02/F04/US02/T02) and the ask engine's
+/// <see cref="Raffa.Chat.Application.Answering.AnswerComposer"/> are all
 /// resolvable from a container that has
 /// <see cref="AddChatModule"/> plus this module's two external dependencies
 /// (<see cref="IAiGateway"/>, <see cref="IAuditWriter"/>) registered — the shape
@@ -22,10 +23,10 @@ namespace Raffa.Chat.Tests;
 ///
 /// <see cref="ServiceProviderOptions.ValidateOnBuild"/> + <see cref="ServiceProviderOptions.ValidateScopes"/>
 /// (both <see langword="true"/> below) is the actual proof behind
-/// <c>Infrastructure.ServiceCollectionExtensions</c>'s own doc comment: if
-/// <see cref="RagAnswerService"/> had been registered Singleton instead of Scoped, building this
-/// provider would throw ("Cannot consume scoped service ... from singleton ...") because it
-/// depends on a Scoped <see cref="IAuditWriter"/> — this test fails loudly if that regresses.
+/// <c>Infrastructure.ServiceCollectionExtensions</c>'s own doc comment: if a service that depends
+/// on a Scoped <see cref="IAuditWriter"/> were registered Singleton instead of Scoped, building this
+/// provider would throw ("Cannot consume scoped service ... from singleton ...") — this test fails
+/// loudly if that regresses.
 /// </summary>
 public sealed class ServiceCollectionExtensionsTests
 {
@@ -46,7 +47,7 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<DeterministicQueryPlanner>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<DeterministicQueryHandler>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AbstainGuard>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<RagAnswerService>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Answering.AnswerComposer>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IClock>());
 
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<NegotiationDraftingWorkflow>());
@@ -105,7 +106,7 @@ public sealed class ServiceCollectionExtensionsTests
         // The zero-argument surface from the other test above still resolves too -- the overload
         // is additive, never a replacement.
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AskRaffaQueryRouter>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<RagAnswerService>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Answering.AnswerComposer>());
     }
 
     private sealed class FixedTimeClock : IClock

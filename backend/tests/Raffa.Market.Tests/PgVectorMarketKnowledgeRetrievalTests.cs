@@ -53,7 +53,10 @@ public sealed class PgVectorMarketKnowledgeRetrievalTests : IAsyncLifetime
         return vector;
     }
 
-    private sealed class StubEmbeddingGateway(IReadOnlyDictionary<string, float[]> vectorsByText) : IAiGateway
+    private sealed class StubEmbeddingGateway(
+        IReadOnlyDictionary<string, float[]> vectorsByText,
+        string modelId = "stub-embed-model",
+        string promptVersion = "stub-v1") : IAiGateway
     {
         public Task<Result<AiClassificationResult>> ClassifyAsync(
             AiClassificationRequest request, CancellationToken cancellationToken = default) =>
@@ -72,7 +75,7 @@ public sealed class PgVectorMarketKnowledgeRetrievalTests : IAsyncLifetime
             }
 
             var result = new AiEmbeddingResult(
-                vector, new AiCallMetadata("stub-embed-model", "v1", "stub-v1", DateTimeOffset.UtcNow, "n/a"));
+                vector, new AiCallMetadata(modelId, "v1", promptVersion, DateTimeOffset.UtcNow, "n/a"));
             return Task.FromResult(Result<AiEmbeddingResult>.Success(result));
         }
 
@@ -85,7 +88,8 @@ public sealed class PgVectorMarketKnowledgeRetrievalTests : IAsyncLifetime
             throw new NotSupportedException("Not exercised by PgVectorMarketKnowledgeRetrieval.");
     }
 
-    private async Task SeedAsync(MarketDeal deal, string chunkText, float[] vector)
+    private async Task SeedAsync(
+        MarketDeal deal, string chunkText, float[] vector, string model = "stub-embed-model", bool? isFixture = null)
     {
         var options = new DbContextOptionsBuilder<MarketDbContext>();
         MarketDbContextOptions.Configure(options, _postgres.GetConnectionString());
@@ -107,9 +111,44 @@ public sealed class PgVectorMarketKnowledgeRetrievalTests : IAsyncLifetime
             ChunkIndex = 0,
             ChunkText = chunkText,
             Vector = new Vector(vector),
-            Model = "stub-embed-model",
+            Model = model,
+            IsFixture = isFixture,
             CreatedAt = DateTimeOffset.UtcNow,
         });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Seeds many records in one round trip (a window-sized corpus would be slow one by one).</summary>
+    private async Task SeedManyAsync(IEnumerable<(MarketDeal Deal, float[] Vector)> rows)
+    {
+        var options = new DbContextOptionsBuilder<MarketDbContext>();
+        MarketDbContextOptions.Configure(options, _postgres.GetConnectionString());
+        await using var db = new MarketDbContext(options.Options);
+
+        foreach (var (deal, vector) in rows)
+        {
+            db.MarketRecords.Add(new MarketRecordEntity
+            {
+                RecordId = deal.RecordId,
+                FeedVersion = "v1",
+                Provider = deal.Provider,
+                PayloadJson = JsonSerializer.Serialize(deal, JsonOptions),
+                ProvenanceLabel = MarketProvenance.Label(deal),
+                UpdatedAt = deal.UpdatedAt,
+            });
+            db.MarketEmbeddings.Add(new MarketEmbeddingEntity
+            {
+                Id = EntityId.New(),
+                RecordId = deal.RecordId,
+                ChunkIndex = 0,
+                ChunkText = "note " + deal.RecordId,
+                Vector = new Vector(vector),
+                Model = "stub-embed-model",
+                IsFixture = false,
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+        }
+
         await db.SaveChangesAsync();
     }
 
@@ -208,5 +247,167 @@ public sealed class PgVectorMarketKnowledgeRetrievalTests : IAsyncLifetime
         var result = await retrieval.SearchAsync("anything", topK: 0);
 
         Assert.True(result.IsFailure);
+    }
+
+    // ---- F7-T01: bounded query ---------------------------------------------------------------
+
+    [Fact]
+    public async Task Search_over_a_large_index_returns_only_the_topK_nearest_in_order()
+    {
+        const string query = "limit query";
+        var rows = Enumerable.Range(0, 300)
+            .Select(i => (
+                Deal: SampleDeal.Create(recordId: $"MKT-LIM-{i:D3}"),
+                Vector: PlaneVector(1f, i * 0.01f)))
+            .ToList();
+        await SeedManyAsync(rows);
+
+        var retrieval = CreateRetrieval(new StubEmbeddingGateway(new Dictionary<string, float[]>
+        {
+            [query] = PlaneVector(1f, 0f),
+        }));
+
+        var result = await retrieval.SearchAsync(query, topK: 5);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            ["MKT-LIM-000", "MKT-LIM-001", "MKT-LIM-002", "MKT-LIM-003", "MKT-LIM-004"],
+            result.Value.Select(h => h.RecordId).ToArray());
+    }
+
+    [Fact]
+    public async Task A_filter_that_matches_nothing_in_the_first_window_widens_until_it_finds_the_match()
+    {
+        // 150 nearer CH rows fill the first filtered window (100 rows); the only US row is the
+        // farthest of all. The search must widen past the window instead of answering "nothing".
+        const string query = "widening query";
+        var rows = Enumerable.Range(0, 150)
+            .Select(i => (
+                Deal: SampleDeal.Create(recordId: $"MKT-WID-CH-{i:D3}", geography: "CH"),
+                Vector: PlaneVector(1f, i * 0.001f)))
+            .Append((
+                Deal: SampleDeal.Create(recordId: "MKT-WID-US", geography: "US"),
+                Vector: PlaneVector(0.2f, 1f)))
+            .ToList();
+        await SeedManyAsync(rows);
+
+        var retrieval = CreateRetrieval(new StubEmbeddingGateway(new Dictionary<string, float[]>
+        {
+            [query] = PlaneVector(1f, 0f),
+        }));
+
+        var result = await retrieval.SearchAsync(query, topK: 1, new MarketKnowledgeSearchFilters(Geography: "US"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("MKT-WID-US", Assert.Single(result.Value).RecordId);
+    }
+
+    // ---- F7-T06: embedding guard -----------------------------------------------------------
+
+    [Fact]
+    public async Task Search_refuses_an_index_built_with_fixture_vectors_when_the_query_is_a_real_embedding()
+    {
+        const string query = "guard query";
+        await SeedAsync(SampleDeal.Create(recordId: "MKT-GUARD-FIX"), "fixture note", PlaneVector(1f, 0f), isFixture: true);
+
+        var retrieval = CreateRetrieval(new StubEmbeddingGateway(new Dictionary<string, float[]>
+        {
+            [query] = PlaneVector(1f, 0f),
+        }));
+
+        var result = await retrieval.SearchAsync(query, topK: 5);
+
+        Assert.True(result.IsFailure);
+        Assert.StartsWith(MarketEmbeddingCompatibility.IncompatibleIndexErrorPrefix, result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Search_refuses_a_real_index_when_the_query_is_a_fixture_embedding()
+    {
+        const string query = "guard query";
+        await SeedAsync(SampleDeal.Create(recordId: "MKT-GUARD-REAL"), "real note", PlaneVector(1f, 0f), isFixture: false);
+
+        var retrieval = CreateRetrieval(new StubEmbeddingGateway(
+            new Dictionary<string, float[]> { [query] = PlaneVector(1f, 0f) },
+            promptVersion: "fixture-v1"));
+
+        var result = await retrieval.SearchAsync(query, topK: 5);
+
+        Assert.True(result.IsFailure);
+        Assert.StartsWith(MarketEmbeddingCompatibility.IncompatibleIndexErrorPrefix, result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Search_refuses_an_index_built_with_another_embedding_model()
+    {
+        const string query = "guard query";
+        await SeedAsync(
+            SampleDeal.Create(recordId: "MKT-GUARD-MODEL"), "old model note", PlaneVector(1f, 0f),
+            model: "text-embedding-ada-002", isFixture: false);
+
+        var retrieval = CreateRetrieval(new StubEmbeddingGateway(new Dictionary<string, float[]>
+        {
+            [query] = PlaneVector(1f, 0f),
+        }));
+
+        var result = await retrieval.SearchAsync(query, topK: 5);
+
+        Assert.True(result.IsFailure);
+        Assert.Contains("text-embedding-ada-002", result.Error, StringComparison.Ordinal);
+        Assert.Contains("stub-embed-model", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Search_of_a_part_re_embedded_index_ranks_only_the_rows_comparable_with_the_query()
+    {
+        // The old-model row is geometrically the nearest, but its vector means nothing next to the
+        // query's model: it must not be returned, and must not displace the comparable rows.
+        const string query = "mixed query";
+        await SeedAsync(
+            SampleDeal.Create(recordId: "MKT-MIX-OLD"), "old", PlaneVector(1f, 0f),
+            model: "text-embedding-ada-002", isFixture: false);
+        await SeedAsync(SampleDeal.Create(recordId: "MKT-MIX-NEW-1"), "new 1", PlaneVector(0.9f, 0.1f), isFixture: false);
+        await SeedAsync(SampleDeal.Create(recordId: "MKT-MIX-NEW-2"), "new 2", PlaneVector(0.5f, 0.5f), isFixture: false);
+
+        var retrieval = CreateRetrieval(new StubEmbeddingGateway(new Dictionary<string, float[]>
+        {
+            [query] = PlaneVector(1f, 0f),
+        }));
+
+        var result = await retrieval.SearchAsync(query, topK: 5);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["MKT-MIX-NEW-1", "MKT-MIX-NEW-2"], result.Value.Select(h => h.RecordId).ToArray());
+    }
+
+    [Fact]
+    public async Task Search_of_an_empty_index_is_an_empty_success_not_a_refusal()
+    {
+        var retrieval = CreateRetrieval(new StubEmbeddingGateway(new Dictionary<string, float[]>
+        {
+            ["anything"] = PlaneVector(1f, 0f),
+        }));
+
+        var result = await retrieval.SearchAsync("anything", topK: 5);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value);
+    }
+
+    [Fact]
+    public async Task Rows_written_before_the_fixture_flag_existed_stay_searchable()
+    {
+        const string query = "legacy query";
+        await SeedAsync(SampleDeal.Create(recordId: "MKT-LEGACY"), "legacy note", PlaneVector(1f, 0f), isFixture: null);
+
+        var retrieval = CreateRetrieval(new StubEmbeddingGateway(new Dictionary<string, float[]>
+        {
+            [query] = PlaneVector(1f, 0f),
+        }));
+
+        var result = await retrieval.SearchAsync(query, topK: 5);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("MKT-LEGACY", Assert.Single(result.Value).RecordId);
     }
 }

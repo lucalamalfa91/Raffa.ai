@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
+using Raffa.AiGateway.Telemetry;
+using Raffa.SharedKernel;
 using Raffa.Chat.Application.Guards;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
@@ -23,7 +25,8 @@ public sealed record CouncilOutcome(
 /// after the market data check and the market researcher have enriched the pack. Round one: the contract analyst
 /// and the market analyst read disjoint slices of the pack in parallel. Round two: the lever
 /// strategist reads both sets of findings, the calculators' items and the playbook, and returns
-/// ranked plays plus a verdict on the goal. The agents talk to each other only through these
+/// ranked plays; the verdict on the goal is not theirs to give but <see cref="CouncilVerdict"/>'s
+/// (computed from the calculators' items, one owner). The agents talk to each other only through these
 /// structured findings — never free text — and their output enters the answer only as pack items
 /// (corpus <see cref="PackCorpus.Calc"/>, provenance "negotiation council"), so the grounding and
 /// numeric guards still police everything the final answer says.
@@ -59,10 +62,6 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
             return CouncilOutcome.Empty;
         }
 
-        var agentsRun = new List<string>();
-        var failures = new List<string>();
-        var goalDto = ToGoalDto(goal);
-
         var tenantItems = pack.Where(i => i.Corpus == PackCorpus.Tenant).Take(options.MaxItemsPerAgent).ToList();
         // The market analyst also reads what the market data check found missing on the contract.
         var marketItems = pack
@@ -71,6 +70,20 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
                 i.CitationKey.StartsWith("calc:contract-gaps", StringComparison.Ordinal))
             .Take(options.MaxItemsPerAgent)
             .ToList();
+
+        // Precondition (R1-05): the council reads the tenant's and the market's evidence. A pack of
+        // calculator and playbook items only (no tenant item, no market item, no lever or gap
+        // calculation for the market analyst) gives both analysts nothing to read, and the
+        // strategist would run on empty findings - a model call with no input of its own. Not
+        // convened: no agent runs, so none is reported in AgentsRun.
+        if (tenantItems.Count == 0 && marketItems.Count == 0)
+        {
+            return CouncilOutcome.Empty;
+        }
+
+        var agentsRun = new List<string>();
+        var failures = new List<string>();
+        var goalDto = ToGoalDto(goal);
 
         // ----- Round one: two analysts, in parallel, over disjoint evidence -----
         var contractTask = tenantItems.Count > 0
@@ -124,15 +137,19 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
 
         agentsRun.Add(CouncilAgents.LeverStrategistName);
 
-        var strategistResult = await aiGateway.AnalyzeAsync(
-                new AiAnalysisRequest(
-                    CouncilAgents.LeverStrategistName,
-                    CouncilAgents.LeverStrategistPrompt,
-                    JsonSerializer.Serialize(strategistInput, JsonOptions),
-                    CouncilAgents.PlaysSchema,
-                    CouncilAgents.Version),
-                cancellationToken)
-            .ConfigureAwait(false);
+        Result<AiAnalysisResult> strategistResult;
+        using (RunContext.BeginStep(CouncilAgents.LeverStrategistName))
+        {
+            strategistResult = await aiGateway.AnalyzeAsync(
+                    new AiAnalysisRequest(
+                        CouncilAgents.LeverStrategistName,
+                        CouncilAgents.LeverStrategistPrompt,
+                        JsonSerializer.Serialize(strategistInput, JsonOptions),
+                        CouncilAgents.PlaysSchema,
+                        CouncilAgents.Version),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         if (strategistResult.IsFailure)
         {
@@ -159,18 +176,11 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
 
         var items = BuildPlayItems(payload, pack, packKeys);
 
-        if (payload.Verdict is { } verdict && !string.IsNullOrWhiteSpace(verdict.Reason) && NumericGuard.Validate(verdict.Reason, pack).Passed)
+        // One owner of the verdict (plan F2-D03): the strategist returns plays only; the verdict is
+        // computed from the calculators' own items, so it cannot contradict them.
+        if (CouncilVerdict.BuildItem(pack, goal, question) is { } verdictItem)
         {
-            items.Add(new PackItem(
-                "calc:council:verdict",
-                PackCorpus.Calc,
-                verdict.TargetReachable ? "Council verdict — the goal is reachable" : "Council verdict — the goal is not reachable as things stand",
-                Provenance,
-                null, null,
-                verdict.Reason.Trim(),
-                null, null, null,
-                Provenance,
-                []));
+            items.Add(verdictItem);
         }
 
         return new CouncilOutcome(items, agentsRun, failures);
@@ -186,6 +196,8 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
     {
         var input = new AnalystInput(question, goal, items.Select(ToItemDto).ToList());
 
+        // Parallel analysts each name their own step: the scope is local to this call's async flow.
+        using var step = RunContext.BeginStep(agentName);
         var result = await aiGateway.AnalyzeAsync(
                 new AiAnalysisRequest(
                     agentName,
@@ -309,9 +321,7 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
 
     internal sealed record Finding(string Title, string Insight, string? LeverType, IReadOnlyList<string>? CitationKeys);
 
-    private sealed record StrategistPayload(IReadOnlyList<Play>? Plays, Verdict? Verdict);
+    private sealed record StrategistPayload(IReadOnlyList<Play>? Plays);
 
     private sealed record Play(int Rank, string Lever, string Ask, IReadOnlyList<string>? ExpectedValueKeys, string? Fallback, string? Timing, IReadOnlyList<string>? CitationKeys);
-
-    private sealed record Verdict(bool TargetReachable, string Reason);
 }

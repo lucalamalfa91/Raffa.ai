@@ -9,7 +9,7 @@ namespace Raffa.AiGateway.Foundry.Prompts;
 /// the caller does not supply its own <c>AiAnswerRequest.SystemPrompt</c> — ADR-024's own versioned
 /// persona prompt is assembled by a later task ("F06 replaces the chunk-concat by supplying a
 /// prompt + pack"); until then this default keeps the role functionally answerable against the
-/// existing evidence-only call path (<c>Raffa.Chat.Application.RagAnswerService</c>).
+/// evidence-only call shape (<see cref="AiAnswerRequest.Evidence"/> without a pack).
 /// </summary>
 public static class AnswerPersonaPrompt
 {

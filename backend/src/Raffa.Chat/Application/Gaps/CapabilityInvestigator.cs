@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Capabilities;
@@ -29,7 +30,10 @@ public enum GapVerdict
 /// catalog entry) and <see cref="GapVerdict.Gap"/> (a <see cref="GapOrigin.Investigator"/> gap
 /// built by <see cref="CapabilityGap.Discovered"/>); <see cref="Outcome"/> is the audit value
 /// (<c>off</c>, <c>failed</c>, <c>question</c>, <c>supported</c>, <c>low-confidence</c>,
-/// <c>unusable</c>, <c>known-gap</c>, <c>gap</c>) — never model text.
+/// <c>unusable</c>, <c>known-gap</c>, <c>gap</c>) — never model text. <see cref="Confidence"/> is
+/// the verdict's own confidence word (<c>low</c>/<c>medium</c>/<c>high</c>) when the model gave a
+/// usable one, and <see cref="TimedOut"/> tells a time-budget failure apart from any other
+/// <c>failed</c> (INV-05 audits it as <c>timeout</c>).
 /// </summary>
 public sealed record GapInvestigation(
     GapVerdict Verdict,
@@ -37,10 +41,13 @@ public sealed record GapInvestigation(
     CapabilityGap? Gap,
     IReadOnlyList<string> AlternativeQuestions,
     string? Failure,
-    AiCallMetadata? Metadata)
+    AiCallMetadata? Metadata,
+    string? Confidence = null,
+    bool TimedOut = false)
 {
-    public static GapInvestigation NotFound(string outcome, string? failure = null, AiCallMetadata? metadata = null) =>
-        new(GapVerdict.None, outcome, null, [], failure, metadata);
+    public static GapInvestigation NotFound(
+        string outcome, string? failure = null, AiCallMetadata? metadata = null, string? confidence = null, bool timedOut = false) =>
+        new(GapVerdict.None, outcome, null, [], failure, metadata, confidence, timedOut);
 }
 
 /// <summary>
@@ -60,9 +67,15 @@ public sealed record GapInvestigation(
 /// investigator never answers, never retrieves and never sees tenant data beyond the supplier
 /// names it is handed to scrub.</para>
 /// </summary>
-public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigationOptions options)
+public sealed class CapabilityInvestigator(IAiGateway aiGateway, IOptionsMonitor<GapInvestigationOptions> optionsMonitor)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>A fixed options instance (unit tests, tools): never re-read.</summary>
+    public CapabilityInvestigator(IAiGateway aiGateway, GapInvestigationOptions options)
+        : this(aiGateway, StaticGapInvestigationOptions.Monitor(options))
+    {
+    }
 
     /// <param name="question">The user's message, as typed.</param>
     /// <param name="knownSupplierNames">Every supplier this tenant has on file — removed from the
@@ -75,6 +88,8 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
         ArgumentNullException.ThrowIfNull(knownSupplierNames);
 
+        // One snapshot per investigation: a configuration change applies to the next one.
+        var options = optionsMonitor.CurrentValue;
         if (!options.Enabled)
         {
             return GapInvestigation.NotFound("off");
@@ -115,7 +130,7 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return GapInvestigation.NotFound("failed", $"timed out after {options.TimeoutSeconds}s.");
+            return GapInvestigation.NotFound("failed", $"timed out after {options.TimeoutSeconds}s.", timedOut: true);
         }
 
         InvestigatorPayload? payload;
@@ -133,17 +148,21 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
             return GapInvestigation.NotFound("failed", "payload parsed to null.", analysis.Metadata);
         }
 
-        return Interpret(payload, question, knownSupplierNames, analysis.Metadata);
+        return Interpret(payload, question, knownSupplierNames, analysis.Metadata, options);
     }
 
-    private GapInvestigation Interpret(
-        InvestigatorPayload payload, string question, IReadOnlyCollection<string> knownSupplierNames, AiCallMetadata metadata)
+    private static GapInvestigation Interpret(
+        InvestigatorPayload payload,
+        string question,
+        IReadOnlyCollection<string> knownSupplierNames,
+        AiCallMetadata metadata,
+        GapInvestigationOptions options)
     {
         var verdict = (payload.Verdict ?? string.Empty).Trim();
 
         if (verdict is CapabilityInvestigatorAgent.VerdictQuestion or CapabilityInvestigatorAgent.VerdictSupported)
         {
-            return new GapInvestigation(GapVerdict.Supported, verdict, null, [], null, metadata);
+            return new GapInvestigation(GapVerdict.Supported, verdict, null, [], null, metadata, KnownConfidence(payload.Confidence));
         }
 
         if (verdict is not (CapabilityInvestigatorAgent.VerdictKnownGap or CapabilityInvestigatorAgent.VerdictGap))
@@ -152,9 +171,9 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
         }
 
         var confidence = (payload.Confidence ?? string.Empty).Trim();
-        if (!MeetsThreshold(confidence))
+        if (!MeetsThreshold(confidence, options))
         {
-            return GapInvestigation.NotFound("low-confidence", null, metadata);
+            return GapInvestigation.NotFound("low-confidence", null, metadata, KnownConfidence(confidence));
         }
 
         if (verdict == CapabilityInvestigatorAgent.VerdictKnownGap)
@@ -163,8 +182,8 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
             // send the notice?" is a deadline question whoever recognised the verb).
             var known = CapabilityGapCatalog.Find((payload.KnownGapKey ?? string.Empty).Trim());
             return known is null || known.IsVetoed(question)
-                ? GapInvestigation.NotFound("unusable", $"known-gap key '{payload.KnownGapKey}' is not in the catalog or is vetoed.", metadata)
-                : new GapInvestigation(GapVerdict.KnownGap, "known-gap", known, [], null, metadata);
+                ? GapInvestigation.NotFound("unusable", $"known-gap key '{payload.KnownGapKey}' is not in the catalog or is vetoed.", metadata, confidence)
+                : new GapInvestigation(GapVerdict.KnownGap, "known-gap", known, [], null, metadata, confidence);
         }
 
         var feature = payload.Feature;
@@ -178,7 +197,7 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
         if (titleEn is null || titleIt is null || operationEn is null || operationIt is null ||
             descriptionEn is null || descriptionIt is null)
         {
-            return GapInvestigation.NotFound("unusable", "a feature text was empty once cleaned.", metadata);
+            return GapInvestigation.NotFound("unusable", "a feature text was empty once cleaned.", metadata, confidence);
         }
 
         var nearestKey = (payload.NearestCapabilityKey ?? string.Empty).Trim();
@@ -204,13 +223,25 @@ public sealed class CapabilityInvestigator(IAiGateway aiGateway, GapInvestigatio
             .Take(DiscoveredGapText.MaxAlternativeQuestions)
             .ToList();
 
-        return new GapInvestigation(GapVerdict.Gap, "gap", gap, alternativeQuestions, null, metadata);
+        return new GapInvestigation(GapVerdict.Gap, "gap", gap, alternativeQuestions, null, metadata, confidence);
     }
 
-    private bool MeetsThreshold(string confidence) =>
+    private static bool MeetsThreshold(string confidence, GapInvestigationOptions options) =>
         confidence == CapabilityInvestigatorAgent.ConfidenceHigh ||
         (confidence == CapabilityInvestigatorAgent.ConfidenceMedium &&
          !string.Equals(options.MinConfidence, CapabilityInvestigatorAgent.ConfidenceHigh, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The model's confidence word when it is one of the three the schema allows, else
+    /// <see langword="null"/> — the audit never carries free model text.</summary>
+    private static string? KnownConfidence(string? confidence)
+    {
+        var trimmed = (confidence ?? string.Empty).Trim();
+        return trimmed is CapabilityInvestigatorAgent.ConfidenceHigh
+            or CapabilityInvestigatorAgent.ConfidenceMedium
+            or CapabilityInvestigatorAgent.ConfidenceLow
+                ? trimmed
+                : null;
+    }
 
     // ----- wire shapes (camelCase JSON; the fixture gateway reads "question"/"language") -----
 

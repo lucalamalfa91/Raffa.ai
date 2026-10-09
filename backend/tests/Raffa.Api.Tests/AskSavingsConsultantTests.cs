@@ -2,8 +2,11 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Raffa.Api.Tests.TestSupport;
+using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
+using Raffa.AiGateway.Logging;
 using Raffa.AiGateway.Fixtures;
+using Raffa.Chat.Application.Gaps;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Savings.Application;
 using Raffa.SharedKernel;
@@ -29,7 +32,8 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
 
     private static readonly DateTimeOffset Now = new(2026, 9, 21, 12, 0, 0, TimeSpan.Zero);
 
-    private (WebApplicationFactory<Program> Factory, RecordingAiGateway Gateway) Host(IReadOnlyDictionary<EntityId, string> supplierNames)
+    private (WebApplicationFactory<Program> Factory, RecordingAiGateway Gateway) Host(
+        IReadOnlyDictionary<EntityId, string> supplierNames, RecordingAuditWriter? audit = null)
     {
         var gateway = new RecordingAiGateway(
             new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()));
@@ -39,7 +43,7 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
             .WithWebHostBuilder(builder => builder.UseSetting(
                 "ConnectionStrings:Chat",
                 "Host=localhost;Port=5432;Database=raffa_dev;Username=raffa;Password=raffa;Include Error Detail=true"))
-            .WithInMemoryAskEngine(gateway, new FixedClock(Now))
+            .WithInMemoryAskEngine(gateway, new FixedClock(Now), auditWriter: audit)
             .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
                 services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(supplierNames))));
 
@@ -119,10 +123,12 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
         Assert.Contains(titles, t => t.StartsWith("Play 1 —", StringComparison.Ordinal));
         Assert.Contains("20000", raw, StringComparison.Ordinal);
 
-        // ADR-031's capability check, then Ask's agentic flow: the market researcher, then two
-        // analysts + one strategist, then the answer role.
-        Assert.Equal(RecordingAiGateway.CapabilityInvestigatorAgent, gateway.Agents[0]);
-        Assert.Equal(5, gateway.Calls.Count(c => c == "AnalyzeAsync"));
+        // Ask's agentic flow: the market researcher, then two analysts + one strategist, then the
+        // answer role. INV-02: a savings question that gets its answer is neither T1, T2 nor T3, so
+        // the Triggered capability investigator (ADR-031) makes no call of its own on this turn.
+        Assert.Equal("market-researcher", gateway.Agents[0]);
+        Assert.Equal(0, gateway.CapabilityChecks);
+        Assert.Equal(4, gateway.Calls.Count(c => c == "AnalyzeAsync"));
         Assert.Equal(1, gateway.Calls.Count(c => c == "AnswerAsync"));
 
         using var scope = host.Services.CreateScope();
@@ -133,6 +139,86 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
         Assert.NotEmpty(opportunities);
         Assert.All(opportunities, o => Assert.Equal(contract.Id, o.ContractId));
         Assert.Contains(opportunities, o => o.OpportunityKey == "market-discount" && o.EstimatedSavingsHigh > 0m);
+    }
+
+    /// <summary>Plan T-01 / F2-T01 / F2-D03: the savings turn's one audit row names its turn and what
+    /// its agentic flow did (steps, failures, market queries -- names and counts), never a name or
+    /// a text. (The verdict's content is proved in CouncilVerdictTests.)</summary>
+    [Fact]
+    public async Task A_savings_turn_audits_its_turn_and_flow()
+    {
+        var tenantId = TenantId.New();
+        var serviceNowId = EntityId.New();
+        var audit = new RecordingAuditWriter();
+        var (host, _) = Host(new Dictionary<EntityId, string> { [serviceNowId] = "ServiceNow" }, audit);
+
+        var contract = ServiceNowContract(tenantId, serviceNowId, deadlineInDays: 120);
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        await AskAsync(
+            host.CreateClient(), tenantId, "which levers can I use to save 20k on the renewal?", contract.Id.Value);
+
+        var turn = Assert.Single(audit.Entries, e => e.ResourceType == "ask_raffa_v2");
+        Assert.Equal("chat.answered", turn.Action);
+        var detail = turn.Detail!;
+        Assert.Matches(@"\bturnId=[0-9a-f]{16}\b", detail);
+        Assert.Matches(@"\brunId=[0-9a-f]{16}\b", detail);
+        Assert.Matches(@"\bstepsRun=\d+ steps=\S*market-researcher\S*lever-strategist\S* failures=0 failedSteps=none marketQueries=\d+", detail);
+        Assert.DoesNotContain("ServiceNow", detail, StringComparison.Ordinal);
+    }
+
+    /// <summary>Plan T-01, end to end: with the real audit decorator in front of the fixture gateway,
+    /// every <c>ai.*</c> row of a savings turn carries run=, step= and the turn's own id, the council's
+    /// agents each under their own step, all in the one run the turn's audit row names.</summary>
+    [Fact]
+    public async Task Every_ai_row_of_a_savings_turn_carries_run_step_and_the_turn_id()
+    {
+        var tenantId = TenantId.New();
+        var serviceNowId = EntityId.New();
+        var audit = new RecordingAuditWriter();
+        var (host, _) = Host(new Dictionary<EntityId, string> { [serviceNowId] = "ServiceNow" }, audit);
+        host = host.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            // Triggered mode (default) makes no investigator call on a savings turn; this test
+            // audits the investigator's own run, so it runs in Always mode.
+            services.AddSingleton<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>(
+                new StaticGapInvestigationOptions(new GapInvestigationOptions { Mode = GapInvestigationMode.Always }));
+            services.AddScoped<IAiGateway>(sp => new LoggingAiGateway(
+                new FixtureAiGateway(new AiGatewayModelOptions(), SystemClock.Instance, new AiGatewayOcrOptions()),
+                audit,
+                sp.GetRequiredService<ITenantContext>(),
+                new AiGatewayComplianceOptions()));
+        }));
+
+        var contract = ServiceNowContract(tenantId, serviceNowId, deadlineInDays: 120);
+        await host.SeedContractAsync(contract);
+        await host.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
+
+        await AskAsync(
+            host.CreateClient(), tenantId, "which levers can I use to save 20k on the renewal?", contract.Id.Value);
+        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+
+        var turn = Assert.Single(audit.Entries, e => e.ResourceType == "ask_raffa_v2");
+        var turnId = System.Text.RegularExpressions.Regex.Match(turn.Detail!, @"turnId=([0-9a-f]{16})").Groups[1].Value;
+        var runId = System.Text.RegularExpressions.Regex.Match(turn.Detail!, @"runId=([0-9a-f]{16})").Groups[1].Value;
+
+        var aiRows = audit.Entries.Where(e => e.Action.StartsWith("ai.", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(aiRows);
+        Assert.All(aiRows, row =>
+        {
+            Assert.Matches(@"\bagent=\S+ run=[0-9a-f]{16} turn=" + turnId + @" step=\S+ latencyMs=\d+ outcome=ok", row.Detail!);
+        });
+
+        var turnRunRows = aiRows.Where(r => r.Detail!.Contains($"run={runId} ", StringComparison.Ordinal)).ToList();
+        foreach (var step in new[] { "market-researcher", "contract-analyst", "market-analyst", "lever-strategist" })
+        {
+            Assert.Contains(turnRunRows, r => r.Detail!.Contains($" step={step} ", StringComparison.Ordinal));
+        }
+
+        // The answer role is audited under the same run, and the capability check under its own.
+        Assert.Contains(turnRunRows, r => r.Action == "ai.answered");
+        Assert.Contains(aiRows, r => r.Detail!.Contains("step=capability-investigator", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -191,7 +277,8 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
         Assert.Equal("answer", reply.RootElement.GetProperty("kind").GetString());
         Assert.Contains(CitationTitles(reply), t => t.Contains("saving target and lever coverage", StringComparison.Ordinal));
         Assert.Contains("20000", raw, StringComparison.Ordinal);
-        // The capability check plus the same four agents again.
-        Assert.Equal(analyzeCallsAfterFirstTurn + 5, gateway.Calls.Count(c => c == "AnalyzeAsync"));
+        // The same four agents again (INV-02: a bare follow-up answered from the pack starts no
+        // capability check).
+        Assert.Equal(analyzeCallsAfterFirstTurn + 4, gateway.Calls.Count(c => c == "AnalyzeAsync"));
     }
 }

@@ -1,0 +1,292 @@
+{
+  "$comment": "INV-01 / LANG-05: the lexicon behind trigger T3 of Raffa.Chat.Application.Gaps.InvestigatorTrigger (an operational request the catalog does not cover). Every entry is a regular-expression FRAGMENT (case-insensitive); the loader wraps each list in (?<![\\p{L}\\p{N}])(?:...)(?![\\p{L}\\p{N}]), so entries match whole words only and may end in their own look-ahead. Bump 'version' and add a changelog line on EVERY edit. Italian and English are the reviewed baseline; French, Spanish and German are structured seeds awaiting content review by the product owner (status 'seed') and are monitored separately (plan 5.4, point 5).",
+  "version": "1.0.0",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-10-08",
+      "note": "First release: operational verbs, request formulas, deliverables and the three veto lists for it/en (baseline) and fr/es/de (seed). Reviewed against the INV-04 evaluation set v1."
+    }
+  ],
+  "languages": {
+    "it": {
+      "status": "baseline",
+      "politeness": ["per\\s+favore", "per\\s+piacere", "ti\\s+prego", "dai", "ok", "allora", "e", "poi", "ora", "adesso", "subito", "senti"],
+      "operationalVerbs": [
+        "gener(?:a|are|ami|armi|ate|iamo)",
+        "esport(?:a|are|ami|armi|ate|iamo)",
+        "invia(?:re|mi|rmi|te)?",
+        "mand(?:a|are|ami|armi|ate)",
+        "cre(?:a|are|ami|armi|ate)",
+        "scarica(?:re|mi|rmi|te)?",
+        "programm(?:are|ami|armi)",
+        "programma(?=\\s+(?:un|una|uno|il|la|lo|le|i|gli|l['’]))",
+        "confront(?:a|are|ami|armi|ate)",
+        "aggiorn(?:a|are|ami|armi|ate)",
+        "automatizz(?:a|are|ami|armi|ate)",
+        "ricord(?:a|are|ami|armi|ate)",
+        "pianific(?:a|are|ami|armi|ate)",
+        "scriv(?:i|ere|imi|ermi|ete)",
+        "redig(?:i|ere|imi|ermi)",
+        "prepar(?:a|are|ami|armi|ate)",
+        "stamp(?:a|are|ami|armi)",
+        "condivid(?:i|ere|imi|ermi)",
+        "avvis(?:a|are|ami|armi)",
+        "sincronizz(?:a|are|ami|armi)",
+        "prenot(?:a|are|ami|armi)"
+      ],
+      "requestFormulas": [
+        "puoi",
+        "potresti",
+        "potrebbe",
+        "riesci",
+        "riusciresti",
+        "sapresti",
+        "sei\\s+in\\s+grado",
+        "saresti\\s+in\\s+grado",
+        "[eè]\\s+possibile",
+        "sarebbe\\s+possibile",
+        "si\\s+pu[oò]",
+        "c['’]?[eè]\\s+(?:un\\s+)?modo\\s+(?:di|per)",
+        "ce\\s+la\\s+fai\\s+a"
+      ],
+      "deliverables": [
+        "excel", "xlsx", "csv", "pdf", "word", "docx", "report", "reportistica", "relazione", "presentazion(?:e|i)", "slide", "dashboard",
+        "calendario", "promemoria", "ordine\\s+d['’]acquisto", "erp", "pec", "e-?mail", "mail", "fattur(?:a|e)",
+        "riepilogo", "grafico", "grafici", "tabella", "foglio\\s+di\\s+calcolo", "alert", "lettera"
+      ],
+      "thirdPartySubjects": [
+        "fornitor(?:e|i)", "controparte", "venditore", "vendor", "supplier", "provider", "contratto", "contratti", "clausola", "clausole", "accordo", "sla", "il\\s+cliente"
+      ],
+      "obligationCues": [
+        "devo", "dobbiamo", "deve", "devono", "dovrei", "dovremmo", "dovr[aà]", "entro\\s+quando", "quando\\s+devo", "fino\\s+a\\s+quando", "[eè]\\s+tenut[oa]", "obbligat[oa]", "in\\s+che\\s+modo\\s+deve"
+      ],
+      "contractTextCues": [
+        "clausol(?:a|e)", "testo\\s+(?:della|del|dell['’]|dei)", "contatti", "recapit[oi]", "articolo", "prevede", "prevedono", "stabilisce", "consente", "permette"
+      ]
+    },
+    "en": {
+      "status": "baseline",
+      "politeness": ["please", "kindly", "ok", "okay", "now", "then", "and", "so", "hey", "hi"],
+      "operationalVerbs": [
+        "generat(?:e|es)",
+        "export(?:s)?(?=\\s+(?:the|my|our|all|every|this|these|those|it|them|a|an|me|contracts?|data)\\b)",
+        "send(?:s)?",
+        "creat(?:e|es)",
+        "download(?:s)?(?=\\s+(?:the|my|our|all|every|this|these|those|it|them|a|an|me|contracts?|data)\\b)",
+        "schedul(?:e|es)(?=\\s+(?:the|my|our|a|an|it|them|me|this|these|weekly|monthly|daily|automatic\\w*)\\b)",
+        "compar(?:e|es)",
+        "updat(?:e|es)(?=\\s+(?:the|my|our|all|every|this|these|it|them|me|contracts?|each)\\b)",
+        "automat(?:e|es)",
+        "remind",
+        "plan(?=\\s+(?:the|my|our|a|an|it|them|me|this|these)\\b)",
+        "writ(?:e|es)",
+        "draft(?=\\s+(?:a|an|the|me|my|our|this|it|them)\\b)",
+        "prepar(?:e|es)",
+        "print(?=\\s+(?:out|the|my|our|this|these|it|them|a|an|me)\\b)",
+        "share(?=\\s+(?:the|my|our|this|these|it|them|a|an|with)\\b)",
+        "email(?=\\s+(?:me|us|the|my|our|this|these|it|them|a|an)\\b)",
+        "forward(?=\\s+(?:the|my|our|this|these|it|them|a|an)\\b)",
+        "sync(?:hroni[sz]e)?",
+        "book(?=\\s+(?:a|an|the|me|my|our)\\b)",
+        "set\\s+up",
+        "alert(?=\\s+(?:me|us|the|my|our)\\b)",
+        "notify"
+      ],
+      "requestFormulas": [
+        "can\\s+you",
+        "could\\s+you",
+        "would\\s+you",
+        "will\\s+you",
+        "are\\s+you\\s+able\\s+to",
+        "is\\s+it\\s+possible\\s+to",
+        "is\\s+there\\s+a\\s+way\\s+to",
+        "would\\s+it\\s+be\\s+possible",
+        "do\\s+you\\s+(?:know\\s+how\\s+to|support)",
+        "can\\s+raffa",
+        "can\\s+i\\s+(?:get|have)\\s+you"
+      ],
+      "deliverables": [
+        "excel", "xlsx", "csv", "pdf", "word", "docx", "reports?", "reporting", "summary", "presentations?", "slides?", "deck", "dashboards?",
+        "calendar", "reminders?", "purchase\\s+orders?", "erp", "e-?mail", "mail", "invoices?",
+        "charts?", "graphs?", "tables?", "spreadsheets?", "alerts?", "letter"
+      ],
+      "thirdPartySubjects": [
+        "supplier", "suppliers", "vendor", "vendors", "provider", "counterparty", "contract", "contracts", "clause", "clauses", "agreement", "sla", "customer"
+      ],
+      "obligationCues": [
+        "must", "should", "shall", "have\\s+to", "has\\s+to", "need\\s+to", "needs\\s+to", "required\\s+to", "obliged\\s+to", "by\\s+when", "until\\s+when", "when\\s+(?:do|must|should)\\s+(?:i|we)"
+      ],
+      "contractTextCues": [
+        "clauses?", "wording", "text\\s+of", "contacts?", "contact\\s+details", "article", "provides\\s+that", "stipulates", "allows", "permits", "entitles"
+      ]
+    },
+    "fr": {
+      "status": "seed",
+      "politeness": ["s['’]il\\s+(?:te|vous)\\s+pla[iî]t", "svp", "stp", "ok", "alors", "et", "maintenant", "puis"],
+      "operationalVerbs": [
+        "g[ée]n[èe]r(?:er|ez)",
+        "g[ée]n[èe]re(?=\\s+(?:moi|un|une|le|la|les|l['’]|mon|ma|mes|des|ce|cet|cette)\\b)",
+        "export(?:er|e|ez)",
+        "envoy(?:er|e|ez)",
+        "envoie",
+        "cr[ée]{1,2}(?:r|e|ez)",
+        "t[ée]l[ée]charg(?:er|e|ez)",
+        "programm(?:er|ez)",
+        "programme(?=\\s+(?:un|une|le|la|les|l['’]|mon|ma|des|ce|cet|cette)\\b)",
+        "compar(?:er|e|ez)",
+        "met(?:s|tre|tez)?\\s+[àa]\\s+jour",
+        "automatis(?:er|e|ez)",
+        "rappel(?:er|le|lez)",
+        "planifi(?:er|e|ez)",
+        "pr[ée]par(?:er|e|ez)",
+        "[ée]cri(?:re|s|vez)",
+        "imprim(?:er|e|ez)",
+        "partag(?:er|e|ez)",
+        "synchronis(?:er|e|ez)",
+        "r[ée]serv(?:er|e|ez)"
+      ],
+      "requestFormulas": [
+        "peux-?\\s?tu",
+        "pouvez-?\\s?vous",
+        "pourrais-?\\s?tu",
+        "pourriez-?\\s?vous",
+        "tu\\s+peux",
+        "vous\\s+pouvez",
+        "est-?\\s?il\\s+possible",
+        "est-?\\s?ce\\s+possible",
+        "serait-?\\s?il\\s+possible",
+        "il\\s+est\\s+possible\\s+de",
+        "es-?\\s?tu\\s+capable",
+        "arrives-?\\s?tu\\s+[àa]",
+        "arrivez-?\\s?vous\\s+[àa]"
+      ],
+      "deliverables": [
+        "excel", "xlsx", "csv", "pdf", "word", "docx", "rapports?", "pr[ée]sentations?", "diaporamas?", "tableaux?\\s+de\\s+bord", "dashboards?",
+        "calendriers?", "rappels?", "bons?\\s+de\\s+commande", "erp", "e-?mails?", "courriels?", "mails?", "factures?",
+        "synth[èe]ses?", "r[ée]capitulatifs?", "graphiques?", "tableaux?", "feuilles?\\s+de\\s+calcul", "alertes?", "lettres?"
+      ],
+      "thirdPartySubjects": [
+        "fournisseurs?", "prestataires?", "vendeurs?", "contrepartie", "l['’]autre\\s+partie", "contrats?", "clauses?", "accords?", "sla", "client"
+      ],
+      "obligationCues": [
+        "dois-?\\s?je", "doit", "doivent", "devons", "devrais", "devrions", "il\\s+faut", "avant\\s+quand", "jusqu['’]?[àa]\\s+quand", "dans\\s+quel\\s+d[ée]lai", "est\\s+tenu", "oblig[ée]"
+      ],
+      "contractTextCues": [
+        "clauses?", "texte\\s+(?:de|du|des)", "coordonn[ée]es", "contacts?", "article", "pr[ée]voit", "stipule", "permet", "autorise"
+      ]
+    },
+    "es": {
+      "status": "seed",
+      "politeness": ["por\\s+favor", "porfa", "vale", "ok", "entonces", "y", "ahora", "luego"],
+      "operationalVerbs": [
+        "gener(?:ar|a|ame|arme)",
+        "export(?:ar|a|e|ame|arme)",
+        "env[ií](?:ar|a|ame)",
+        "enviarme",
+        "cre(?:ar|a|ame|arme)",
+        "cr[eé]ame",
+        "descarg(?:ar|a|ame|arme)",
+        "program(?:ar|ame|arme)",
+        "programa(?=\\s+(?:un|una|el|la|los|las|mi|mis|este|esta)\\b)",
+        "compar(?:ar|a|ame)",
+        "actualiz(?:ar|a|ame|arme)",
+        "automatiz(?:ar|a|ame)",
+        "record(?:ar|arme)",
+        "recuerda(?:me)?",
+        "recu[eé]rdame",
+        "planific(?:ar|a|ame)",
+        "redact(?:ar|a|ame)",
+        "prepar(?:ar|a|ame)",
+        "escrib(?:ir|e|eme)",
+        "imprim(?:ir|e)",
+        "compart(?:ir|e)",
+        "sincroniz(?:ar|a)",
+        "reserv(?:ar|a)"
+      ],
+      "requestFormulas": [
+        "puedes",
+        "podr[ií]as",
+        "podr[ií]a\\s+usted",
+        "puede\\s+usted",
+        "es\\s+posible",
+        "ser[ií]a\\s+posible",
+        "eres\\s+capaz",
+        "ser[ií]as\\s+capaz",
+        "se\\s+puede",
+        "hay\\s+(?:alguna\\s+)?forma\\s+de",
+        "logras"
+      ],
+      "deliverables": [
+        "excel", "xlsx", "csv", "pdf", "word", "docx", "informes?", "reportes?", "presentaci[oó]n(?:es)?", "diapositivas?", "dashboards?", "panel\\s+de\\s+control",
+        "cuadro\\s+de\\s+mando", "calendario", "recordatorios?", "[oó]rdenes?\\s+de\\s+compra", "pedidos?", "erp", "e-?mails?", "correos?", "facturas?",
+        "resumen", "gr[aá]ficos?", "hojas?\\s+de\\s+c[aá]lculo", "tablas?", "alertas?", "carta"
+      ],
+      "thirdPartySubjects": [
+        "proveedor(?:es)?", "contraparte", "vendedor(?:es)?", "prestador(?:es)?", "contratos?", "cl[aá]usulas?", "acuerdo", "sla", "cliente"
+      ],
+      "obligationCues": [
+        "debo", "debemos", "debe", "deben", "deber[ií]a", "tengo\\s+que", "tenemos\\s+que", "hasta\\s+cu[aá]ndo", "cu[aá]ndo\\s+debo", "en\\s+qu[eé]\\s+plazo", "est[aá]\\s+obligad[oa]"
+      ],
+      "contractTextCues": [
+        "cl[aá]usulas?", "texto\\s+de", "contactos?", "datos\\s+de\\s+contacto", "art[ií]culo", "prev[eé]", "estipula", "permite", "autoriza"
+      ]
+    },
+    "de": {
+      "status": "seed",
+      "subjectWindowWords": 10,
+      "politeness": ["bitte", "ok", "dann", "und", "jetzt", "also", "mal"],
+      "operationalVerbs": [
+        "erstell(?:e|en|st)",
+        "generier(?:e|en|st)",
+        "exportier(?:e|en|st)",
+        "send(?:e|en|est)",
+        "schick(?:e|en|st)",
+        "herunter\\w*",
+        "download(?:e|en)?",
+        "plan(?:e|en)",
+        "terminier(?:e|en)",
+        "vergleich(?:e|en|st)",
+        "aktualisier(?:e|en|st)",
+        "automatisier(?:e|en|st)",
+        "erinner(?:e|n|st)",
+        "schreib(?:e|en|st)",
+        "bereite",
+        "vorbereiten",
+        "druck(?:e|en)",
+        "teilen",
+        "teile(?=\\s+(?:mit|das|die|den|diese\\w*|meine\\w*|unsere\\w*))",
+        "synchronisier(?:e|en)",
+        "buch(?:e|en)(?=\\s+(?:mir|den|die|das|einen|eine)\\b)",
+        "verfass(?:e|en)"
+      ],
+      "requestFormulas": [
+        "kannst\\s+du",
+        "k[öo]nntest\\s+du",
+        "k[öo]nnen\\s+sie",
+        "k[öo]nnten\\s+sie",
+        "ist\\s+es\\s+m[öo]glich",
+        "w[äa]re\\s+es\\s+m[öo]glich",
+        "bist\\s+du\\s+in\\s+der\\s+lage",
+        "sind\\s+sie\\s+in\\s+der\\s+lage",
+        "kann\\s+man",
+        "schaffst\\s+du",
+        "gibt\\s+es\\s+(?:eine\\s+)?m[öo]glichkeit"
+      ],
+      "deliverables": [
+        "excel", "xlsx", "csv", "pdf", "word", "docx", "\\p{L}*bericht(?:e|en)?", "reports?", "\\p{L}*pr[äa]sentation(?:en)?", "folien", "\\p{L}*dashboards?",
+        "kalender", "erinnerung(?:en)?", "bestellung(?:en)?", "erp", "e-?mails?", "mails?", "\\p{L}*rechnung(?:en)?",
+        "\\p{L}*zusammenfassung(?:en)?", "diagramme?", "\\p{L}*tabellen?", "\\p{L}*[üu]bersicht(?:en)?", "alarme?", "brief"
+      ],
+      "thirdPartySubjects": [
+        "lieferant(?:en)?", "anbieter", "verk[äa]ufer", "gegenpartei", "vertragspartner", "klausel(?:n)?", "vereinbarung", "sla", "kunde"
+      ],
+      "obligationCues": [
+        "muss", "m[üu]ssen", "sollte", "sollen", "soll", "bis\\s+wann", "wann\\s+muss", "ich\\s+muss", "verpflichtet", "innerhalb\\s+welcher\\s+frist"
+      ],
+      "contractTextCues": [
+        "klausel(?:n)?", "wortlaut", "text\\s+(?:der|des)", "kontakt(?:e|daten)?", "ansprechpartner", "artikel", "sieht\\s+vor", "regelt", "erlaubt", "gestattet"
+      ]
+    }
+  }
+}

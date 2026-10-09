@@ -105,6 +105,26 @@ public sealed class AskAgentFlowTests
     }
 
     [Fact]
+    public async Task A_computed_only_pack_is_not_convened_so_the_flow_reports_no_council_step()
+    {
+        var gateway = new RecordingGateway(Fixture());
+        IReadOnlyList<PackItem> computedOnly =
+        [
+            Item("calc:savings-target", PackCorpus.Calc, "Portfolio saving target", "Target EUR 20000."),
+            Item("calc:criticality[x]", PackCorpus.Calc, "Oracle — criticality", "Criticality 50.9 out of 100."),
+            Item("raffa:playbook:anchor-on-market", PackCorpus.Raffa, "Anchor the ask", "Open with the market median."),
+        ];
+
+        var outcome = await Flow(gateway, rag: null).RunAsync(
+            new AskFlowRequest(Question, computedOnly, null, null, RunMarketResearch: false, ConveneCouncil: true));
+
+        Assert.Empty(gateway.Agents);
+        Assert.Empty(outcome.StepsRun);
+        Assert.Empty(outcome.CouncilItems);
+        Assert.Empty(outcome.Failures);
+    }
+
+    [Fact]
     public async Task Without_the_market_rag_the_researcher_is_skipped_and_the_rest_still_runs()
     {
         var gateway = new RecordingGateway(Fixture());

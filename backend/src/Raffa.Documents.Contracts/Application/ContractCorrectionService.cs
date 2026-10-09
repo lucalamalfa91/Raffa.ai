@@ -144,6 +144,8 @@ public sealed class ContractCorrectionService(
             ["autoRenewal"] = RequiredBool("autoRenewal", c => c.AutoRenewal, (c, v) => c.AutoRenewal = v),
             ["renewalTermMonths"] = OptionalInt(
                 "renewalTermMonths", c => c.RenewalTermMonths, (c, v) => c.RenewalTermMonths = v),
+            ["noticePeriodDays"] = OptionalInt(
+                "noticePeriodDays", c => c.NoticePeriodDays, (c, v) => c.NoticePeriodDays = v),
             ["paymentTerms"] = OptionalText(c => c.PaymentTerms, (c, v) => c.PaymentTerms = v),
             ["governingLaw"] = OptionalText(c => c.GoverningLaw, (c, v) => c.GoverningLaw = v),
         };
@@ -504,6 +506,7 @@ public sealed class ContractCorrectionService(
         contract.TotalContractValue,
         contract.AutoRenewal,
         contract.RenewalTermMonths,
+        contract.NoticePeriodDays,
         contract.PaymentTerms,
         contract.GoverningLaw,
     });

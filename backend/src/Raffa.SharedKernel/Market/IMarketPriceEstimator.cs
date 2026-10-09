@@ -52,6 +52,8 @@ public enum MarketEstimateKind
 /// market, EUR 118 converted at 0.94"</c> or the AI's own one-line reasoning.</param>
 /// <param name="Product">The product the estimate is for (the converted record's product, or the
 /// line's own product as the estimator understood it).</param>
+/// <param name="ProvenanceInfo">Structured provenance (F7-T11): class <c>converted</c> or
+/// <c>ai_estimate</c>, no sample. Internal metadata, never rendered by itself.</param>
 public sealed record MarketPriceEstimate(
     MarketEstimateKind Kind,
     string Currency,
@@ -59,4 +61,5 @@ public sealed record MarketPriceEstimate(
     decimal UnitPriceP50,
     decimal UnitPriceP75,
     string Basis,
-    string? Product);
+    string? Product,
+    MarketProvenanceInfo? ProvenanceInfo = null);

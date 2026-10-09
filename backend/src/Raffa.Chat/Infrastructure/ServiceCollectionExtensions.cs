@@ -28,30 +28,27 @@ namespace Raffa.Chat.Infrastructure;
 /// took a dependency on any of them yet, so this composition method did not exist —
 /// <c>Raffa.Api.Raffa.Api.csproj</c> already carried a <c>ProjectReference</c> to
 /// <c>Raffa.Chat.csproj</c> in anticipation of it (see that file). Task E02/F04/US02/T01
-/// (rag-citations) is the first thing that needs any of this resolvable from a container — it adds
-/// <see cref="RagAnswerService"/> alongside the three pre-existing types, and
-/// <c>Raffa.Api.ChatEndpointExtensions</c> (<c>POST /api/chat/query</c>) is the first caller. Task
-/// E02/F04/US02/T02 (abstain-guard) adds <see cref="AbstainGuard"/>, a constructor dependency of
-/// <see cref="RagAnswerService"/> (see that type's own doc comment).
+/// (rag-citations) added the first host caller; the legacy evidence-only <c>RagAnswerService</c> it
+/// introduced was removed once <c>Raffa.Api.AskCopilotService</c>'s pack-composition path replaced it
+/// (no host ever called it again). Task E02/F04/US02/T02 (abstain-guard) adds
+/// <see cref="AbstainGuard"/>, which <see cref="Guards.GroundingGuard"/> and the answer composer
+/// still use.
 ///
-/// Every registration is Scoped, not Singleton: <see cref="RagAnswerService"/> depends on
-/// <see cref="IAuditWriter"/>, which <c>Raffa.Audit.Infrastructure.ServiceCollectionExtensions
-/// .AddAuditModule</c> registers Scoped (it wraps a Scoped <c>AuditDbContext</c>) — a Singleton
-/// <see cref="RagAnswerService"/> would capture that Scoped dependency for the lifetime of the
-/// host, which <c>ServiceProviderOptions.ValidateOnBuild</c> (enabled by default for the
-/// Development environment <c>WebApplicationFactory</c>-based tests run under) rejects at startup.
-/// <see cref="AskRaffaQueryRouter"/>/<see cref="DeterministicQueryPlanner"/>/
-/// <see cref="DeterministicQueryHandler"/>/<see cref="AbstainGuard"/> have no such constraint but
-/// are registered the same way for one uniform per-request/job lifetime across the module — the
-/// same choice <c>Raffa.Documents.Contracts.Infrastructure.ServiceCollectionExtensions
-/// .AddDocumentsContractsModule</c> already makes for every one of its own services.
+/// Every registration is Scoped, not Singleton, for one uniform per-request/job lifetime across the
+/// module — the same choice <c>Raffa.Documents.Contracts.Infrastructure.ServiceCollectionExtensions
+/// .AddDocumentsContractsModule</c> already makes for every one of its own services, and the safe one
+/// for services that depend on <see cref="IAuditWriter"/>, which
+/// <c>Raffa.Audit.Infrastructure.ServiceCollectionExtensions.AddAuditModule</c> registers Scoped
+/// (it wraps a Scoped <c>AuditDbContext</c>): a Singleton capturing it would be rejected at startup by
+/// <c>ServiceProviderOptions.ValidateOnBuild</c> (enabled by default for the Development environment
+/// <c>WebApplicationFactory</c>-based tests run under).
 ///
 /// Task E13/F05/US01/T01 (story us-01-conversations, AC-4) adds the optional
 /// <paramref name="chatConnectionString"/> the overload below takes: called with no argument
 /// (every existing caller — unit tests, and this module's own DI-shape test
 /// <c>ServiceCollectionExtensionsTests</c>), <see cref="AddChatModule"/> registers exactly what
 /// it always has, unchanged, so nothing that already resolves
-/// <see cref="AskRaffaQueryRouter"/>/<see cref="RagAnswerService"/> without a database breaks.
+/// <see cref="AskRaffaQueryRouter"/> without a database breaks.
 /// Called with a connection string, it additionally registers <c>Infrastructure.ChatDbContext</c>
 /// and <c>Application.Conversations.ConversationService</c> — the same "a module's own
 /// composition method also wires its own DbContext" shape
@@ -85,7 +82,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DeterministicQueryPlanner>();
         services.AddScoped<DeterministicQueryHandler>();
         services.AddScoped<AbstainGuard>();
-        services.AddScoped<RagAnswerService>();
         services.AddScoped<CapabilityRouting>();
 
         // Task E13/F06/US01/T01 (ask-engine): the V2 gate/planner/answer engine. Each of these is
@@ -116,15 +112,24 @@ public static class ServiceCollectionExtensions
 
         // The capability investigator (Application.Gaps, ADR-031): one analyst-role agent that
         // decides whether a fresh turn asks for a feature Raffa does not have; the host binds
-        // Chat:GapInvestigation before calling this.
-        services.TryAddSingleton(new GapInvestigationOptions());
-        services.AddScoped<CapabilityInvestigator>();
+        // Chat:GapInvestigation (as IOptionsMonitor, so the mode and the kill switch change without
+        // a restart) before calling this; absent that, the defaults: Triggered, enabled.
+        services.AddOptions<GapInvestigationOptions>();
+        // A factory, not constructor selection: the investigator has a second, options-instance
+        // constructor for tests and tools, and the container must not weigh the two.
+        services.AddScoped(sp => new CapabilityInvestigator(
+            sp.GetRequiredService<Raffa.AiGateway.IAiGateway>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>()));
 
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
         // GitHub publisher and binds Feedback:* before calling this when a token is configured;
         // otherwise these defaults keep every submission "recorded" with no outbound call.
         services.TryAddSingleton(new FeedbackOptions());
         services.TryAddScoped<IFeatureRequestPublisher, NullFeatureRequestPublisher>();
+
+        // F4-T01: the host supplies the tenant's supplier names so the free text of a feedback
+        // answer is scrubbed of them before it is published; without a host source none are known.
+        services.TryAddScoped<IFeedbackNameSource, NullFeedbackNameSource>();
 
         // ADR-030: the interview (kill switch + bounds) — a configured value registered before
         // this call wins, same TryAdd contract as CouncilOptions above.

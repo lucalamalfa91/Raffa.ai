@@ -35,7 +35,12 @@ public sealed record DocumentListItem(
     /// since 2026-09-21, for a <see cref="DocumentProcessingStatus.NeedsReview"/> row whose only
     /// reason is a failed stage (a "missing signal" with no weak fact to show), so "Review 0
     /// fields" is explainable. <see langword="null"/> when no job of the row carries an error.</summary>
-    string? ErrorDetail = null);
+    string? ErrorDetail = null,
+    /// <summary>F5-T02: the extraction stages that stand failed on a
+    /// <see cref="DocumentProcessingStatus.NeedsReview"/> row (stage names, pipeline order) --
+    /// non-null exactly when the document is <em>partial</em>: it holds what the other stages
+    /// found, and a retry runs only these. <see langword="null"/> otherwise.</summary>
+    IReadOnlyList<string>? PartialStages = null);
 
 /// <summary>
 /// ADR-027 §D7 as amended by §C5 and §C9 (task E16/F02/US03/T01): tenant-wide, page-independent,

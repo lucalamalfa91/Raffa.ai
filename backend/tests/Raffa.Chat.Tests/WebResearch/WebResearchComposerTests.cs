@@ -91,6 +91,49 @@ public sealed class WebResearchComposerTests
         Assert.Contains("[3]", outcome.GuardViolation, StringComparison.Ordinal);
     }
 
+    // R1-04: the composer no longer runs GroundingGuard on top of WebGuard (its checks were
+    // tautological over the pack built from the same sources). These pin the cases GroundingGuard
+    // used to catch - an empty summary, a marker numbered 0, a marker past the list - to WebGuard.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task A_blank_summary_is_an_abstain_never_an_empty_answer(string summary)
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(summary, Sources, OffTopic: false, Metadata));
+
+        var outcome = await Compose(gateway).ComposeAsync("saas renewal practice", "MarketPractice", "en");
+
+        Assert.Equal(WebResearchOutcomeKind.Abstained, outcome.Kind);
+        Assert.True(outcome.GuardIntervened);
+        Assert.Empty(outcome.Citations);
+    }
+
+    [Fact]
+    public async Task A_marker_numbered_zero_is_an_abstain()
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(
+            "Common practice [0].", Sources, OffTopic: false, Metadata));
+
+        var outcome = await Compose(gateway).ComposeAsync("saas renewal practice", "MarketPractice", "en");
+
+        Assert.Equal(WebResearchOutcomeKind.Abstained, outcome.Kind);
+        Assert.Contains("[0]", outcome.GuardViolation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_answer_cites_every_source_in_the_tools_own_order_even_when_the_summary_marks_only_one()
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(
+            "Public, unverified: a 5-10% uplift cap is common [1].", Sources, OffTopic: false, Metadata));
+
+        var outcome = await Compose(gateway).ComposeAsync("saas renewal uplift", "MarketPractice", "en");
+
+        Assert.Equal(WebResearchOutcomeKind.Answered, outcome.Kind);
+        Assert.Equal([1, 2], outcome.Citations.Select(c => c.N).ToArray());
+        Assert.Equal("https://example.com/procurement/saas-renewals", outcome.Citations[0].Href);
+        Assert.Equal("https://example.org/negotiation/levers", outcome.Citations[1].Href);
+    }
+
     [Fact]
     public async Task No_sources_at_all_is_an_abstain_never_an_answer()
     {
@@ -129,6 +172,52 @@ public sealed class WebResearchComposerTests
         Assert.Equal(WebResearchOutcomeKind.Failed, outcome.Kind);
         Assert.Contains("Models:Research", outcome.Error, StringComparison.Ordinal);
         Assert.Contains("not available", outcome.Markdown, StringComparison.Ordinal);
+        Assert.Empty(outcome.Citations);
+    }
+
+    [Theory]
+    [InlineData("AI provider unavailable: 'openai/v1/responses' still failing after 1 retry (last outcome: timed out after 120s).", true)]
+    [InlineData("AiGateway:Models:Research is not configured; the research role is unavailable", true)]
+    [InlineData("Foundry request to 'openai/v1/responses' failed with 401 Unauthorized: 401: token expired", true)]
+    [InlineData("Foundry request to 'openai/v1/responses' failed with 400 BadRequest: content_filter: The response was filtered", false)]
+    [InlineData("AI research output unusable: Foundry research on deployment 'x' did not complete (status incomplete, max_output_tokens).", false)]
+    public async Task F3_T03_a_failed_research_call_hands_the_budget_back_only_for_transport_and_config(string error, bool releases)
+    {
+        var gateway = new RecordingResearchGateway(Result<AiResearchResult>.Failure(error));
+
+        var outcome = await Compose(gateway).ComposeAsync("saas renewal practice", "MarketPractice", "en");
+
+        Assert.Equal(WebResearchOutcomeKind.Failed, outcome.Kind);
+        Assert.Equal(releases, outcome.ReleaseBudget);
+    }
+
+    [Fact]
+    public async Task F3_T03_a_call_that_ran_never_hands_the_budget_back_whatever_the_guards_say()
+    {
+        var answered = await Compose(new RecordingResearchGateway(new AiResearchResult(
+                "Public, unverified: a 5-10% uplift cap is common [1].", Sources, OffTopic: false, Metadata)))
+            .ComposeAsync("saas renewal uplift", "MarketPractice", "en");
+        var abstained = await Compose(new RecordingResearchGateway(new AiResearchResult(
+                "Uplift caps of 25% are common [1].", Sources, OffTopic: false, Metadata)))
+            .ComposeAsync("saas renewal uplift", "MarketPractice", "en");
+        var refused = await Compose(new RecordingResearchGateway(new AiResearchResult(string.Empty, [], OffTopic: true, Metadata)))
+            .ComposeAsync("best pizza in naples", "MarketPractice", "en");
+
+        Assert.False(answered.ReleaseBudget);
+        Assert.False(abstained.ReleaseBudget);
+        Assert.False(refused.ReleaseBudget);
+    }
+
+    [Fact]
+    public async Task F3_T02_a_marker_the_gateway_could_not_resolve_to_a_source_is_an_abstain_never_a_guess()
+    {
+        var gateway = new RecordingResearchGateway(new AiResearchResult(
+            "A 5-10% uplift cap is common [1] and notice is 60 days [0].", Sources, OffTopic: false, Metadata));
+
+        var outcome = await Compose(gateway).ComposeAsync("saas renewal uplift", "MarketPractice", "en");
+
+        Assert.Equal(WebResearchOutcomeKind.Abstained, outcome.Kind);
+        Assert.Contains("[0]", outcome.GuardViolation, StringComparison.Ordinal);
         Assert.Empty(outcome.Citations);
     }
 

@@ -106,6 +106,34 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddAiGatewayModule_gives_the_research_role_its_own_retry_and_timeout_knobs_apart_from_extraction()
+    {
+        var defaults = new AiGatewayResilienceOptions();
+        Assert.Equal(1, defaults.ResearchMaxRetries);
+        Assert.Equal(120, defaults.ResearchRequestTimeoutSeconds);
+        Assert.NotEqual(defaults.MaxRetries, defaults.ResearchMaxRetries);
+
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AiGateway:Resilience:MaxRetries"] = "3",
+                ["AiGateway:Resilience:ResearchMaxRetries"] = "0",
+                ["AiGateway:Resilience:ResearchRequestTimeoutSeconds"] = "45",
+            })
+            .Build();
+        services.AddSingleton<IConfiguration>(configuration);
+
+        services.AddAiGatewayModule();
+
+        using var provider = services.BuildServiceProvider();
+        var resilience = provider.GetRequiredService<AiGatewayResilienceOptions>();
+        Assert.Equal(3, resilience.MaxRetries);
+        Assert.Equal(0, resilience.ResearchMaxRetries);
+        Assert.Equal(45, resilience.ResearchRequestTimeoutSeconds);
+    }
+
+    [Fact]
     public void AddAiGatewayModule_binds_the_page_budget_from_the_configured_AiGateway_Ocr_section()
     {
         var services = new ServiceCollection();

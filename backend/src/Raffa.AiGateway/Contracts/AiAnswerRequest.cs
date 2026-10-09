@@ -8,9 +8,8 @@ namespace Raffa.AiGateway.Contracts;
 /// §8.4; Appendix C rule 10).
 ///
 /// <see cref="SystemPrompt"/> and <see cref="PackJson"/> are ADR-024's (epic-13/ask-v2) additions,
-/// both optional and defaulted so every existing call site (<c>Raffa.Chat.Application
-/// .RagAnswerService</c>, every <c>Raffa.Chat.Tests</c>/<c>Raffa.AiGateway.Tests</c> fixture
-/// test) keeps compiling unchanged (task E13/F01/US01/T02, foundry-gateway). They exist for the
+/// both optional and defaulted so every existing call site (every
+/// <c>Raffa.Chat.Tests</c>/<c>Raffa.AiGateway.Tests</c> fixture test) keeps compiling unchanged (task E13/F01/US01/T02, foundry-gateway). They exist for the
 /// Foundry-backed `answer` role's new, versioned-persona-prompt-plus-context-pack shape (ADR-024
 /// "a versioned persona prompt"); the gap note on that task names the caller that will actually
 /// populate them: "F06 replaces the chunk-concat by supplying a prompt + pack" — until then both
@@ -31,8 +30,17 @@ namespace Raffa.AiGateway.Contracts;
 /// assembled yet — the Foundry `answer` role then grounds only in <see cref="Evidence"/>, same as
 /// the fixture.
 /// </param>
+/// <param name="PromptVersion">
+/// Version tag of <see cref="SystemPrompt"/> (e.g. <c>answer-v2.5</c>), logged as
+/// <see cref="AiCallMetadata.PromptVersion"/> and echoed onto the reply's provenance (F1-T02). The
+/// client no longer assumes the version of its own default persona prompt for a prompt the caller
+/// wrote: a caller that supplies <see cref="SystemPrompt"/> supplies this too. When
+/// <see cref="SystemPrompt"/> is <see langword="null"/> the default prompt's own version is used and
+/// this value is ignored.
+/// </param>
 public sealed record AiAnswerRequest(
     string Question,
     IReadOnlyList<AiEvidenceSnippet> Evidence,
     string? SystemPrompt = null,
-    string? PackJson = null);
+    string? PackJson = null,
+    string? PromptVersion = null);

@@ -207,7 +207,7 @@ public sealed class FixtureAiGateway(
                 CanDetermine: false,
                 Answer: null,
                 Citations: [],
-                Metadata: BuildMetadata(modelOptions.Answer, request.Question));
+                Metadata: BuildAnswerMetadata(request, request.Question));
 
             return Task.FromResult(Result<AiAnswerResult>.Success(abstained));
         }
@@ -225,7 +225,7 @@ public sealed class FixtureAiGateway(
             CanDetermine: true,
             Answer: answerText,
             Citations: citations,
-            Metadata: BuildMetadata(modelOptions.Answer, request.Question + " " + answerText));
+            Metadata: BuildAnswerMetadata(request, request.Question + " " + answerText));
 
         return Task.FromResult(Result<AiAnswerResult>.Success(grounded));
     }
@@ -270,7 +270,7 @@ public sealed class FixtureAiGateway(
                 CanDetermine: false,
                 Answer: null,
                 Citations: [],
-                Metadata: BuildMetadata(modelOptions.Answer, request.Question),
+                Metadata: BuildAnswerMetadata(request, request.Question),
                 AnswerMarkdown: null,
                 CitationKeys: [],
                 ActionKeys: [],
@@ -301,7 +301,7 @@ public sealed class FixtureAiGateway(
             CanDetermine: true,
             Answer: answerMarkdown,
             Citations: [],
-            Metadata: BuildMetadata(modelOptions.Answer, request.Question + " " + answerMarkdown),
+            Metadata: BuildAnswerMetadata(request, request.Question + " " + answerMarkdown),
             AnswerMarkdown: answerMarkdown,
             CitationKeys: citationKeys,
             ActionKeys: [],
@@ -439,15 +439,9 @@ public sealed class FixtureAiGateway(
                 citationKeys = new[] { item.CitationKey },
             });
 
-            var targetItem = items.FirstOrDefault(i => i.CitationKey is "calc:savings-target" or "calc:portfolio-target");
-            var reachable = targetItem?.Subtitle?.Contains("reachable", StringComparison.OrdinalIgnoreCase) == true
-                && targetItem.Subtitle?.Contains("not", StringComparison.OrdinalIgnoreCase) != true;
-            var verdict = new
-            {
-                targetReachable = reachable,
-                reason = targetItem?.Snippet ?? "No target was named.",
-            };
-            payload = JsonSerializer.Serialize(new { plays, verdict }, PackJsonOptions);
+            // No verdict: the strategist schema carries plays only (the verdict is computed by
+            // the council from the calculators' items, plan F2-D03).
+            payload = JsonSerializer.Serialize(new { plays }, PackJsonOptions);
         }
 
         var result = new AiAnalysisResult(
@@ -702,10 +696,12 @@ public sealed class FixtureAiGateway(
         @"barzellett[ae]|joke|lyrics)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>ADR-030: the CI double of the research role. Two fixed public sources with snippets
-    /// that carry every figure the summary quotes (so <c>NumericGuard</c> grounds them), an
-    /// off-topic refusal when the query has no procurement word — or, for the open web-mode purpose
-    /// (ADR-032), only when it is plainly leisure — never a real HTTP call.</summary>
+    /// <summary>ADR-030: the CI double of the research role. Two fixed public sources shaped like
+    /// production's (F3-T01): the hosted search tool gives no page excerpt, so <c>Snippet</c> is empty
+    /// and the figures the summary quotes sit in <c>Quote</c>, the passage the model copies from the
+    /// page (the web figure guard checks them there). An off-topic refusal when the query has no
+    /// procurement word — or, for the open web-mode purpose (ADR-032), only when it is plainly
+    /// leisure — never a real HTTP call.</summary>
     public Task<Result<AiResearchResult>> ResearchAsync(
         AiResearchRequest request, CancellationToken cancellationToken = default)
     {
@@ -726,11 +722,13 @@ public sealed class FixtureAiGateway(
                 new AiWebSource(
                     "https://example.com/procurement/saas-renewals",
                     "SaaS renewal benchmarks — example.com",
-                    "Typical enterprise SaaS renewals close with a 5-10% uplift cap and 60 to 90 days of notice."),
+                    Snippet: string.Empty,
+                    Quote: "Typical enterprise SaaS renewals close with a 5-10% uplift cap and 60 to 90 days of notice."),
                 new AiWebSource(
                     "https://example.org/negotiation/levers",
                     "Negotiation levers buyers cite most — example.org",
-                    "Multi-year commitments and volume tiers are the levers buyers cite most often."),
+                    Snippet: string.Empty,
+                    Quote: "Multi-year commitments and volume tiers are the levers buyers cite most often."),
             ];
 
         var summary = offTopic
@@ -843,6 +841,16 @@ public sealed class FixtureAiGateway(
         }
 
         return pages;
+    }
+
+    /// <summary>`answer` metadata: carries the prompt version the caller declared for the prompt it
+    /// sent (F1-T02), like the real client does; the fixture's own tag when none was declared.</summary>
+    private AiCallMetadata BuildAnswerMetadata(AiAnswerRequest request, string input)
+    {
+        var metadata = BuildMetadata(modelOptions.Answer, input);
+        return string.IsNullOrWhiteSpace(request.PromptVersion)
+            ? metadata
+            : metadata with { PromptVersion = request.PromptVersion };
     }
 
     private AiCallMetadata BuildMetadata(AiModelSelection model, string input)

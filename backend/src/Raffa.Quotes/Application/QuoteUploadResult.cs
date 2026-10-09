@@ -15,6 +15,14 @@ namespace Raffa.Quotes.Application;
 /// <param name="PurchaseDate">Echoes <see cref="Quote.PurchaseDate"/> — never null in practice
 /// (defaulted from <see cref="CreatedAt"/> when not supplied), but typed nullable to match the
 /// column it echoes exactly.</param>
+/// <param name="IsDuplicate">Task F6-T04 (dedup by checksum): <see langword="true"/> when this
+/// upload matched a quote the tenant already extracted successfully (same bytes, same header
+/// fields) and <see cref="QuoteId"/> is that existing quote -- nothing was stored, queued or
+/// extracted. The caller must not run the extraction pipeline again.</param>
+/// <param name="LineItemCount">Only meaningful when <paramref name="IsDuplicate"/>: the existing
+/// quote's persisted line count (a fresh upload has none yet).</param>
+/// <param name="NormalizedLineItemCount">Only meaningful when <paramref name="IsDuplicate"/>.</param>
+/// <param name="UnmatchedSkuCount">Only meaningful when <paramref name="IsDuplicate"/>.</param>
 public sealed record QuoteUploadResult(
     EntityId QuoteId,
     string FileName,
@@ -24,4 +32,8 @@ public sealed record QuoteUploadResult(
     string? Supplier,
     string? Currency,
     string? Geography,
-    DateOnly? PurchaseDate);
+    DateOnly? PurchaseDate,
+    bool IsDuplicate = false,
+    int LineItemCount = 0,
+    int NormalizedLineItemCount = 0,
+    int UnmatchedSkuCount = 0);

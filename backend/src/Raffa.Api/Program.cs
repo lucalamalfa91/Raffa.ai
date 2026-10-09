@@ -210,7 +210,7 @@ builder.Services.AddAuditModule(auditConnectionString);
 // Raffa.Api.csproj already carried a ProjectReference to Raffa.Chat.csproj in anticipation.
 // Depends on IAuditWriter (just registered by AddAuditModule above) and IAiGateway (registered
 // transitively by AddDocumentsContractsModule above, via its own AddAiGatewayModule call) — both
-// already resolvable in this container by the time RagAnswerService is first requested; DI
+// already resolvable in this container by the time the first Chat service is requested; DI
 // registration order does not matter, only that every AddXxxModule call below happens before
 // builder.Build().
 //
@@ -236,11 +236,11 @@ var draftingOptions = new Raffa.Chat.Application.Drafting.DraftingOptions();
 builder.Configuration.GetSection(Raffa.Chat.Application.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
 builder.Services.AddSingleton(draftingOptions);
 
-// ADR-031: Chat:GapInvestigation — the capability investigator's kill switch, confidence
-// threshold and time budget, same before-AddChatModule ordering.
-var gapInvestigationOptions = new Raffa.Chat.Application.Gaps.GapInvestigationOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName).Bind(gapInvestigationOptions);
-builder.Services.AddSingleton(gapInvestigationOptions);
+// ADR-031 / INV-03: Chat:GapInvestigation — the capability investigator's mode (Triggered by
+// default, Always for diagnosis), kill switch, confidence threshold and time budget. Read through
+// IOptionsMonitor, so a configuration change applies without a restart.
+builder.Services.Configure<Raffa.Chat.Application.Gaps.GapInvestigationOptions>(
+    builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName));
 builder.Services.AddSingleton<Raffa.Api.CapabilityCheckDispatcher>();
 
 // ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
@@ -266,7 +266,13 @@ feedbackHostOptions.ValidateOrThrow();
 builder.Services.AddSingleton(feedbackHostOptions);
 builder.Services.AddSingleton(new Raffa.Chat.Application.Feedback.FeedbackOptions { Environment = feedbackHostOptions.Environment });
 
-if (feedbackHostOptions.GitHub.Enabled)
+// F4-T01: the tenant's supplier names, so the free text of an answer is scrubbed of them before
+// it can reach a public issue (registered before AddChatModule, whose default knows none).
+builder.Services.AddScoped<Raffa.Chat.Application.Feedback.IFeedbackNameSource, PortfolioFeedbackNameSource>();
+
+// F4-D02: Feedback:ExposedEnvironment switches the public GitHub channel off whatever
+// GitHub:Enabled says; every submission is then stored "recorded" and nothing leaves the tenant.
+if (feedbackHostOptions.GitHubPublishingActive)
 {
     builder.Services.AddHttpClient<Raffa.Chat.Application.Feedback.IFeatureRequestPublisher, GitHubIssueFeatureRequestPublisher>(client =>
     {

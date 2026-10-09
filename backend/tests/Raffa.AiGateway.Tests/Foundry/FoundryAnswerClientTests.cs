@@ -271,4 +271,72 @@ public class FoundryAnswerClientTests
         Assert.Contains("Ask Raffa", body, StringComparison.Ordinal);
         Assert.Contains("language of the question", body, StringComparison.Ordinal);
     }
+
+    private static HttpResponseMessage AnswerOk(HttpRequestMessage _) =>
+        FakeHttpMessageHandler.Json(
+            HttpStatusCode.OK,
+            ChatEnvelope(new
+            {
+                canDetermine = true,
+                answerMarkdown = "Answer.",
+                citationKeys = new[] { "market:deal-1" },
+                actionKeys = Array.Empty<string>(),
+                abstainReason = (string?)null,
+                followUps = Array.Empty<string>(),
+            }))(_);
+
+    // F1-T02: 100% of answers carry the version of the prompt actually sent.
+    [Fact]
+    public async Task Answer_with_the_default_persona_prompt_reports_the_default_prompt_version()
+    {
+        var evidence = new AiEvidenceSnippet("doc-1", Page: 1, Section: null, Text: "Text.");
+        var (client, _) = CreateClient(AnswerOk);
+
+        var result = await client.AnswerAsync(new AiAnswerRequest("Question?", Evidence: [evidence]), CancellationToken.None);
+
+        Assert.Equal(Raffa.AiGateway.Foundry.Prompts.AnswerPersonaPrompt.Version, result.Value.Metadata.PromptVersion);
+    }
+
+    [Fact]
+    public async Task Answer_with_a_caller_prompt_reports_the_version_the_caller_declared_not_the_default()
+    {
+        var (client, handler) = CreateClient(AnswerOk);
+
+        var result = await client.AnswerAsync(
+            new AiAnswerRequest(
+                "Question?", Evidence: [], SystemPrompt: "my own persona", PackJson: """{"items":[]}""",
+                PromptVersion: "answer-v2.5"),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("answer-v2.5", result.Value.Metadata.PromptVersion);
+        Assert.NotEqual(Raffa.AiGateway.Foundry.Prompts.AnswerPersonaPrompt.Version, result.Value.Metadata.PromptVersion);
+        Assert.Contains("my own persona", Assert.Single(handler.RequestBodies)!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Answer_with_a_caller_prompt_and_no_declared_version_is_never_labelled_as_the_default_prompt()
+    {
+        var (client, _) = CreateClient(AnswerOk);
+
+        var result = await client.AnswerAsync(
+            new AiAnswerRequest("Question?", Evidence: [], SystemPrompt: "my own persona", PackJson: """{"items":[]}"""),
+            CancellationToken.None);
+
+        Assert.Equal(FoundryAnswerClient.UnversionedPrompt, result.Value.Metadata.PromptVersion);
+    }
+
+    [Fact]
+    public async Task An_empty_pack_abstain_without_a_model_call_also_reports_the_prompt_version_of_the_request()
+    {
+        var (client, handler) = CreateClient(AnswerOk);
+
+        var result = await client.AnswerAsync(
+            new AiAnswerRequest("Question?", Evidence: [], SystemPrompt: "my own persona", PackJson: null, PromptVersion: "answer-v2.5"),
+            CancellationToken.None);
+
+        Assert.False(result.Value.CanDetermine);
+        Assert.Empty(handler.Requests);
+        Assert.Equal("answer-v2.5", result.Value.Metadata.PromptVersion);
+    }
 }

@@ -50,5 +50,16 @@ public sealed class MarketEmbeddingEntity
     /// <c>IAiGateway.EmbedAsync</c> call that produced it.</summary>
     public required string Model { get; set; }
 
+    /// <summary>
+    /// Whether this vector came from the deterministic fixture gateway (a pseudo-embedding with no
+    /// semantics, F7-T06) rather than a real embedding model. The fixture reports the same
+    /// <see cref="Model"/> id as the real deployment it stands in for, so the model column alone
+    /// cannot tell them apart. <see langword="null"/> for rows written before the flag existed
+    /// ("unmarked"): those are tolerated at query time, but re-embedded as soon as their record
+    /// changes. Query time refuses to rank a query against vectors of the other kind
+    /// (<see cref="Retrieval.MarketEmbeddingCompatibility"/>).
+    /// </summary>
+    public bool? IsFixture { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 }
