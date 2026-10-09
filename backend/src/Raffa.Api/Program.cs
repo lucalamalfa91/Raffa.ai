@@ -3,6 +3,7 @@ using Raffa.Messaging;
 // Wires all modules via DI; contains no business logic.
 using Azure.Communication.Email;
 using Azure.Identity;
+using Raffa.AiFlows;
 using Raffa.Api;
 using Raffa.Api.Infrastructure;
 using Raffa.Audit.Infrastructure;
@@ -423,6 +424,11 @@ builder.Services.AddScoped<QuoteExtractionPipeline>();
 // via AddQuotesModule above) and resolves the already-Scoped SavingsOpportunityService (registered
 // by AddSavingsModule above) rather than a second, independently-tracked instance of either.
 builder.Services.AddScoped<NegotiationOutcomePropagationService>();
+
+// AI flows layer (ADR-002 amendment): Raffa.AiFlows holds the AI orchestration and logic above the
+// domain modules and is referenced only by the hosts. Registered after every module so a flow can
+// replace a module's default. Empty for now -- no flow has moved in yet, so this registers nothing.
+builder.Services.AddAiFlows();
 
 builder.Services.AddHealthChecks();
 

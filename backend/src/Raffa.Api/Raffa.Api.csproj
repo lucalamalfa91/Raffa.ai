@@ -33,6 +33,10 @@
          IDocumentStorage too. This host no longer references Azure.Storage.Blobs directly: only
          Raffa.Storage does. -->
     <ProjectReference Include="..\Raffa.Storage\Raffa.Storage.csproj" />
+    <!-- ADR-002 amendment (AI flows layer): Raffa.AiFlows holds the AI orchestration and logic and
+         is referenced only by the hosts. Empty for now: Program.cs calls AddAiFlows() and no flow
+         has moved in yet. -->
+    <ProjectReference Include="..\Raffa.AiFlows\Raffa.AiFlows.csproj" />
   </ItemGroup>
 
   <ItemGroup>

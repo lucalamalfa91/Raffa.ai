@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Raffa.AiFlows/Raffa.AiFlows.csproj" />
     <Project Path="src/Raffa.AiGateway/Raffa.AiGateway.csproj" />
     <Project Path="src/Raffa.Api/Raffa.Api.csproj" />
     <Project Path="src/Raffa.Audit/Raffa.Audit.csproj" />
@@ -21,6 +22,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Raffa.AiEval/Raffa.AiEval.csproj" />
+    <Project Path="tests/Raffa.AiFlows.Tests/Raffa.AiFlows.Tests.csproj" />
     <Project Path="tests/Raffa.AiGateway.Tests/Raffa.AiGateway.Tests.csproj" />
     <Project Path="tests/Raffa.Api.Tests/Raffa.Api.Tests.csproj" />
     <Project Path="tests/Raffa.ArchitectureTests/Raffa.ArchitectureTests.csproj" />
