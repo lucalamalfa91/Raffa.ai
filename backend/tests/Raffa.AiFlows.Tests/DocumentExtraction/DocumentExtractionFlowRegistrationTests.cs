@@ -1,3 +1,4 @@
+using Raffa.Market;
 using Raffa.AiFlows.DocumentExtraction;
 using Raffa.AiFlows.DocumentExtraction.Admission;
 using Raffa.AiFlows.DocumentExtraction.Orchestration;
@@ -35,6 +36,7 @@ public sealed class DocumentExtractionFlowRegistrationTests
     public void AddAiFlows_provides_both_ports_as_the_scoped_concrete_flow_types()
     {
         var services = ModuleOnly();
+        services.AddMarketModule();
         services.AddAiFlows();
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
         using var scope = provider.CreateScope();

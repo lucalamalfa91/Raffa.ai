@@ -1,3 +1,4 @@
+using Raffa.Market;
 using Raffa.AiFlows.DocumentExtraction.Admission;
 using Raffa.AiFlows.DocumentExtraction.Orchestration;
 using Raffa.Documents.Contracts.Application.Admission;
@@ -33,6 +34,7 @@ public sealed class DocumentExtractionFlowCompositionTests
         // blob adapter and the extraction-queue pair. The blob client is constructed lazily and never
         // reaches the network here.
         builder.Services.AddWorkerHost(connectionString, connectionString, connectionString);
+        builder.Services.AddMarketModule(connectionString);
         builder.Services.AddAzureBlobDocumentStorage("UseDevelopmentStorage=true");
         builder.Services.AddExtractionQueuePublisher(configuration);
         builder.Services.AddExtractionQueueConsumer(configuration);
