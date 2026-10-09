@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.AiFlows.QuoteExtraction.Agents;
 using Raffa.AiFlows.QuoteExtraction.Orchestration;
 using Raffa.Quotes.Infrastructure;
@@ -30,8 +31,8 @@ public static class QuoteExtractionFlowServiceCollectionExtensions
             return services;
         }
 
-        services.AddScoped<QuoteLineExtractionService>();
-        services.AddScoped<QuoteExtractionPipeline>();
+        services.TryAddScoped<QuoteLineExtractionService>();
+        services.TryAddScoped<QuoteExtractionPipeline>();
 
         return services;
     }
