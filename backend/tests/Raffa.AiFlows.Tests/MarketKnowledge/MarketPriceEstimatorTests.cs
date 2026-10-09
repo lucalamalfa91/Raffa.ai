@@ -1,11 +1,13 @@
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
+using Raffa.AiFlows.MarketKnowledge.Estimation;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.Market.Mock;
 using Raffa.Market.Retrieval;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Market;
 
-namespace Raffa.Market.Tests;
+namespace Raffa.AiFlows.Tests.MarketKnowledge;
 
 /// <summary>
 /// <see cref="MarketPriceEstimator"/>: the last resort for a line the matcher could not price — a

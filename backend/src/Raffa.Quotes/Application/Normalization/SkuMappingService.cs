@@ -167,7 +167,7 @@ public sealed class SkuMappingService(
             // Persist the mapping write(s) before re-normalizing: SkuNormalizationService queries
             // SkuProductMappings back from the database (see its own doc comment), so it must run
             // after they are actually committed — the same ordering constraint
-            // Raffa.Api.QuoteExtractionPipeline's own doc comment documents for QuoteLines.
+            // Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline's own doc comment documents for QuoteLines.
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -280,7 +280,7 @@ public sealed class SkuMappingService(
 /// /api/quotes/{id}/assessment/recalculate`'s own JSON response.</summary>
 /// <param name="MappingsAppliedCount">How many of the caller's supplied corrections were written
 /// (created or updated) — <c>0</c> for a pure-refresh call with no corrections.</param>
-/// <param name="NormalizationOutcome">The same per-quote counts <c>Raffa.Api.QuoteExtractionPipeline</c>'s
+/// <param name="NormalizationOutcome">The same per-quote counts <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c>'s
 /// own upload-time normalization pass reports — see <see cref="SkuNormalizationOutcome"/>'s own doc
 /// comment.</param>
 /// <param name="UnmatchedLines">AC-2's "Show unmatched SKUs" half — every line still unresolved after

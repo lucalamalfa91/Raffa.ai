@@ -1,10 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Raffa.AiFlows.QuoteExtraction.Schemas;
 using Raffa.Quotes.Domain;
 using Raffa.Quotes.Infrastructure;
 using Raffa.SharedKernel;
 
-namespace Raffa.Quotes.Application.Extraction;
+namespace Raffa.AiFlows.QuoteExtraction.Agents;
 
 /// <summary>
 /// Implements the persistence half of task E05/F01/US01/T01 (quote-extraction; parent story
@@ -12,14 +13,10 @@ namespace Raffa.Quotes.Application.Extraction;
 /// (evidence + confidence)" and AC-3 "Separate arithmetic from LLM language (App C #6)").
 ///
 /// Deliberately takes an already-produced <c>AiExtractionResult.PayloadJson</c> string rather than
-/// depending on <c>Raffa.AiGateway.IAiGateway</c> directly: ADR-002's dependency-direction rule
-/// (<c>Raffa.ArchitectureTests.DependencyDirectionTests</c>) only allows this module to
-/// reference <c>Raffa.SharedKernel</c> and <c>Raffa.Benchmark</c> — never
-/// <c>Raffa.AiGateway</c> or <c>Raffa.Documents.Contracts</c> (whose own
-/// <c>HybridDocumentParsingService</c> this story's AC-4 reuses). The actual AI Gateway call and
-/// the hybrid-OCR reuse both happen in <c>Raffa.Api.QuoteExtractionPipeline</c> — "the one
-/// project allowed to reference every module" (backend/README.md's own "Dependency direction"
-/// section) — which calls this service afterward with the raw JSON payload, exactly mirroring how
+/// depending on <c>Raffa.AiGateway.IAiGateway</c> directly: the actual AI Gateway call and the
+/// hybrid-OCR reuse (this story's AC-4) both happen in
+/// <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c>, which calls this
+/// service afterward with the raw JSON payload, exactly mirroring how
 /// <c>Raffa.Documents.Contracts.Application.Extraction.StagedExtractionService.ApplyLineItems</c>
 /// only ever sees a payload string too, never the gateway itself.
 ///
@@ -180,7 +177,7 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
         page is >= 1 && page <= pageCount ? page : null;
 }
 
-/// <summary>Counts <c>Raffa.Api.QuoteExtractionPipeline</c> uses to decide the resulting
+/// <summary>Counts <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c> uses to decide the resulting
 /// <see cref="QuoteExtractionJobStatus"/>/<see cref="QuoteProcessingStatus"/> — mirrors
 /// <c>StagedExtractionService</c>'s own inline stage-result tuple shape, named here since this
 /// service's result crosses an assembly boundary to its caller.</summary>

@@ -529,6 +529,54 @@ budget (ADR-017: fail visibly, never silently truncate) is its own
 `AiGateway:Ocr:MaxPagesPerDocument` section (default 300 — see
 `AiGatewayOcrOptions`).
 
+**Jev classify-role pilot (dev-only trial, not an ADR-004 model swap).**
+`AiGateway:Jev:Enabled` (default `false`, only ever `true` on `dev`) wraps
+whichever gateway `AiGateway:Endpoint` picked with `Jev.JevAiGateway`: the
+`classify` role (document-admission taxonomy) is asked as a `"choice"`
+question against TypeSafe AI's Jev model through the System One API
+(`POST /v1/systemone`, reached here on OpenRouter's identical
+`/api/v1/systemone`; `AiGateway:Jev:ApiKey`, a Container Apps secret — never a
+plain env var), and every other role passes straight through to Foundry/
+Fixture unchanged. Jev goes first and Foundry is the fallback: a failed Jev
+call (after the bounded retries, 529 "Overloaded" included) or an answer under
+`AiGateway:Jev:ClassifyMinConfidence` (default 0.6) is classified by the
+gateway the pilot sits in front of, and the result's `ModelId` says which
+one answered. By default every Choice is asked twice in one request with the
+options in opposite orders (`AiGateway:Jev:CheckOptionOrder`) -- Jev leans toward
+the first option -- and an order disagreement counts as "not sure".
+Scoped to `classify` only on purpose: Jev's three question primitives
+(choice/noul/score) cannot produce the free-value output (dates, amounts,
+verbatim clause text) the `extract` role needs, so this pilot never touches
+extraction. The client was written against TypeSafe's published API reference
+and cookbooks, not yet against a live key -- see
+`Configuration.AiGatewayJevOptions`'s own doc comment before trusting any dev
+upload to this path, and measure accuracy on Italian/German documents first
+(Jev's primary training language is English). Every call logs the chosen
+option, TypeSafe's confidence and the two most likely options' probabilities
+(never the text) so thresholds can be calibrated from data; the audit
+metadata carries the served model version and token usage. Turning it on
+requires both the `Enabled` flag and a real API key; either one missing keeps
+the pilot inert (an unset key fails only the Jev call, which then falls back
+to Foundry, never the host).
+
+The same `AiGateway:Jev:Enabled`/`AiGateway:Jev:ApiKey` switch also covers
+`Raffa.Chat.Application.Gaps.CapabilityInvestigator` (ADR-031). The user's
+turn is the whole Jev `state`; one Choice lists every operation (`question`,
+`capability:<key>`, `known-gap:<key>`, `none`) and a second names the nearest
+capability, and the verdict is derived in code from the option Jev chose --
+never the LLM (`Raffa.Chat.Application.Gaps.JevVerdictClient`). Question,
+capability and known-gap results never touch Foundry at all; `none` (a new
+gap) makes one Foundry `analyst` call, but only to write the free-text feature
+description Jev's primitives cannot produce -- Foundry's own verdict/confidence
+on that call are discarded, Jev's stand, and a description Foundry cannot
+write leaves no follow-up. A Jev failure of any kind falls back to the
+pre-existing Foundry-only path unchanged (same fail-open guarantee ADR-031
+already had). Jev's confidence is bucketed into the existing high/medium/low
+vocabulary by `GapInvestigationOptions.JevHighConfidenceThreshold`/
+`JevMediumConfidenceThreshold` -- starting points, not a measured
+calibration (see `AiGatewayJevOptions`'s own doc comment on why Jev needs
+per-question calibration).
+
 `Raffa.AiFlows.Shared.Parsing.HybridDocumentParsingService`
 implements the hybrid OCR pre-pass (ADR-017): native text extraction
 (`NativeDocumentTextExtractor` — real `DocumentFormat.OpenXml` for
@@ -1416,7 +1464,7 @@ gate → planner → pack → answer → guards pipeline, with four additions:
       question, the contract items, step 1's findings and the missing fields,
       and writes up to three keyword queries for the market RAG — the same
       supplier first, then similar or related contracts; the flow runs them
-      through `IMarketRagSearch` (`Raffa.Api.MarketRagSearch` over
+      through `IMarketRagSearch` (`Raffa.AiFlows.MarketKnowledge.Retrieval.MarketRagSearch` over
       `IMarketKnowledgeRetrieval`) and adds the notes, de-duplicated, capped
       and labelled "similar contract" when they come from another supplier.
       Market notes now carry the deal's annual contract value
@@ -2430,18 +2478,17 @@ established for contracts (task E02/F06/US01/T01).
   — see "Dependency direction" below), and a quote is not a contract (spec
   §11's own Quote → Benchmark → Assessment → Negotiate → **Contract** flow
   treats "becomes a contract" as a later, explicit step).
-- `Raffa.Api.QuoteExtractionPipeline` (internal — host-composition
-  wiring, the same treatment `Raffa.Worker.Queue.QueueConsumerHostedService`
-  already gets from `Raffa.ArchitectureTests
-  .DependencyDirectionTests.Host_must_not_contain_domain_types`) is the one
+- `Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline` (public, in the AI flows
+  project `Raffa.AiFlows`, which sits above the domain modules and is referenced only by
+  the hosts; registered by `AddAiFlows` → `AddQuoteExtractionFlow`) is the one
   place that calls both `Raffa.AiGateway` and `Raffa.Quotes`: it reuses
   the epic-02 `Raffa.Documents.Contracts.Application.Extraction
   .HybridDocumentParsingService` verbatim (native text extraction, or the
   `ocr` gateway role — Azure AI Document Intelligence, ADR-017 — for
   scanned/image/low-text quote PDFs; full document, no 2-page cap; AC-4),
-  then runs one `extract` call against `Raffa.Quotes.Application
-  .Extraction.QuoteLineJsonSchema.LineItems()` and hands the raw payload to
-  `Raffa.Quotes.Application.Extraction.QuoteLineExtractionService` to
+  then runs one `extract` call against `Raffa.AiFlows.QuoteExtraction
+  .Schemas.QuoteLineJsonSchema.LineItems()` and hands the raw payload to
+  `Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionService` to
   persist.
 - AC-3 ("Separate arithmetic from LLM language", Appendix C rule 6): the
   line-item schema has **no** computed-total property at all — the model
@@ -2451,7 +2498,7 @@ established for contracts (task E02/F06/US01/T01).
   the model did not report a unit price directly) and
   `QuoteLine.ExtendedPrice` (`quantity × unitPrice`) in plain C# decimal
   arithmetic — proved directly by
-  `Raffa.Quotes.Tests.QuoteLineExtractionServiceTests` and end-to-end by
+  `Raffa.AiFlows.Tests.QuoteExtraction.QuoteLineExtractionServiceTests` and end-to-end by
   `Raffa.IntegrationTests.QuoteEndToEndTests`.
 - Every line carries the same evidence + confidence tail as every other
   extraction pipeline in this codebase (`sourceSpan`/`sourcePage`/
@@ -2527,7 +2574,7 @@ canonical product mapping") and the "show unmatched SKUs" half of AC-2:
   `SkuNormalizationService.NormalizeAsync` re-reads a quote's own lines from
   the database and sets each one's `NormalizedSku`/`NormalizedEdition`/
   `MatchStatus` (`NotApplicable`/`Unmatched`/`Matched` —
-  `Raffa.Quotes.Domain.SkuMatchStatus`); `Raffa.Api.QuoteExtractionPipeline`
+  `Raffa.Quotes.Domain.SkuMatchStatus`); `Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline`
   calls it right after persisting a quote's freshly-extracted lines, so
   every upload gets a real match status, not just a later explicit
   recalculate call.
@@ -2712,7 +2759,7 @@ resolves `IBenchmarkService` yet").
   Strategy" below; outcome capture (`POST /api/negotiations/outcomes`,
   feature-03's us-02) remains future work no task has picked up yet.
 - **Incidental fix, required for this task's own `dotnet build` to succeed
-  at all**: `Raffa.Api.QuoteExtractionPipeline.ProcessAsync` (touched by
+  at all**: `Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline.ProcessAsync` (touched by
   both task E05/F01/US01/T02 and task E05/F01/US02/T01 in parallel
   wave-spec phases) had a duplicate local-variable declaration
   (`normalizationOutcome` declared twice, `CS0128`) and two stray, dangling
@@ -2792,7 +2839,7 @@ picked up yet").
   allowed-reference set for `Raffa.Quotes` is exactly `[SharedKernel,
   Benchmark]` (see "Dependency direction" below) — unchanged by this task.
   A future task wiring the `answer` role would do it the same way
-  `Raffa.Api.QuoteExtractionPipeline` already does for the `extract`
+  `Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline` already does for the `extract`
   role: from the composition root, feeding this calculator's own facts in
   as evidence, never asking the model to invent them.
   `Raffa.AiGateway.Fixtures.FixtureAiGateway.AnswerAsync` would today only
@@ -2956,7 +3003,7 @@ flywheel).
   still in the same request. That type is `internal`, host-composition-
   root-only wiring (ADR-002: `Raffa.Quotes` and `Raffa.Savings` cannot
   see each other; only `Raffa.Api` may reference both — the same
-  treatment `QuoteExtractionPipeline` already gets, see "Dependency
+  reasoning that places `QuoteExtractionPipeline` in `Raffa.AiFlows`, see "Dependency
   direction" below), and it reuses the exact same, already-audited write
   path a human `PATCH /api/savings/{id}` call already uses
   (`SavingsOpportunityService.UpdateAsync` with `realizedAmount` set — see

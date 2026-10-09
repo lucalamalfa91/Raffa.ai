@@ -43,7 +43,7 @@ namespace Raffa.Quotes.Domain;
 /// are populated by <c>Raffa.Quotes.Application.QuoteUploadService.UploadAsync</c> from explicit,
 /// optional caller-supplied upload fields — never inferred/guessed from the document text (Appendix
 /// C rule 10): nothing in this codebase extracts a document-level supplier/geography/currency
-/// today (<c>Raffa.Quotes.Application.Extraction.QuoteLineJsonSchema</c> only asks the AI Gateway
+/// today (<c>Raffa.AiFlows.QuoteExtraction.Schemas.QuoteLineJsonSchema</c> only asks the AI Gateway
 /// `extract` role for per-line facts), and spec §11.1's own "Identify supplier" workflow step has
 /// no task of its own yet. All four are nullable: a quote uploaded without them simply cannot be
 /// matched against the Benchmark Service yet (<c>Raffa.Quotes.Application.Assessment

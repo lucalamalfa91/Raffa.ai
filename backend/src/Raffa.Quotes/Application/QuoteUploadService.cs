@@ -127,7 +127,7 @@ public sealed class QuoteUploadService(
         };
 
         // AC-1 "...and creates an extraction job" — the queued row
-        // Raffa.Api.QuoteExtractionPipeline advances to completion synchronously after this
+        // Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline advances to completion synchronously after this
         // upload returns (same "queue the row, a later step in the same request drives it"
         // shape DocumentUploadService/DocumentProcessingOrchestrator already established).
         var extractionJob = new QuoteExtractionJob

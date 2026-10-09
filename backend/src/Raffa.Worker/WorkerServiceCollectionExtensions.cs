@@ -79,7 +79,10 @@ public static class WorkerServiceCollectionExtensions
         // AI flows layer (ADR-002 amendment): after every module so a flow can replace a module
         // default. Provides the implementations of the ports the modules define, e.g. the
         // document-extraction flow's IDocumentAdmissionEvaluator / IDocumentProcessingFlow that
-        // ExtractionRequestedHandler needs.
+        // ExtractionRequestedHandler needs. The quote-extraction flow is skipped here (this host does
+        // not compose the Quotes module); the MarketKnowledge flow registers IMarketPriceEstimator,
+        // which the extraction handler's LineItemMarketPriceService takes as an optional dependency
+        // (the host's own AddMarketModule supplies the data layer under it).
         services.AddAiFlows();
 
         // TryAdd: Raffa.Worker.Tests pre-registers a fake IActiveRenewalContractsSource /

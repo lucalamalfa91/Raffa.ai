@@ -147,6 +147,7 @@ public class FoundryRetryPolicyTests
         Assert.True(FoundryRetryPolicy.IsTransient(HttpStatusCode.TooManyRequests));
         Assert.True(FoundryRetryPolicy.IsTransient(HttpStatusCode.InternalServerError));
         Assert.True(FoundryRetryPolicy.IsTransient(HttpStatusCode.GatewayTimeout));
+        Assert.True(FoundryRetryPolicy.IsTransient((HttpStatusCode)529)); // Jev's documented "Overloaded"
         Assert.False(FoundryRetryPolicy.IsTransient(HttpStatusCode.BadRequest));
         Assert.False(FoundryRetryPolicy.IsTransient(HttpStatusCode.Unauthorized));
         Assert.False(FoundryRetryPolicy.IsTransient(HttpStatusCode.NotFound));
