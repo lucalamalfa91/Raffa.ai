@@ -1,5 +1,4 @@
 using System.Text;
-using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Reply;
 
 namespace Raffa.Chat.Application.Feedback;

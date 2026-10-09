@@ -1,3 +1,4 @@
+using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Gaps;
 
 namespace Raffa.Chat.Tests.Gaps;
