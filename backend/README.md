@@ -1553,7 +1553,7 @@ It now rides the same route with one branch before the planner:
    the text of a clause). T3 reads the question alone, so the check starts
    before the answer and runs beside it; T1/T2 are decided right after the
    reply, so the answer is never delayed and the follow-up is still a
-   separate message (`CapabilityCheckDispatcher.AppendWhenDone`). `Always`
+   separate message (`CapabilityFollowUpAppender.AppendWhenDone`). `Always`
    restores the old behaviour for diagnosis, `Enabled=false` is the kill
    switch, both read through `IOptionsMonitor` (no restart). Audit, never
    any text: `ask.capability_trigger` (mode, t1/t2/t3, ran, reason, lexicon

@@ -1,13 +1,10 @@
-using System.Collections.Concurrent;
 using Raffa.AiGateway.Telemetry;
 using System.Globalization;
 using Microsoft.Extensions.Options;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Language;
 using Raffa.Chat.Application.Reply;
-using Raffa.Chat.Domain.Conversations;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 
@@ -60,8 +57,8 @@ internal sealed class CapabilityCheckSlot
 /// <c>IAiGateway</c> writes audit rows through a scoped DbContext that is gone once the response
 /// is sent) and returns at its first I/O, so the answer is computed while the model thinks. When
 /// the check finds an operation Raffa cannot perform, the endpoint appends the follow-up as a
-/// separate Raffa message right after the answer: in the same response when the check finished
-/// first, otherwise from the background (<see cref="AppendWhenDone"/>) while the client polls.
+/// separate Raffa message right after the answer — that half (persisting the message, the
+/// background append, <c>WhenIdleAsync</c>) is <see cref="CapabilityFollowUpAppender"/>.
 ///
 /// <para>
 /// <b>Whether</b> a check starts is decided by the caller (INV-02): in
@@ -75,10 +72,10 @@ internal sealed class CapabilityCheckSlot
 /// verdict, its confidence, the gap key and the turn id; never the question or any model text.
 /// </para>
 /// </summary>
-internal sealed class CapabilityCheckDispatcher(
+internal sealed class CapabilityCheckRunner(
     IServiceScopeFactory scopeFactory,
     IOptionsMonitor<GapInvestigationOptions> optionsMonitor,
-    ILogger<CapabilityCheckDispatcher> logger)
+    ILogger<CapabilityCheckRunner> logger)
 {
     public const string AuditAction = "ask.capability_follow_up";
     public const string AuditResourceType = "capability_follow_up";
@@ -99,8 +96,6 @@ internal sealed class CapabilityCheckDispatcher(
 
     /// <summary>How many validated suppliers an email follow-up offers as chips.</summary>
     private const int MaxDraftSupplierFollowUps = 5;
-
-    private readonly ConcurrentDictionary<Task, byte> _background = new();
 
     private GapInvestigationOptions _lastGood = new();
 
@@ -134,105 +129,6 @@ internal sealed class CapabilityCheckDispatcher(
         ArgumentNullException.ThrowIfNull(request);
         return RunAsync(request);
     }
-
-    /// <summary>Appends <paramref name="followUp"/> after the answer <paramref name="answeredMessageId"/>
-    /// — only while that answer is still the conversation's last message: when the user has
-    /// already moved on, a late proposal would land in the middle of another exchange, so it is
-    /// dropped (and logged). Writes one audit row with the gap key; never the question.</summary>
-    public async Task<ConversationMessageResult?> AppendAsync(
-        TenantId tenantId,
-        string userId,
-        EntityId conversationId,
-        EntityId answeredMessageId,
-        CopilotReply followUp,
-        string? turnId = null,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(followUp);
-
-        await using var scope = scopeFactory.CreateAsyncScope();
-        var conversations = scope.ServiceProvider.GetRequiredService<ConversationService>();
-
-        var conversation = await conversations.GetAsync(tenantId, userId, conversationId, cancellationToken).ConfigureAwait(false);
-        if (conversation is null || conversation.Messages.Count == 0 || conversation.Messages[^1].MessageId != answeredMessageId)
-        {
-            logger.LogInformation(
-                "Capability follow-up for message {MessageId} dropped: the conversation has moved on", answeredMessageId);
-            await TryAuditOutcomeAsync(
-                    scope.ServiceProvider, tenantId, userId, turnId, OutcomeDrop, followUp.Payload?.Gap?.Discovery?.Confidence, followUp.Payload?.Gap?.Key)
-                .ConfigureAwait(false);
-            return null;
-        }
-
-        var stamped = followUp with
-        {
-            Payload = (followUp.Payload ?? new ReplyPayload()) with
-            {
-                FollowUps = followUp.FollowUps.Count > 0 ? followUp.FollowUps : null,
-                CapabilityCheckFor = answeredMessageId.Value.ToString(),
-            },
-        };
-
-        var appended = await conversations
-            .AppendMessageAsync(tenantId, userId, conversationId, ConversationsEndpointExtensions.ToAppendRequest(stamped), cancellationToken)
-            .ConfigureAwait(false);
-
-        if (appended is not null)
-        {
-            var auditWriter = scope.ServiceProvider.GetRequiredService<IAuditWriter>();
-            var clock = scope.ServiceProvider.GetRequiredService<IClock>();
-            await auditWriter.WriteAsync(
-                    new AuditEntry(
-                        tenantId,
-                        userId,
-                        AuditAction,
-                        AuditResourceType,
-                        appended.MessageId.Value.ToString(),
-                        clock.UtcNow,
-                        $"conversationId={conversationId} answeredMessageId={answeredMessageId} " +
-                        $"gapKey={stamped.Payload?.Gap?.Key ?? "none"} turnId={FormatTurnId(turnId)}"),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return appended;
-    }
-
-    /// <summary>The check is still running when the answer is persisted: append its follow-up from
-    /// the background once it completes. Failures are logged, never surfaced.</summary>
-    public void AppendWhenDone(
-        Task<CopilotReply?> check,
-        TenantId tenantId,
-        string userId,
-        EntityId conversationId,
-        EntityId answeredMessageId,
-        string? turnId = null)
-    {
-        ArgumentNullException.ThrowIfNull(check);
-
-        var work = Task.Run(async () =>
-        {
-            try
-            {
-                var followUp = await check.ConfigureAwait(false);
-                if (followUp is not null)
-                {
-                    await AppendAsync(tenantId, userId, conversationId, answeredMessageId, followUp, turnId).ConfigureAwait(false);
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Capability follow-up for message {MessageId} could not be appended", answeredMessageId);
-            }
-        });
-
-        _background.TryAdd(work, 0);
-        _ = work.ContinueWith(done => _background.TryRemove(done, out _), TaskScheduler.Default);
-    }
-
-    /// <summary>Completes when every background append started so far has finished — for tests
-    /// and a graceful shutdown.</summary>
-    public Task WhenIdleAsync() => Task.WhenAll(_background.Keys.ToList());
 
     private async Task<CopilotReply?> RunAsync(CapabilityCheckRequest request)
     {
@@ -295,7 +191,7 @@ internal sealed class CapabilityCheckDispatcher(
     /// key and the turn id; never the question, a feature text or any model output. Telemetry
     /// never fails a check: a writer that throws is logged and swallowed.
     /// </summary>
-    private async Task TryAuditOutcomeAsync(
+    internal async Task TryAuditOutcomeAsync(
         IServiceProvider services, TenantId tenantId, string actor, string? turnId, string outcome, string? confidence, string? gapKey)
     {
         try
@@ -320,7 +216,7 @@ internal sealed class CapabilityCheckDispatcher(
         }
     }
 
-    private static string FormatTurnId(string? turnId) => turnId ?? "none";
+    internal static string FormatTurnId(string? turnId) => turnId ?? "none";
 
     /// <summary>
     /// The follow-up message: "I checked what Raffa.ai can do for your request." then the gap's

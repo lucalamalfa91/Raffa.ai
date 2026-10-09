@@ -241,7 +241,8 @@ builder.Services.AddSingleton(draftingOptions);
 // IOptionsMonitor, so a configuration change applies without a restart.
 builder.Services.Configure<Raffa.Chat.Application.Gaps.GapInvestigationOptions>(
     builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName));
-builder.Services.AddSingleton<Raffa.Api.CapabilityCheckDispatcher>();
+builder.Services.AddSingleton<Raffa.Api.CapabilityCheckRunner>();
+builder.Services.AddSingleton<Raffa.Api.CapabilityFollowUpAppender>();
 
 // ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
 // council/drafting options above so a configured value wins over the module's TryAdd default.

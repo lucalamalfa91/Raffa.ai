@@ -199,7 +199,7 @@ internal sealed partial class AskCopilotService(
     IMarketDealLookup marketDealLookup,
     AskAgentFlow askAgentFlow,
     NegotiationDraftingWorkflow negotiationDraftingWorkflow,
-    CapabilityCheckDispatcher capabilityCheckDispatcher,
+    CapabilityCheckRunner capabilityCheckRunner,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
     WebResearchOptions webResearchOptions,
@@ -389,7 +389,7 @@ internal sealed partial class AskCopilotService(
         //   - T1 (no intent recognised) and T2 (Raffa could not answer) need the planner and the
         //     composer, so they are decided right after the reply below, and the check starts then:
         //     the answer is never delayed, and the follow-up still lands as a separate message
-        //     through CapabilityCheckDispatcher.AppendWhenDone.
+        //     through CapabilityCheckRunner.AppendWhenDone.
         // Only a fresh, typed InDomain turn is eligible: the fixed catalog already had its say in
         // the gate; Greeting/OffDomain/Legal/Capability/NeedsDocument make no AI Gateway call and
         // stay that way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an
@@ -412,7 +412,7 @@ internal sealed partial class AskCopilotService(
                     ? namedSupplierName
                     : null;
 
-            capabilityCheck!.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
+            capabilityCheck!.FollowUp = capabilityCheckRunner.Start(new CapabilityCheckRequest(
                 tenantId,
                 question,
                 supplierNames.Values.ToList(),
@@ -430,7 +430,7 @@ internal sealed partial class AskCopilotService(
         {
             capabilityCheck!.TurnId = turnId;
 
-            if (!capabilityCheckDispatcher.Enabled)
+            if (!capabilityCheckRunner.Enabled)
             {
                 gapInvestigation = "off";
                 triggerVerdict = new TriggerVerdict(false, false, false, InvestigatorTrigger.ReasonKillSwitch);
@@ -438,7 +438,7 @@ internal sealed partial class AskCopilotService(
             else
             {
                 investigatorEligible = true;
-                investigatorMode = capabilityCheckDispatcher.Mode;
+                investigatorMode = capabilityCheckRunner.Mode;
 
                 // T3 reads the question alone: it (and Always mode) starts the check now, in
                 // parallel with the answer. T1/T2 are decided after the reply, below.

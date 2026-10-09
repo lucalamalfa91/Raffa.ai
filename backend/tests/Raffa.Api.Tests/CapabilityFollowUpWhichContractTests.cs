@@ -25,7 +25,7 @@ public sealed class CapabilityFollowUpWhichContractTests
     {
         var request = Request("write the renewal email", ["Oracle", "Amazon Web Services"], validated: 2);
 
-        var followUp = CapabilityCheckDispatcher.BuildFollowUp(Gap, [], request, Routing);
+        var followUp = CapabilityCheckRunner.BuildFollowUp(Gap, [], request, Routing);
 
         var language = QuestionLanguage.Detect(request.Question);
         var shared = CapabilityGapReplyBuilder.WhichContract(
@@ -49,7 +49,7 @@ public sealed class CapabilityFollowUpWhichContractTests
     {
         var request = Request("write the renewal email", ["Oracle", "Amazon Web Services"], validated: 2, named: "Oracle");
 
-        var followUp = CapabilityCheckDispatcher.BuildFollowUp(Gap, [], request, Routing);
+        var followUp = CapabilityCheckRunner.BuildFollowUp(Gap, [], request, Routing);
 
         Assert.Equal(
             [CapabilityGapCopy.DraftFollowUp(QuestionLanguage.Detect(request.Question), "Oracle")],
@@ -61,7 +61,7 @@ public sealed class CapabilityFollowUpWhichContractTests
     {
         var request = Request("write the renewal email", [], validated: 0);
 
-        var followUp = CapabilityCheckDispatcher.BuildFollowUp(Gap, [], request, Routing);
+        var followUp = CapabilityCheckRunner.BuildFollowUp(Gap, [], request, Routing);
 
         Assert.Empty(followUp.FollowUps);
         Assert.Equal(

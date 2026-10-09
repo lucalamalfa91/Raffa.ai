@@ -197,7 +197,7 @@ public sealed class AskSavingsConsultantTests(RaffaApiFactory factory) : IClassF
 
         await AskAsync(
             host.CreateClient(), tenantId, "which levers can I use to save 20k on the renewal?", contract.Id.Value);
-        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+        await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
 
         var turn = Assert.Single(audit.Entries, e => e.ResourceType == "ask_raffa_v2");
         var turnId = System.Text.RegularExpressions.Regex.Match(turn.Detail!, @"turnId=([0-9a-f]{16})").Groups[1].Value;
