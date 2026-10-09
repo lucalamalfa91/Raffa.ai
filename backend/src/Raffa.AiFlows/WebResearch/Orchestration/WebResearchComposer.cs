@@ -1,4 +1,7 @@
 using System.Globalization;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Reply;
 using Raffa.AiFlows.WebResearch.Configuration;
 using Raffa.AiFlows.WebResearch.Guards;
 using Raffa.AiFlows.WebResearch.Lexicons;
@@ -6,8 +9,6 @@ using Raffa.AiFlows.WebResearch.Prompts;
 using Raffa.AiFlows.WebResearch.Replies;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
-using Raffa.Chat.Application.Guards;
-using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Reply;
 using Raffa.SharedKernel;
 

@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using Raffa.Chat.Application.Guards;
+using Raffa.AiFlows.Shared.Guards;
 
 namespace Raffa.AiFlows.WebResearch.Guards;
 

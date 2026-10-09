@@ -1,5 +1,4 @@
 using Raffa.AiFlows.Ask.Planning;
-using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Domain;
 
 namespace Raffa.AiFlows.Tests.Ask.Planning;

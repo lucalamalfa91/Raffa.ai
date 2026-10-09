@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
-using Raffa.Chat.Application.Pack;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;

@@ -3,13 +3,13 @@ using System.Text.Json.Serialization;
 using Raffa.AiFlows.Negotiation.Agents;
 using Raffa.AiFlows.Negotiation.Options;
 using Raffa.AiFlows.Negotiation.Verdict;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Telemetry;
 using Raffa.SharedKernel;
-using Raffa.Chat.Application.Guards;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 
 namespace Raffa.AiFlows.Negotiation.Orchestration;
 

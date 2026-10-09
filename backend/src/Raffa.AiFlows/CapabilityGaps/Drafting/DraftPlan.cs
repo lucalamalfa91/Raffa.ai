@@ -1,4 +1,5 @@
-using Raffa.Chat.Application.Pack;
+
+using Raffa.AiFlows.Shared.Pack;
 
 namespace Raffa.AiFlows.CapabilityGaps.Drafting;
 

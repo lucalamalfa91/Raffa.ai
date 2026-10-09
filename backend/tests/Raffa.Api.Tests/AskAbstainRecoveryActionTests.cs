@@ -20,7 +20,7 @@ namespace Raffa.Api.Tests;
 /// failing — both attach a real, <c>CapabilityRouting.ResolveActions</c>-sourced recovery action,
 /// never an empty <c>actions[]</c>. The third abstain path (a guard-downgraded/model-abstained
 /// `answer` result — <c>CopilotReplyBuilder.FromGuardedResult</c>'s own <c>!CanDetermine</c>
-/// branch) is proven at unit level (<c>Raffa.Chat.Tests.Reply.CopilotReplyBuilderTests</c>);
+/// branch) is proven at unit level (<c>Raffa.AiFlows.Tests.Shared.Reply.CopilotReplyBuilderTests</c>);
 /// reaching it here would need a guard violation staged through a real Foundry-shaped answer,
 /// which this project's InMemory host cannot do (see <see cref="InMemoryAskEngineFactory"/>'s own
 /// doc comment).

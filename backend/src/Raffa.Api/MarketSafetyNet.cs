@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.Benchmark.Contracts;
-using Raffa.Chat.Application.Pack;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Market.Contracts;
 using Raffa.Market.Retrieval;

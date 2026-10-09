@@ -29,7 +29,7 @@ public enum ReplyKind
     /// honest preface in <c>AnswerMarkdown</c>, the email itself in
     /// <c>CopilotReply.Payload.Draft</c>, the pack items it was written from as citations, plus the
     /// feedback offer. Never carries inline <c>[n]</c> markers — the draft is guarded by
-    /// <c>Application.Drafting.DraftGuard</c>, not by the `answer` role's citation gate.</summary>
+    /// <c>CapabilityGaps.Guards.DraftGuard</c> (AI flows layer), not by the `answer` role's citation gate.</summary>
     Draft,
 
     /// <summary>ADR-030: Raffa asks one clarifying question (with options) before it retrieves

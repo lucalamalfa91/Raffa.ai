@@ -7,7 +7,7 @@ namespace Raffa.AiFlows.CapabilityGaps.Catalog;
 
 /// <summary>Which existing capability Raffa offers in place of the operation it cannot perform
 /// (ADR-030 D1). <see cref="DraftEmail"/> is the one alternative that produces new content — the
-/// drafted negotiation email (<c>Application.Drafting</c>); the other three are deep links into
+/// drafted negotiation email (<c>CapabilityGaps.Drafting</c>); the other three are deep links into
 /// screens that already hold the facts the user was after.</summary>
 public enum GapAlternative
 {

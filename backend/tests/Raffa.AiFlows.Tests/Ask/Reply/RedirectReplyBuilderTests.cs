@@ -1,4 +1,5 @@
 using Raffa.AiFlows.Ask.Reply;
+using Raffa.AiFlows.Shared.Routing;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Reply;
 using Raffa.SharedKernel;
@@ -97,7 +98,7 @@ public sealed class RedirectReplyBuilderTests
         {
             new ReplyCitation(
                 N: 1,
-                Corpus: Raffa.Chat.Application.Pack.PackCorpus.Raffa,
+                Corpus: Raffa.AiFlows.Shared.Pack.PackCorpus.Raffa,
                 Title: "Ask Raffa",
                 Subtitle: null,
                 Snippet: "Ask about dates, spend, notice periods and clauses in plain language.",
@@ -114,7 +115,7 @@ public sealed class RedirectReplyBuilderTests
 
         Assert.Equal(ReplyKind.Answer, reply.Kind);
         Assert.Same(citations, reply.Citations);
-        Assert.Contains(Raffa.Chat.Application.Pack.PackCorpus.Raffa, reply.Provenance.Sources);
+        Assert.Contains(Raffa.AiFlows.Shared.Pack.PackCorpus.Raffa, reply.Provenance.Sources);
         Assert.Null(reply.Provenance.ModelId);
     }
 

@@ -1,6 +1,5 @@
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
-using Raffa.Chat.Application;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Infrastructure;
 using Raffa.SharedKernel;
@@ -9,16 +8,14 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Raffa.Chat.Tests;
 
 /// <summary>
-/// Proves task E02/F04/US02/T01's own wiring claim (mirrors
-/// <c>Raffa.AiGateway.Tests.ServiceCollectionExtensionsTests</c>): <see cref="AskRaffaQueryRouter"/>,
-/// <see cref="DeterministicQueryPlanner"/>, <see cref="DeterministicQueryHandler"/>,
-/// <see cref="AbstainGuard"/> (task E02/F04/US02/T02) and the ask engine's
-/// <c>AnswerComposer</c> are all
-/// resolvable from a container that has
-/// <see cref="AddChatModule"/> plus this module's two external dependencies
-/// (<see cref="IAiGateway"/>, <see cref="IAuditWriter"/>) registered — the shape
-/// <c>Raffa.Api.Program</c>'s real composition already provides via
-/// <c>AddDocumentsContractsModule</c>/<c>AddAuditModule</c>.
+/// Proves this module's own wiring (mirrors <c>Raffa.AiGateway.Tests.ServiceCollectionExtensionsTests</c>):
+/// what <see cref="AddChatModule"/> registers (the clock, the feedback seam, the closed web-research
+/// budget limit and, given a connection string, the conversation store) resolves from a container
+/// that has this module's two external dependencies (<see cref="IAiGateway"/>,
+/// <see cref="IAuditWriter"/>) registered, the shape <c>Raffa.Api.Program</c>'s real composition
+/// already provides via <c>AddDocumentsContractsModule</c>/<c>AddAuditModule</c>. The AI flows
+/// (router, gate, planner, answer composer, guards) are registered by <c>AddAiFlows</c> and proved
+/// in the AI flows layer's own tests.
 ///
 /// <see cref="ServiceProviderOptions.ValidateOnBuild"/> + <see cref="ServiceProviderOptions.ValidateScopes"/>
 /// (both <see langword="true"/> below) is the actual proof behind
@@ -42,7 +39,6 @@ public sealed class ServiceCollectionExtensionsTests
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
         using var scope = provider.CreateScope();
 
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AbstainGuard>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IClock>());
 
         Assert.IsType<NullFeatureRequestPublisher>(scope.ServiceProvider.GetRequiredService<IFeatureRequestPublisher>());
@@ -100,7 +96,7 @@ public sealed class ServiceCollectionExtensionsTests
     /// <summary>
     /// The budget reads its daily limit through <c>IWebResearchBudgetLimit</c>. This module registers
     /// the closed default (no web-research flow, no web path); the flow replaces it with its own
-    /// options when a host composes the AI flows layer (proved in Raffa.AiFlows.Tests).
+    /// options when a host composes the AI flows layer (proved in the AI flows layer's own tests).
     /// </summary>
     [Fact]
     public void Without_the_web_research_flow_the_budget_limit_is_the_closed_default()

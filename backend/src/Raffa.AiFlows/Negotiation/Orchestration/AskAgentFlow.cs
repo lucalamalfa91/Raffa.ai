@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Raffa.AiFlows.Negotiation.Agents;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiGateway.Telemetry;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 
 namespace Raffa.AiFlows.Negotiation.Orchestration;
 

@@ -1,7 +1,6 @@
 using System.Text;
-using Raffa.Chat.Application.Guards;
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.Chat.Application.Language;
-using Raffa.Chat.Application.Pack;
 
 namespace Raffa.AiFlows.CapabilityGaps.Drafting;
 

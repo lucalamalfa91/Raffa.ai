@@ -1,7 +1,6 @@
 using Raffa.AiFlows.Ask.Interview;
 using Raffa.AiFlows.Ask.Planning;
 using Raffa.Chat.Application.Interview;
-using Raffa.Chat.Application.Planning;
 
 namespace Raffa.AiFlows.Tests.Ask.Interview;
 

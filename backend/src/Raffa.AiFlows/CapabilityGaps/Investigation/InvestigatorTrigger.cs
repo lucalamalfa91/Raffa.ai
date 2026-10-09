@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Raffa.AiFlows.Ask.Planning;
-using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Reply;
 
 namespace Raffa.AiFlows.CapabilityGaps.Investigation;

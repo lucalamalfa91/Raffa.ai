@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiFlows.WebResearch.Configuration;
 using Raffa.AiFlows.WebResearch.Lexicons;
 using Raffa.AiFlows.WebResearch.Orchestration;
@@ -5,7 +6,6 @@ using Raffa.AiFlows.WebResearch.Prompts;
 using Raffa.AiFlows.WebResearch.Replies;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
-using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.AiFlows.Tests.TestSupport;

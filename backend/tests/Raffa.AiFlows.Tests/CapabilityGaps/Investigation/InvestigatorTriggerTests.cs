@@ -2,7 +2,6 @@ using System.Reflection;
 using Raffa.AiFlows.Ask.Planning;
 using Raffa.AiFlows.CapabilityGaps.Investigation;
 using Raffa.AiGateway;
-using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain;
 

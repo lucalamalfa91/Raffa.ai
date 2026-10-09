@@ -5,7 +5,6 @@ using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
-using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.SharedKernel;

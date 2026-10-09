@@ -1,4 +1,4 @@
-using Raffa.Chat.Application.Pack;
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.SharedKernel;
 
 namespace Raffa.AiFlows.Negotiation.Tools;

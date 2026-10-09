@@ -1,10 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Raffa.AiFlows.Ask.Guards;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Routing;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Guards;
-using Raffa.Chat.Application.Pack;
 using Raffa.SharedKernel;
 
 namespace Raffa.AiFlows.Ask.Answering;

@@ -237,7 +237,7 @@ public sealed class FixtureAiGateway(
     /// values verbatim — no chunk concatenation — so the guards and the golden set run without
     /// Foundry"). Deserializes <see cref="AiAnswerRequest.PackJson"/> into this fixture's own
     /// minimal, string-typed shape (<see cref="FixturePackItem"/>/<see cref="FixturePackValue"/>) —
-    /// this project cannot reference <c>Raffa.Chat.Application.Pack.PackItem</c> at all (ADR-002
+    /// this project cannot reference <c>Raffa.AiFlows.Shared.Pack.PackItem</c> at all (ADR-002
     /// dependency direction runs the other way: <c>Raffa.Chat</c> depends on
     /// <c>Raffa.AiGateway</c>, never the reverse), so the two shapes are independently declared
     /// and agree only by JSON field name (both produced/read with
@@ -312,7 +312,7 @@ public sealed class FixtureAiGateway(
     }
 
     /// <summary>Verbatim copy of the pack value, formatted so it round-trips through
-    /// <c>Raffa.Chat.Application.Guards.NumericGuard</c>'s own token patterns: an amount as
+    /// <c>Raffa.AiFlows.Shared.Guards.NumericGuard</c>'s own token patterns: an amount as
     /// <c>"{currency} {value}"</c>, a percentage as <c>"{value}%"</c>, a date or bare number as
     /// the stored value unchanged.</summary>
     private static string FormatFixturePackValue(FixturePackValue value) => value.Kind switch
@@ -328,7 +328,7 @@ public sealed class FixtureAiGateway(
 
     /// <summary>Same camelCase-plus-string-enum shape
     /// <c>Raffa.AiFlows.Ask.Answering.AnswerComposer</c> serializes
-    /// <c>Raffa.Chat.Application.Pack.PackItem</c> with — see this type's own <c>PackJsonOptions</c>
+    /// <c>Raffa.AiFlows.Shared.Pack.PackItem</c> with — see this type's own <c>PackJsonOptions</c>
     /// doc comment for why both sides must agree on this exact convention despite neither
     /// referencing the other's type.</summary>
     private static readonly JsonSerializerOptions PackJsonOptions = new(JsonSerializerDefaults.Web)
@@ -337,14 +337,14 @@ public sealed class FixtureAiGateway(
     };
 
     /// <summary>This fixture's own minimal, string-typed mirror of
-    /// <c>Raffa.Chat.Application.Pack.PackItem</c> — see <see cref="AnswerFromPack"/>'s own doc
+    /// <c>Raffa.AiFlows.Shared.Pack.PackItem</c> — see <see cref="AnswerFromPack"/>'s own doc
     /// comment for why a structural (JSON field name) match is the only contract between the two,
     /// not a shared type.</summary>
     private sealed record FixturePackItem(
         string CitationKey, string Corpus, string Title, string? Subtitle, string Snippet,
         IReadOnlyList<FixturePackValue>? Values);
 
-    /// <summary>Mirrors <c>Raffa.Chat.Application.Pack.PackValue</c> — <see cref="Kind"/> is the
+    /// <summary>Mirrors <c>Raffa.AiFlows.Shared.Pack.PackValue</c> — <see cref="Kind"/> is the
     /// enum's own name string ("Amount"/"Percentage"/"Date"/"Number"), never re-typed as the
     /// Raffa.Chat enum this project cannot reference.</summary>
     private sealed record FixturePackValue(string Key, string Value, string Kind, string? Currency);
@@ -352,7 +352,7 @@ public sealed class FixtureAiGateway(
     /// <inheritdoc/>
     /// <summary>
     /// The `analyst` role, deterministic: reads the council's own input shape (structural JSON
-    /// contract with <c>Raffa.Chat.Application.Council</c>, the same way <see cref="FixturePackItem"/>
+    /// contract with <c>Raffa.AiFlows.Negotiation</c>, the same way <see cref="FixturePackItem"/>
     /// mirrors the pack) and returns a payload that any consumer can ground — every finding or play
     /// cites an input item's own citation key and reuses that item's own text, so the numbers it
     /// carries are the pack's numbers. An agent whose name ends in "analyst" gets findings; any
@@ -594,7 +594,7 @@ public sealed class FixtureAiGateway(
     /// .MarketResearcherName</c> — this project cannot reference it, ADR-002).</summary>
     private const string MarketResearcherAgentName = "market-researcher";
 
-    /// <summary>ADR-031's capability investigator (<c>Raffa.Chat.Application.Gaps
+    /// <summary>ADR-031's capability investigator (<c>Raffa.AiFlows.CapabilityGaps
     /// .CapabilityInvestigatorAgent.Name</c>).</summary>
     private const string CapabilityInvestigatorAgentName = "capability-investigator";
 

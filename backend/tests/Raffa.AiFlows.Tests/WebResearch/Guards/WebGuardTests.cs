@@ -1,6 +1,5 @@
 using Raffa.AiFlows.WebResearch.Guards;
 using Raffa.AiGateway.Contracts;
-using Raffa.Chat.Application.Guards;
 
 namespace Raffa.AiFlows.Tests.WebResearch.Guards;
 

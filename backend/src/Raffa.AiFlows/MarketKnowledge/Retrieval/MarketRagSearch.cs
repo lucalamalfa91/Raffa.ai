@@ -1,5 +1,5 @@
 using Raffa.AiFlows.Negotiation.Tools;
-using Raffa.Chat.Application.Pack;
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.Insights.Contracts;
 using Raffa.Market.Retrieval;
 using Raffa.SharedKernel;

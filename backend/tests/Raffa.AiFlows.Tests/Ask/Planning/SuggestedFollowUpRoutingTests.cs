@@ -2,7 +2,6 @@ using Raffa.AiFlows.Ask.Answering;
 using Raffa.AiFlows.Ask.Planning;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Domain;
 using Raffa.AiFlows.Tests.TestSupport;
 

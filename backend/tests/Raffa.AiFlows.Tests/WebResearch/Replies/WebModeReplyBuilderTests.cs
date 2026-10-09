@@ -1,8 +1,8 @@
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiFlows.WebResearch.Orchestration;
 using Raffa.AiFlows.WebResearch.Prompts;
 using Raffa.AiFlows.WebResearch.Replies;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Application.WebResearch;
 

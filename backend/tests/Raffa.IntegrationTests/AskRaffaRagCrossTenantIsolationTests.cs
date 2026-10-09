@@ -172,7 +172,7 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
     /// this: every other in-domain answer here (and every <c>Raffa.Chat.Tests/Guards/*</c> unit
     /// test) drives <c>Raffa.AiGateway.Fixtures.FixtureAiGateway.AnswerFromPack</c>'s real,
     /// deterministic echo, which copies pack values verbatim and therefore can never itself violate
-    /// <c>Raffa.Chat.Application.Guards.GroundingGuard</c>/<c>NumericGuard</c> — so this test
+    /// <c>Raffa.AiFlows.Shared.Guards.GroundingGuard</c>/<c>NumericGuard</c> — so this test
     /// wires in <see cref="GuardViolatingAiGateway"/>, a thin decorator (same shape as
     /// <see cref="ScriptedR1AiGateway"/>: delegate every role to the real fixture, override one)
     /// that rewrites a pack-grounded answer's own citation key to one no pack item has, guaranteed

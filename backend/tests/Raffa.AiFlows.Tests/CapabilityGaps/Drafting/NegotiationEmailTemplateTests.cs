@@ -1,7 +1,7 @@
 using Raffa.AiFlows.CapabilityGaps.Drafting;
 using Raffa.AiFlows.CapabilityGaps.Guards;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Playbook;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Playbook;
 
 namespace Raffa.AiFlows.Tests.CapabilityGaps.Drafting;
 

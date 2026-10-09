@@ -290,8 +290,8 @@ builder.Services.AddChatModule(chatConnectionString);
 // "first registration wins" — see Raffa.Chat.Infrastructure.ServiceCollectionExtensions's own
 // doc comment on this exact ordering contract). Absent configuration, GetValue<int?> returns
 // null and PackBudget falls back to its own DefaultMaxTokens, unchanged from before this line.
-builder.Services.AddSingleton(new Raffa.Chat.Application.Pack.PackBudget(
-    builder.Configuration.GetValue<int?>(Raffa.Chat.Application.Pack.PackBudget.SectionName)));
+builder.Services.AddSingleton(new Raffa.AiFlows.Shared.Pack.PackBudget(
+    builder.Configuration.GetValue<int?>(Raffa.AiFlows.Shared.Pack.PackBudget.SectionName)));
 
 // Task E13/F06/US01/T01 (ask-engine): Suppliers/Products' own AddSuppliersProductsModule(string)
 // (ADR-002) — task E13/F03/US01/T01 registered ISupplierResolver/ISupplierNameLookup here but no

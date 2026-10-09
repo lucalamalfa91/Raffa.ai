@@ -2,8 +2,10 @@ using Raffa.AiFlows.CapabilityGaps.Agents;
 using Raffa.AiFlows.CapabilityGaps.Catalog;
 using Raffa.AiFlows.CapabilityGaps.Copy;
 using Raffa.AiFlows.CapabilityGaps.Drafting;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Reply;
+using Raffa.AiFlows.Shared.Routing;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Reply;
 
 namespace Raffa.AiFlows.CapabilityGaps.Replies;

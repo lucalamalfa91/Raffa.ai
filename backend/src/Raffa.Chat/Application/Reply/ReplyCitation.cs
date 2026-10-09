@@ -1,4 +1,3 @@
-using Raffa.Chat.Application.Pack;
 
 namespace Raffa.Chat.Application.Reply;
 

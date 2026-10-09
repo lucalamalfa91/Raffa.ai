@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using Raffa.AiFlows.Shared.Guards;
 using Raffa.AiGateway.Contracts;
-using Raffa.Chat.Application.Guards;
 
 namespace Raffa.AiFlows.WebResearch.Guards;
 

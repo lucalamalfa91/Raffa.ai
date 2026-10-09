@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
-using Raffa.Chat.Application.Planning;
+using Raffa.AiFlows.Shared.Planning;
 
 namespace Raffa.AiFlows.Ask.Planning;
 

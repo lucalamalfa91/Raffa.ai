@@ -1,12 +1,12 @@
 using Raffa.AiFlows.CapabilityGaps.Agents;
 using Raffa.AiFlows.CapabilityGaps.Drafting;
 using Raffa.AiFlows.CapabilityGaps.Guards;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Playbook;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Playbook;
 using Raffa.SharedKernel;
 
 namespace Raffa.AiFlows.Tests.CapabilityGaps.Drafting;

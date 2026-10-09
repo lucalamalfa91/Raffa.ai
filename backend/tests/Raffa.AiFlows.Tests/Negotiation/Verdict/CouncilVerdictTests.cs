@@ -1,7 +1,7 @@
 using Raffa.AiFlows.Negotiation.Verdict;
-using Raffa.Chat.Application.Guards;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiFlows.Tests.TestSupport;
 
 namespace Raffa.AiFlows.Tests.Negotiation.Verdict;

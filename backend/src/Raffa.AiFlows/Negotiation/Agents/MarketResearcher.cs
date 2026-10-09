@@ -2,10 +2,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Raffa.AiFlows.Negotiation.Options;
 using Raffa.AiFlows.Negotiation.Tools;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 
 namespace Raffa.AiFlows.Negotiation.Agents;
 

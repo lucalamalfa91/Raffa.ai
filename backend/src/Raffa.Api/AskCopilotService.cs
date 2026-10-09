@@ -12,14 +12,15 @@ using Raffa.AiFlows.Ask.Routing;
 using Raffa.AiFlows.CapabilityGaps.Drafting;
 using Raffa.AiFlows.CapabilityGaps.Investigation;
 using Raffa.AiFlows.Negotiation.Orchestration;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
+using Raffa.AiFlows.Shared.Reply;
+using Raffa.AiFlows.Shared.Routing;
 using Raffa.AiGateway.Telemetry;
 using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
-using Raffa.Chat.Application;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain;
@@ -52,7 +53,7 @@ namespace Raffa.Api;
 /// calculators (<see cref="CriticalityScoreCalculator"/>/<see cref="StrategyPackBuilder"/>),
 /// savings opportunities (<see cref="SavingsOpportunityService"/>) and supplier names
 /// (<see cref="ISupplierNameLookup"/>) are all composed into one
-/// <see cref="Raffa.Chat.Application.Pack.PackItem"/> list, then handed to
+/// <see cref="Raffa.AiFlows.Shared.Pack.PackItem"/> list, then handed to
 /// <c>Raffa.Chat</c>'s own gate/planner/guards/answer pipeline. <see cref="ChatEndpointExtensions"/>
 /// and <see cref="ConversationsEndpointExtensions"/> are this service's only two callers
 /// (`POST /api/chat/query`'s alias and `POST /api/conversations/{id}/messages` respectively).
@@ -1365,7 +1366,7 @@ internal sealed partial class AskCopilotService(
     /// own doc comment says plainly it is "not meant to be shown to an end user as-is" — a
     /// developer/test trace naming the literal filter predicate (e.g. "deterministic filter on
     /// Contract.AutoRenewal/EndDate, Appendix C rule 6 — no LLM"). Both
-    /// <see cref="Raffa.Chat.Application.Reply.CopilotReplyBuilder.BuildCitations"/> (copies a
+    /// <see cref="Raffa.AiFlows.Shared.Reply.CopilotReplyBuilder.BuildCitations"/> (copies a
     /// cited <see cref="PackItem.Title"/>/<see cref="PackItem.Snippet"/> verbatim into
     /// <see cref="Raffa.Chat.Application.Reply.ReplyCitation.Title"/>/<c>.Snippet</c>) and
     /// <c>Raffa.AiGateway.Fixtures.FixtureAiGateway.AnswerFromPack</c>'s own deterministic echo

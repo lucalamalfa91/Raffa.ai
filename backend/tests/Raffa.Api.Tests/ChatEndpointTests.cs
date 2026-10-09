@@ -202,7 +202,7 @@ public sealed class ChatEndpointTests : IClassFixture<RaffaApiFactory>
     /// <c>Raffa.Api.AskCopilotService.BuildStructuredFactPackAsync</c> — the exact method this
     /// review pass fixed (it used to title its own aggregate pack item "Structured query result",
     /// which both <c>FixtureAiGateway.AnswerFromPack</c>'s own echo and
-    /// <c>Raffa.Chat.Application.Reply.CopilotReplyBuilder.BuildCitations</c> would fold straight
+    /// <c>Raffa.AiFlows.Shared.Reply.CopilotReplyBuilder.BuildCitations</c> would fold straight
     /// into <c>answerMarkdown</c>/a citation title).
     /// </summary>
     [Fact]

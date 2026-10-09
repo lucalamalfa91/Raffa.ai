@@ -67,7 +67,7 @@ tones the model must be asked to *adopt*.
 
 ### D1 — A capability gap is a gate label, checked after Legal and before Capability
 
-`Raffa.Chat.Application.Gaps.CapabilityGapCatalog` holds five entries, each an
+`Raffa.AiFlows.CapabilityGaps.Catalog.CapabilityGapCatalog` holds five entries, each an
 IT/EN lexicon (an operation verb **and** its object, or an unmistakable noun),
 a key, both languages of every user-facing string, and the alternative Raffa
 offers instead: `send-supplier` and `email-draft` → **DraftEmail**; `reminder`
@@ -98,7 +98,7 @@ or abstains" replaces "cites or abstains".
 
 ### D3 — The drafting workflow: council → offer planner → negotiation writer → DraftGuard → template
 
-`Raffa.Chat.Application.Drafting.NegotiationDraftingWorkflow` runs over the
+`Raffa.AiFlows.CapabilityGaps.Drafting.NegotiationDraftingWorkflow` runs over the
 same Q3 pack a scoped renewal-strategy turn gets (contract facts, lever
 calculations, clause evidence, playbook, with the council's plays inserted).
 Two agents through `IAiGateway.AnalyzeAsync` (`draft-v1`, prompts mirrored in

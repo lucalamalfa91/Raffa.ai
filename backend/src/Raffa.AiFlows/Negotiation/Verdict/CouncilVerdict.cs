@@ -1,8 +1,8 @@
 using System.Globalization;
-using Raffa.Chat.Application.Guards;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.Chat.Application.Language;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 
 namespace Raffa.AiFlows.Negotiation.Verdict;
 

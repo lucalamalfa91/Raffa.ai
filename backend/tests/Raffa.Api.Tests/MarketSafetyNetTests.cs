@@ -1,5 +1,5 @@
+using Raffa.AiFlows.Shared.Guards;
 using Raffa.Benchmark.Contracts;
-using Raffa.Chat.Application.Guards;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Market.Contracts;

@@ -2,11 +2,11 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Raffa.AiFlows.CapabilityGaps.Agents;
 using Raffa.AiFlows.CapabilityGaps.Guards;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
-using Raffa.Chat.Application.Guards;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 
 namespace Raffa.AiFlows.CapabilityGaps.Drafting;
 

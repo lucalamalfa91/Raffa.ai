@@ -11,7 +11,7 @@ namespace Raffa.AiGateway.Contracts;
 /// answer additions (task E13/F01/US01/T02, foundry-gateway) — all optional/nullable, defaulting
 /// to <see langword="null"/>, so <see cref="Fixtures.FixtureAiGateway"/>'s existing
 /// <see cref="Answer"/>/<see cref="Citations"/> construction and every trailing-4-argument call
-/// site this record already had (<c>Raffa.Chat.Application.AbstainGuard</c>,
+/// site this record already had (<c>Raffa.AiFlows.Shared.Guards.AbstainGuard</c>,
 /// <c>Raffa.Chat.Tests</c>) keep compiling unchanged — "keeping today's Answer/Citations for the
 /// fixture path" per that task's own coding objective. A truly non-nullable default (for example
 /// <c>= []</c>) is not a legal C# default-parameter value here, and a null-forgiven non-nullable

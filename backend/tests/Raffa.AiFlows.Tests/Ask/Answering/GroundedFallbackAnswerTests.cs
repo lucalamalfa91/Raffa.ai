@@ -1,9 +1,9 @@
 using System.Text.RegularExpressions;
 using Raffa.AiFlows.Ask.Answering;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Guards;
-using Raffa.Chat.Application.Pack;
 using Raffa.AiFlows.Tests.TestSupport;
 
 namespace Raffa.AiFlows.Tests.Ask.Answering;

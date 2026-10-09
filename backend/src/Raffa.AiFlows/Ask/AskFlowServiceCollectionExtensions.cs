@@ -5,12 +5,16 @@ using Raffa.AiFlows.Ask.Gate;
 using Raffa.AiFlows.Ask.Interview;
 using Raffa.AiFlows.Ask.Planning;
 using Raffa.AiFlows.Ask.Routing;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Routing;
 
 namespace Raffa.AiFlows.Ask;
 
 /// <summary>
 /// Registrations of the Ask flow (F1): the query router and deterministic queries, the V2
-/// gate/planner/answer engine and the interview planner. Called by
+/// gate/planner/answer engine, the interview planner and the shared guards, routing and pack
+/// budget. Called by
 /// <see cref="AiFlowsServiceCollectionExtensions.AddAiFlows"/>.
 /// </summary>
 internal static class AskFlowServiceCollectionExtensions
@@ -28,6 +32,9 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<DeterministicQueryPlanner>();
         services.AddScoped<DeterministicQueryHandler>();
 
+        services.AddScoped<AbstainGuard>();
+        services.AddScoped<CapabilityRouting>();
+
         // The V2 gate/planner/answer engine. Each of these is stateless (no database, no
         // per-request field).
         services.AddScoped<DomainGate>();
@@ -37,6 +44,13 @@ internal static class AskFlowServiceCollectionExtensions
         // ADR-030: the interview (kill switch + bounds).
         services.TryAddSingleton(new InterviewOptions());
         services.AddScoped<InterviewPlanner>();
+
+        // TryAdd: an always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
+        // dependency at all. Raffa.Api.Program registers the configuration-bound PackBudget
+        // (Chat:PackTokenBudget) *before* calling AddAiFlows when a value is present:
+        // TryAddSingleton's "first registration wins" then makes the configured value the one that
+        // actually resolves, this default only when no configuration overrides it.
+        services.TryAddSingleton(new PackBudget());
 
         return services;
     }

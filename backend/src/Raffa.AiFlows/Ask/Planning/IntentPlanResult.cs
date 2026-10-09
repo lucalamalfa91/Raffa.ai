@@ -1,4 +1,4 @@
-using Raffa.Chat.Application.Planning;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.Chat.Domain;
 
 namespace Raffa.AiFlows.Ask.Planning;

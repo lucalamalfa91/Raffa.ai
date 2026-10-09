@@ -37,7 +37,7 @@ public enum GateLabel
 
     /// <summary>Asks Raffa to perform an operation it cannot do yet — send an email, set a
     /// reminder, export a file, raise a purchase order (ADR-030 D1;
-    /// <c>Application.Gaps.CapabilityGapCatalog</c>). Answered with an honest preface in the
+    /// <c>CapabilityGaps.Catalog.CapabilityGapCatalog</c>). Answered with an honest preface in the
     /// question's language plus the nearest real alternative (a drafted negotiation email, or a
     /// deep link) and an offer to report the gap — never retrieval-then-abstain, never the
     /// feature tour. Checked after <see cref="Legal"/> and before <see cref="Capability"/>. An

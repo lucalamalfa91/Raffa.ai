@@ -2,13 +2,13 @@ using Raffa.AiFlows.Negotiation.Agents;
 using Raffa.AiFlows.Negotiation.Options;
 using Raffa.AiFlows.Negotiation.Orchestration;
 using Raffa.AiFlows.Negotiation.Tools;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
 using Raffa.AiGateway.Telemetry;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 using Raffa.SharedKernel;
 
 namespace Raffa.AiFlows.Tests.Negotiation.Orchestration;

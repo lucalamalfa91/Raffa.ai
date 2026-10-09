@@ -1,7 +1,7 @@
+using Raffa.AiFlows.Shared.Pack;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
-using Raffa.Chat.Application.Pack;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Renewals.Application;

@@ -1,6 +1,5 @@
 using System.Reflection;
 using Raffa.AiFlows.Ask.Routing;
-using Raffa.Chat.Application;
 using Raffa.Chat.Domain;
 
 namespace Raffa.AiFlows.Tests.Ask.Routing;

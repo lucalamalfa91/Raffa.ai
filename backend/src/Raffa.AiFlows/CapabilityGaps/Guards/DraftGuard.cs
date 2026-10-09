@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
-using Raffa.Chat.Application.Guards;
-using Raffa.Chat.Application.Pack;
+using Raffa.AiFlows.Shared.Guards;
+using Raffa.AiFlows.Shared.Pack;
 
 namespace Raffa.AiFlows.CapabilityGaps.Guards;
 

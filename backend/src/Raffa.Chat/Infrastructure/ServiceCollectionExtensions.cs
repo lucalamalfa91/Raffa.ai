@@ -1,8 +1,5 @@
-using Raffa.Chat.Application;
-using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Feedback;
-using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
@@ -15,49 +12,23 @@ namespace Raffa.Chat.Infrastructure;
 /// <summary>
 /// Composition-root wiring for the Chat module (ADR-002: "each module exposes an
 /// AddXxx(IServiceCollection) extension method"; domain modules never wire themselves into a host
-/// directly). Task E02/F04/US01/T01 (query-router) and task E02/F04/US01/T02
-/// (deterministic-queries) added <see cref="AskRaffaQueryRouter"/>,
-/// <see cref="DeterministicQueryPlanner"/> and <see cref="DeterministicQueryHandler"/> but no host
-/// took a dependency on any of them yet, so this composition method did not exist —
-/// <c>Raffa.Api.Raffa.Api.csproj</c> already carried a <c>ProjectReference</c> to
-/// <c>Raffa.Chat.csproj</c> in anticipation of it (see that file). Task E02/F04/US02/T01
-/// (rag-citations) added the first host caller; the legacy evidence-only <c>RagAnswerService</c> it
-/// introduced was removed once <c>Raffa.Api.AskCopilotService</c>'s pack-composition path replaced it
-/// (no host ever called it again). Task E02/F04/US02/T02 (abstain-guard) adds
-/// <see cref="AbstainGuard"/>, which <see cref="Guards.GroundingGuard"/> and the answer composer
-/// still use.
+/// directly). This module owns the conversation store and its persistence: the optional
+/// <paramref name="chatConnectionString"/> below adds <c>Infrastructure.ChatDbContext</c>,
+/// <c>Application.Conversations.ConversationService</c>, the feedback write path and the
+/// web-research budget. Called with no argument (unit tests, this module's own DI-shape test
+/// <c>ServiceCollectionExtensionsTests</c>) it registers only what needs no database.
+///
+/// The Ask AI logic (router, gate, planner, answer composer, council, drafting, gaps, web
+/// research, pack and guards) lives in the AI flows layer, which sits above the modules and is
+/// registered by the hosts through <c>AddAiFlows</c> (ADR-002 amendment); this module does not
+/// reference it.
 ///
 /// Every registration is Scoped, not Singleton, for one uniform per-request/job lifetime across the
-/// module — the same choice <c>Raffa.Documents.Contracts.Infrastructure.ServiceCollectionExtensions
-/// .AddDocumentsContractsModule</c> already makes for every one of its own services, and the safe one
-/// for services that depend on <see cref="IAuditWriter"/>, which
+/// module, the safe one for services that depend on <see cref="IAuditWriter"/>, which
 /// <c>Raffa.Audit.Infrastructure.ServiceCollectionExtensions.AddAuditModule</c> registers Scoped
 /// (it wraps a Scoped <c>AuditDbContext</c>): a Singleton capturing it would be rejected at startup by
 /// <c>ServiceProviderOptions.ValidateOnBuild</c> (enabled by default for the Development environment
 /// <c>WebApplicationFactory</c>-based tests run under).
-///
-/// Task E13/F05/US01/T01 (story us-01-conversations, AC-4) adds the optional
-/// <paramref name="chatConnectionString"/> the overload below takes: called with no argument
-/// (every existing caller — unit tests, and this module's own DI-shape test
-/// <c>ServiceCollectionExtensionsTests</c>), <see cref="AddChatModule"/> registers exactly what
-/// it always has, unchanged, so nothing that already resolves
-/// <see cref="AskRaffaQueryRouter"/> without a database breaks.
-/// Called with a connection string, it additionally registers <c>Infrastructure.ChatDbContext</c>
-/// and <c>Application.Conversations.ConversationService</c> — the same "a module's own
-/// composition method also wires its own DbContext" shape
-/// <see cref="Raffa.Documents.Contracts.Infrastructure.ServiceCollectionExtensions.AddDocumentsContractsModule"/>/
-/// <see cref="Raffa.Audit.Infrastructure.ServiceCollectionExtensions.AddAuditModule"/> already
-/// use, except optional here because — unlike those two modules — this module already has real,
-/// non-database callers (the query router/RAG services above) that must keep resolving with zero
-/// configuration. Task T02 is the first caller that passes one, from `Raffa.Api.Program`
-/// (`ConnectionStrings:Chat`, this story's own council-decided key) — this task deliberately does
-/// not touch `Program.cs` itself (see the task's own "Do not touch" list).
-///
-/// Task E13/F08/US01/T01 (story us-01-capability-catalog) adds <see cref="CapabilityRouting"/> —
-/// the phase-2 writer of this file, per that story's own dependency row ("`AddChatModule` file
-/// ownership order (T01 phase 1 → this phase 2)"). Registered unconditionally (like the query
-/// router/RAG services above, not gated on <paramref name="chatConnectionString"/>): it needs no
-/// database, only the static <see cref="CapabilityCatalog"/> it calls directly.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
@@ -70,9 +41,6 @@ public static class ServiceCollectionExtensions
         // Raffa.Documents.Contracts.Infrastructure.ServiceCollectionExtensions
         // .AddDocumentsContractsModule.
         services.TryAddSingleton<IClock, SystemClock>();
-
-        services.AddScoped<AbstainGuard>();
-        services.AddScoped<CapabilityRouting>();
 
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
         // GitHub publisher and binds Feedback:* before calling this when a token is configured;
@@ -89,20 +57,6 @@ public static class ServiceCollectionExtensions
         // default with its configured WebResearchOptions; a host without that flow has no web path,
         // so the gate stays closed, consistent with the kill switch being off by default.
         services.TryAddSingleton<IWebResearchBudgetLimit>(new ClosedWebResearchBudgetLimit());
-
-        // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
-        // dependency at all — this project has no PackageReference for
-        // Microsoft.Extensions.Configuration.Binder (unlike Raffa.Api/Program.cs, a full
-        // Microsoft.NET.Sdk.Web host where that package is always available), so binding
-        // Chat:PackTokenBudget here would be a new, untested package dependency for a single
-        // scalar read. Raffa.Api.Program registers the configuration-bound PackBudget *before*
-        // calling AddChatModule when a value is present — TryAddSingleton's "first registration
-        // wins" then makes the configured value the one that actually resolves, this default only
-        // when no configuration overrides it (same order-dependent override shape
-        // Raffa.Market.ServiceCollectionExtensions.MakeMarketFeedTheDefaultActiveAdapter's own
-        // doc comment documents, minus the Replace() call since ordering alone is enough for a
-        // TryAdd target no one has registered yet at that point).
-        services.TryAddSingleton(new PackBudget());
 
         if (chatConnectionString is not null)
         {

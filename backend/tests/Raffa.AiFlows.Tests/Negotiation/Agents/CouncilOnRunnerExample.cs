@@ -1,8 +1,8 @@
 using Raffa.AiFlows.Negotiation.Agents;
 using Raffa.AiFlows.Negotiation.Options;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiGateway.Agents;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 
 namespace Raffa.AiFlows.Tests.Negotiation.Agents;
 
