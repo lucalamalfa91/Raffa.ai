@@ -371,17 +371,12 @@ internal sealed class QuoteExtractionPipeline(
                     openJob.ErrorDetail = errorDetail;
                 }
 
-                if (run.PersistedLineIds.Count > 0)
-                {
-                    var persisted = run.PersistedLineIds.ToHashSet();
-                    var orphans = (await dbContext.QuoteLines
-                            .Where(l => l.TenantId == tenantId && l.QuoteId == quoteId)
-                            .ToListAsync(CancellationToken.None)
-                            .ConfigureAwait(false))
-                        .Where(l => persisted.Contains(l.Id))
-                        .ToList();
-                    dbContext.QuoteLines.RemoveRange(orphans);
-                }
+                var persisted = run.PersistedLineIds;
+                dbContext.QuoteLines.RemoveRange(
+                    await dbContext.QuoteLines
+                        .Where(l => l.TenantId == tenantId && l.QuoteId == quoteId && persisted.Contains(l.Id))
+                        .ToListAsync(CancellationToken.None)
+                        .ConfigureAwait(false));
 
                 quote.ProcessingStatus = QuoteProcessingStatus.Failed;
                 await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);

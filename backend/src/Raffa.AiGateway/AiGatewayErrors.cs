@@ -38,5 +38,5 @@ public static class AiGatewayErrors
     /// </summary>
     public static bool ResearchFailureReleasesBudget(string? error) =>
         !IsContentFilter(error)
-        && !(error?.StartsWith(ResearchOutputPrefix, StringComparison.Ordinal) ?? false);
+        && error?.StartsWith(ResearchOutputPrefix, StringComparison.Ordinal) != true;
 }

@@ -27,10 +27,6 @@ public interface IWebResearchBudget
     /// <summary>Hands a reserved call back (never below zero). Releasing a reservation at most once
     /// is the caller's job.</summary>
     Task ReleaseAsync(WebResearchReservation reservation, CancellationToken cancellationToken = default);
-
-    /// <summary>Spends one call for today; <see langword="false"/> when the day's budget is gone.</summary>
-    async Task<bool> TryConsumeAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
-        await TryReserveAsync(tenantId, cancellationToken).ConfigureAwait(false) is not null;
 }
 
 /// <summary>One reserved research call: whose budget and which UTC day's row it was taken from.</summary>

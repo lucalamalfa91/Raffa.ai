@@ -52,43 +52,34 @@ public sealed class ExtractionJob : TenantScopedEntity
     /// for; reset to null by a reprocess, which queues a fresh run nobody has asked for yet.</summary>
     public DateTimeOffset? PrioritisedAt { get; set; }
 
-    /// <summary>
-    /// F5-T01/F5-T02: identifies one extraction run over a document. All seven stage jobs of a run
-    /// share it, and so do the facts they wrote (<c>ExtractionRunId</c> on line items, clauses,
-    /// obligations, risks and evidence). A resumed run (a partial run continued over the same
-    /// text) keeps the id of the run it continues. Null on the classification job and on rows
-    /// written before this column existed.
-    /// </summary>
+    /// <summary>F5-T01/F5-T02: identifies one extraction run over a document. The stage jobs of a run and
+    /// the facts they wrote share it; a resumed run keeps the id of the run it continues. Null on the
+    /// classification job and on older rows.</summary>
     public Guid? ExtractionRunId { get; set; }
 
-    /// <summary>
-    /// F5-T02 checkpoint: SHA-256 (hex) of the exact page-marked text this stage was given. A stage
-    /// job that finished (<see cref="ExtractionJobStatus.Completed"/> / <see cref="ExtractionJobStatus.NeedsReview"/>)
-    /// is reused by a later run over an <em>incomplete</em> run only when this hash is unchanged, so
-    /// a resume never skips a stage on different text. Null for classification and legacy rows
-    /// (which are never reused).
-    /// </summary>
+    /// <summary>F5-T02 checkpoint: SHA-256 (hex) of the exact page-marked text this stage was given. A
+    /// finished stage job is reused by a later run of an <em>incomplete</em> run only when this hash is
+    /// unchanged, so a resume never skips a stage on different text. Null for classification and older
+    /// rows (never reused).</summary>
     public string? InputHash { get; set; }
 
-    /// <summary>F5-T02: what kind of failure ended a <see cref="ExtractionJobStatus.Failed"/> stage
-    /// job; null for any job that did not fail as a stage (and for legacy rows).</summary>
+    /// <summary>F5-T02: what kind of failure ended a <see cref="ExtractionJobStatus.Failed"/> stage job.</summary>
     public ExtractionStageFailureKind? FailureKind { get; set; }
 
-    /// <summary>F5-T02 checkpoint: how many facts this stage accepted into the run, so a reused
-    /// stage can report the same counts without being re-applied. Null on legacy rows.</summary>
+    /// <summary>F5-T02 checkpoint: facts this stage accepted, so a reused stage reports the same counts
+    /// without being re-applied. Null on older rows.</summary>
     public int? ExtractedCount { get; set; }
 
-    /// <summary>F5-T02 checkpoint: how many facts this stage skipped (see <see cref="ExtractedCount"/>).</summary>
+    /// <summary>F5-T02 checkpoint: facts this stage skipped (see <see cref="ExtractedCount"/>).</summary>
     public int? SkippedCount { get; set; }
 }
 
 /// <summary>
-/// F5-T02: typed reason a staged-extraction stage failed. <see cref="Transient"/> means the AI
-/// provider could not be reached or kept throttling (429 / 5xx / timeouts after the in-call
-/// retries were exhausted), so running the same stage again later may well succeed;
-/// <see cref="Permanent"/> means the stage's own input or output was unusable (empty text, a
-/// malformed payload) and an identical retry is unlikely to help. Either way the document is
-/// <em>partial</em> and never <c>Completed</c>. Stored as text, so a new value is a code-only change.
+/// F5-T02: why a staged-extraction stage failed. <see cref="Transient"/>: the AI provider could not be
+/// reached or kept throttling (429 / 5xx / timeout after the in-call retries), so running the stage
+/// again later may well succeed. <see cref="Permanent"/>: the stage's own input or output was unusable
+/// (empty text, malformed payload). Either way the document is <em>partial</em> and never
+/// <c>Completed</c>. Stored as text, so a new value is a code-only change.
 /// </summary>
 public enum ExtractionStageFailureKind
 {

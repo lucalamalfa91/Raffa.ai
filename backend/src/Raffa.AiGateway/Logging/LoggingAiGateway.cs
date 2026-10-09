@@ -219,9 +219,8 @@ public sealed class LoggingAiGateway : IAiGateway
             if (result.IsFailure)
             {
                 // A failed call never reaches a model, or the model's answer was unusable: no
-                // metadata, no audit row; the span says so. The error text is not copied (it can
-                // quote provider output).
-                activity?.SetStatus(ActivityStatusCode.Error);
+                // metadata, no audit row; the span says so (outcome stays "error"). The error text
+                // is not copied (it can quote provider output).
                 return result;
             }
 
@@ -255,11 +254,6 @@ public sealed class LoggingAiGateway : IAiGateway
             outcome = AgentTelemetry.OutcomeCancelled;
             throw;
         }
-        catch
-        {
-            activity?.SetStatus(ActivityStatusCode.Error);
-            throw;
-        }
         finally
         {
             if (outcome == AgentTelemetry.OutcomeError)
@@ -279,7 +273,7 @@ public sealed class LoggingAiGateway : IAiGateway
     /// and still throws. A non-transient audit failure still throws (ADR-011).
     /// </summary>
     private async Task LogBestEffortAsync(
-        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string? extraDetail = null)
+        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string extraDetail)
     {
         try
         {
@@ -300,13 +294,9 @@ public sealed class LoggingAiGateway : IAiGateway
     /// "fail closed" posture <see cref="ITenantContext.Current"/>'s own doc comment describes for
     /// RLS.
     /// </summary>
-    /// <param name="extraDetail">
-    /// Role-specific addendum appended to the standard reproducibility fields — today only
-    /// <see cref="OcrAsync"/> supplies one (page count, ADR-017). <see langword="null"/> for every
-    /// other role, unchanged from before this parameter existed.
-    /// </param>
+    /// <param name="extraDetail">The call's own fields (agent, run, turn, step, latency, and a role-specific addendum).</param>
     private async Task LogAsync(
-        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string? extraDetail = null)
+        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string extraDetail)
     {
         var tenantId = _tenantContext.Current ?? throw new InvalidOperationException(
             $"AI Gateway logging requires an active tenant scope (ITenantContext.BeginScope); " +
@@ -327,10 +317,7 @@ public sealed class LoggingAiGateway : IAiGateway
             detail += $" promptTokens={usage.PromptTokens} completionTokens={usage.CompletionTokens}";
         }
 
-        if (extraDetail is not null)
-        {
-            detail += $" {extraDetail}";
-        }
+        detail += $" {extraDetail}";
 
         await _auditWriteLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try

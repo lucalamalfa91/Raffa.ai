@@ -24,29 +24,22 @@ public static class NumericLocale
     /// <summary>The five supported languages (D6).</summary>
     public static readonly IReadOnlyList<string> SupportedLanguages = ["it", "en", "fr", "es", "de"];
 
-    /// <summary>The decimal convention of <paramref name="language"/> (an ISO 639-1 code or a BCP-47
-    /// tag such as <c>fr-FR</c>); <see cref="DecimalConvention.Unknown"/> for blank or unsupported.</summary>
-    public static DecimalConvention ConventionFor(string? language)
+    /// <summary>The supported language (lower-case ISO 639-1) <paramref name="language"/> names, whether a
+    /// bare code or a BCP-47 tag such as <c>fr-FR</c>; <see langword="null"/> for blank or unsupported.</summary>
+    public static string? SupportedLanguage(string? language)
     {
-        if (string.IsNullOrWhiteSpace(language))
-        {
-            return DecimalConvention.Unknown;
-        }
-
-        var tag = language.Trim();
-        var cut = tag.IndexOfAny(['-', '_']);
-        if (cut > 0)
-        {
-            tag = tag[..cut];
-        }
-
-        return tag.ToLowerInvariant() switch
-        {
-            "en" => DecimalConvention.Point,
-            "it" or "fr" or "es" or "de" => DecimalConvention.Comma,
-            _ => DecimalConvention.Unknown,
-        };
+        var code = language?.Trim().Split('-', '_')[0];
+        return SupportedLanguages.FirstOrDefault(l => string.Equals(l, code, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>The decimal convention of <paramref name="language"/> (see <see cref="SupportedLanguage"/>);
+    /// <see cref="DecimalConvention.Unknown"/> for blank or unsupported.</summary>
+    public static DecimalConvention ConventionFor(string? language) => SupportedLanguage(language) switch
+    {
+        "en" => DecimalConvention.Point,
+        null => DecimalConvention.Unknown,
+        _ => DecimalConvention.Comma,
+    };
 }
 
 /// <summary>

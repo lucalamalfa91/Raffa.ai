@@ -6,55 +6,28 @@ using Raffa.Chat.Application.Planning;
 
 namespace Raffa.Chat.Application.Council;
 
-/// <summary>What the verdict says. The first three are the calculators' feasibility scale, the last
+/// <summary>What the verdict says: the first three are the calculators' feasibility scale, the last
 /// three answer a turn with no goal ("is a meaningful saving available?").</summary>
 public enum CouncilVerdictKind
 {
-    /// <summary>The grounded levers' high estimate covers the target.</summary>
     Reachable,
-
-    /// <summary>The high estimate covers at least <see cref="CouncilVerdict.StretchCoverageFraction"/> of the target.</summary>
     Stretch,
-
-    /// <summary>The grounded levers do not add up to the target.</summary>
     NotSupported,
-
-    /// <summary>No goal: the high estimate is at least <see cref="CouncilVerdict.MeaningfulSavingFraction"/> of the annual spend.</summary>
     MeaningfulSaving,
-
-    /// <summary>No goal: the high estimate is below that share of the annual spend.</summary>
     LimitedSaving,
-
-    /// <summary>No goal and no spend to compare with: only the coverage range is stated.</summary>
     CoverageOnly,
 }
 
 /// <summary>
-/// The one owner of the council's verdict on the goal (plan F2-D03 / F2-T08). Until now two parts
-/// each said whether the target is reachable -- the savings calculator
-/// (<c>calc:savings-target</c> / <c>calc:portfolio-target</c>) and the lever strategist's own
-/// <c>targetReachable</c> flag -- and they could contradict each other, or the strategist could
-/// judge "reachable" with no goal at all. The strategist no longer returns a verdict: this
-/// deterministic component reads the calculators' pack items and produces
-/// <c>calc:council:verdict</c>, so the verdict can only agree with them.
-///
-/// <list type="bullet">
-/// <item>With a goal, the calculator's own feasibility label wins (<see cref="ReachableLabel"/> and
-/// its siblings are the strings the calculators write; the Ask host builds its labels from these
-/// constants, so they cannot drift). When the target item carries no label, the same rule is
-/// applied to the numbers: reachable when the levers' high estimate covers the target, a stretch
-/// from <see cref="StretchCoverageFraction"/> of it (the value in <c>SavingsLeverCalculator</c>),
-/// otherwise not supported.</item>
-/// <item>Without a goal nothing is "reachable": the verdict says whether a meaningful saving is
-/// available -- the high estimate is at least <see cref="MeaningfulSavingFraction"/> of the annual
-/// spend (explicit threshold, to be validated with the product owner) -- or, with no spend to
-/// compare with, only states the range.</item>
-/// <item>Every verdict is labelled an upper bound with the range coverageLow-coverageHigh, and
-/// every figure in its text is also a value of the verdict item itself, so the numeric guard can
-/// ground what the answer quotes.</item>
-/// <item>The reason is built from the numbers and the biggest lever, never from the calculator's
-/// explanation (an instruction to the model) and never from a model.</item>
-/// </list>
+/// The one owner of the council's verdict on the goal (plan F2-D03 / F2-T08): the lever strategist
+/// returns plays only, and this deterministic component reads the calculators' pack items
+/// (<c>calc:savings-target</c> / <c>calc:portfolio-target</c> / <c>calc:lever[..]</c>) to produce
+/// <c>calc:council:verdict</c>, so the verdict can only agree with them. With a goal the
+/// calculator's own feasibility label wins (the numbers decide only when the item has no label);
+/// without a goal nothing is "reachable": the verdict says whether the high estimate is a
+/// meaningful share of the annual spend, or just states the range. Every verdict is an upper bound,
+/// every figure in its text is a value of the item itself (so the numeric guard grounds it), and
+/// the text is built from the numbers and the biggest lever, never from a model.
 /// </summary>
 public static class CouncilVerdict
 {
@@ -62,10 +35,10 @@ public static class CouncilVerdict
 
     /// <summary>Mirrors <c>SavingsLeverCalculator.StretchCoverageFraction</c> (Raffa.Insights, which
     /// Raffa.Chat cannot reference): used only when a target item carries no feasibility label.</summary>
-    public const decimal StretchCoverageFraction = 0.6m;
+    private const decimal StretchCoverageFraction = 0.6m;
 
     /// <summary>Without a goal, the share of the annual spend from which a saving is "meaningful".</summary>
-    public const decimal MeaningfulSavingFraction = 0.05m;
+    private const decimal MeaningfulSavingFraction = 0.05m;
 
     /// <summary>The feasibility labels the calculators write in the target item's subtitle.</summary>
     public const string ReachableLabel = "target reachable";
@@ -80,54 +53,47 @@ public static class CouncilVerdict
 
     /// <summary>The verdict as a pack item (<c>calc:council:verdict</c>), or <see langword="null"/>
     /// when the pack holds nothing to base one on (no lever coverage at all).</summary>
-    /// <param name="pack">The pack the council read, calculators' items included.</param>
-    /// <param name="goal">The goal the planner parsed from the question, if any.</param>
-    /// <param name="question">The question, for the language of the text.</param>
     public static PackItem? BuildItem(IReadOnlyList<PackItem> pack, SavingsGoal? goal, string question)
     {
-        ArgumentNullException.ThrowIfNull(pack);
-
-        var evaluation = Evaluate(pack, goal);
-        if (evaluation is null)
+        if (Evaluate(pack, goal) is not { } e)
         {
             return null;
         }
 
         var italian = QuestionLanguage.IsItalian(QuestionLanguage.Detect(question));
-        var (title, reason) = Compose(evaluation, italian, includeLever: true);
+        var (title, reason) = Compose(e, italian);
 
+        PackValue Money(string key, decimal value) => new(key, Amount(value), PackValueKind.Amount, e.Currency);
         var values = new List<PackValue>();
-        if (evaluation.Target is { } target)
+        if (e.Target is { } target)
         {
-            values.Add(new PackValue("targetAmount", Amount(target), PackValueKind.Amount, evaluation.Currency));
+            values.Add(Money("targetAmount", target));
         }
 
-        if (evaluation.CoverageLow is { } coverageLow)
+        if (e.CoverageLow is { } coverageLow)
         {
-            values.Add(new PackValue("coverageLow", Amount(coverageLow), PackValueKind.Amount, evaluation.Currency));
+            values.Add(Money("coverageLow", coverageLow));
         }
 
-        values.Add(new PackValue("coverageHigh", Amount(evaluation.CoverageHigh), PackValueKind.Amount, evaluation.Currency));
+        values.Add(Money("coverageHigh", e.CoverageHigh));
 
-        var item = Item(title, reason, evaluation.Provenance, values);
+        var lever = string.IsNullOrWhiteSpace(e.BiggestLeverTitle)
+            ? string.Empty
+            : italian ? $" La leva più grande: {e.BiggestLeverTitle.Trim()}." : $" The biggest lever: {e.BiggestLeverTitle.Trim()}.";
+        var item = new PackItem(CitationKey, PackCorpus.Calc, title, e.Provenance, null, null, reason + lever, null, null, null, e.Provenance, values);
 
         // Safety net: the figures are the item's own values, so this holds by construction; a lever
         // title that happens to carry a number the pack lacks is dropped rather than quoted.
         // (Its own snippet is left out of the check: a text must not ground itself.)
-        if (!NumericGuard.Validate(reason, [.. pack, item with { Snippet = string.Empty }]).Passed)
-        {
-            item = Item(title, Compose(evaluation, italian, includeLever: false).Reason, evaluation.Provenance, values);
-        }
-
-        return item;
+        return NumericGuard.Validate(item.Snippet, [.. pack, item with { Snippet = string.Empty }]).Passed
+            ? item
+            : item with { Snippet = reason };
     }
 
     /// <summary>The verdict's kind and figures, or <see langword="null"/> without a basis. Public so
-    /// tests (and later the investigator's telemetry) can read the decision without the text.</summary>
+    /// tests can read the decision without the text.</summary>
     public static CouncilVerdictEvaluation? Evaluate(IReadOnlyList<PackItem> pack, SavingsGoal? goal)
     {
-        ArgumentNullException.ThrowIfNull(pack);
-
         var targetItem = pack.FirstOrDefault(i => i.CitationKey is "calc:savings-target" or "calc:portfolio-target");
         var levers = pack.Where(i => i.CitationKey.StartsWith("calc:lever[", StringComparison.Ordinal)).ToList();
 
@@ -149,56 +115,34 @@ public static class CouncilVerdict
                     : null)
             : null;
 
-        CouncilVerdictKind kind;
-        if (hasGoal && FromLabel(targetItem?.Subtitle) is { } declared)
+        var declared = hasGoal ? targetItem?.Subtitle?.Trim().ToLowerInvariant() switch
         {
-            kind = declared;
-        }
-        else if (hasGoal && target is { } known)
-        {
-            kind = FromNumbers(coverageHigh.Value, known);
-        }
-        else if (spend is > 0)
-        {
-            kind = coverageHigh.Value >= spend.Value * MeaningfulSavingFraction
-                ? CouncilVerdictKind.MeaningfulSaving
-                : CouncilVerdictKind.LimitedSaving;
-        }
-        else
-        {
-            kind = CouncilVerdictKind.CoverageOnly;
-        }
+            ReachableLabel => CouncilVerdictKind.Reachable,
+            StretchLabel => CouncilVerdictKind.Stretch,
+            NotSupportedLabel => CouncilVerdictKind.NotSupported,
+            _ => (CouncilVerdictKind?)null,
+        } : null;
+
+        var kind = declared
+            ?? (hasGoal && target is { } known
+                ? coverageHigh >= known ? CouncilVerdictKind.Reachable
+                    : coverageHigh >= known * StretchCoverageFraction ? CouncilVerdictKind.Stretch
+                    : CouncilVerdictKind.NotSupported
+                : spend is > 0
+                    ? coverageHigh >= spend * MeaningfulSavingFraction ? CouncilVerdictKind.MeaningfulSaving : CouncilVerdictKind.LimitedSaving
+                    : CouncilVerdictKind.CoverageOnly);
 
         var currency = targetItem?.Values.FirstOrDefault(v => v.Key == "coverageHigh")?.Currency
             ?? levers.SelectMany(l => l.Values).FirstOrDefault(v => v.Key == "estimatedHigh")?.Currency
             ?? goal?.Currency;
 
-        var biggest = levers
-            .Select(l => (Item: l, High: ValueOf(l, "estimatedHigh") ?? 0m))
-            .Where(x => x.High > 0)
-            .OrderByDescending(x => x.High)
-            .Select(x => x.Item)
-            .FirstOrDefault();
+        var biggest = levers.Where(l => ValueOf(l, "estimatedHigh") > 0).MaxBy(l => ValueOf(l, "estimatedHigh"));
 
         return new CouncilVerdictEvaluation(
             kind, target, coverageLow, coverageHigh.Value, currency, biggest?.Title, targetItem?.Provenance ?? DefaultProvenance);
     }
 
-    /// <summary>The calculators' feasibility label, as a kind; <see langword="null"/> for "no target named" or any other text.</summary>
-    internal static CouncilVerdictKind? FromLabel(string? label) => label?.Trim().ToLowerInvariant() switch
-    {
-        ReachableLabel => CouncilVerdictKind.Reachable,
-        StretchLabel => CouncilVerdictKind.Stretch,
-        NotSupportedLabel => CouncilVerdictKind.NotSupported,
-        _ => null,
-    };
-
-    private static CouncilVerdictKind FromNumbers(decimal coverageHigh, decimal target) =>
-        coverageHigh >= target ? CouncilVerdictKind.Reachable
-        : coverageHigh >= target * StretchCoverageFraction ? CouncilVerdictKind.Stretch
-        : CouncilVerdictKind.NotSupported;
-
-    private static (string Title, string Reason) Compose(CouncilVerdictEvaluation e, bool italian, bool includeLever)
+    private static (string Title, string Reason) Compose(CouncilVerdictEvaluation e, bool italian)
     {
         var high = Money(e.Currency, e.CoverageHigh);
         var low = e.CoverageLow is { } l ? Money(e.Currency, l) : null;
@@ -250,18 +194,8 @@ public static class CouncilVerdict
                 $"Nessun obiettivo indicato. Le leve documentate valgono {range} l'anno. Limite superiore."),
         };
 
-        if (includeLever && !string.IsNullOrWhiteSpace(e.BiggestLeverTitle))
-        {
-            reason += italian
-                ? $" La leva più grande: {e.BiggestLeverTitle.Trim()}."
-                : $" The biggest lever: {e.BiggestLeverTitle.Trim()}.";
-        }
-
         return (title, reason);
     }
-
-    private static PackItem Item(string title, string reason, string provenance, IReadOnlyList<PackValue> values) =>
-        new(CitationKey, PackCorpus.Calc, title, provenance, null, null, reason, null, null, null, provenance, values);
 
     private static decimal? ValueOf(PackItem? item, string key) =>
         item?.Values.FirstOrDefault(v => string.Equals(v.Key, key, StringComparison.OrdinalIgnoreCase)) is { } value
@@ -269,19 +203,8 @@ public static class CouncilVerdict
             ? parsed
             : null;
 
-    private static decimal? Sum(IReadOnlyList<PackItem> items, string key)
-    {
-        decimal? total = null;
-        foreach (var item in items)
-        {
-            if (ValueOf(item, key) is { } value)
-            {
-                total = (total ?? 0m) + value;
-            }
-        }
-
-        return total;
-    }
+    private static decimal? Sum(IEnumerable<PackItem> items, string key) =>
+        items.Select(i => ValueOf(i, key)).OfType<decimal>().ToList() is { Count: > 0 } values ? values.Sum() : null;
 
     private static string Amount(decimal value) =>
         Math.Round(value, 0, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);

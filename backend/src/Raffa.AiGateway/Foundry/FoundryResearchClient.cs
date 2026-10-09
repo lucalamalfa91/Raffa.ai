@@ -128,7 +128,7 @@ public sealed class FoundryResearchClient(
                 RelativeUrl,
                 wireRequest,
                 cancellationToken,
-                maxRetriesOverride: Math.Max(0, _resilience.ResearchMaxRetries),
+                maxRetriesOverride: _resilience.ResearchMaxRetries,
                 attemptTimeout: TimeSpan.FromSeconds(Math.Max(1, _resilience.ResearchRequestTimeoutSeconds)))
             .ConfigureAwait(false);
 

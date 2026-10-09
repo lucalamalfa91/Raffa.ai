@@ -22,10 +22,6 @@ public sealed class InvestigatorTriggerLexicon
     // characters, so matching is microseconds either way.
     private const RegexOptions Options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
 
-    /// <summary>How many words before a verb are searched for its subject unless a language says
-    /// otherwise (a verb-final language such as German needs a wider window).</summary>
-    internal const int DefaultSubjectWindowWords = 4;
-
     private static readonly Lazy<InvestigatorTriggerLexicon> DefaultInstance = new(LoadEmbedded);
 
     private InvestigatorTriggerLexicon(string version, IReadOnlyList<LanguageLexicon> languages)
@@ -56,19 +52,20 @@ public sealed class InvestigatorTriggerLexicon
         foreach (var language in root.GetProperty("languages").EnumerateObject())
         {
             var node = language.Value;
+            var politeness = WordList(node, "politeness");
+
+            // A verb-final language such as German needs a wider window than the default of four words.
             languages.Add(new LanguageLexicon(
                 language.Name,
                 node.TryGetProperty("status", out var status) ? status.GetString() ?? "seed" : "seed",
-                WordList(node, "operationalVerbs"),
-                WordList(node, "requestFormulas"),
-                WordList(node, "deliverables"),
-                WordList(node, "thirdPartySubjects"),
-                WordList(node, "obligationCues"),
-                WordList(node, "contractTextCues"),
-                WordList(node, "politeness"),
-                node.TryGetProperty("subjectWindowWords", out var window) && window.TryGetInt32(out var words) && words > 0
-                    ? words
-                    : DefaultSubjectWindowWords));
+                Compile(WordList(node, "operationalVerbs")),
+                Compile(WordList(node, "requestFormulas")),
+                Compile(WordList(node, "deliverables")),
+                Compile(WordList(node, "thirdPartySubjects")),
+                Compile(WordList(node, "obligationCues")),
+                Compile(WordList(node, "contractTextCues")),
+                new Regex(@"^[\s\p{P}]*(?:(?:" + (politeness.Count == 0 ? "(?!)" : string.Join('|', politeness)) + @")[\s\p{P}]*)*$", Options),
+                node.TryGetProperty("subjectWindowWords", out var window) && window.TryGetInt32(out var words) && words > 0 ? words : 4));
         }
 
         if (languages.Count == 0)
@@ -110,55 +107,19 @@ public sealed class InvestigatorTriggerLexicon
             ? new Regex("(?!)", Options)
             : new Regex(@"(?<![\p{L}\p{N}])(?:" + string.Join('|', fragments) + @")(?![\p{L}\p{N}])", Options);
 
-    /// <summary>One language's words, compiled.</summary>
-    public sealed class LanguageLexicon
-    {
-        internal LanguageLexicon(
-            string language,
-            string status,
-            IReadOnlyList<string> verbs,
-            IReadOnlyList<string> formulas,
-            IReadOnlyList<string> deliverables,
-            IReadOnlyList<string> thirdParties,
-            IReadOnlyList<string> obligations,
-            IReadOnlyList<string> contractCues,
-            IReadOnlyList<string> politeness,
-            int subjectWindowWords)
-        {
-            SubjectWindowWords = subjectWindowWords;
-            Language = language;
-            Status = status;
-            Verbs = Compile(verbs);
-            Formulas = Compile(formulas);
-            Deliverables = Compile(deliverables);
-            ThirdParties = Compile(thirdParties);
-            Obligations = Compile(obligations);
-            ContractCues = Compile(contractCues);
-            PolitenessOnly = new Regex(
-                @"^[\s\p{P}]*(?:(?:" + (politeness.Count == 0 ? "(?!)" : string.Join('|', politeness)) + @")[\s\p{P}]*)*$",
-                Options);
-        }
-
-        /// <summary>"it", "en", "fr", "es", "de".</summary>
-        public string Language { get; }
-
-        /// <summary>"baseline" (reviewed) or "seed" (structure ready, content awaiting review).</summary>
-        public string Status { get; }
-
-        internal int SubjectWindowWords { get; }
-
-        internal Regex Verbs { get; }
-
-        internal Regex Formulas { get; }
-
-        internal Regex Deliverables { get; }
-
-        internal Regex ThirdParties { get; }
-
-        internal Regex Obligations { get; }
-
-        internal Regex ContractCues { get; }
-
-        internal Regex PolitenessOnly { get; }
-    }
+    /// <summary>One language's words, compiled. <paramref name="Language"/> is "it", "en", "fr", "es" or
+    /// "de"; <paramref name="Status"/> is "baseline" (reviewed) or "seed" (structure ready, content
+    /// awaiting review); <paramref name="SubjectWindowWords"/> is how many words before a verb are
+    /// searched for its subject.</summary>
+    public sealed record LanguageLexicon(
+        string Language,
+        string Status,
+        Regex Verbs,
+        Regex Formulas,
+        Regex Deliverables,
+        Regex ThirdParties,
+        Regex Obligations,
+        Regex ContractCues,
+        Regex PolitenessOnly,
+        int SubjectWindowWords);
 }

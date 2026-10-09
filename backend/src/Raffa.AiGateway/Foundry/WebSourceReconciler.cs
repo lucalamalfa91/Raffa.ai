@@ -68,46 +68,19 @@ public static class WebSourceReconciler
             .Select(g => g.Key)
             .ToHashSet();
 
-        var numberToUrl = new Dictionary<int, string>();
-        var candidates = new List<string>();
-        var modelTitles = new Dictionary<string, string?>(StringComparer.Ordinal);
-        var modelQuotes = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        foreach (var entry in entries)
-        {
-            var url = entry.Url!;
-            if (ambiguous.Contains(entry.N) || !cited.ContainsKey(url))
-            {
-                continue;
-            }
+        // Only a source the tool really cited survives. A page listed under two numbers is one source and
+        // keeps both passages (F3-T01), deduplicated; its title is the first non-blank one the model gave.
+        var usable = entries.Where(e => !ambiguous.Contains(e.N) && cited.ContainsKey(e.Url!)).ToList();
+        var numberToUrl = usable.GroupBy(e => e.N).ToDictionary(g => g.Key, g => g.First().Url!);
+        var pages = usable
+            .GroupBy(e => e.Url!, StringComparer.Ordinal)
+            .Select(g => new Page(
+                g.Key,
+                g.Select(e => e.Title).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t)),
+                string.Join(" ", g.Select(e => CleanQuote(e.Quote)).Where(q => q.Length > 0).Distinct(StringComparer.Ordinal))))
+            .ToList();
 
-            numberToUrl.TryAdd(entry.N, url);
-            if (!candidates.Contains(url, StringComparer.Ordinal))
-            {
-                candidates.Add(url);
-            }
-
-            if (!modelTitles.TryGetValue(url, out var title) || string.IsNullOrWhiteSpace(title))
-            {
-                modelTitles[url] = entry.Title;
-            }
-
-            // F3-T01: the same page listed under two numbers keeps both passages (deduplicated).
-            if (CleanQuote(entry.Quote) is { Length: > 0 } quote)
-            {
-                if (!modelQuotes.TryGetValue(url, out var quotes))
-                {
-                    quotes = [];
-                    modelQuotes[url] = quotes;
-                }
-
-                if (!quotes.Contains(quote, StringComparer.Ordinal))
-                {
-                    quotes.Add(quote);
-                }
-            }
-        }
-
-        if (candidates.Count == 0)
+        if (pages.Count == 0)
         {
             // The model listed nothing the tool cited. With no marker in the text there is nothing to
             // misattribute, so the tool's own citations are shown as they came; with markers there is
@@ -131,42 +104,32 @@ public static class WebSourceReconciler
 
         // Cited sources are never cut; the cap only trims what nothing cites.
         var selected = new HashSet<string>(referenced, StringComparer.Ordinal);
-        foreach (var candidate in candidates)
+        foreach (var page in pages)
         {
             if (selected.Count >= cap)
             {
                 break;
             }
 
-            selected.Add(candidate);
+            selected.Add(page.Url);
         }
 
-        var final = candidates.Where(selected.Contains).ToList();
-        var newNumber = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var url in final)
-        {
-            newNumber[url] = final.IndexOf(url) + 1;
-        }
+        var final = pages.Where(p => selected.Contains(p.Url)).ToList();
+        var newNumber = final.Select((p, i) => (p.Url, Number: i + 1)).ToDictionary(x => x.Url, x => x.Number, StringComparer.Ordinal);
 
         var rewritten = MarkerPattern.Replace(summary, match =>
-        {
-            return TryNumber(match, out var n)
-                && numberToUrl.TryGetValue(n, out var url)
-                && newNumber.TryGetValue(url, out var number)
+            TryNumber(match, out var n) && numberToUrl.TryGetValue(n, out var url) && newNumber.TryGetValue(url, out var number)
                 ? $"[{number.ToString(CultureInfo.InvariantCulture)}]"
-                : UnresolvedMarker;
-        });
+                : UnresolvedMarker);
 
         var sources = final
-            .Select(url => new AiWebSource(
-                url,
-                Title(cited[url], modelTitles.GetValueOrDefault(url), url),
-                Snippet: string.Empty,
-                Quote: JoinQuotes(modelQuotes.GetValueOrDefault(url))))
+            .Select(p => new AiWebSource(p.Url, Title(cited[p.Url], p.Title, p.Url), Snippet: string.Empty, Quote: p.Quote))
             .ToList();
 
         return new ReconciledResearch(rewritten, sources);
     }
+
+    private sealed record Page(string Url, string? Title, string Quote);
 
     /// <summary>The longest quote kept per source: a verbatim passage, not a copy of the page.</summary>
     public const int MaxQuoteChars = 800;
@@ -185,9 +148,6 @@ public static class WebSourceReconciler
         var collapsed = WhitespaceRun.Replace(quote.Trim(), " ");
         return collapsed.Length <= MaxQuoteChars ? collapsed : collapsed[..MaxQuoteChars];
     }
-
-    private static string JoinQuotes(List<string>? quotes) =>
-        quotes is null ? string.Empty : string.Join(" ", quotes);
 
     private static bool TryNumber(Match marker, out int number) =>
         int.TryParse(marker.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out number);

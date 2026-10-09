@@ -10,96 +10,64 @@ using Microsoft.EntityFrameworkCore;
 namespace Raffa.Documents.Contracts.Application.Extraction;
 
 /// <summary>
-/// F5-T01 / F5-T02 / F5-D02 / F5-D03 / F5-D08: everything that makes a staged-extraction run
-/// <b>idempotent, resumable and respectful of what a human already decided</b>, kept apart from the
-/// per-stage parsing in <c>StagedExtractionService.cs</c>:
+/// F5-T01 / F5-T02 / F5-D08: what makes a staged-extraction run idempotent, resumable and respectful
+/// of what a human already decided (the per-stage parsing stays in <c>StagedExtractionService.cs</c>).
 /// <list type="bullet">
-/// <item><b>Run id.</b> Every call to <c>RunAsync</c> belongs to one extraction run
-/// (<see cref="ExtractionJob.ExtractionRunId"/>), stamped on its stage jobs and on every fact it
-/// writes. A stage that applies successfully <em>replaces</em> the previous rows of the same kind
-/// for the same (contract, source document) in one <c>SaveChangesAsync</c> (one database
-/// transaction), instead of adding next to them: a reprocess, or a recovery after a hang, no longer
-/// duplicates line items, clauses, obligations or risks. Rows carrying a human correction are kept.
-/// Replacing happens only once the new payload has parsed, so a stage that fails keeps whatever the
-/// previous run had stored.</item>
-/// <item><b>Human-owned fields.</b> A <see cref="Contract"/> field that has a
-/// <see cref="CorrectionHistory"/> row, or whose latest evidence is <c>human_accepted</c>, is never
-/// written by extraction. If the new run reads a different value it is recorded as a
-/// <c>review_required</c> proposal on the evidence list, never applied.</item>
-/// <item><b>Checkpoint and resume.</b> A run whose stages did not all finish is <em>open</em>. A
-/// later run over the same text (same <see cref="ExtractionJob.InputHash"/>) continues it: stages
-/// that finished are reused as they are, only the others get a new job and a gateway call. A run
-/// that finished entirely is never resumed (an explicit reprocess re-extracts everything).</item>
-/// <item><b>Typed stage failure.</b> A failed stage records an
-/// <see cref="ExtractionStageFailureKind"/>; the document is partial and never <c>Completed</c>.</item>
-/// <item><b>Notice period.</b> <c>cancellationDeadline = endDate - noticePeriodDays</c> is computed
-/// here, deterministically.</item>
+/// <item><b>Run id.</b> Every <c>RunAsync</c> belongs to one run (<see cref="ExtractionJob.ExtractionRunId"/>),
+/// stamped on its stage jobs and facts. A list stage that applies successfully <em>replaces</em> the
+/// rows of the same kind for the same (contract, source document) in one <c>SaveChangesAsync</c>;
+/// rows with a human correction are kept. Replacing happens only once the payload has parsed, so a
+/// failed stage keeps what the previous run stored.</item>
+/// <item><b>Human-owned fields.</b> A <see cref="Contract"/> field with a <see cref="CorrectionHistory"/>
+/// row, or whose latest evidence is <c>human_accepted</c>, is never written by extraction; a different
+/// reading becomes a <c>review_required</c> proposal.</item>
+/// <item><b>Checkpoint and resume.</b> A run whose stages did not all finish is <em>open</em>; a later
+/// run over the same text (<see cref="ExtractionJob.InputHash"/>) reuses the stages that finished and
+/// calls the gateway only for the others. A run that finished entirely is never resumed.</item>
+/// <item><b>Typed stage failure.</b> A failed stage records an <see cref="ExtractionStageFailureKind"/>;
+/// the document is then partial and never <c>Completed</c>.</item>
+/// <item><b>Notice period.</b> <c>cancellationDeadline = endDate - noticePeriodDays</c> is computed here.</item>
 /// </list>
 /// </summary>
 public sealed partial class StagedExtractionService
 {
-    /// <summary>Mixed into <see cref="ExtractionJob.InputHash"/> so a checkpoint written by a
-    /// different pipeline shape is never reused. Bump when the stage set or schemas change in a way
-    /// that makes an old stage result not equivalent.</summary>
-    public const string PipelineVersion = "staged-v1";
+    /// <summary>Mixed into <see cref="ExtractionJob.InputHash"/>: bump it when the stage set or schemas
+    /// change so that an old checkpoint is never reused.</summary>
+    private const string PipelineVersion = "staged-v1";
 
-    private const string ContractCorrectionEntityType = nameof(Contract);
+    private const string CancellationDeadlineFieldName = "cancellationDeadline";
 
-    /// <summary>Field name of the derived cancellation deadline (see <see cref="DatesFields"/>).</summary>
-    public const string CancellationDeadlineFieldName = "cancellationDeadline";
+    private const string NoticePeriodDaysFieldName = "noticePeriodDays";
 
-    /// <summary>Field name of the extracted notice period, in calendar days (F5-D08).</summary>
-    public const string NoticePeriodDaysFieldName = "noticePeriodDays";
-
-    /// <summary>The pipeline's seven stages, in order (shared with the document list / validator,
-    /// which decide "partial" from the stage jobs).</summary>
+    /// <summary>The pipeline's seven stages, in order (the document list and the validator decide
+    /// "partial" from their jobs).</summary>
     public static IReadOnlyList<ExtractionStage> Stages => PipelineStages;
 
-    // ------------------------------------------------------------------------------------------
-    // Run context
-    // ------------------------------------------------------------------------------------------
-
-    /// <summary>What one <c>RunAsync</c> call needs while applying stages. A class, not a record:
-    /// the evidence list and the protection state are appended to as stages are applied.</summary>
-    private sealed class RunContext(
-        TenantId tenantId,
-        EntityId documentId,
-        Contract contract,
-        RunPlan plan,
-        int pageCount,
-        FieldProtection protection,
-        bool replaceUnattributedRows,
-        List<(string FieldName, double? Confidence)> runEvidence)
+    /// <summary>What one <c>RunAsync</c> call needs while applying stages. The evidence list and the
+    /// protection state are appended to as stages are applied.</summary>
+    private sealed record RunContext(
+        TenantId TenantId,
+        EntityId DocumentId,
+        Contract Contract,
+        RunPlan Plan,
+        int PageCount,
+        FieldProtection Protection,
+        bool ReplaceUnattributedRows)
     {
-        public TenantId TenantId { get; } = tenantId;
-
-        public EntityId DocumentId { get; } = documentId;
-
-        public Contract Contract { get; } = contract;
-
         public Guid RunId => Plan.RunId;
 
-        public RunPlan Plan { get; } = plan;
+        public List<(string FieldName, double? Confidence)> RunEvidence { get; } = [];
 
-        public int PageCount { get; } = pageCount;
-
-        public FieldProtection Protection { get; } = protection;
-
-        /// <summary>True when this document is the only one linked to the contract, so rows written
-        /// before <c>SourceDocumentId</c> was populated (line items, risks) can only be its own.</summary>
-        public bool ReplaceUnattributedRows { get; } = replaceUnattributedRows;
-
-        public List<(string FieldName, double? Confidence)> RunEvidence { get; } = runEvidence;
-
-        /// <summary>Job id per stage of this run (new jobs and reused checkpoints alike).</summary>
         public Dictionary<ExtractionStage, EntityId> StageJobIds { get; } = [];
+
+        /// <summary>First accepted <c>supplier</c> legal name of the run; only <c>metadata</c> produces one.</summary>
+        public string? AcceptedSupplierName { get; set; }
     }
 
-    private sealed record RunPlan(
-        Guid RunId,
-        string InputHash,
-        IReadOnlyDictionary<ExtractionStage, ExtractionJob> Reused,
-        bool Resumed);
+    private sealed record RunPlan(Guid RunId, string InputHash, IReadOnlyDictionary<ExtractionStage, ExtractionJob> Reused);
+
+    /// <summary>A stage of this run: its job and its gateway call, still in flight.</summary>
+    private sealed record PendingStage(ExtractionJob Job, Task<Result<AiExtractionResult>> Call);
 
     // ------------------------------------------------------------------------------------------
     // Planning: fresh run vs. resume
@@ -112,10 +80,9 @@ public sealed partial class StagedExtractionService
         job.Status is ExtractionJobStatus.Completed or ExtractionJobStatus.NeedsReview && job.CompletedAt is not null;
 
     /// <summary>
-    /// Decides how this call relates to what earlier calls left behind. Stage jobs that are still
-    /// <c>Running</c> belong to a run that stopped without finishing (a hang, a crash, a cancelled
-    /// worker); they are closed as interrupted so they cannot be mistaken for live work and the
-    /// stage reads as failed until something finishes it.
+    /// Decides how this call relates to what earlier calls left behind. Stage jobs still <c>Running</c>
+    /// belong to a run that stopped (hang, crash, cancelled worker): they are closed as interrupted so
+    /// they are not mistaken for live work.
     /// </summary>
     private async Task<RunPlan> PlanRunAsync(
         TenantId tenantId, EntityId documentId, string inputHash, DateTimeOffset now, CancellationToken cancellationToken)
@@ -140,7 +107,7 @@ public sealed partial class StagedExtractionService
             .OrderByDescending(r => r.Last)
             .ToList();
 
-        var fresh = new RunPlan(Guid.NewGuid(), inputHash, new Dictionary<ExtractionStage, ExtractionJob>(), Resumed: false);
+        var fresh = new RunPlan(Guid.NewGuid(), inputHash, new Dictionary<ExtractionStage, ExtractionJob>());
 
         // No earlier run, or two runs that cannot be told apart by time: start clean rather than
         // risk continuing the wrong one.
@@ -161,7 +128,7 @@ public sealed partial class StagedExtractionService
         foreach (var stage in PipelineStages)
         {
             var checkpoint = latest.Jobs
-                .Where(j => j.Stage == stage && IsFinished(j) && string.Equals(j.InputHash, inputHash, StringComparison.Ordinal))
+                .Where(j => j.Stage == stage && IsFinished(j) && j.InputHash == inputHash)
                 .OrderByDescending(j => j.CompletedAt)
                 .FirstOrDefault();
             if (checkpoint is not null)
@@ -170,110 +137,59 @@ public sealed partial class StagedExtractionService
             }
         }
 
-        return reused.Count == 0
-            ? fresh
-            : new RunPlan(latest.RunId, inputHash, reused, Resumed: true);
+        return reused.Count == 0 ? fresh : new RunPlan(latest.RunId, inputHash, reused);
     }
 
     // ------------------------------------------------------------------------------------------
-    // Stage jobs (Phase 0) and gateway calls (Phase 1)
+    // Stage jobs and gateway calls
     // ------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// NW-106 phase 0: creates and persists the stage <see cref="ExtractionJob"/> rows up front,
-    /// <c>Running</c>, in one <c>SaveChangesAsync</c> — fast, local, sequential writes (never the
-    /// bottleneck), done before any Foundry call so every stage's hang-recovery window starts
-    /// from the same point <see cref="StartStagesAsync"/> fires its gateway call. F5-T02: a stage
-    /// whose checkpoint is reused gets no new job (its slot is <see langword="null"/>); on a fresh
-    /// run all seven stages get one, exactly as before.
+    /// NW-106: creates and saves the <c>Running</c> job of every stage that is not reused (one
+    /// <c>SaveChangesAsync</c>, so every hang-recovery window starts together), then fires their
+    /// <see cref="IAiGateway.ExtractAsync"/> calls back to back without awaiting. The stages are
+    /// independent reads over the same text; <see cref="ApplyStageResultAsync"/> awaits and applies
+    /// them one at a time because the <c>DbContext</c> is not safe for concurrent use. No per-stage
+    /// <see cref="ExtractionProgressHeartbeat"/> is bound for the same reason: only the in-memory
+    /// pulses of <c>RunAsync</c> run while the calls are in flight.
     /// </summary>
-    private async Task<ExtractionJob?[]> CreateStageJobsAsync(
-        TenantId tenantId, EntityId documentId, RunPlan plan, CancellationToken cancellationToken)
+    private async Task<Dictionary<ExtractionStage, PendingStage>> StartStagesAsync(
+        RunContext context, string documentText, CancellationToken cancellationToken)
     {
-        var jobs = new ExtractionJob?[PipelineStages.Length];
-
-        for (var i = 0; i < PipelineStages.Length; i++)
+        var jobs = new Dictionary<ExtractionStage, ExtractionJob>();
+        foreach (var stage in PipelineStages.Where(stage => !context.Plan.Reused.ContainsKey(stage)))
         {
-            if (plan.Reused.ContainsKey(PipelineStages[i]))
-            {
-                continue;
-            }
-
             var startedAt = clock.UtcNow;
             var job = new ExtractionJob
             {
-                TenantId = tenantId,
-                DocumentId = documentId,
-                Stage = PipelineStages[i],
+                TenantId = context.TenantId,
+                DocumentId = context.DocumentId,
+                Stage = stage,
                 Status = ExtractionJobStatus.Running,
                 QueuedAt = startedAt,
                 StartedAt = startedAt,
-                ExtractionRunId = plan.RunId,
-                InputHash = plan.InputHash,
+                ExtractionRunId = context.RunId,
+                InputHash = context.Plan.InputHash,
             };
             dbContext.ExtractionJobs.Add(job);
-            jobs[i] = job;
+            jobs[stage] = job;
         }
 
         hangWatch?.Heartbeat();
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        return jobs;
+        return jobs.ToDictionary(
+            entry => entry.Key,
+            entry => new PendingStage(
+                entry.Value,
+                aiGateway.ExtractAsync(
+                    new AiExtractionRequest(entry.Key.ToString(), documentText, BuildSchema(entry.Key)), cancellationToken)));
     }
 
-    /// <summary>
-    /// NW-106 phase 1: fires the <see cref="IAiGateway.ExtractAsync"/> calls back to back, without
-    /// awaiting any of them — each is an independent, schema-constrained read over the same
-    /// <paramref name="documentText"/> (none depends on another stage's result), so starting them
-    /// together instead of one after another is exactly the fix for the single largest, purely
-    /// structural cost in this pipeline. Returns the (still in-flight) tasks in pipeline order;
-    /// <see cref="ApplyStageResultAsync"/> awaits and applies each one. A stage whose checkpoint is
-    /// reused gets no call (its slot is <see langword="null"/>).
-    ///
-    /// <para>
-    /// Deliberately does <b>not</b> bind <see cref="ExtractionProgressHeartbeat.Bind"/> /
-    /// <see cref="ExtractionProgressHeartbeat.BeginFoundryAttempts"/> per stage here: that
-    /// durable, per-retry-attempt heartbeat writes <see cref="ExtractionJob.StartedAt"/> through
-    /// <c>dbContext</c>, which is not safe to touch from several calls in flight at once. The
-    /// caller wraps the whole await-and-apply phase in one
-    /// <see cref="ExtractionProgressHeartbeat.BeginMemoryPulses"/> scope instead — the in-memory
-    /// hang watch (never dbContext) stays alive for however long the slowest call takes;
-    /// <see cref="Raffa.AiGateway.Foundry.FoundryAttemptHeartbeat.NotifyAsync"/> simply no-ops
-    /// with nothing bound for these calls, the same safe default a caller with no heartbeat
-    /// support at all already got today.
-    /// </para>
-    /// </summary>
-    private Task<Result<AiExtractionResult>>?[] StartStagesAsync(
-        string documentText, RunPlan plan, CancellationToken cancellationToken)
-    {
-        var tasks = new Task<Result<AiExtractionResult>>?[PipelineStages.Length];
-
-        for (var i = 0; i < PipelineStages.Length; i++)
-        {
-            var stage = PipelineStages[i];
-            if (plan.Reused.ContainsKey(stage))
-            {
-                continue;
-            }
-
-            var request = new AiExtractionRequest(
-                StageName: stage.ToString(),
-                DocumentText: documentText,
-                JsonSchema: BuildSchema(stage));
-
-            tasks[i] = aiGateway.ExtractAsync(request, cancellationToken);
-        }
-
-        return tasks;
-    }
-
-    /// <summary>
-    /// F5-T02: a stage that already finished for this very text in the run being continued. Nothing
-    /// is applied again; the result is rebuilt from the checkpoint and the evidence it wrote, so
-    /// the pipeline's later steps (supplier link, audit detail) see the same picture a full run
-    /// would have given them.
-    /// </summary>
-    private async Task<(StagedExtractionStageResult Result, string? AcceptedSupplierName)> ReuseCheckpointAsync(
+    /// <summary>A stage that already finished for this very text in the run being continued: nothing is
+    /// applied again; its result is rebuilt from the checkpoint and the evidence it wrote, so the later
+    /// steps (supplier link, audit detail) see what a full run would have given them.</summary>
+    private async Task<StagedExtractionStageResult> ReuseCheckpointAsync(
         RunContext context, ExtractionJob checkpoint, CancellationToken cancellationToken)
     {
         context.StageJobIds[checkpoint.Stage] = checkpoint.Id;
@@ -285,49 +201,41 @@ public sealed partial class StagedExtractionService
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        string? supplierName = null;
-        foreach (var row in evidence)
-        {
-            context.RunEvidence.Add((row.FieldName, row.Confidence));
+        context.RunEvidence.AddRange(evidence.Select(e => (e.FieldName, e.Confidence)));
 
-            if (supplierName is null
-                && string.Equals(row.FieldName, SupplierFieldName, StringComparison.Ordinal)
-                && !string.IsNullOrWhiteSpace(row.Value)
-                && (row.Decision == ExtractionConfidencePolicy.AutoAccepted
-                    || row.Decision == ExtractionConfidencePolicy.HumanAccepted)
-                && !context.Protection.IsProtected(SupplierFieldName))
-            {
-                supplierName = row.Value.Trim();
-            }
+        if (!context.Protection.IsProtected(SupplierFieldName))
+        {
+            context.AcceptedSupplierName ??= evidence
+                .Where(e => e.FieldName == SupplierFieldName
+                    && !string.IsNullOrWhiteSpace(e.Value)
+                    && e.Decision is ExtractionConfidencePolicy.AutoAccepted or ExtractionConfidencePolicy.HumanAccepted)
+                .Select(e => e.Value!.Trim())
+                .FirstOrDefault();
         }
 
-        return (
-            new StagedExtractionStageResult(
-                checkpoint.Stage, checkpoint.Status, checkpoint.ExtractedCount ?? 0, checkpoint.SkippedCount ?? 0, null),
-            supplierName);
+        return new StagedExtractionStageResult(
+            checkpoint.Stage, checkpoint.Status, checkpoint.ExtractedCount ?? 0, checkpoint.SkippedCount ?? 0, null);
     }
 
     // ------------------------------------------------------------------------------------------
     // Failure typing
     // ------------------------------------------------------------------------------------------
 
-    /// <summary>A gateway failure that means "the provider could not be reached or kept throttling"
-    /// (<see cref="AiGatewayErrors.UnavailablePrefix"/>: 429 / 5xx / timeout after the in-call
-    /// retries) is transient; anything else (empty text, a rejected request, a payload that does not
-    /// parse) is a property of this input.</summary>
+    /// <summary>A gateway failure meaning "the provider could not be reached or kept throttling"
+    /// (<see cref="AiGatewayErrors.UnavailablePrefix"/>) is transient; anything else (empty text, a
+    /// rejected request, a payload that does not parse) is a property of this input.</summary>
     internal static ExtractionStageFailureKind ClassifyFailure(string error) =>
         error.StartsWith(AiGatewayErrors.UnavailablePrefix, StringComparison.Ordinal)
             ? ExtractionStageFailureKind.Transient
             : ExtractionStageFailureKind.Permanent;
 
-    /// <summary>An exception thrown (rather than returned as a failed result) by a gateway call that
-    /// is a network-level transient. A cancellation the caller asked for is never one.</summary>
+    /// <summary>A network-level fault thrown (not returned) by a gateway call. A cancellation the caller
+    /// asked for is never one.</summary>
     private static bool IsTransientTransportFault(Exception exception, CancellationToken cancellationToken) =>
         exception is HttpRequestException or TimeoutException
         || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested);
 
-    private async Task<(StagedExtractionStageResult Result, string? AcceptedSupplierName)> FailStageAsync(
-        ExtractionStage stage,
+    private async Task<StagedExtractionStageResult> FailStageAsync(
         ExtractionJob job,
         string error,
         ExtractionStageFailureKind kind,
@@ -343,19 +251,70 @@ public sealed partial class StagedExtractionService
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        return (new StagedExtractionStageResult(stage, job.Status, 0, 0, job.ErrorDetail, kind), null);
+        return new StagedExtractionStageResult(job.Stage, job.Status, 0, 0, job.ErrorDetail, kind);
     }
 
     // ------------------------------------------------------------------------------------------
-    // Human-owned fields
+    // Human-owned fields and evidence
     // ------------------------------------------------------------------------------------------
+
+    /// <summary>Latest <see cref="ExtractionEvidence"/> row per field of the contract (newest first by
+    /// <c>CreatedAt</c>, then id), optionally restricted to <paramref name="fields"/>.</summary>
+    private async Task<Dictionary<string, ExtractionEvidence>> LatestEvidenceAsync(
+        TenantId tenantId, EntityId contractId, string[]? fields, CancellationToken cancellationToken)
+    {
+        var query = dbContext.ExtractionEvidences
+            .AsNoTracking()
+            .Where(e => e.TenantId == tenantId && e.ContractId == contractId);
+        if (fields is not null)
+        {
+            query = query.Where(e => fields.Contains(e.FieldName));
+        }
+
+        return (await query.ToListAsync(cancellationToken).ConfigureAwait(false))
+            .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id.Value).First(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Stages one evidence row of this run and notes it for the audit detail.</summary>
+    private void AddEvidence(
+        RunContext context,
+        string field,
+        string? value,
+        double? confidence,
+        string decision,
+        DateTimeOffset at,
+        EntityId? jobId = null,
+        int? page = null,
+        string? span = null)
+    {
+        dbContext.ExtractionEvidences.Add(new ExtractionEvidence
+        {
+            TenantId = context.TenantId,
+            ContractId = context.Contract.Id,
+            SourceDocumentId = context.DocumentId,
+            ExtractionJobId = jobId,
+            ExtractionRunId = context.RunId,
+            FieldName = field,
+            Value = value,
+            SourceSpan = span,
+            SourcePage = page,
+            Confidence = confidence,
+            Decision = decision,
+            DecidedAt = at,
+            CreatedAt = at,
+        });
+        context.RunEvidence.Add((field, confidence));
+    }
 
     /// <summary>
     /// The <see cref="Contract"/> fields extraction must not overwrite: those with a
-    /// <see cref="CorrectionHistory"/> row (a human changed them) and those whose latest
-    /// <see cref="ExtractionEvidence"/> is <c>human_accepted</c> (a human confirmed them). Also keeps
-    /// the latest evidence value per field, so a re-read of a value the human already saw and
-    /// decided on is not proposed again.
+    /// <see cref="CorrectionHistory"/> row and those whose latest evidence is <c>human_accepted</c>.
+    /// Also keeps the latest evidence value per field, so a re-read of a value the human already saw
+    /// and decided on is not proposed again.
     /// </summary>
     private async Task<FieldProtection> LoadProtectionAsync(
         TenantId tenantId, Contract contract, CancellationToken cancellationToken)
@@ -365,54 +324,29 @@ public sealed partial class StagedExtractionService
         var corrected = await dbContext.CorrectionHistories
             .AsNoTracking()
             .Where(h => h.TenantId == tenantId
-                && h.TargetEntityType == ContractCorrectionEntityType
+                && h.TargetEntityType == nameof(Contract)
                 && h.TargetEntityId == contract.Id)
             .Select(h => h.FieldName)
-            .Distinct()
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-        foreach (var field in corrected)
+        corrected.ForEach(protection.Protect);
+
+        foreach (var (field, latest) in await LatestEvidenceAsync(tenantId, contract.Id, null, cancellationToken).ConfigureAwait(false))
         {
-            protection.Protect(field);
-        }
+            protection.NoteLatestEvidence(field, latest.Value);
 
-        var evidence = await dbContext.ExtractionEvidences
-            .AsNoTracking()
-            .Where(e => e.TenantId == tenantId && e.ContractId == contract.Id)
-            .Select(e => new { e.FieldName, e.Value, e.Decision, e.CreatedAt, e.Id })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-        foreach (var latest in evidence
-            .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id.Value).First()))
-        {
-            protection.NoteLatestEvidence(latest.FieldName, latest.Value);
-            if (!string.Equals(latest.Decision, ExtractionConfidencePolicy.HumanAccepted, StringComparison.Ordinal))
+            // The supplier is a link on the contract, not a value on it: a name accepted while nothing
+            // was ever linked defends no choice of the reviewer, so a later confident reading may still
+            // link it. Only an existing link, or a supplier the reviewer corrected, is theirs.
+            if (latest.Decision == ExtractionConfidencePolicy.HumanAccepted
+                && !(string.Equals(field, SupplierFieldName, StringComparison.OrdinalIgnoreCase) && contract.SupplierId is null))
             {
-                continue;
+                protection.Protect(field);
             }
-
-            // The supplier is a link on the contract, not a value on it. A name a reviewer accepted
-            // while nothing was ever linked (the extraction was too weak to link it) defends no
-            // choice of theirs: a later, confident reading may still link it. Only a link that
-            // exists, or a supplier the reviewer corrected (CorrectionHistory above), is theirs.
-            if (string.Equals(latest.FieldName, SupplierFieldName, StringComparison.OrdinalIgnoreCase)
-                && contract.SupplierId is null)
-            {
-                continue;
-            }
-
-            protection.Protect(latest.FieldName);
         }
 
         return protection;
     }
-
-    private async Task<bool> ContractHasNoOtherDocumentAsync(
-        TenantId tenantId, EntityId contractId, EntityId documentId, CancellationToken cancellationToken) =>
-        !await dbContext.Documents
-            .AnyAsync(d => d.TenantId == tenantId && d.ContractId == contractId && d.Id != documentId, cancellationToken)
-            .ConfigureAwait(false);
 
     private sealed class FieldProtection
     {
@@ -425,8 +359,7 @@ public sealed partial class StagedExtractionService
 
         public void NoteLatestEvidence(string field, string? value) => _latestEvidenceValue[field] = value;
 
-        /// <summary>True when <paramref name="value"/> is what extraction last proposed for the field
-        /// (so the human has already seen and decided on it).</summary>
+        /// <summary>True when <paramref name="value"/> is what extraction last proposed for the field.</summary>
         public bool IsAlreadyProposed(string field, string? value) =>
             _latestEvidenceValue.TryGetValue(field, out var known) && ValuesEquivalent(field, known, value);
     }
@@ -457,8 +390,8 @@ public sealed partial class StagedExtractionService
 
     private static string? FormatDate(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>Compares two renderings of the same field by its real type (dates, numbers, booleans)
-    /// and falls back to a trimmed, case-insensitive text comparison.</summary>
+    /// <summary>Compares two renderings of the same field by its real type (dates, numbers, booleans),
+    /// falling back to a trimmed, case-insensitive text comparison.</summary>
     private static bool ValuesEquivalent(string field, string? left, string? right)
     {
         if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
@@ -466,170 +399,73 @@ public sealed partial class StagedExtractionService
             return false;
         }
 
-        switch (field)
+        return field switch
         {
-            case "startDate":
-            case "endDate":
-            case "effectiveDate":
-            case CancellationDeadlineFieldName:
-                return TryParseDate(left, out var leftDate) && TryParseDate(right, out var rightDate) && leftDate == rightDate;
-            case "annualSpend":
-            case "totalContractValue":
-                return TryParseDecimal(left, out var leftNumber) && TryParseDecimal(right, out var rightNumber) && leftNumber == rightNumber;
-            case "autoRenewal":
-                return bool.TryParse(left, out var leftFlag) && bool.TryParse(right, out var rightFlag) && leftFlag == rightFlag;
-            case "renewalTermMonths":
-            case NoticePeriodDaysFieldName:
-                return int.TryParse(left, NumberStyles.Integer, CultureInfo.InvariantCulture, out var leftInt)
-                    && int.TryParse(right, NumberStyles.Integer, CultureInfo.InvariantCulture, out var rightInt)
-                    && leftInt == rightInt;
-            default:
-                return string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
-        }
+            "startDate" or "endDate" or "effectiveDate" or CancellationDeadlineFieldName =>
+                TryParseDate(left, out var leftDate) && TryParseDate(right, out var rightDate) && leftDate == rightDate,
+            "annualSpend" or "totalContractValue" =>
+                TryParseDecimal(left, out var leftNumber) && TryParseDecimal(right, out var rightNumber) && leftNumber == rightNumber,
+            "autoRenewal" =>
+                bool.TryParse(left, out var leftFlag) && bool.TryParse(right, out var rightFlag) && leftFlag == rightFlag,
+            "renewalTermMonths" or NoticePeriodDaysFieldName =>
+                TryParseInt(left, out var leftInt) && TryParseInt(right, out var rightInt) && leftInt == rightInt,
+            _ => string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase),
+        };
     }
 
     // ------------------------------------------------------------------------------------------
     // Replacing the previous run's rows
     // ------------------------------------------------------------------------------------------
 
-    /// <summary>Ids, among <paramref name="ids"/>, that a human corrected (a
-    /// <see cref="CorrectionHistory"/> row targets them).</summary>
-    private async Task<HashSet<EntityId>> LoadHumanCorrectedIdsAsync(
-        TenantId tenantId, IReadOnlyCollection<EntityId> ids, CancellationToken cancellationToken)
-    {
-        if (ids.Count == 0)
-        {
-            return [];
-        }
-
-        var idList = ids.ToList();
-        var corrected = await dbContext.CorrectionHistories
-            .AsNoTracking()
-            .Where(h => h.TenantId == tenantId && idList.Contains(h.TargetEntityId))
-            .Select(h => h.TargetEntityId)
-            .Distinct()
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        return [.. corrected];
-    }
-
     /// <summary>
-    /// The replace-not-add step shared by the four list stages: every row of the previous run(s)
-    /// for this (contract, source document) goes, except those a human corrected or something else
-    /// links to; the new rows are added, minus any that restate a row that was kept. Everything is
-    /// only staged here; the caller's single <c>SaveChangesAsync</c> commits removals, additions
-    /// and the stage job together.
+    /// The replace-not-add step of the four list stages: every row of the previous run(s) for this
+    /// (contract, source document) goes, except those a human corrected or that
+    /// <paramref name="isLinkedElsewhere"/> says something else points at; the new rows are added,
+    /// minus any that restate a kept row. Only staged here: the caller's single <c>SaveChangesAsync</c>
+    /// commits removals, additions and the stage job together.
     /// </summary>
     private async Task ReplaceRowsAsync<T>(
         RunContext context,
         IQueryable<T> existingQuery,
         DbSet<T> set,
         List<T> newRows,
-        Func<T, bool> isLinkedElsewhere,
         Func<T, string> keyOf,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<T, bool>? isLinkedElsewhere = null)
         where T : TenantScopedEntity
     {
         var existing = await existingQuery.ToListAsync(cancellationToken).ConfigureAwait(false);
-        var corrected = await LoadHumanCorrectedIdsAsync(context.TenantId, existing.Select(x => x.Id).ToList(), cancellationToken)
-            .ConfigureAwait(false);
-
-        var kept = new List<T>();
-        foreach (var row in existing)
-        {
-            if (corrected.Contains(row.Id) || isLinkedElsewhere(row))
-            {
-                kept.Add(row);
-            }
-            else
-            {
-                set.Remove(row);
-            }
-        }
-
-        var keptKeys = kept.Select(keyOf).ToHashSet(StringComparer.Ordinal);
-        set.AddRange(newRows.Where(row => !keptKeys.Contains(keyOf(row))));
-    }
-
-    private static string NormalizeKeyPart(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
-
-    private Task ReplaceLineItemsAsync(RunContext context, List<ContractLineItem> rows, CancellationToken cancellationToken) =>
-        ReplaceRowsAsync(
-            context,
-            dbContext.ContractLineItems.Where(x => x.TenantId == context.TenantId
-                && x.ContractId == context.Contract.Id
-                && (x.SourceDocumentId == context.DocumentId
-                    || (context.ReplaceUnattributedRows && x.SourceDocumentId == null))),
-            dbContext.ContractLineItems,
-            rows,
-            isLinkedElsewhere: x => x.ProductId is not null,
-            keyOf: x => NormalizeKeyPart(x.Sku) + "|" + NormalizeKeyPart(x.Description),
-            cancellationToken);
-
-    private async Task ReplaceClausesAsync(RunContext context, List<Clause> rows, CancellationToken cancellationToken)
-    {
-        // A risk may point at a clause (Risk.ClauseId, restrict): such a clause is not ours to delete.
-        var referenced = (await dbContext.Risks
+        var ids = existing.Select(x => x.Id).ToList();
+        var corrected = (await dbContext.CorrectionHistories
                 .AsNoTracking()
-                .Where(r => r.TenantId == context.TenantId && r.ContractId == context.Contract.Id && r.ClauseId != null)
-                .Select(r => r.ClauseId!.Value)
+                .Where(h => h.TenantId == context.TenantId && ids.Contains(h.TargetEntityId))
+                .Select(h => h.TargetEntityId)
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false))
             .ToHashSet();
 
-        await ReplaceRowsAsync(
-                context,
-                dbContext.Clauses.Where(x => x.TenantId == context.TenantId
-                    && x.ContractId == context.Contract.Id
-                    && x.SourceDocumentId == context.DocumentId),
-                dbContext.Clauses,
-                rows,
-                isLinkedElsewhere: x => referenced.Contains(x.Id),
-                keyOf: x => NormalizeKeyPart(x.ClauseType) + "|" + NormalizeKeyPart(x.RawText),
-                cancellationToken)
-            .ConfigureAwait(false);
+        bool IsKept(T row) => corrected.Contains(row.Id) || isLinkedElsewhere?.Invoke(row) == true;
+
+        set.RemoveRange(existing.Where(row => !IsKept(row)));
+
+        var keptKeys = existing.Where(IsKept).Select(keyOf).ToHashSet(StringComparer.Ordinal);
+        set.AddRange(newRows.Where(row => !keptKeys.Contains(keyOf(row))));
     }
 
-    private Task ReplaceObligationsAsync(RunContext context, List<Obligation> rows, CancellationToken cancellationToken) =>
-        ReplaceRowsAsync(
-            context,
-            dbContext.Obligations.Where(x => x.TenantId == context.TenantId
-                && x.ContractId == context.Contract.Id
-                && x.SourceDocumentId == context.DocumentId),
-            dbContext.Obligations,
-            rows,
-            isLinkedElsewhere: _ => false,
-            keyOf: x => NormalizeKeyPart(x.ObligationType) + "|" + NormalizeKeyPart(x.Party) + "|" + NormalizeKeyPart(x.Description),
-            cancellationToken);
-
-    private Task ReplaceRisksAsync(RunContext context, List<Risk> rows, CancellationToken cancellationToken) =>
-        ReplaceRowsAsync(
-            context,
-            dbContext.Risks.Where(x => x.TenantId == context.TenantId
-                && x.ContractId == context.Contract.Id
-                && (x.SourceDocumentId == context.DocumentId
-                    || (context.ReplaceUnattributedRows && x.SourceDocumentId == null))),
-            dbContext.Risks,
-            rows,
-            isLinkedElsewhere: _ => false,
-            keyOf: x => NormalizeKeyPart(x.RiskType) + "|" + NormalizeKeyPart(x.Description),
-            cancellationToken);
+    private static string NormalizeKeyPart(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
 
     // ------------------------------------------------------------------------------------------
     // F5-D08: cancellation deadline from the notice period
     // ------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// <c>cancellationDeadline = endDate - noticePeriodDays</c>, deterministic and never left to the
-    /// model's own date arithmetic. Applies when both inputs are known on the contract and the
-    /// deadline itself is not human-owned. The derived value gets its own evidence row (page and
-    /// span of the notice clause) with the weaker of the two inputs' confidences, so a deadline built
-    /// on a shaky end date or notice period is reviewed like any other weak fact. A deadline that
-    /// already equals the derived value is left alone.
+    /// <c>cancellationDeadline = endDate - noticePeriodDays</c>, never left to the model's own date
+    /// arithmetic. Applies when both inputs are known on the contract and the deadline is not
+    /// human-owned. The derived value gets its own evidence row (page and span of the notice clause)
+    /// with the weaker of the two inputs' confidences, so a deadline built on a shaky input is
+    /// reviewed like any weak fact. A deadline that already equals the derived value is left alone.
     /// </summary>
-    private async Task DeriveCancellationDeadlineAsync(
-        RunContext context, CancellationToken cancellationToken)
+    private async Task DeriveCancellationDeadlineAsync(RunContext context, CancellationToken cancellationToken)
     {
         var contract = context.Contract;
         if (contract.EndDate is not { } endDate
@@ -646,62 +482,37 @@ public sealed partial class StagedExtractionService
             return;
         }
 
-        var evidence = await dbContext.ExtractionEvidences
-            .AsNoTracking()
-            .Where(e => e.TenantId == context.TenantId
-                && e.ContractId == contract.Id
-                && (e.FieldName == "endDate" || e.FieldName == NoticePeriodDaysFieldName))
-            .Select(e => new { e.FieldName, e.Confidence, e.SourcePage, e.SourceSpan, e.CreatedAt, e.Id })
-            .ToListAsync(cancellationToken)
+        var latest = await LatestEvidenceAsync(
+                context.TenantId, contract.Id, ["endDate", NoticePeriodDaysFieldName], cancellationToken)
             .ConfigureAwait(false);
 
-        var latestByField = evidence
-            .GroupBy(e => e.FieldName, StringComparer.Ordinal)
-            .ToDictionary(
-                g => g.Key,
-                g => g.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id.Value).First(),
-                StringComparer.Ordinal);
-
-        // A human-set input counts as certain; an input with no evidence row at all is unknown, and
-        // an unknown confidence is never accepted (ExtractionConfidencePolicy.Decide).
+        // A human-set input counts as certain; an input with no evidence row is unknown, and an
+        // unknown confidence is never accepted (ExtractionConfidencePolicy.Decide).
         double? ConfidenceOf(string field) =>
             context.Protection.IsProtected(field)
                 ? ExtractionConfidencePolicy.OfficialConfidence
-                : latestByField.TryGetValue(field, out var row) ? row.Confidence : null;
+                : latest.TryGetValue(field, out var row) ? row.Confidence : null;
 
-        var endConfidence = ConfidenceOf("endDate");
-        var noticeConfidence = ConfidenceOf(NoticePeriodDaysFieldName);
-        double? confidence = endConfidence is { } e1 && noticeConfidence is { } e2 ? Math.Min(e1, e2) : null;
+        double? confidence = ConfidenceOf("endDate") is { } endConfidence && ConfidenceOf(NoticePeriodDaysFieldName) is { } noticeConfidence
+            ? Math.Min(endConfidence, noticeConfidence)
+            : null;
 
-        latestByField.TryGetValue(NoticePeriodDaysFieldName, out var noticeEvidence);
+        latest.TryGetValue(NoticePeriodDaysFieldName, out var noticeEvidence);
 
         contract.CancellationDeadline = derived;
 
-        // Stamped now, not with the run's start: the derived row must read as newer than the model's
-        // own cancellationDeadline row the Dates stage wrote a moment ago ("latest row per field" wins).
-        var derivedAt = clock.UtcNow;
-
-        var datesJobId = context.StageJobIds.TryGetValue(ExtractionStage.DatesAndRenewalTerms, out var jobId)
-            ? jobId
-            : (EntityId?)null;
-
-        dbContext.ExtractionEvidences.Add(new ExtractionEvidence
-        {
-            TenantId = context.TenantId,
-            ContractId = contract.Id,
-            SourceDocumentId = context.DocumentId,
-            ExtractionJobId = datesJobId,
-            ExtractionRunId = context.RunId,
-            FieldName = CancellationDeadlineFieldName,
-            Value = FormatDate(derived),
-            SourceSpan = noticeEvidence?.SourceSpan,
-            SourcePage = noticeEvidence?.SourcePage,
-            Confidence = confidence,
-            Decision = ExtractionConfidencePolicy.Decide(confidence),
-            DecidedAt = derivedAt,
-            CreatedAt = derivedAt,
-        });
-        context.RunEvidence.Add((CancellationDeadlineFieldName, confidence));
+        // Stamped now, not with the run's start: this row must read as newer than the model's own
+        // cancellationDeadline row ("latest row per field" wins).
+        AddEvidence(
+            context,
+            CancellationDeadlineFieldName,
+            FormatDate(derived),
+            confidence,
+            ExtractionConfidencePolicy.Decide(confidence),
+            clock.UtcNow,
+            context.StageJobIds.TryGetValue(ExtractionStage.DatesAndRenewalTerms, out var datesJobId) ? datesJobId : null,
+            noticeEvidence?.SourcePage,
+            noticeEvidence?.SourceSpan);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -709,25 +520,22 @@ public sealed partial class StagedExtractionService
     // ------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// One audit row's detail: field names and confidence numbers, never a field value
-    /// (ADR-011 w17 clause 21). The audit table is append-only, so a value written once cannot
-    /// be removed. F5: also the run id, the stages a resume reused and the stages left partial.
+    /// One audit row's detail: field names and confidence numbers, never a field value (ADR-011 w17
+    /// clause 21; the audit table is append-only), plus the run id, the stages a resume reused and the
+    /// stages left partial.
     /// </summary>
     private static string BuildExtractionAuditDetail(
-        EntityId contractId,
-        RunPlan plan,
-        IReadOnlyList<(string FieldName, double? Confidence)> runEvidence,
-        IReadOnlyList<StagedExtractionStageResult> failedStages)
+        RunContext context, IReadOnlyList<StagedExtractionStageResult> failedStages)
     {
         var fields = string.Join(",",
-            runEvidence
+            context.RunEvidence
                 .OrderBy(f => f.FieldName, StringComparer.OrdinalIgnoreCase)
                 .Select(f => f.FieldName + ":" + FormatConfidence(f.Confidence)));
-        var detail = $"contractId={contractId.Value}; fields={fields}; runId={plan.RunId}";
+        var detail = $"contractId={context.Contract.Id.Value}; fields={fields}; runId={context.RunId}";
 
-        if (plan.Resumed)
+        if (context.Plan.Reused.Count > 0)
         {
-            detail += "; resumedStages=" + string.Join(",", plan.Reused.Keys.OrderBy(s => s));
+            detail += "; resumedStages=" + string.Join(",", context.Plan.Reused.Keys.OrderBy(s => s));
         }
 
         if (failedStages.Count > 0)

@@ -33,7 +33,7 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
 
         var italian = string.Equals(language, "it", StringComparison.OrdinalIgnoreCase);
-        var lang = SupportedLanguage(language);
+        var lang = NumericLocale.SupportedLanguage(language) ?? "en"; // one of the five supported (D6)
 
         // ADR-032: a web-mode turn (the composer toggle) runs the open persona; every other
         // purpose is one of the four procurement purposes of ADR-030.
@@ -120,19 +120,6 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
             FiguresVerified: figures.Verified,
             FiguresReported: figures.Reported,
             SentencesRemoved: figures.SentencesRemoved);
-    }
-
-    /// <summary>The request's language: one of the five supported (D6), English for anything else.</summary>
-    private static string SupportedLanguage(string? language)
-    {
-        var tag = language?.Trim() ?? string.Empty;
-        var cut = tag.IndexOfAny(['-', '_']);
-        if (cut > 0)
-        {
-            tag = tag[..cut];
-        }
-
-        return NumericLocale.SupportedLanguages.FirstOrDefault(l => string.Equals(l, tag, StringComparison.OrdinalIgnoreCase)) ?? "en";
     }
 
     /// <summary>One <see cref="PackCorpus.Web"/> item per source, keyed <c>web:n</c> in list order.

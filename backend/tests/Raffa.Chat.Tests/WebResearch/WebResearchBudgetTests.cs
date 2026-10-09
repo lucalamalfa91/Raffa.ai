@@ -165,6 +165,5 @@ public sealed class WebResearchBudgetTests : IAsyncLifetime
         await using var _ = db;
 
         Assert.Null(await budget.TryReserveAsync(tenant));
-        Assert.False(await ((IWebResearchBudget)budget).TryConsumeAsync(tenant));
     }
 }

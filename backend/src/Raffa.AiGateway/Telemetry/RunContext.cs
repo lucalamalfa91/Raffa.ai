@@ -41,26 +41,17 @@ public static class RunContext
     /// and clears the step and any earlier turn's details; the run id is kept so a turn opened
     /// inside a run stays in it.</summary>
     public static IDisposable BeginTurn(string? turnId = null) =>
-        Replace(current => new RunContextData(current?.RunId, Sanitize(turnId) ?? NewId(), null)
-        {
-            TurnDetails = new ConcurrentQueue<string>(),
-        });
+        Replace(current => current with { TurnId = Sanitize(turnId) ?? NewId(), StepName = null, TurnDetails = new ConcurrentQueue<string>() });
 
     /// <summary>Starts an agentic run inside the current turn (a fresh id by default), step cleared.</summary>
     public static IDisposable BeginRun(string? runId = null) =>
-        Replace(current => new RunContextData(Sanitize(runId) ?? NewId(), current?.TurnId, null)
-        {
-            TurnDetails = current?.TurnDetails,
-        });
+        Replace(current => current with { RunId = Sanitize(runId) ?? NewId(), StepName = null });
 
     /// <summary>Names the step being executed; run and turn are kept.</summary>
     public static IDisposable BeginStep(string stepName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stepName);
-        return Replace(current => new RunContextData(current?.RunId, current?.TurnId, Sanitize(stepName))
-        {
-            TurnDetails = current?.TurnDetails,
-        });
+        return Replace(current => current with { StepName = Sanitize(stepName) });
     }
 
     /// <summary>
@@ -98,26 +89,15 @@ public static class RunContext
             return null;
         }
 
-        var trimmed = value.Trim();
-        if (trimmed.Length > MaxValueLength)
-        {
-            trimmed = trimmed[..MaxValueLength];
-        }
-
-        return string.Create(trimmed.Length, trimmed, static (span, source) =>
-        {
-            for (var i = 0; i < source.Length; i++)
-            {
-                var c = source[i];
-                span[i] = char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or ':' or '[' or ']' ? c : '_';
-            }
-        });
+        return new string(value.Trim().Take(MaxValueLength)
+            .Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-' or ':' or '[' or ']' ? c : '_')
+            .ToArray());
     }
 
-    private static Scope Replace(Func<RunContextData?, RunContextData> next)
+    private static Scope Replace(Func<RunContextData, RunContextData> next)
     {
         var previous = Ambient.Value;
-        Ambient.Value = next(previous);
+        Ambient.Value = next(previous ?? new RunContextData(null, null, null));
         return new Scope(previous);
     }
 

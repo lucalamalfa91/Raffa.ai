@@ -29,9 +29,8 @@ public sealed class ExtractionJobConfiguration : IEntityTypeConfiguration<Extrac
         // Queued row needs no sentinel.
         builder.Property(e => e.AttemptCount).HasDefaultValue(0);
 
-        // F5-T01/F5-T02: run id, input-hash checkpoint, typed failure kind and checkpoint counts.
-        // All nullable, no default: rows written before this change keep NULL and are never reused
-        // as a checkpoint (see StagedExtractionService), and the previous image never reads them.
+        // F5: run id, checkpoint hash/counts and failure kind. All nullable: older rows keep NULL and
+        // are never reused as a checkpoint.
         builder.Property(e => e.InputHash).HasMaxLength(64);
         builder.Property(e => e.FailureKind).HasConversion<string>().HasMaxLength(20);
         builder.Property(e => e.ClaimedBy).HasMaxLength(200);
