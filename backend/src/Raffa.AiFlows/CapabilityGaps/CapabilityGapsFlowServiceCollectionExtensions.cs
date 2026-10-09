@@ -54,6 +54,9 @@ internal static class CapabilityGapsFlowServiceCollectionExtensions
             sp.GetRequiredService<AiGatewayJevOptions>(),
             sp.GetRequiredService<JevVerdictClient>()));
 
+        // Runs the investigator beside the answer (ADR-031); its follow-up is appended by Raffa.Api.
+        services.AddSingleton<CapabilityCheckRunner>();
+
         return services;
     }
 }

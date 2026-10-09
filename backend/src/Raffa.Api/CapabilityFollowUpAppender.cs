@@ -1,3 +1,4 @@
+using Raffa.AiFlows.CapabilityGaps.Investigation;
 using System.Collections.Concurrent;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Reply;
