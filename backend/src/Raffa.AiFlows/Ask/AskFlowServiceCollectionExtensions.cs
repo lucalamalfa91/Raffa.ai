@@ -3,8 +3,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.AiFlows.Ask.Answering;
 using Raffa.AiFlows.Ask.Gate;
 using Raffa.AiFlows.Ask.Interview;
+using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiFlows.Ask.Planning;
 using Raffa.AiFlows.Ask.Routing;
+using Raffa.AiFlows.Shared.ContractContext;
 using Raffa.AiFlows.Shared.Guards;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiFlows.Shared.Routing;
@@ -51,6 +53,15 @@ internal static class AskFlowServiceCollectionExtensions
         // TryAddSingleton's "first registration wins" then makes the configured value the one that
         // actually resolves, this default only when no configuration overrides it.
         services.TryAddSingleton(new PackBudget());
+
+        // The Ask pack-composition root: one Scoped instance per request/job shares that scope's
+        // own DbContext-backed services instead of a second, independently-tracked copy.
+        services.AddScoped<AskCopilotService>();
+
+        // The (supplier name, geography) key a BenchmarkQuery requires: resolved once per request
+        // and shared by Ask's priced-line bands and the renewals/strategy endpoints. Scoped: reads
+        // IdentityWorkspaceDbContext (Scoped) and ISupplierNameLookup (Singleton).
+        services.AddScoped<BenchmarkKeyResolution>();
 
         return services;
     }

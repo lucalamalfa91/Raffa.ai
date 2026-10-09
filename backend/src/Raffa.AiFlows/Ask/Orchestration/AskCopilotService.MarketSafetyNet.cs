@@ -4,7 +4,7 @@ using Raffa.AiFlows.Shared.Pack;
 using Raffa.Documents.Contracts.Application;
 using Raffa.SharedKernel;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.Ask.Orchestration;
 
 /// <summary>
 /// Step 1 of Ask's agentic flow (<see cref="AskAgentFlow"/>), the deterministic market data check,
@@ -19,7 +19,7 @@ namespace Raffa.Api;
 /// estimates, never as the contract's own data. Querying the market RAG is the researcher's job
 /// (step 2), not this step's.
 /// </summary>
-internal sealed partial class AskCopilotService
+public sealed partial class AskCopilotService
 {
     private const int SafetyNetDealsTopK = 2;
 

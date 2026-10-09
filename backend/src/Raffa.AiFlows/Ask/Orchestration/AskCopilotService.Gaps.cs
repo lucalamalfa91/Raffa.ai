@@ -18,7 +18,7 @@ using Raffa.Chat.Domain;
 using Raffa.Documents.Contracts.Application;
 using Raffa.SharedKernel;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.Ask.Orchestration;
 
 /// <summary>
 /// The <see cref="GateLabel.CapabilityGap"/> branch of the composition root (ADR-030 D1–D3): a
@@ -32,7 +32,7 @@ namespace Raffa.Api;
 /// that already holds the answer. (A gap the capability investigator finds, ADR-031, is never this
 /// turn's reply: it follows the answer as a separate message — <see cref="CapabilityCheckRunner"/>.)
 /// </summary>
-internal sealed partial class AskCopilotService
+public sealed partial class AskCopilotService
 {
     private const string AuditDraftedAction = "chat.drafted";
 

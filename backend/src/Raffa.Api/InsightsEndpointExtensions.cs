@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Shared.ContractContext;
 using Raffa.Api.Infrastructure;
 using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;

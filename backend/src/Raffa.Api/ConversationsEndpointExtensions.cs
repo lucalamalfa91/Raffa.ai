@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiFlows.CapabilityGaps.Investigation;
 using System.Globalization;
 using System.Security.Claims;
@@ -342,7 +343,7 @@ public static class ConversationsEndpointExtensions
         PostConversationMessageRequest? request,
         HttpRequest httpRequest,
         ConversationService conversationService,
-        Raffa.Api.AskCopilotService askCopilotService,
+        AskCopilotService askCopilotService,
         CapabilityFollowUpAppender capabilityFollowUpAppender,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
@@ -457,7 +458,7 @@ public static class ConversationsEndpointExtensions
     /// </para>
     /// </summary>
     internal static async Task<object> AskAndAppendAsync(
-        Raffa.Api.AskCopilotService askCopilotService,
+        AskCopilotService askCopilotService,
         ConversationService conversationService,
         CapabilityFollowUpAppender capabilityFollowUpAppender,
         TenantId tenantId,
