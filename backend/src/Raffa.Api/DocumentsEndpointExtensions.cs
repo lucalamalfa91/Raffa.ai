@@ -83,7 +83,7 @@ public static class DocumentsEndpointExtensions
     /// <summary>Allowance for multipart framing (boundaries, part headers) on top of
     /// <see cref="DocumentAdmissionOptions.MaxFileBytes"/> when sizing the request-body cap; the
     /// file itself is still measured exactly.</summary>
-    internal const long MultipartFramingAllowanceBytes = 1024 * 1024;
+    private const long MultipartFramingAllowanceBytes = 1024 * 1024;
 
     public static IEndpointRouteBuilder MapDocumentsEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -195,62 +195,16 @@ public static class DocumentsEndpointExtensions
             return Results.BadRequest("Expected multipart/form-data with a 'file' field.");
         }
 
-        var bodyLimit = admissionOptions.MaxFileBytes + MultipartFramingAllowanceBytes;
-        if (request.ContentLength is { } declaredLength && declaredLength > bodyLimit)
+        var (_, file, formRefusal) = await ReadUploadFormAsync(request, admissionOptions, cancellationToken);
+        if (formRefusal is not null)
         {
-            // The declared body is already over the limit: refuse before reading a single byte.
-            return TooLarge(admissionOptions);
+            return formRefusal;
         }
 
-        var bodySizeFeature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
-        if (bodySizeFeature is { IsReadOnly: false })
+        var (fileBytes, format, bytesRefusal) = await ReadUploadBytesAsync(file!, admissionOptions, cancellationToken);
+        if (bytesRefusal is not null)
         {
-            bodySizeFeature.MaxRequestBodySize = bodyLimit;
-        }
-
-        IFormCollection form;
-        try
-        {
-            form = await request.ReadFormAsync(cancellationToken);
-        }
-        catch (BadHttpRequestException exception) when (exception.StatusCode == StatusCodes.Status413PayloadTooLarge)
-        {
-            return TooLarge(admissionOptions);
-        }
-        catch (InvalidDataException exception)
-        {
-            return Results.BadRequest($"The multipart body could not be read: {exception.Message}");
-        }
-
-        var file = form.Files[FileFieldName];
-        if (file is null || file.Length == 0)
-        {
-            return Results.BadRequest("A non-empty 'file' form field is required.");
-        }
-
-        if (file.Length > admissionOptions.MaxFileBytes)
-        {
-            return TooLarge(admissionOptions);
-        }
-
-        byte[] fileBytes;
-        await using (var uploadStream = file.OpenReadStream())
-        await using (var buffer = new MemoryStream())
-        {
-            await uploadStream.CopyToAsync(buffer, cancellationToken);
-            fileBytes = buffer.ToArray();
-        }
-
-        if (fileBytes.LongLength > admissionOptions.MaxFileBytes)
-        {
-            return TooLarge(admissionOptions);
-        }
-
-        if (!DocumentFormatSniffer.TryDetect(file.FileName, fileBytes, out var format))
-        {
-            return Results.Json(
-                DocumentFormatSniffer.RejectionMessage,
-                statusCode: StatusCodes.Status415UnsupportedMediaType);
+            return bytesRefusal;
         }
 
         // ADR-027 §D1 (task E16/F02/US03/T01, closes NW-27): everything above this line is a
@@ -269,9 +223,9 @@ public static class DocumentsEndpointExtensions
         //   * The 201 carries no contractId. Classification has not run, so there is nothing to
         //     link yet; the client polls GET /api/documents for the progression. Answering with a
         //     fabricated or null-but-meaningful id here is the guessing this task removes.
-        using var storageContent = new MemoryStream(fileBytes);
+        using var storageContent = new MemoryStream(fileBytes!);
         var result = await uploadService.UploadAsync(
-            tenantId, file.FileName, format.MimeType, storageContent, caller.Identity!, cancellationToken);
+            tenantId, file!.FileName, format!.MimeType, storageContent, caller.Identity!, cancellationToken);
         if (result.IsFailure)
         {
             return Results.BadRequest(result.Error);
@@ -747,7 +701,76 @@ public static class DocumentsEndpointExtensions
         return true;
     }
 
-    internal static IResult TooLarge(DocumentAdmissionOptions options) =>
+    /// <summary>
+    /// The request-level admission every upload endpoint (<c>POST /api/documents</c>, <c>POST /api/quotes</c>)
+    /// applies, before any storage, parse or model call, in this order: 413 when the declared or streamed
+    /// body is over <c>Documents:MaxFileBytes</c>, 400 for an unreadable multipart body or a missing/empty
+    /// <c>file</c> field, 413 when the file itself is over the limit. Either the form and its file come back,
+    /// or the refusal to return.
+    /// </summary>
+    internal static async Task<(IFormCollection? Form, IFormFile? File, IResult? Refusal)> ReadUploadFormAsync(
+        HttpRequest request, DocumentAdmissionOptions options, CancellationToken cancellationToken)
+    {
+        var bodyLimit = options.MaxFileBytes + MultipartFramingAllowanceBytes;
+        if (request.ContentLength is { } declaredLength && declaredLength > bodyLimit)
+        {
+            // The declared body is already over the limit: refuse before reading a single byte.
+            return (null, null, TooLarge(options));
+        }
+
+        var bodySizeFeature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (bodySizeFeature is { IsReadOnly: false })
+        {
+            bodySizeFeature.MaxRequestBodySize = bodyLimit;
+        }
+
+        IFormCollection form;
+        try
+        {
+            form = await request.ReadFormAsync(cancellationToken);
+        }
+        catch (BadHttpRequestException exception) when (exception.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            return (null, null, TooLarge(options));
+        }
+        catch (InvalidDataException exception)
+        {
+            return (null, null, Results.BadRequest($"The multipart body could not be read: {exception.Message}"));
+        }
+
+        var file = form.Files[FileFieldName];
+        if (file is null || file.Length == 0)
+        {
+            return (null, null, Results.BadRequest("A non-empty 'file' form field is required."));
+        }
+
+        return file.Length > options.MaxFileBytes ? (null, null, TooLarge(options)) : (form, file, null);
+    }
+
+    /// <summary>The second half of the admission: reads the file once (413 when its bytes are over the
+    /// limit) and sniffs its format (415 when extension and magic bytes disagree).</summary>
+    internal static async Task<(byte[]? Bytes, DocumentFormatDetection? Format, IResult? Refusal)> ReadUploadBytesAsync(
+        IFormFile file, DocumentAdmissionOptions options, CancellationToken cancellationToken)
+    {
+        byte[] fileBytes;
+        await using (var uploadStream = file.OpenReadStream())
+        await using (var buffer = new MemoryStream())
+        {
+            await uploadStream.CopyToAsync(buffer, cancellationToken);
+            fileBytes = buffer.ToArray();
+        }
+
+        if (fileBytes.LongLength > options.MaxFileBytes)
+        {
+            return (null, null, TooLarge(options));
+        }
+
+        return DocumentFormatSniffer.TryDetect(file.FileName, fileBytes, out var format)
+            ? (fileBytes, format, null)
+            : (null, null, Results.Json(DocumentFormatSniffer.RejectionMessage, statusCode: StatusCodes.Status415UnsupportedMediaType));
+    }
+
+    private static IResult TooLarge(DocumentAdmissionOptions options) =>
         Results.Json(
             $"Raffa accepts files up to {options.MaxFileBytes / (1024 * 1024)} MB. This file is larger.",
             statusCode: StatusCodes.Status413PayloadTooLarge);
