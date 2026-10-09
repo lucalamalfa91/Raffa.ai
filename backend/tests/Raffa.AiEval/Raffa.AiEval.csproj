@@ -49,6 +49,7 @@
          because this project never names those types. Renewals is named: AskEvalHost swaps
          RenewalsDbContext to InMemory so Q3 persist-all does not dial the unreachable placeholder. -->
     <ProjectReference Include="..\..\src\Raffa.Api\Raffa.Api.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.AiFlows\Raffa.AiFlows.csproj" />
     <ProjectReference Include="..\..\src\Raffa.Renewals\Raffa.Renewals.csproj" />
     <ProjectReference Include="..\..\src\Raffa.Chat\Raffa.Chat.csproj" />
     <ProjectReference Include="..\..\src\Raffa.AiGateway\Raffa.AiGateway.csproj" />

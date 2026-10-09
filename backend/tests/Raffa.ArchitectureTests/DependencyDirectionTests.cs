@@ -54,6 +54,11 @@ public class DependencyDirectionTests
         // Listed here so the violation check covers it; absent from DomainModules and
         // AllowedReferences (a domain module referencing this host is a detectable violation).
         "Raffa.Tools",
+        // ADR-002 amendment (AI flows layer): Raffa.AiFlows sits above the domain modules and is
+        // referenced only by the hosts. Listed here so the violation check above sees a domain
+        // module referencing it (without this entry the filter would drop the reference and the
+        // test would stay blind); deliberately absent from DomainModules and AllowedReferences.
+        "Raffa.AiFlows",
     ];
 
     /// <summary>
@@ -91,6 +96,46 @@ public class DependencyDirectionTests
         "OpenAI",
         "Google.Cloud.",
         "Amazon.",
+    ];
+
+    /// <summary>The project name of the AI flows layer (ADR-002 amendment).</summary>
+    internal const string AiFlows = "Raffa.AiFlows";
+
+    /// <summary>
+    /// The only Raffa projects <c>Raffa.AiFlows</c> may reference: the kernel, the gateway and the
+    /// domain modules it orchestrates. Never a host (Api, Worker) nor Tools, Messaging or Storage.
+    /// </summary>
+    internal static readonly HashSet<string> AiFlowsAllowedReferences =
+    [
+        "Raffa.SharedKernel",
+        "Raffa.AiGateway",
+        "Raffa.Chat",
+        "Raffa.Documents.Contracts",
+        "Raffa.Quotes",
+        "Raffa.Market",
+        "Raffa.Insights",
+        "Raffa.Benchmark",
+        "Raffa.Renewals",
+        "Raffa.Savings",
+        "Raffa.Suppliers.Products",
+        "Raffa.Identity.Workspace",
+    ];
+
+    /// <summary>The only projects that may reference <c>Raffa.AiFlows</c>: the two composition roots.</summary>
+    internal static readonly HashSet<string> AiFlowsConsumers = ["Raffa.Api", "Raffa.Worker"];
+
+    /// <summary>
+    /// Package prefixes <c>Raffa.AiFlows</c> must not reference directly: every provider SDK a
+    /// domain module is barred from, plus the persistence stack (EF Core, Npgsql, Pgvector). Data
+    /// and persistence stay in the domain modules; AiFlows reaches a DbContext only transitively.
+    /// </summary>
+    internal static readonly string[] ForbiddenAiFlowsPackagePrefixes =
+    [
+        .. ForbiddenSdkPrefixes,
+        "Microsoft.EntityFrameworkCore",
+        "EFCore.",
+        "Npgsql",
+        "Pgvector",
     ];
 
     [Theory]
@@ -163,6 +208,57 @@ public class DependencyDirectionTests
             "IBenchmarkProviderAdapter implementation, isolated from the registry.");
     }
 
+    /// <summary>
+    /// ADR-002 amendment: <c>Raffa.AiFlows</c> may reference only the kernel, the gateway and the
+    /// domain modules. In particular never a host (Api, Worker), Tools, Messaging or Storage.
+    /// </summary>
+    [Fact]
+    public void AiFlows_references_only_modules_and_kernel()
+    {
+        var csprojPath = Path.Combine(SolutionRoot, "src", AiFlows, $"{AiFlows}.csproj");
+        Assert.True(File.Exists(csprojPath), $"Project file not found: {csprojPath}");
+
+        var violations = FindAiFlowsProjectReferenceViolations(csprojPath);
+
+        Assert.True(
+            violations.Count == 0,
+            $"[ADR-002] {AiFlows} has forbidden project references: [{string.Join(", ", violations)}]. " +
+            $"Allowed: [{string.Join(", ", AiFlowsAllowedReferences)}].");
+    }
+
+    /// <summary>
+    /// ADR-002 amendment: nothing below the hosts may depend on the AI flows layer, otherwise a
+    /// module that <c>Raffa.AiFlows</c> orchestrates would form a cycle with it. The scan covers
+    /// every <c>src/*/*.csproj</c>, so it also catches projects outside <see cref="DomainModules"/>
+    /// (Messaging, Storage, Tools, AiGateway, Benchmark, SharedKernel).
+    /// </summary>
+    [Fact]
+    public void Only_hosts_reference_AiFlows()
+    {
+        var offenders = FindAiFlowsConsumerViolations(Path.Combine(SolutionRoot, "src"));
+
+        Assert.True(
+            offenders.Count == 0,
+            $"[ADR-002] Only [{string.Join(", ", AiFlowsConsumers)}] may reference {AiFlows}, but " +
+            $"[{string.Join(", ", offenders)}] do. Move the dependency into {AiFlows} or behind a port " +
+            "defined in the module.");
+    }
+
+    [Fact]
+    public void AiFlows_must_not_reference_provider_sdks_or_persistence_packages()
+    {
+        var csprojPath = Path.Combine(SolutionRoot, "src", AiFlows, $"{AiFlows}.csproj");
+        Assert.True(File.Exists(csprojPath), $"Project file not found: {csprojPath}");
+
+        var forbidden = FindForbiddenAiFlowsPackages(csprojPath);
+
+        Assert.True(
+            forbidden.Count == 0,
+            $"[ADR-002] {AiFlows} directly references provider SDK or persistence packages: " +
+            $"[{string.Join(", ", forbidden)}]. Provider SDKs belong behind Raffa.AiGateway; " +
+            "data access belongs in the domain modules.");
+    }
+
     [Fact]
     public void All_domain_modules_exist_in_solution()
     {
@@ -177,7 +273,7 @@ public class DependencyDirectionTests
         foreach (var name in new[]
         {
             "Raffa.SharedKernel", "Raffa.AiGateway", "Raffa.Benchmark",
-            "Raffa.Api", "Raffa.Worker"
+            "Raffa.Api", "Raffa.Worker", AiFlows
         })
         {
             var csprojPath = Path.Combine(SolutionRoot, "src", name, $"{name}.csproj");
@@ -236,6 +332,40 @@ public class DependencyDirectionTests
             .Select(v => Path.GetFileNameWithoutExtension(v!.Replace('\\', '/')))
             .ToList();
     }
+
+    /// <summary>
+    /// Raffa project references of <c>Raffa.AiFlows</c> outside <see cref="AiFlowsAllowedReferences"/>.
+    /// Filters on the <c>Raffa.</c> prefix rather than <see cref="AllRaffaProjects"/>, so projects
+    /// that are not listed there (Messaging, Storage) are caught as well.
+    /// </summary>
+    internal static List<string> FindAiFlowsProjectReferenceViolations(string csprojPath) =>
+        GetProjectReferenceNames(csprojPath)
+            .Where(r => r.StartsWith("Raffa.", StringComparison.Ordinal) && !AiFlowsAllowedReferences.Contains(r))
+            .ToList();
+
+    /// <summary>Packages of the csproj that <c>Raffa.AiFlows</c> must not reference directly.</summary>
+    internal static List<string> FindForbiddenAiFlowsPackages(string csprojPath) =>
+        GetPackageReferenceNames(csprojPath)
+            .Where(pkg => ForbiddenAiFlowsPackagePrefixes.Any(prefix =>
+                pkg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+    /// <summary>True if the csproj has a <c>ProjectReference</c> to <c>Raffa.AiFlows</c>.</summary>
+    internal static bool ReferencesAiFlows(string csprojPath) =>
+        GetProjectReferenceNames(csprojPath).Contains(AiFlows);
+
+    /// <summary>
+    /// Names of the projects under <paramref name="srcRoot"/> (<c>src/*/*.csproj</c>) that
+    /// reference <c>Raffa.AiFlows</c> without being one of <see cref="AiFlowsConsumers"/>.
+    /// </summary>
+    internal static List<string> FindAiFlowsConsumerViolations(string srcRoot) =>
+        Directory.EnumerateDirectories(srcRoot)
+            .SelectMany(dir => Directory.EnumerateFiles(dir, "*.csproj", SearchOption.TopDirectoryOnly))
+            .Where(ReferencesAiFlows)
+            .Select(path => Path.GetFileNameWithoutExtension(path))
+            .Where(name => !AiFlowsConsumers.Contains(name))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
 
     internal static List<string> GetPackageReferenceNames(string csprojPath)
     {

@@ -30,5 +30,8 @@
     <!-- The extraction pipeline resolves Contract.SupplierId through ISupplierResolver; without
          this module on the Worker host, LinkSupplierAsync no-ops and Portfolio/Renewals show "—". -->
     <ProjectReference Include="..\Raffa.Suppliers.Products\Raffa.Suppliers.Products.csproj" />
+    <!-- ADR-002 amendment (AI flows layer): AddWorkerHost calls AddAiFlows(); Raffa.AiFlows is
+         referenced only by the hosts. Empty for now: no flow has moved in yet. -->
+    <ProjectReference Include="..\Raffa.AiFlows\Raffa.AiFlows.csproj" />
   </ItemGroup>
 </Project>
