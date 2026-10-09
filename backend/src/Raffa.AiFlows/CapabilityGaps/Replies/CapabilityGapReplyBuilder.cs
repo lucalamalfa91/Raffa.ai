@@ -1,9 +1,11 @@
+using Raffa.AiFlows.CapabilityGaps.Agents;
+using Raffa.AiFlows.CapabilityGaps.Drafting;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Pack;
+using Raffa.Chat.Application.Reply;
 
-namespace Raffa.Chat.Application.Reply;
+namespace Raffa.AiFlows.CapabilityGaps.Replies;
 
 /// <summary>
 /// Assembles the two reply shapes a <see cref="Domain.GateLabel.CapabilityGap"/> turn can take

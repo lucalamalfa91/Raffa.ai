@@ -1,13 +1,15 @@
+using Raffa.AiFlows.CapabilityGaps.Agents;
+using Raffa.AiFlows.CapabilityGaps.Drafting;
+using Raffa.AiFlows.CapabilityGaps.Guards;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
-using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Playbook;
 using Raffa.SharedKernel;
 
-namespace Raffa.Chat.Tests.Drafting;
+namespace Raffa.AiFlows.Tests.CapabilityGaps.Drafting;
 
 /// <summary>ADR-030 D3: planner then writer, guarded, one retry, then the template — and never
 /// nothing.</summary>

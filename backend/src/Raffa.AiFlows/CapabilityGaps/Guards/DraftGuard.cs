@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using Raffa.Chat.Application.Guards;
 using Raffa.Chat.Application.Pack;
 
-namespace Raffa.Chat.Application.Drafting;
+namespace Raffa.AiFlows.CapabilityGaps.Guards;
 
 /// <summary>
 /// The grounding gate of a drafted email (ADR-030 D3) — the draft's counterpart of

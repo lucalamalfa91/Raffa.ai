@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Raffa.Chat.Application.Feedback;
+namespace Raffa.AiFlows.CapabilityGaps.Guards;
 
 /// <summary>
 /// F4-T01: the server-side scrub of the free text typed in the feedback card, applied before it is

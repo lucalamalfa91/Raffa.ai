@@ -1,6 +1,7 @@
-using Raffa.Chat.Application.Drafting;
 
-namespace Raffa.Chat.Tests.Drafting;
+using Raffa.AiFlows.CapabilityGaps.Agents;
+
+namespace Raffa.AiFlows.Tests.CapabilityGaps.Agents;
 
 /// <summary>The two drafting prompts are versioned twice — the C# constants the workflow sends
 /// and the markdown a person reviews (<c>Prompts/draft/v1.md</c>). Same drift test as
@@ -23,7 +24,7 @@ public sealed class DraftingAgentsPromptTests
     public void Markdown_file_carries_both_constants_verbatim_and_the_same_version()
     {
         var versionTag = DraftingAgents.Version.Replace("draft-", string.Empty, StringComparison.Ordinal);
-        var path = RepoRelative(Path.Combine("src", "Raffa.Chat", "Prompts", "draft", $"{versionTag}.md"));
+        var path = RepoRelative(Path.Combine("src", "Raffa.AiFlows", "CapabilityGaps", "Prompts", "draft", $"{versionTag}.md"));
 
         Assert.True(File.Exists(path), $"Expected the versioned prompt file at {path}.");
 

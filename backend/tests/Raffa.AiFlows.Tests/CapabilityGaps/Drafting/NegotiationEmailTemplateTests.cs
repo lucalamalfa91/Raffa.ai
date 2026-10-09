@@ -1,8 +1,9 @@
-using Raffa.Chat.Application.Drafting;
+using Raffa.AiFlows.CapabilityGaps.Drafting;
+using Raffa.AiFlows.CapabilityGaps.Guards;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Playbook;
 
-namespace Raffa.Chat.Tests.Drafting;
+namespace Raffa.AiFlows.Tests.CapabilityGaps.Drafting;
 
 public sealed class NegotiationEmailTemplateTests
 {

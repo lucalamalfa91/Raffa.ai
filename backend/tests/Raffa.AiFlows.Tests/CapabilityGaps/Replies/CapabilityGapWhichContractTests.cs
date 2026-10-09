@@ -1,8 +1,9 @@
+using Raffa.AiFlows.CapabilityGaps.Replies;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Reply;
 
-namespace Raffa.Chat.Tests.Reply;
+namespace Raffa.AiFlows.Tests.CapabilityGaps.Replies;
 
 /// <summary>
 /// R1-07: the "which contract?" reply for the email gaps has one builder, behind both the in-turn

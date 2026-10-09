@@ -1,8 +1,9 @@
+using Raffa.AiFlows.CapabilityGaps.Replies;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Reply;
 
-namespace Raffa.Chat.Tests.Feedback;
+namespace Raffa.AiFlows.Tests.CapabilityGaps.Replies;
 
 /// <summary>ADR-030 D5's privacy allow-list, proven on the text that actually leaves the tenant.</summary>
 public sealed class FeatureRequestIssueTextTests

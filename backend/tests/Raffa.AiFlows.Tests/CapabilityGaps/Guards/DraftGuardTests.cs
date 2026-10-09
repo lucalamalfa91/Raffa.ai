@@ -1,7 +1,7 @@
-using Raffa.Chat.Application.Drafting;
+using Raffa.AiFlows.CapabilityGaps.Guards;
 using Raffa.Chat.Application.Pack;
 
-namespace Raffa.Chat.Tests.Drafting;
+namespace Raffa.AiFlows.Tests.CapabilityGaps.Guards;
 
 public sealed class DraftGuardTests
 {

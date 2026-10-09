@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Raffa.AiFlows.CapabilityGaps.Replies;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;

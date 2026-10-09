@@ -3,7 +3,7 @@ using Raffa.Chat.Application.Guards;
 using Raffa.Chat.Application.Language;
 using Raffa.Chat.Application.Pack;
 
-namespace Raffa.Chat.Application.Drafting;
+namespace Raffa.AiFlows.CapabilityGaps.Drafting;
 
 /// <summary>
 /// The deterministic fallback of the drafting workflow (ADR-030 D3): an email written from the

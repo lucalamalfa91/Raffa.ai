@@ -233,8 +233,8 @@ builder.Configuration.GetSection(Raffa.AiFlows.Negotiation.Options.CouncilOption
 builder.Services.AddSingleton(councilOptions);
 
 // Chat:Drafting (ADR-030 D3): the drafting workflow's kill switch and bounds, same shape.
-var draftingOptions = new Raffa.Chat.Application.Drafting.DraftingOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
+var draftingOptions = new Raffa.AiFlows.CapabilityGaps.Drafting.DraftingOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.CapabilityGaps.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
 builder.Services.AddSingleton(draftingOptions);
 
 // ADR-031 / INV-03: Chat:GapInvestigation — the capability investigator's mode (Triggered by

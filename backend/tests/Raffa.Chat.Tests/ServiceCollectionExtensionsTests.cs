@@ -1,7 +1,6 @@
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application;
-using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Infrastructure;
 using Raffa.SharedKernel;
@@ -51,7 +50,6 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Answering.AnswerComposer>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IClock>());
 
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<NegotiationDraftingWorkflow>());
         Assert.IsType<NullFeatureRequestPublisher>(scope.ServiceProvider.GetRequiredService<IFeatureRequestPublisher>());
         Assert.Equal("local", scope.ServiceProvider.GetRequiredService<FeedbackOptions>().Environment);
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchComposer>());

@@ -1,8 +1,9 @@
+using Raffa.AiFlows.CapabilityGaps.Drafting;
+using Raffa.AiFlows.CapabilityGaps.Replies;
 using Raffa.AiFlows.Negotiation.Orchestration;
 using Raffa.AiGateway.Telemetry;
 using System.Globalization;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Interview;

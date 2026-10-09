@@ -1,4 +1,4 @@
-namespace Raffa.Chat.Application.Drafting;
+namespace Raffa.AiFlows.CapabilityGaps.Agents;
 
 /// <summary>
 /// The two agents of the drafting workflow (ADR-030 D3), each a versioned persona plus the strict

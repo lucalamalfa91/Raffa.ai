@@ -4,7 +4,6 @@ using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
-using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Interview;
@@ -91,12 +90,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DomainGate>();
         services.AddScoped<IntentPlanner>();
         services.AddScoped<AnswerComposer>();
-
-        // The drafting workflow (Application.Drafting, ADR-030 D3): the offer planner and the
-        // negotiation writer behind a `draft` reply. Same TryAdd-options / Scoped-service shape as
-        // the council above; the host binds Chat:Drafting before calling this.
-        services.TryAddSingleton(new DraftingOptions());
-        services.AddScoped<NegotiationDraftingWorkflow>();
 
         // The capability investigator (Application.Gaps, ADR-031): decides whether a fresh turn asks
         // for a feature Raffa does not have. The verdict is decided by the Jev classify-role pilot

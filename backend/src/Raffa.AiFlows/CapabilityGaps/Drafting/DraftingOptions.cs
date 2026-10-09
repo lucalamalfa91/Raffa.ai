@@ -1,4 +1,4 @@
-namespace Raffa.Chat.Application.Drafting;
+namespace Raffa.AiFlows.CapabilityGaps.Drafting;
 
 /// <summary>Bound from <c>Chat:Drafting</c>. The kill switch and the bounds of the drafting
 /// workflow (<see cref="NegotiationDraftingWorkflow"/>, ADR-030 D3).</summary>

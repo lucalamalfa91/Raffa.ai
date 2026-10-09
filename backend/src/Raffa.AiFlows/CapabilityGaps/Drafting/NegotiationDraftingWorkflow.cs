@@ -1,12 +1,14 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Raffa.AiFlows.CapabilityGaps.Agents;
+using Raffa.AiFlows.CapabilityGaps.Guards;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Guards;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 
-namespace Raffa.Chat.Application.Drafting;
+namespace Raffa.AiFlows.CapabilityGaps.Drafting;
 
 /// <summary>Where the draft came from — audited: a template fallback counts as a guard
 /// intervention on the turn, so the golden set catches a fixture or prompt regression.</summary>

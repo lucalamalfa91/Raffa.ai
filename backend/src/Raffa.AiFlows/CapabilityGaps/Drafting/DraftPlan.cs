@@ -1,6 +1,6 @@
 using Raffa.Chat.Application.Pack;
 
-namespace Raffa.Chat.Application.Drafting;
+namespace Raffa.AiFlows.CapabilityGaps.Drafting;
 
 /// <summary>One ask of the offer: the lever, the quotable sentence, the pack keys it rests on.</summary>
 public sealed record DraftAsk(string Lever, string Sentence, IReadOnlyList<string> CitationKeys);

@@ -1,8 +1,10 @@
 using System.Text.RegularExpressions;
+using Raffa.AiFlows.CapabilityGaps.Guards;
+using Raffa.AiFlows.CapabilityGaps.Replies;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Gaps;
 
-namespace Raffa.Chat.Tests.Feedback;
+namespace Raffa.AiFlows.Tests.CapabilityGaps.Guards;
 
 /// <summary>
 /// F4-T01: the scrub of the free text before it reaches a public GitHub issue. The corpus is the

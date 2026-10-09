@@ -545,7 +545,7 @@ public sealed class FixtureAiGateway(
     }
 
     /// <summary>A council play's snippet up to its " Timing:" / " Fallback:" / " Grounded in:"
-    /// trail — the same cut <c>Raffa.Chat.Application.Drafting.DraftPlan.AskSentence</c> makes
+    /// trail — the same cut <c>Raffa.AiFlows.CapabilityGaps.Drafting.DraftPlan.AskSentence</c> makes
     /// (duplicated: this project cannot reference Raffa.Chat).</summary>
     private static string QuotableAsk(string snippet)
     {
@@ -577,7 +577,7 @@ public sealed class FixtureAiGateway(
 
     /// <summary>Structural mirror of the analyst/planner/writer inputs
     /// (<c>Raffa.AiFlows.Negotiation.Orchestration.NegotiationCouncil</c> and
-    /// <c>Raffa.Chat.Application.Drafting.NegotiationDraftingWorkflow</c>): only the fields the
+    /// <c>Raffa.AiFlows.CapabilityGaps.Drafting.NegotiationDraftingWorkflow</c>): only the fields the
     /// doubles read; every other field of the real input is ignored.</summary>
     private sealed record FixtureAnalysisInput(
         IReadOnlyList<FixturePackItem>? Items,
