@@ -77,7 +77,8 @@ public static class WorkerServiceCollectionExtensions
         // null ISupplierResolver and left every extracted supplier name unlinked.
         services.AddSuppliersProductsModule(documentsContractsConnectionString);
         // AI flows layer (ADR-002 amendment): after every module so a flow can replace a module
-        // default. Empty for now -- no flow has moved in yet, so this registers nothing.
+        // default. The quote-extraction flow is skipped here (this host does not compose the Quotes
+        // module); no other flow has moved in yet.
         services.AddAiFlows();
 
         // TryAdd: Raffa.Worker.Tests pre-registers a fake IActiveRenewalContractsSource /

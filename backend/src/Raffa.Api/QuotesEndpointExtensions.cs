@@ -1,3 +1,4 @@
+using Raffa.AiFlows.QuoteExtraction.Orchestration;
 using Raffa.Api.Infrastructure;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Quotes.Application;
@@ -18,7 +19,7 @@ namespace Raffa.Api;
 /// correction"; parent story us-02-sku-normalization AC-2's "...and allow manual product mapping"
 /// half, AC-3, task E05/F01/US02/T02, sku-recalculate). Thin composition per
 /// ADR-002 — <see cref="QuoteUploadService"/> owns the upload/storage/audit decisions,
-/// <see cref="QuoteExtractionPipeline"/> owns the hybrid-parse/AI-extraction orchestration (see
+/// <c>QuoteExtractionPipeline</c> owns the hybrid-parse/AI-extraction orchestration (see
 /// that type's own doc comment for why it, not a domain module, is the AI Gateway call site),
 /// <see cref="MarketAssessmentService"/> owns the benchmark-matching/classification/target-saving
 /// decisions, and <see cref="SkuMappingService"/> owns the manual-mapping/recalculate decisions; this
@@ -60,7 +61,7 @@ public static class QuotesEndpointExtensions
     /// uploaded bytes + creates the queued <c>QuoteExtractionJob</c> (<see cref="QuoteUploadService"/>),
     /// then — same "read the bytes once, reuse them for the pipeline" shape `POST /api/documents`
     /// already uses, since an <c>IFormFile</c>'s own stream is not guaranteed re-readable after the
-    /// first copy — runs <see cref="QuoteExtractionPipeline"/> synchronously before responding
+    /// first copy — runs <c>QuoteExtractionPipeline</c> synchronously before responding
     /// (AC-2 "line items extract...", AC-4 "reuse the epic-02 hybrid OCR path"). A pipeline
     /// failure is reported honestly in the response (`processingStatus`/`lineItemCount` fall back
     /// to the just-uploaded, pre-processing values) but never turns an already-successful upload

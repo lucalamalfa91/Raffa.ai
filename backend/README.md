@@ -2478,18 +2478,17 @@ established for contracts (task E02/F06/US01/T01).
   — see "Dependency direction" below), and a quote is not a contract (spec
   §11's own Quote → Benchmark → Assessment → Negotiate → **Contract** flow
   treats "becomes a contract" as a later, explicit step).
-- `Raffa.Api.QuoteExtractionPipeline` (internal — host-composition
-  wiring, the same treatment `Raffa.Worker.Queue.QueueConsumerHostedService`
-  already gets from `Raffa.ArchitectureTests
-  .DependencyDirectionTests.Host_must_not_contain_domain_types`) is the one
+- `Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline` (public, in the AI flows
+  project `Raffa.AiFlows`, which sits above the domain modules and is referenced only by
+  the hosts; registered by `AddAiFlows` → `AddQuoteExtractionFlow`) is the one
   place that calls both `Raffa.AiGateway` and `Raffa.Quotes`: it reuses
   the epic-02 `Raffa.Documents.Contracts.Application.Extraction
   .HybridDocumentParsingService` verbatim (native text extraction, or the
   `ocr` gateway role — Azure AI Document Intelligence, ADR-017 — for
   scanned/image/low-text quote PDFs; full document, no 2-page cap; AC-4),
-  then runs one `extract` call against `Raffa.Quotes.Application
-  .Extraction.QuoteLineJsonSchema.LineItems()` and hands the raw payload to
-  `Raffa.Quotes.Application.Extraction.QuoteLineExtractionService` to
+  then runs one `extract` call against `Raffa.AiFlows.QuoteExtraction
+  .Schemas.QuoteLineJsonSchema.LineItems()` and hands the raw payload to
+  `Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionService` to
   persist.
 - AC-3 ("Separate arithmetic from LLM language", Appendix C rule 6): the
   line-item schema has **no** computed-total property at all — the model
@@ -2499,7 +2498,7 @@ established for contracts (task E02/F06/US01/T01).
   the model did not report a unit price directly) and
   `QuoteLine.ExtendedPrice` (`quantity × unitPrice`) in plain C# decimal
   arithmetic — proved directly by
-  `Raffa.Quotes.Tests.QuoteLineExtractionServiceTests` and end-to-end by
+  `Raffa.AiFlows.Tests.QuoteExtraction.QuoteLineExtractionServiceTests` and end-to-end by
   `Raffa.IntegrationTests.QuoteEndToEndTests`.
 - Every line carries the same evidence + confidence tail as every other
   extraction pipeline in this codebase (`sourceSpan`/`sourcePage`/
@@ -2575,7 +2574,7 @@ canonical product mapping") and the "show unmatched SKUs" half of AC-2:
   `SkuNormalizationService.NormalizeAsync` re-reads a quote's own lines from
   the database and sets each one's `NormalizedSku`/`NormalizedEdition`/
   `MatchStatus` (`NotApplicable`/`Unmatched`/`Matched` —
-  `Raffa.Quotes.Domain.SkuMatchStatus`); `Raffa.Api.QuoteExtractionPipeline`
+  `Raffa.Quotes.Domain.SkuMatchStatus`); `Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline`
   calls it right after persisting a quote's freshly-extracted lines, so
   every upload gets a real match status, not just a later explicit
   recalculate call.
@@ -2760,7 +2759,7 @@ resolves `IBenchmarkService` yet").
   Strategy" below; outcome capture (`POST /api/negotiations/outcomes`,
   feature-03's us-02) remains future work no task has picked up yet.
 - **Incidental fix, required for this task's own `dotnet build` to succeed
-  at all**: `Raffa.Api.QuoteExtractionPipeline.ProcessAsync` (touched by
+  at all**: `Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline.ProcessAsync` (touched by
   both task E05/F01/US01/T02 and task E05/F01/US02/T01 in parallel
   wave-spec phases) had a duplicate local-variable declaration
   (`normalizationOutcome` declared twice, `CS0128`) and two stray, dangling
@@ -2840,7 +2839,7 @@ picked up yet").
   allowed-reference set for `Raffa.Quotes` is exactly `[SharedKernel,
   Benchmark]` (see "Dependency direction" below) — unchanged by this task.
   A future task wiring the `answer` role would do it the same way
-  `Raffa.Api.QuoteExtractionPipeline` already does for the `extract`
+  `Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline` already does for the `extract`
   role: from the composition root, feeding this calculator's own facts in
   as evidence, never asking the model to invent them.
   `Raffa.AiGateway.Fixtures.FixtureAiGateway.AnswerAsync` would today only
@@ -3004,7 +3003,7 @@ flywheel).
   still in the same request. That type is `internal`, host-composition-
   root-only wiring (ADR-002: `Raffa.Quotes` and `Raffa.Savings` cannot
   see each other; only `Raffa.Api` may reference both — the same
-  treatment `QuoteExtractionPipeline` already gets, see "Dependency
+  reasoning that places `QuoteExtractionPipeline` in `Raffa.AiFlows`, see "Dependency
   direction" below), and it reuses the exact same, already-audited write
   path a human `PATCH /api/savings/{id}` call already uses
   (`SavingsOpportunityService.UpdateAsync` with `realizedAmount` set — see

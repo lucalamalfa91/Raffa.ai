@@ -48,7 +48,7 @@ namespace Raffa.Quotes.Application.Strategy;
 /// in this module already follows for its own explanation text. Task E05/F01/US01/T01
 /// (quote-extraction) already established the precedent for how a real AI Gateway `answer`-role call
 /// would eventually attach to this module without giving it a direct
-/// <c>Raffa.AiGateway</c> reference: <c>Raffa.Api.QuoteExtractionPipeline</c>, the composition
+/// <c>Raffa.AiGateway</c> reference: <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c>, the composition
 /// root, is the one place that calls both <c>Raffa.AiGateway</c> and <c>Raffa.Quotes</c> for the
 /// `extract` role — a future task would wire the `answer` role there the same way, feeding it this
 /// calculator's own deterministic facts as evidence, never asking the model to invent the facts

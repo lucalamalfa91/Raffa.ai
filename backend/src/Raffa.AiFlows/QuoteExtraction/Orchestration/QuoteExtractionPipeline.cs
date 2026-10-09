@@ -1,5 +1,7 @@
-using System.Text;
 using System.Text.Json;
+using Raffa.AiFlows.QuoteExtraction.Agents;
+using Raffa.AiFlows.QuoteExtraction.Schemas;
+using Raffa.AiFlows.Shared.Parsing;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Documents.Contracts.Application.Extraction;
@@ -12,22 +14,18 @@ using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.QuoteExtraction.Orchestration;
 
 /// <summary>
 /// Orchestrator for task E05/F01/US01/T01 (quote-extraction; parent story
-/// us-01-quote-line-extraction AC-1/AC-2/AC-4). This is the one place in the solution that calls
-/// both <c>Raffa.AiGateway</c> and <c>Raffa.Quotes</c>: ADR-002's dependency-direction rule
-/// (<c>Raffa.ArchitectureTests.DependencyDirectionTests</c>) allows <c>Raffa.Quotes</c> to
-/// reference only <c>Raffa.SharedKernel</c>/<c>Raffa.Benchmark</c>, and
+/// us-01-quote-line-extraction AC-1/AC-2/AC-4). Lives in <c>Raffa.AiFlows</c> (ADR-002 amendment:
+/// the AI flows layer sits above the domain modules and is referenced only by the hosts), the one
+/// place that calls both <c>Raffa.AiGateway</c> and <c>Raffa.Quotes</c>: the Quotes module itself
+/// references only <c>Raffa.SharedKernel</c>/<c>Raffa.Benchmark</c>
+/// (<c>Raffa.ArchitectureTests.DependencyDirectionTests</c>), and
 /// <c>Raffa.Documents.Contracts</c> (whose <see cref="HybridDocumentParsingService"/> AC-4
-/// reuses) cannot reference <c>Raffa.Quotes</c> either — only <c>Raffa.Api</c>, the
-/// composition root, is allowed to see every module at once (backend/README.md's own "Dependency
-/// direction" section). <c>internal</c>, not <c>public</c>: this is host-composition wiring, not a
-/// domain module's own public API surface — enforced by
-/// <c>Raffa.ArchitectureTests.DependencyDirectionTests.Host_must_not_contain_domain_types</c>,
-/// the same treatment <c>Raffa.Worker.Queue.QueueConsumerHostedService</c> already gets for the
-/// identical reason.
+/// reuses) cannot reference <c>Raffa.Quotes</c> either. <c>public</c> so the <c>Raffa.Api</c>
+/// host (<c>QuotesEndpointExtensions</c>) can call it across the assembly boundary.
 ///
 /// <b>AC-4</b> ("Scanned/image quote PDFs reuse the epic-02 hybrid OCR path (ADR-017); no 2-page
 /// cap"): calls the exact same
@@ -69,7 +67,7 @@ namespace Raffa.Api;
 /// service's own "query the quote's current lines, re-runnable later unchanged" contract (see its
 /// own doc comment) correct both here and from a later, independent recalculate call.
 /// </summary>
-internal sealed class QuoteExtractionPipeline(
+public sealed class QuoteExtractionPipeline(
     QuotesDbContext dbContext,
     IAiGateway aiGateway,
     HybridDocumentParsingService parsingService,
@@ -81,11 +79,6 @@ internal sealed class QuoteExtractionPipeline(
     IAuditWriter auditWriter,
     ILogger<QuoteExtractionPipeline>? logger = null)
 {
-    /// <summary>Caller-owned stage label for the AI Gateway's `extract` role (see
-    /// <c>IAiGateway.ExtractAsync</c>'s own doc comment: "mirrors, but does not reference,
-    /// ExtractionStage; the gateway must not depend on a domain module's enum").</summary>
-    private const string StageName = "QuoteLineItems";
-
     /// <summary>Recorded actor for this pipeline's own audit entry — same "no human caller, label
     /// it as automation" convention as
     /// <c>StagedExtractionService.SystemActor</c>/<c>DocumentProcessingPipeline</c>'s own
@@ -201,10 +194,10 @@ internal sealed class QuoteExtractionPipeline(
                 .ConfigureAwait(false);
         }
 
-        var documentText = BuildPageMarkedText(pages);
+        var documentText = PageMarkedText.Build(pages);
 
         run.Stage = QuoteExtractionFailureKind.ExtractionFailed;
-        var extractRequest = new AiExtractionRequest(StageName, documentText, QuoteLineJsonSchema.LineItems());
+        var extractRequest = new AiExtractionRequest(QuoteExtractionStages.StageName, documentText, QuoteLineJsonSchema.LineItems());
         var extractResult = await aiGateway.ExtractAsync(extractRequest, cancellationToken).ConfigureAwait(false);
 
         if (extractResult.IsFailure)
@@ -441,49 +434,4 @@ internal sealed class QuoteExtractionPipeline(
         QuoteExtractionJobStatus.Failed => QuoteProcessingStatus.Failed,
         _ => QuoteProcessingStatus.Processing,
     };
-
-    /// <summary>Same <c>[[PAGE n]]</c> marker convention as
-    /// <c>StagedExtractionService.BuildPageMarkedText</c> (that method is <c>private</c> to its
-    /// own module, so this is a small, deliberate, documented duplicate — not a shared helper —
-    /// per ADR-002's dependency-direction rule) so a structured-output model can report which page
-    /// a line came from by reading these markers.</summary>
-    private static string BuildPageMarkedText(IReadOnlyList<DocumentPageText> pages)
-    {
-        var builder = new StringBuilder();
-
-        foreach (var page in pages)
-        {
-            builder.Append("[[PAGE ").Append(page.PageNumber).Append("]]\n");
-            builder.Append(page.Text);
-            builder.Append("\n\n");
-        }
-
-        return builder.ToString();
-    }
 }
-
-/// <summary>Outcome of one <see cref="QuoteExtractionPipeline.ProcessAsync"/> run — the response
-/// shape `POST /api/quotes` (see <see cref="QuotesEndpointExtensions"/>) folds into its own JSON
-/// reply.</summary>
-/// <param name="NormalizedLineItemCount">Task E05/F01/US01/T02 (quote-normalization): how many of
-/// this run's <see cref="LineItemCount"/> lines resolved to a real
-/// <c>Raffa.Quotes.Domain.QuoteLine.NormalizedAnnualUnitPrice</c> — see
-/// <c>Raffa.Quotes.Application.Normalization.QuoteLineNormalizationOutcome</c>'s own doc
-/// comment.</param>
-/// <param name="UnresolvedNormalizationCount">The complement of <paramref name="NormalizedLineItemCount"/>
-/// within <see cref="LineItemCount"/> — spec §11.3's "line-item normalization is unresolved" outcome,
-/// made visible over HTTP as well as in the database.</param>
-/// <param name="UnmatchedSkuCount">Added by task E05/F01/US02/T01 (sku-normalization, AC-2's "show
-/// unmatched SKUs" half).</param>
-/// <param name="InvalidCount">Task F6-T04: lines discarded for an out-of-range value; already
-/// included in <see cref="SkippedCount"/>.</param>
-internal sealed record QuoteProcessingSummary(
-    EntityId QuoteId,
-    QuoteProcessingStatus ProcessingStatus,
-    int LineItemCount,
-    int SkippedCount,
-    int PageCount,
-    int NormalizedLineItemCount,
-    int UnresolvedNormalizationCount,
-    int UnmatchedSkuCount,
-    int InvalidCount = 0);

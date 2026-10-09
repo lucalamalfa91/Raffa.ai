@@ -25,7 +25,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Raffa.AiGateway\Raffa.AiGateway.csproj" />
     <ProjectReference Include="..\..\src\Raffa.Quotes\Raffa.Quotes.csproj" />
     <ProjectReference Include="..\..\src\Raffa.Benchmark\Raffa.Benchmark.csproj" />
   </ItemGroup>

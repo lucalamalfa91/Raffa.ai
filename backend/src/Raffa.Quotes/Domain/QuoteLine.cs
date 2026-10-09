@@ -36,7 +36,7 @@ public sealed class QuoteLine : TenantScopedEntity
 
     /// <summary>The quoted per-unit price. When the extraction payload reports
     /// <see cref="ListPrice"/> and <see cref="DiscountPercent"/> but not this field directly,
-    /// <c>Raffa.Quotes.Application.Extraction.QuoteLineExtractionService</c> derives it
+    /// <c>Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionService</c> derives it
     /// deterministically in code (never asks the model to do the arithmetic) — see that type's own
     /// doc comment (AC-3 / Appendix C rule 6: "prefer deterministic arithmetic... to LLM
     /// reasoning").</summary>
@@ -119,7 +119,7 @@ public sealed class QuoteLine : TenantScopedEntity
     /// attention until normalization actually runs and says otherwise" state, never a silent
     /// "assume fine" default (Appendix C rule 10) — until
     /// <c>SkuNormalizationService.NormalizeAsync</c> sets the real value immediately after
-    /// extraction (<c>Raffa.Api.QuoteExtractionPipeline</c>) and again on every future
+    /// extraction (<c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c>) and again on every future
     /// recalculate (task E05/F01/US02/T02). See <see cref="SkuMatchStatus"/>'s own doc comment for
     /// what each value means and the spec §11.3 guardrail this status exists to serve.
     /// </summary>
