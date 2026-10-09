@@ -215,7 +215,7 @@ public static class ServiceCollectionExtensions
         // at startup — the same captive-dependency reasoning
         // Raffa.Chat.Infrastructure.ServiceCollectionExtensions's own doc comment already states.
         // Every current IAiGateway consumer is already registered Scoped
-        // (DocumentProcessingPipeline, StagedExtractionService, EmbeddingRetrievalService,
+        // (DocumentProcessingOrchestrator, StagedExtractionService, EmbeddingRetrievalService,
         // HybridDocumentParsingService, QuoteExtractionPipeline) or resolved from
         // a fresh DI scope, so Scoped-consuming-Scoped is safe. The concrete Foundry/Fixture
         // gateways and their per-role clients stay Singleton above (no per-request state of their

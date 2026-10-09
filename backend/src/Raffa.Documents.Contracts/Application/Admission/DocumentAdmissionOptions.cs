@@ -28,7 +28,7 @@ public sealed class DocumentAdmissionOptions
 
     /// <summary>Minimum classify-role confidence for an admitted type; a recognized contract kind
     /// reported below it is still rejected as <c>not_a_contract</c> (R-DOC-03). Default 0.6, the
-    /// same value <c>DocumentProcessingPipeline</c>/<c>StagedExtractionService</c> already use as
+    /// same value <c>DocumentProcessingOrchestrator</c>/<c>StagedExtractionService</c> already use as
     /// their "needs a human" low-confidence line.</summary>
     public double AdmissionThreshold { get; init; } = 0.6;
 }

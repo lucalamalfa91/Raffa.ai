@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Tests.TestSupport;
 using Microsoft.Extensions.DependencyInjection;
 using Raffa.AiFlows.QuoteExtraction;
 using Raffa.AiFlows.QuoteExtraction.Agents;
@@ -9,16 +10,16 @@ using Raffa.SharedKernel.Market;
 namespace Raffa.AiFlows.Tests;
 
 /// <summary>
-/// <c>AddAiFlows</c> is the stable entry point the hosts call. So far it wires two flows: quote
-/// extraction and MarketKnowledge (F7). A host that has not composed the module a flow sits on gets
-/// nothing for that flow, so its container still validates.
+/// <c>AddAiFlows</c> is the stable entry point the hosts call; each flow that has moved in registers
+/// itself from it (see the per-flow composition tests). A host that has not composed the module a
+/// flow sits on gets nothing for that flow, so its container still validates.
 /// </summary>
 public sealed class AiFlowsServiceCollectionExtensionsTests
 {
     private const string ConnectionString = "Host=localhost;Database=never-opened";
 
     [Fact]
-    public void AddAiFlows_returns_the_same_collection_and_registers_only_the_market_flow_without_the_quotes_module()
+    public void AddAiFlows_returns_the_same_collection_and_registers_the_market_flow_without_the_quotes_module()
     {
         var services = new ServiceCollection();
 
@@ -27,13 +28,15 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
         Assert.Same(services, returned);
         Assert.Contains(services, d => d.ServiceType == typeof(IMarketPriceEstimator));
         Assert.Contains(services, d => d.ServiceType == typeof(Raffa.Chat.Application.Council.IMarketRagSearch));
-        Assert.Equal(2, services.Count);
+        Assert.DoesNotContain(services, d => d.ServiceType == typeof(QuoteExtractionPipeline));
     }
 
     [Fact]
     public void AddAiFlows_is_safe_to_call_twice()
     {
-        var services = new ServiceCollection();
+        // The flows sit on top of the modules, so the container needs the Documents/Contracts module
+        // (and what its host supplies) for ValidateOnBuild to find every dependency.
+        var services = DocumentsModuleServices.Create();
 
         // The market researcher's tool reads the Market module's retrieval, which a host supplies.
         services.AddMarketModule();

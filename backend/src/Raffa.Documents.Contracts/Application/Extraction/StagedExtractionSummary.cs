@@ -14,7 +14,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// to trust. Reported here rather than left for the caller to dig out of
 /// <see cref="Domain.ExtractionEvidence"/>, because "was this critical fact accepted?" is a
 /// decision <see cref="StagedExtractionService"/> makes and must not be re-derived (differently) by
-/// each consumer. <see cref="DocumentProcessingPipeline"/> is the one caller that acts on it: it
+/// each consumer. <c>DocumentProcessingOrchestrator</c> is the one caller that acts on it: it
 /// turns the name into <see cref="Domain.Contract.SupplierId"/> through
 /// <see cref="Raffa.SharedKernel.Suppliers.ISupplierResolver"/> (ADR-002 — this module may not
 /// reference <c>Raffa.Suppliers.Products</c> itself). A rejected supplier fact still lands in the

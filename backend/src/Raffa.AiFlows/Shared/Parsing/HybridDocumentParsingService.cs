@@ -1,15 +1,15 @@
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
-using Raffa.Documents.Contracts.Application.Admission;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.SharedKernel;
 
-namespace Raffa.Documents.Contracts.Application.Extraction;
+namespace Raffa.AiFlows.Shared.Parsing;
 
 /// <summary>
 /// Hybrid parse: native text first for PDF/DOCX/XLSX, Azure Document Intelligence
 /// (<see cref="IAiGateway.OcrAsync"/>) for scans and images. Wave w19 / ADR-017 amendment
 /// 2026-09-09 sent every PDF to OCR; when DI or the fixture scanner returned an empty page
-/// map, <see cref="DocumentAdmissionGate"/> rejected real contracts as
+/// map, <c>DocumentAdmissionGate</c> rejected real contracts as
 /// <c>no_readable_text</c> and deleted the blob. Native pdfium text is restored, and OCR
 /// empty/failure falls back to whatever native pages were recovered.
 /// </summary>

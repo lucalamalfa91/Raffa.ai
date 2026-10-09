@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Raffa.AiFlows.DocumentExtraction;
 using Raffa.AiFlows.MarketKnowledge;
 using Raffa.AiFlows.QuoteExtraction;
 
@@ -10,8 +11,8 @@ namespace Raffa.AiFlows;
 /// <c>AddXxxFlow</c> registration method that this entry point calls; the hosts
 /// (<c>Raffa.Api</c>'s <c>Program.cs</c> and <c>Raffa.Worker</c>'s <c>AddWorkerHost</c>) call
 /// <see cref="AddAiFlows"/> once.
-/// The flows move in one at a time; so far: quote extraction (<c>AddQuoteExtractionFlow</c>) and
-/// MarketKnowledge (F7, <c>AddMarketKnowledgeFlow</c>).
+/// The flows move in one at a time; so far: document extraction (<c>AddDocumentExtractionFlow</c>),
+/// MarketKnowledge (F7, <c>AddMarketKnowledgeFlow</c>) and quote extraction (<c>AddQuoteExtractionFlow</c>).
 /// </summary>
 public static class AiFlowsServiceCollectionExtensions
 {
@@ -20,6 +21,7 @@ public static class AiFlowsServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddDocumentExtractionFlow();
         services.AddMarketKnowledgeFlow();
         services.AddQuoteExtractionFlow();
 

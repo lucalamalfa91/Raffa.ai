@@ -35,6 +35,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Raffa.Documents.Contracts.Tests" />
+    <!-- Test-only grant: the document-extraction flow tests that moved to Raffa.AiFlows.Tests
+         (admission and lifecycle) still drive the module's internal preview renderers next to the
+         flow they exercise. Production code in Raffa.AiFlows gets no access to module internals. -->
+    <InternalsVisibleTo Include="Raffa.AiFlows.Tests" />
   </ItemGroup>
 
 </Project>

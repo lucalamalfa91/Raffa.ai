@@ -1,7 +1,10 @@
+using Raffa.AiFlows.DocumentExtraction.Classification;
+using Raffa.AiFlows.Shared.Parsing;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Application.Admission;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Application.Preview;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
@@ -10,7 +13,7 @@ using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
-namespace Raffa.Documents.Contracts.Application.Extraction;
+namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
 
 /// <summary>
 /// Task E02/F06/US01/T01 (r1-integration): the caller <see cref="HybridDocumentParsingService"/>'s
@@ -92,7 +95,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// compares every line item with the shared market corpus and stores the result per line
 /// (optional for the same reason as <paramref name="supplierResolver"/>).
 /// </summary>
-public sealed class DocumentProcessingPipeline(
+public sealed class DocumentProcessingOrchestrator(
     DocumentsContractsDbContext dbContext,
     IAiGateway aiGateway,
     HybridDocumentParsingService parsingService,
@@ -372,7 +375,7 @@ public sealed class DocumentProcessingPipeline(
             classificationJob.StartedAt = startedAt;
         }
 
-        var classificationText = BuildClassificationText(pages);
+        var classificationText = ClassificationText.Build(pages);
         var classifyResult = await aiGateway
             .ClassifyAsync(new AiClassificationRequest(classificationText), cancellationToken)
             .ConfigureAwait(false);
@@ -414,12 +417,6 @@ public sealed class DocumentProcessingPipeline(
                 && j.Status == ExtractionJobStatus.Queued)
             .OrderBy(j => j.QueuedAt)
             .FirstOrDefaultAsync(cancellationToken);
-
-    /// <summary>Representative text for the classify role (<see cref="AiClassificationRequest.DocumentText"/>:
-    /// "the full text of the document (or a representative prefix)") — every page, in order, so a
-    /// multi-page contract's type is judged on all of it, not on a cover page alone.</summary>
-    private static string BuildClassificationText(IReadOnlyList<DocumentPageText> pages) =>
-        string.Join("\n\n", pages.Select(p => p.Text));
 
     /// <summary>
     /// Indexes every non-blank page as one retrieval chunk (<c>chunkIndex</c> = zero-based page

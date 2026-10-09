@@ -21,7 +21,7 @@ backend/
     Raffa.Api/                 # thin HTTP composition root (port 8080 in containers)
     Raffa.Worker/              # thin worker composition root
     Raffa.Tools/               # operator console (wave w17, NW-73, task E20/F02/US02/T01): third composition root, no table, no endpoint, no business rule; `dotnet run` on the GitHub runner via reprocess-tenant-documents.yml — see "Bulk whole-tenant reprocess" below
-    Raffa.AiFlows/             # AI flows layer (ADR-002 amendment, 2026-10-09): orchestration and AI logic (orchestrators, agents, prompts, JSON schemas, guards, lexicons), one subfolder per flow; data and persistence stay in the modules. References SharedKernel, AiGateway and the domain modules only; referenced only by Raffa.Api and Raffa.Worker (`AddAiFlows()`); no provider SDK or persistence package. Empty for now: no flow has moved in yet
+    Raffa.AiFlows/             # AI flows layer (ADR-002 amendment, 2026-10-09): orchestration and AI logic (orchestrators, agents, prompts, JSON schemas, guards, lexicons), one subfolder per flow; data and persistence stay in the modules. References SharedKernel, AiGateway and the domain modules only; referenced only by Raffa.Api and Raffa.Worker (`AddAiFlows()`); no provider SDK or persistence package. Flows so far: `DocumentExtraction` (content gate, document-processing orchestrator, document-type map) and `Shared/Parsing` (hybrid native/OCR parser); `StagedExtractionService` stays in `Raffa.Documents.Contracts` until a dedicated step splits it per stage
     Raffa.SharedKernel/        # TenantId, EntityId, Result<T>, IClock, IAuditWriter, IDocumentStorage
     Raffa.Identity.Workspace/  # workspace, membership, roles (live)
     Raffa.Documents.Contracts/ # upload + admission gate (task E13/F04/US01/T01), metadata, hybrid OCR pre-pass, staged extraction, portfolio list, Contract 360, contract correction + history (live)
@@ -210,7 +210,7 @@ request.
 | POST | `/api/invites/accept` | Accept an invitation: bind the signed-in identity and grant the membership (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.3a-d, ADR-026 §D5). Same `X-Invitation-Token` header as the GET above, plus a validated bearer token (absent → **401** — there would otherwise be no subject to bind). **Wave w15 (task E17/F01/US01/T01, ADR-010 w15 §2.3, ADR-025 §J.3b)** the signed-in identity is matched in this order: the `oid` bound to the invited `workspace_user` row at invite time (the Graph guest's object id) → the token's own `email` claim against the invited address → **403** with a reason that never echoes the invited address, and no membership row written; the mangled `#EXT#` UPN is never parsed. On success, one transaction: binds the accepting identity's external subject onto the `workspace_user` row the invite already wrote (`WorkspaceSignIn.LinkSignInAsync`, unchanged), inserts the membership at the invited role, stamps `accepted_at`. `200 { workspaceId, workspaceName, role }`. A second accept by the same identity is **409** (idempotency signal); two concurrent accepts still produce exactly one membership row and one 409, never a 500 — the unique index `ix_workspace_membership_workspace_user_id_workspace_role_id` already enforces the row, this only translates the violation. **410** expired |
 | GET | `/api/workspaces/{tenantId}/members` | The roster (task E14/F04/US01/T01, wave w14, story us-01-members-api; ADR-026 §D3, ADR-025 §D.4). Verify, then scope, then read (ADR-009 w14 footer clause 7): caller identity required (else **401**), a live `workspace_membership` for that identity in the **route** tenant (else **404**, never 403 — a tenant-existence oracle, never an empty 200 — also an oracle); once verified, **any** live member may read regardless of role (Read ≠ write — only an Admin may invite/revoke/remove). The tenant is always the route value; same posture as the invite route above, `X-Tenant-Id` is never read. Response `{ members: [ { id, email, name?, role, status, membershipId?, invitationId? } ] }` — `id` is the `workspace_user` id (stable across `Active`/`Invited`, never an action id); `membershipId` is set exactly when `status` is `Active` and is what `DELETE …/members/{membershipId}` below takes, `invitationId` exactly when `status` is `Invited` and is what `DELETE …/invites/{id}` takes (a person holding two memberships exposes the id of the row their displayed, highest role came from — fix `271c3ae`, wave w14); the roster is **live memberships ∪ live invitations**, never a scan of `workspace_user` (a removed member keeps that row for audit continuity and, because their `ExternalSubjectId` stays bound, would otherwise render `Active` — the defect ADR-026 §D3 exists to prevent); `status` is `Active` or `Invited`, derived, never stored — an accepted/revoked/expired invitation renders nothing; `name` maps to the stored `WorkspaceUser.DisplayName` and is `null` unless one is on file, never derived from the email; a person holding two memberships appears once, at the highest role (`WorkspaceRoleClaimResolver`'s own precedence, no second ordering); `role`/`status` are non-nullable strings, never an OpenAPI enum (role names are per-tenant rows the schema does not close over) |
 | DELETE | `/api/workspaces/{tenantId}/members/{membershipId}` | Remove a member from a workspace, Admin only, with the last-Admin guard (task E15/F01/US01/T01, wave w14; ADR-025 Rule D.5a-c, AC-7/AC-9). Same identity → membership → Admin guard as the roster/invite routes above (401 → 404 non-member → 403 non-Admin); then **409** when the target membership is the tenant's sole live Admin — `WorkspaceMembershipRemoval.CanRemove`, a pure domain function provable without a database ("at least one live Admin per tenant, always"), refuses even removing yourself if you are that last Admin. Deletes the `workspace_membership` row only, never `workspace_user` (audit continuity — the FK is `ON DELETE CASCADE` from user to membership, so deleting the user would cascade), and revokes that email's live invitations in the same transaction (without that, a still-valid link would re-admit them, making AC-8's "re-adding needs a new invite" false). Immediate — nothing caches authorization, role and membership are read from the database on every request, so the removed identity's very next request in this tenant already reflects it. **204** |
-| POST | `/api/documents` | multipart `file` + `X-Tenant-Id` header. **Wave w15 (task E16/F02/US03/T01, ADR-027 §D1): the request returns at the store.** Size → **413** and format by extension *and* magic bytes → **415** are still refused in-request (they need no AI); everything else is `201 { id, contractId: null, fileName, mimeType, processingStatus: "Uploaded", createdAt }` the moment the bytes are durable in blob storage and a `document` row plus a queued `extraction_job` exist — **no parse, no classification and no AI-gateway call on the request path**. The Worker (`Raffa.Worker`, ADR-027 §D2/§D3) claims the job from the Service Bus topic and runs the admission gate (parse/OCR → readable-text floor → `classify`) and then `DocumentProcessingPipeline` (staged extraction → RAG indexing), reusing the gate's own parse and classification so the `classify` role is still called once per upload. A content refusal is no longer a 422: it is a **`Rejected` row** with a `rejectionReason` code (`not_a_contract` \| `no_readable_text`) on `GET /api/documents`, its blob deleted, one `document.rejected` audit row attributed to `system:worker`. Poll `GET /api/documents/{id}` or `GET /api/documents` for the terminal status. See “Documents — admission gate” below |
+| POST | `/api/documents` | multipart `file` + `X-Tenant-Id` header. **Wave w15 (task E16/F02/US03/T01, ADR-027 §D1): the request returns at the store.** Size → **413** and format by extension *and* magic bytes → **415** are still refused in-request (they need no AI); everything else is `201 { id, contractId: null, fileName, mimeType, processingStatus: "Uploaded", createdAt }` the moment the bytes are durable in blob storage and a `document` row plus a queued `extraction_job` exist — **no parse, no classification and no AI-gateway call on the request path**. The Worker (`Raffa.Worker`, ADR-027 §D2/§D3) claims the job from the Service Bus topic and runs the admission gate (parse/OCR → readable-text floor → `classify`) and then `DocumentProcessingOrchestrator` (staged extraction → RAG indexing), reusing the gate's own parse and classification so the `classify` role is still called once per upload. A content refusal is no longer a 422: it is a **`Rejected` row** with a `rejectionReason` code (`not_a_contract` \| `no_readable_text`) on `GET /api/documents`, its blob deleted, one `document.rejected` audit row attributed to `system:worker`. Poll `GET /api/documents/{id}` or `GET /api/documents` for the terminal status. See “Documents — admission gate” below |
 | GET | `/api/documents/{id}` | metadata/status; same header; `documentType` is the widened `ContractDocumentType` (`Msa`, `OrderForm`, `Amendment`, `Sow`, `RenewalLetter`, `Quote`, `Invoice`, `PriceList`, `Nda`, `Dpa`, `Other`) — task E13/F04/US01/T01 added the last five so “the documents around a contract” keep their own kind |
 | GET | `/api/documents` | Server-side Documents list (R-DOC-06/09; task E13/F04/US01/T02); `X-Tenant-Id` header; optional `status` (exact `DocumentProcessingStatus`, `Rejected` included since wave w15), `page` (default 1), `pageSize` (default 25, max 100); response `{ items, page, pageSize, totalCount, counts }`, each item `{ id, contractId, supplierName, fileName, documentType, processingStatus, stage, pageCount, createdAt, weakFactCount, rejectionReason }` — `stage` is one of R-DOC-09's six real names and is present **only** while `processingStatus` is `Processing`; `rejectionReason` is `not_a_contract` \| `no_readable_text` on a `Rejected` row and `null` otherwise; `supplierName` is resolved through `ISupplierNameLookup` when the Suppliers module is registered, `null` otherwise (never a raw id); `weakFactCount` counts this contract's distinct extracted fields whose latest evidence is missing or below 0.6. **`counts` (task E16/F02/US03/T01, ADR-027 §D7/§C5/§C9)** is tenant-wide and independent of `status`/`page`: `{ all, needsAttention, needsReview, processing, rejected }` — `all` excludes `Rejected`, `needsAttention` is *not Completed and not Rejected* (so it contains `processing`), `needsReview` is `NeedsReview` alone; five overlapping projections of one grouped query, never a partition |
 | GET | `/api/documents/{id}/preview` | Page preview as `image/png` (R-DOC-08; wave w17 NW-26, task E22/F02/US01/T01, ADR-029); `X-Tenant-Id` header; optional 1-based `?page=n` (absent means page 1); 404 when the document does not exist for this tenant, has no stored preview, **or** `page` is out of the persisted `pageCount` — never a silent page 1. The client never receives a blob URL; the bytes are streamed under the caller's own tenant scope (ADR-009). See “Documents V2” below |
@@ -294,7 +294,7 @@ document **before** it writes a blob, a `document` row, an `embedding` or an
 extraction job (ADR-024 “gate before persistence”, `inputs/requirements.md`
 R-DOC-01/02/03). The endpoint lives in
 `Raffa.Api.DocumentsEndpointExtensions`; the decision itself is
-`Raffa.Documents.Contracts.Application.Admission.DocumentAdmissionGate`.
+`Raffa.AiFlows.DocumentExtraction.Admission.DocumentAdmissionGate`.
 
 Order of checks, and what each one returns:
 
@@ -321,7 +321,7 @@ returns 400 with the underlying error, because “we could not read it” is not
 “it is not a contract”, and it leaves no audit row.
 
 An admitted document is uploaded, then processed by
-`DocumentProcessingPipeline`'s pages-and-classification overload, so the
+`DocumentProcessingOrchestrator`'s pages-and-classification overload, so the
 gate's own parse and `classify` result are reused instead of being computed a
 second time.
 
@@ -457,7 +457,7 @@ keys injected by Terraform). Each message goes through
 `ExtractionRequestedHandler`: a compare-and-swap claim on the
 `extraction_job` row (`claimed_at IS NULL`, ADR-027 §D3 — at-least-once
 delivery becomes exactly-once work), then the admission gate, then
-`DocumentProcessingPipeline`; a content refusal becomes a `Rejected` row
+`DocumentProcessingOrchestrator`; a content refusal becomes a `Rejected` row
 with its reason code and the blob deleted; a gateway that cannot be reached
 releases the claim and abandons the message for redelivery, and after three
 attempts the row itself goes `Failed` — the database, never the dead-letter
@@ -577,7 +577,7 @@ vocabulary by `GapInvestigationOptions.JevHighConfidenceThreshold`/
 calibration (see `AiGatewayJevOptions`'s own doc comment on why Jev needs
 per-question calibration).
 
-`Raffa.Documents.Contracts.Application.Extraction.HybridDocumentParsingService`
+`Raffa.AiFlows.Shared.Parsing.HybridDocumentParsingService`
 implements the hybrid OCR pre-pass (ADR-017): native text extraction
 (`NativeDocumentTextExtractor` — real `DocumentFormat.OpenXml` for
 DOCX/XLSX, a self-contained content-stream reader for PDF; no external PDF
@@ -621,7 +621,7 @@ genuinely failed to open (its own zero-page result is treated as "unknown",
 not "really zero pages", so it is never passed on) — gets `KnownPageCount:
 null` and keeps the original sequential behavior as the only safe fallback.
 
-`Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline`
+`Raffa.AiFlows.DocumentExtraction.Orchestration.DocumentProcessingOrchestrator`
 (task E02/F06/US01/T01, r1-integration) is that caller: given the just-
 uploaded bytes, it runs the hybrid parse, then `IAiGateway.ClassifyAsync`
 over the resulting text (setting `Document.DocumentType` and completing
@@ -630,7 +630,7 @@ the `Classification` job `DocumentUploadService` queues at upload), then
 `embedding` table (see `EmbeddingRetrievalService` below) — one call proves
 the whole spec §7.1 pipeline. `POST /api/documents` (`Raffa.Api.Program`)
 runs it synchronously, in the same request, right after the upload itself
-is durable — a deliberate interim choice (see `DocumentProcessingPipeline`'s
+is durable — a deliberate interim choice (see `DocumentProcessingOrchestrator`'s
 own doc comment): nothing in this codebase dispatches the queued
 `Classification` job off a durable queue yet (`Raffa.Worker.Queue
 .QueueConsumerHostedService` still never dispatches a received message to a
@@ -663,7 +663,7 @@ question (no contract named at all); its first caller is
 `AskCopilotService`. Neither method ever reaches the market-intelligence
 feed — that stays behind `IMarketKnowledgeRetrieval`, a separate index,
 never mixed into this tenant pgvector table (ADR-011).
-`IndexChunkAsync`'s first production caller is `DocumentProcessingPipeline`
+`IndexChunkAsync`'s first production caller is `DocumentProcessingOrchestrator`
 (task E02/F06/US01/T01, r1-integration, above) — one `Embedding` row per
 parsed page, `SourceType="Document"`/`SourceId=<documentId>`, so a document
 is retrievable for Ask Raffa immediately after it finishes processing. A
@@ -688,7 +688,7 @@ task E02/F01/US01/T02 but never actually wired into DI until now.
 `IAiGateway` is therefore resolved Scoped, not Singleton, from this task
 on — `LoggingAiGateway` depends on the Scoped `IAuditWriter`
 (`Raffa.Audit`'s own registration), and every current `IAiGateway`
-consumer (`DocumentProcessingPipeline`, `StagedExtractionService`,
+consumer (`DocumentProcessingOrchestrator`, `StagedExtractionService`,
 `EmbeddingRetrievalService`, `HybridDocumentParsingService`,
 `QuoteExtractionPipeline`) was already Scoped, so this
 is a captive-dependency fix, not a behaviour change for any of them; see
@@ -1042,7 +1042,7 @@ for this field: `SupplierId` is a cross-module reference this module may not
 resolve itself (ADR-002).
 
 **Linking, and back-fill for free (R-SUP-02/R-SUP-03).**
-`DocumentProcessingPipeline` takes an **optional** `ISupplierResolver?`
+`DocumentProcessingOrchestrator` takes an **optional** `ISupplierResolver?`
 (defaulted to `null`, so the built-in container supplies it only where
 `AddSuppliersProductsModule` was called, and a host or unit test without the
 Suppliers module keeps extracting exactly as before). After a successful
@@ -1089,7 +1089,7 @@ an id with a `null` name instead of losing both.
 | `GET /api/renewals` (item + `insightCard.facts`) | `supplierName` | `RenewalsEndpointExtensions` |
 
 Proved by `Raffa.Documents.Contracts.Tests.StagedExtractionServiceTests`
-(threshold + evidence), `DocumentProcessingPipelineSupplierTests` (link,
+(threshold + evidence), `DocumentProcessingOrchestratorSupplierTests` (link,
 skip-when-weak, reprocess back-fill), `ContractCorrectionServiceTests`
 (re-resolve, previous-name history, honest refusal),
 `Raffa.Api.Tests.PortfolioEndpointTests`/`Contract360EndpointTests`/
@@ -2132,7 +2132,7 @@ TENANT=$(curl -s -X POST "$API/api/workspaces" -H 'Content-Type: application/jso
 DOC=$(curl -s -X POST "$API/api/documents" -H "X-Tenant-Id: $TENANT" \
   -F "file=@contract.pdf;type=application/pdf" | jq -r .id)
 
-# processingStatus/contractId reflect DocumentProcessingPipeline's own run
+# processingStatus/contractId reflect DocumentProcessingOrchestrator's own run
 # (classify -> hybrid parse -> staged extraction -> RAG indexing) -- POST
 # /api/documents runs it synchronously before responding.
 curl -s "$API/api/documents/$DOC" -H "X-Tenant-Id: $TENANT" | jq .
@@ -2467,7 +2467,7 @@ us-01-quote-line-extraction) is the first Quotes-module task: `POST
 /api/quotes` (see the HTTP surface table above) uploads a supplier quote
 and runs schema-constrained line-item extraction synchronously before
 responding — the same "read the bytes once, run the pipeline inline"
-shape `POST /api/documents`/`DocumentProcessingPipeline` already
+shape `POST /api/documents`/`DocumentProcessingOrchestrator` already
 established for contracts (task E02/F06/US01/T01).
 
 - `Raffa.Quotes.Domain.Quote`/`QuoteExtractionJob`/`QuoteLine` are this

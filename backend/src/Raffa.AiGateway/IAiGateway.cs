@@ -71,7 +71,7 @@ public interface IAiGateway
     /// `ocr` role (ADR-017): the hybrid OCR pre-pass's provider call, added by task
     /// E02/F01/US02/T02 (hybrid-ocr). Turns raw document bytes into page-mapped text for
     /// scanned/image/low-text documents; native text extraction for born-digital pages happens in
-    /// the caller (<c>Raffa.Documents.Contracts.Application.Extraction.HybridDocumentParsingService</c>)
+    /// the caller (<c>Raffa.AiFlows.Shared.Parsing.HybridDocumentParsingService</c>)
     /// and never reaches this method — that step is not AI I/O (module-map: only Foundry/Document
     /// Intelligence calls go through this gateway). Always processes the full submitted document
     /// (ADR-017 "no 2-page cap"); a configured page-budget

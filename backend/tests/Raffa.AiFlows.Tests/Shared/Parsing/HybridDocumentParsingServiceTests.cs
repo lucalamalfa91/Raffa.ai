@@ -1,4 +1,6 @@
 using System.Text;
+using Raffa.AiFlows.Shared.Parsing;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -6,7 +8,7 @@ using Raffa.AiGateway.Fixtures;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.SharedKernel;
 
-namespace Raffa.Documents.Contracts.Tests;
+namespace Raffa.AiFlows.Tests.Shared.Parsing;
 
 /// <summary>
 /// Proves the Definition of Done for task E02/F01/US02/T02 (hybrid-ocr): native text is used

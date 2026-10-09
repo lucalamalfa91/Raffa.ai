@@ -19,7 +19,7 @@ namespace Raffa.AiGateway.Contracts;
 /// <param name="Content">The complete, unmodified document bytes.</param>
 /// <param name="KnownPageCount">
 /// The document's page count, when a caller already knows it from a trustworthy local source
-/// (<see cref="Raffa.Documents.Contracts.Application.Extraction.HybridDocumentParsingService"/>
+/// (<c>HybridDocumentParsingService</c>
 /// passes pdfium's own count for a PDF it has already parsed natively) — never a guess, and never
 /// set for a format nothing has locally paginated (e.g. an image). <see langword="null"/> when no
 /// such count exists, which keeps the gateway's own sequential "read, then check the budget,

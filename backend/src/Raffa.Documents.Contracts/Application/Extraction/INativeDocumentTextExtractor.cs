@@ -7,7 +7,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// must never be routed through <see cref="Raffa.AiGateway.IAiGateway"/>, and it is why this
 /// interface lives in this module rather than the gateway.
 ///
-/// An abstraction — rather than <see cref="HybridDocumentParsingService"/> calling
+/// An abstraction — rather than <c>HybridDocumentParsingService</c> calling
 /// <see cref="NativeDocumentTextExtractor"/> directly — for the same reason
 /// <see cref="Raffa.AiGateway.IAiGateway"/> is an interface: it lets the hybrid routing/
 /// page-budget logic be unit-tested against a scripted fake instead of real PDF/DOCX/XLSX bytes,
@@ -42,7 +42,7 @@ public interface INativeDocumentTextExtractor
 /// <see langword="false"/> covers both "this file could not be parsed at all" (corrupt/malformed
 /// content despite a recognized mime type) and "parsed, but too little text to be a real
 /// born-digital file" (for example a scanned PDF with an empty text layer). Either way, the caller
-/// (<see cref="HybridDocumentParsingService"/>) falls back to the `ocr` gateway role for the full
+/// (<c>HybridDocumentParsingService</c>) falls back to the `ocr` gateway role for the full
 /// document rather than trusting a near-empty native result — ADR-017's own worry ("OCR is the
 /// backstop, not a replacement") cuts both ways: never skip OCR when native parsing quietly failed.
 /// </summary>

@@ -37,7 +37,7 @@ namespace Raffa.Api;
 /// `POST /api/negotiations/outcomes` request, right after
 /// <c>Raffa.Quotes.Application.Outcome.NegotiationOutcomeService.CaptureAsync</c> returns (see
 /// <see cref="NegotiationsEndpointExtensions"/>) — the same "smallest honest way to make the promise
-/// actually resolve today" posture <c>QuoteExtractionPipeline</c>/<c>DocumentProcessingPipeline</c>
+/// actually resolve today" posture <c>QuoteExtractionPipeline</c>/<c>DocumentProcessingOrchestrator</c>
 /// already take for their own synchronous, in-request pipelines.
 /// </para>
 ///

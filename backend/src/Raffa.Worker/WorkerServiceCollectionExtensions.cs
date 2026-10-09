@@ -55,7 +55,7 @@ public static class WorkerServiceCollectionExtensions
     /// string (this module's first <c>DbContext</c>) — <paramref name="renewalsConnectionString"/>
     /// is that parameter, threaded through the same way <paramref name="documentsContractsConnectionString"/>/
     /// <paramref name="auditConnectionString"/> already are. Also wires Suppliers/Products so
-    /// <c>DocumentProcessingPipeline</c> can resolve <c>Contract.SupplierId</c> during extraction
+    /// <c>DocumentProcessingOrchestrator</c> can resolve <c>Contract.SupplierId</c> during extraction
     /// (the API host already did; this host did not, and every Worker-processed contract landed
     /// without a supplier). No worker job resolves <c>RenewalActionService</c> today (only
     /// <c>Raffa.Api</c>'s `POST /api/renewals/{id}/action`
@@ -73,14 +73,16 @@ public static class WorkerServiceCollectionExtensions
         services.AddAuditModule(auditConnectionString);
         services.AddRenewalsModule(renewalsConnectionString);
         // Same shared Postgres as Documents/Contracts (ADR-003). The API already composes this
-        // module; the Worker did not, so DocumentProcessingPipeline.LinkSupplierAsync ran with a
+        // module; the Worker did not, so DocumentProcessingOrchestrator.LinkSupplierAsync ran with a
         // null ISupplierResolver and left every extracted supplier name unlinked.
         services.AddSuppliersProductsModule(documentsContractsConnectionString);
         // AI flows layer (ADR-002 amendment): after every module so a flow can replace a module
-        // default. The quote-extraction flow is skipped here (this host does not compose the Quotes
-        // module); the MarketKnowledge flow registers IMarketPriceEstimator, which the extraction
-        // handler's LineItemMarketPriceService takes as an optional dependency (the host's own
-        // AddMarketModule supplies the data layer under it).
+        // default. Provides the implementations of the ports the modules define, e.g. the
+        // document-extraction flow's IDocumentAdmissionEvaluator / IDocumentProcessingFlow that
+        // ExtractionRequestedHandler needs. The quote-extraction flow is skipped here (this host does
+        // not compose the Quotes module); the MarketKnowledge flow registers IMarketPriceEstimator,
+        // which the extraction handler's LineItemMarketPriceService takes as an optional dependency
+        // (the host's own AddMarketModule supplies the data layer under it).
         services.AddAiFlows();
 
         // TryAdd: Raffa.Worker.Tests pre-registers a fake IActiveRenewalContractsSource /
