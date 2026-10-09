@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Negotiation.DataCheck;
 using Raffa.AiFlows.Shared.Guards;
 using Raffa.Benchmark.Contracts;
 using Raffa.Documents.Contracts.Application;
@@ -5,7 +6,7 @@ using Raffa.Documents.Contracts.Domain;
 using Raffa.Market.Contracts;
 using Raffa.SharedKernel;
 
-namespace Raffa.Api.Tests;
+namespace Raffa.AiFlows.Tests.Negotiation;
 
 /// <summary>
 /// Persona v2.5's market safety net: when a contract lacks its annual amounts, Ask says so and gives

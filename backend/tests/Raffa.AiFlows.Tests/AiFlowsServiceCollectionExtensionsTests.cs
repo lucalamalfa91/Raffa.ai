@@ -41,6 +41,9 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
 
         // The market researcher's tool reads the Market module's retrieval, which a host supplies.
         services.AddMarketModule();
+        services.AddChatModule();
+        services.AddScoped<Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearchPolicy, HostWorkspaceWebResearchPolicy>();
+        services.AddScoped<Raffa.Chat.Application.WebResearch.IWebResearchBudget, HostWebResearchBudget>();
         services.AddAiFlows().AddAiFlows();
 
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions
@@ -57,6 +60,8 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
         var services = DocumentsModuleServices.Create();
         services.AddMarketModule();
         services.AddChatModule();
+        services.AddScoped<Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearchPolicy, HostWorkspaceWebResearchPolicy>();
+        services.AddScoped<Raffa.Chat.Application.WebResearch.IWebResearchBudget, HostWebResearchBudget>();
         services.AddAiFlows();
 
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions
@@ -89,6 +94,9 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
             // WebResearch
             typeof(Raffa.AiFlows.WebResearch.Orchestration.WebResearchComposer),
             typeof(Raffa.AiFlows.WebResearch.Configuration.WebResearchOptions),
+            typeof(Raffa.AiFlows.WebResearch.Orchestration.WebResearchFlow),
+            typeof(Raffa.AiFlows.WebResearch.Orchestration.WebModeFlow),
+            typeof(Raffa.AiFlows.CapabilityGaps.Investigation.CapabilityCheckRunner),
         ];
 
         foreach (var serviceType in flowServices)
@@ -150,4 +158,26 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
 
     private static ServiceDescriptor SingleDescriptor(IServiceCollection services, Type serviceType) =>
         Assert.Single(services, d => d.ServiceType == serviceType);
+
+    // The Api host supplies the workspace policy (it reads the Identity.Workspace settings); the
+    // flows only depend on the port.
+    private sealed class HostWorkspaceWebResearchPolicy : Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearchPolicy
+    {
+        public Task<bool> IsEnabledAsync(Raffa.SharedKernel.TenantId tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
+    }
+
+    // The persisted budget needs the Chat database (AddChatModule with a connection string).
+    private sealed class HostWebResearchBudget : Raffa.Chat.Application.WebResearch.IWebResearchBudget
+    {
+        public Task<bool> HasRemainingAsync(Raffa.SharedKernel.TenantId tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public Task<Raffa.Chat.Application.WebResearch.WebResearchReservation?> TryReserveAsync(
+            Raffa.SharedKernel.TenantId tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Raffa.Chat.Application.WebResearch.WebResearchReservation?>(null);
+
+        public Task ReleaseAsync(Raffa.Chat.Application.WebResearch.WebResearchReservation reservation, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
 }

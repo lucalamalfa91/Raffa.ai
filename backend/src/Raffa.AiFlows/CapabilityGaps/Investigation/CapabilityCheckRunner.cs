@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Raffa.AiFlows.CapabilityGaps.Catalog;
 using Raffa.AiFlows.CapabilityGaps.Copy;
 using Raffa.AiFlows.CapabilityGaps.Investigation;
@@ -12,11 +14,11 @@ using Raffa.Chat.Application.Reply;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.CapabilityGaps.Investigation;
 
 /// <summary>
 /// Everything a capability check needs from the turn that started it (ADR-031), captured by
-/// <see cref="AskCopilotService.AskAsync"/> while the request's own data is at hand — the check
+/// <c>AskCopilotService.AskAsync</c> while the request's own data is at hand — the check
 /// outlives the request, so it never reads the request's scope again.
 /// </summary>
 /// <param name="SupplierNames">Every supplier the tenant has on file: scrubbed from the feature
@@ -30,7 +32,7 @@ namespace Raffa.Api;
 /// <c>ask.capability_outcome</c>, <c>ask.capability_follow_up</c>) — not the message id, which
 /// does not exist yet when the check starts.</param>
 /// <param name="Actor">The caller's token subject, recorded on the outcome audit row.</param>
-internal sealed record CapabilityCheckRequest(
+public sealed record CapabilityCheckRequest(
     TenantId TenantId,
     string Question,
     IReadOnlyList<string> SupplierNames,
@@ -40,16 +42,16 @@ internal sealed record CapabilityCheckRequest(
     string? TurnId = null,
     string Actor = "system");
 
-/// <summary>The one-turn hand-off between <see cref="AskCopilotService.AskAsync"/>, which decides
+/// <summary>The one-turn hand-off between <c>AskCopilotService.AskAsync</c>, which decides
 /// whether a turn is checked and starts the check, and the endpoint, which persists the answer and
 /// then the follow-up. Null <see cref="FollowUp"/>: no check was started.</summary>
-internal sealed class CapabilityCheckSlot
+public sealed class CapabilityCheckSlot
 {
     /// <summary>Completes with the follow-up to append after the answer, or null when the check
     /// found nothing to propose (or failed — the check is fail-open).</summary>
     public Task<CopilotReply?>? FollowUp { get; set; }
 
-    /// <summary>Set by <see cref="AskCopilotService.AskAsync"/> for every checked turn (started or
+    /// <summary>Set by <c>AskCopilotService.AskAsync</c> for every checked turn (started or
     /// not): the id of the turn's <c>ask.capability_*</c> audit rows. Empty when the turn was not
     /// eligible for a check at all.</summary>
     public string? TurnId { get; set; }
@@ -62,7 +64,7 @@ internal sealed class CapabilityCheckSlot
 /// is sent) and returns at its first I/O, so the answer is computed while the model thinks. When
 /// the check finds an operation Raffa cannot perform, the endpoint appends the follow-up as a
 /// separate Raffa message right after the answer — that half (persisting the message, the
-/// background append, <c>WhenIdleAsync</c>) is <see cref="CapabilityFollowUpAppender"/>.
+/// background append, <c>WhenIdleAsync</c>) is <c>CapabilityFollowUpAppender</c>.
 ///
 /// <para>
 /// <b>Whether</b> a check starts is decided by the caller (INV-02): in
@@ -76,7 +78,7 @@ internal sealed class CapabilityCheckSlot
 /// verdict, its confidence, the gap key and the turn id; never the question or any model text.
 /// </para>
 /// </summary>
-internal sealed class CapabilityCheckRunner(
+public sealed class CapabilityCheckRunner(
     IServiceScopeFactory scopeFactory,
     IOptionsMonitor<GapInvestigationOptions> optionsMonitor,
     ILogger<CapabilityCheckRunner> logger)
@@ -195,7 +197,7 @@ internal sealed class CapabilityCheckRunner(
     /// key and the turn id; never the question, a feature text or any model output. Telemetry
     /// never fails a check: a writer that throws is logged and swallowed.
     /// </summary>
-    internal async Task TryAuditOutcomeAsync(
+    public async Task TryAuditOutcomeAsync(
         IServiceProvider services, TenantId tenantId, string actor, string? turnId, string outcome, string? confidence, string? gapKey)
     {
         try
@@ -220,7 +222,7 @@ internal sealed class CapabilityCheckRunner(
         }
     }
 
-    internal static string FormatTurnId(string? turnId) => turnId ?? "none";
+    public static string FormatTurnId(string? turnId) => turnId ?? "none";
 
     /// <summary>
     /// The follow-up message: "I checked what Raffa.ai can do for your request." then the gap's

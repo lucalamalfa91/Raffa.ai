@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Shared.Audit;
 using Raffa.AiFlows.Ask.Interview;
 using Raffa.AiFlows.Shared.Routing;
 using Raffa.AiFlows.WebResearch.Configuration;
@@ -14,11 +15,11 @@ using Raffa.Chat.Application.WebResearch;
 using Raffa.Documents.Contracts.Application;
 using Raffa.SharedKernel;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.WebResearch.Orchestration;
 
 /// <summary>Why a web-research turn was (or was not) let through: the gates in the order they are
 /// met. <see cref="Open"/> is the only value that ever reaches the search.</summary>
-internal enum WebGate
+public enum WebGate
 {
     Open,
     KillSwitch,
@@ -33,7 +34,7 @@ internal enum WebGate
 /// <summary>Resolves the recovery actions of a non-answer for the current portfolio and routing
 /// context — the orchestrator's own <c>AskCopilotService.ResolveAbstainRecoveryActions</c>, handed to
 /// the web flows as a delegate so they never reference the orchestrator.</summary>
-internal delegate IReadOnlyList<CopilotAction> AbstainRecoveryResolver(
+public delegate IReadOnlyList<CopilotAction> AbstainRecoveryResolver(
     PortfolioPage portfolio, RoutingContext routingContext);
 
 /// <summary>
@@ -47,7 +48,7 @@ internal delegate IReadOnlyList<CopilotAction> AbstainRecoveryResolver(
 /// Rewritten from the former <c>AskCopilotService.WebResearch.cs</c> partial, bodies unchanged: the
 /// order of the gates, the budget reservation and release, and every audit row are as they were.
 /// </summary>
-internal sealed class WebResearchFlow(
+public sealed class WebResearchFlow(
     WebResearchOptions webResearchOptions,
     WebResearchComposer webResearchComposer,
     IWebResearchBudget webResearchBudget,

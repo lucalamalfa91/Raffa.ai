@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Shared.Audit;
 using Raffa.AiFlows.Ask.Gate;
 using Raffa.AiFlows.Ask.Interview;
 using Raffa.AiFlows.Ask.Routing;
@@ -17,13 +18,13 @@ using Raffa.Chat.Domain;
 using Raffa.Documents.Contracts.Application;
 using Raffa.SharedKernel;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.WebResearch.Orchestration;
 
 /// <summary>The normal contracts-only pipeline for one question, as the orchestrator runs it
 /// (<c>AskCopilotService.BuildInDomainReplyAsync</c>, interview suppressed): the question to answer
 /// and the supplier it names (or <see langword="null"/>). The web-mode flow gets it as a delegate so
 /// it never references the orchestrator.</summary>
-internal delegate Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> InDomainReplyBuilder(
+public delegate Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> InDomainReplyBuilder(
     string question, string? namedSupplier, CancellationToken cancellationToken);
 
 /// <summary>
@@ -50,7 +51,7 @@ internal delegate Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackU
 /// the consented path.
 /// </para>
 /// </summary>
-internal sealed class WebModeFlow(
+public sealed class WebModeFlow(
     WebResearchOptions webResearchOptions,
     IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
     IWebResearchBudget webResearchBudget,

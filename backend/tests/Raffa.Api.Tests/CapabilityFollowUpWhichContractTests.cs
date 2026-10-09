@@ -1,3 +1,4 @@
+using Raffa.AiFlows.CapabilityGaps.Investigation;
 using Raffa.AiFlows.CapabilityGaps.Catalog;
 using Raffa.AiFlows.CapabilityGaps.Copy;
 using Raffa.AiFlows.CapabilityGaps.Replies;

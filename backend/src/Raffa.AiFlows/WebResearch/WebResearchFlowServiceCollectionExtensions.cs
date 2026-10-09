@@ -34,6 +34,10 @@ internal static class WebResearchFlowServiceCollectionExtensions
 
         services.AddScoped<WebResearchComposer>();
 
+        // The web-research and web-mode halves of Ask (ADR-030 / ADR-032), consumed by AskCopilotService.
+        services.AddScoped<WebResearchFlow>();
+        services.AddScoped<WebModeFlow>();
+
         return services;
     }
 }

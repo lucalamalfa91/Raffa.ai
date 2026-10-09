@@ -6,7 +6,7 @@ using Raffa.Documents.Contracts.Application;
 using Raffa.Market.Contracts;
 using Raffa.Market.Retrieval;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.Negotiation.DataCheck;
 
 /// <summary>
 /// The market safety net of an Ask turn about one contract (persona v2.5): when the contract's own
@@ -29,7 +29,7 @@ namespace Raffa.Api;
 /// lines and the deals.
 /// </para>
 /// </summary>
-internal static class MarketSafetyNet
+public static class MarketSafetyNet
 {
     /// <summary>The widest range worth giving: high end at most this many times the low end
     /// (EUR 250,000–500,000 is published; EUR 1m–5m is not).</summary>
@@ -39,7 +39,7 @@ internal static class MarketSafetyNet
 
     /// <summary>An annual-value estimate for one contract. <see cref="Low"/> is
     /// <see langword="null"/> for an open-ended "below" band.</summary>
-    internal sealed record AnnualEstimate(
+    public sealed record AnnualEstimate(
         decimal? Low,
         decimal High,
         string Currency,
@@ -48,7 +48,7 @@ internal static class MarketSafetyNet
         string? CompanySizeBand,
         int SampleSize);
 
-    internal enum AnnualEstimateBasis
+    public enum AnnualEstimateBasis
     {
         /// <summary>The contract's own quantities at the market's P25–P75 unit prices.</summary>
         QuantitiesAtMarketPrices,
@@ -63,7 +63,7 @@ internal static class MarketSafetyNet
     /// <summary>The contract fields the data check looks for, as the English labels the pack
     /// carries. Which of them a question needs is the agents' and the answer's call; this type only
     /// says which are missing and what the market says in their place.</summary>
-    internal static class Field
+    public static class Field
     {
         public const string AnnualSpend = "annual spend";
         public const string EndDate = "end date";
@@ -97,7 +97,7 @@ internal static class MarketSafetyNet
 
     /// <summary>One contract's data check: what it is missing and the market's stand-ins — the
     /// deterministic lead's input, one per contract checked.</summary>
-    internal sealed record ContractCheck(
+    public sealed record ContractCheck(
         string SupplierName,
         IReadOnlyList<string> Missing,
         AnnualEstimate? Estimate,
