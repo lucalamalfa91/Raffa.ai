@@ -1,11 +1,11 @@
-using Raffa.Quotes.Application.Extraction;
+using Raffa.AiFlows.QuoteExtraction.Agents;
 using Raffa.Quotes.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 
-namespace Raffa.Quotes.Tests;
+namespace Raffa.AiFlows.Tests.QuoteExtraction;
 
 /// <summary>
 /// Proves the Definition of Done for task E05/F01/US01/T01 (quote-extraction) AC-2 ("Line items

@@ -59,7 +59,7 @@ internal static class R4ExtractionFixtures
 
     /// <summary>
     /// Scripted `extract` payload for the `QuoteLineItems` stage
-    /// (<c>Raffa.Api.QuoteExtractionPipeline.StageName</c>) — same shape
+    /// (<c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionStages.StageName</c>) — same shape
     /// <see cref="QuoteExtractionScriptedPayloads.PayloadsByStage"/> already establishes for the
     /// sibling quote-extraction fixture. Never states a total/extended price anywhere (AC-3):
     /// <c>QuoteLineExtractionService</c> must derive <c>ExtendedPrice</c> = 220,000 (100 × 2,200)

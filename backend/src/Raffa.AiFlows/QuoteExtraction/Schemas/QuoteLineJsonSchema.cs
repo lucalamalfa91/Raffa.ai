@@ -1,22 +1,20 @@
 using System.Text.Json;
 
-namespace Raffa.Quotes.Application.Extraction;
+namespace Raffa.AiFlows.QuoteExtraction.Schemas;
 
 /// <summary>
-/// Builds the JSON Schema text <c>Raffa.Api.QuoteExtractionPipeline</c> sends as
-/// <c>AiExtractionRequest.JsonSchema</c> for the quote line-item extraction stage (product spec
-/// §7.3/§4.4: "schema-constrained output... quantities, SKU/edition, prices, discounts and
+/// Builds the JSON Schema text <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c>
+/// sends as <c>AiExtractionRequest.JsonSchema</c> for the quote line-item extraction stage (product
+/// spec §7.3/§4.4: "schema-constrained output... quantities, SKU/edition, prices, discounts and
 /// terms"; ADR-004: "a structured-output-capable model... not free text"). Public (unlike
 /// <c>Raffa.Documents.Contracts.Application.Extraction.StagedExtractionJsonSchemas</c>, which is
-/// <c>internal</c> to its own module): the AI Gateway call site
-/// (<c>Raffa.Api.QuoteExtractionPipeline</c>) lives in a different project from this schema
-/// builder — ADR-002 allows <c>Raffa.Api</c> to reference every module, but this type must still
-/// be visible across that assembly boundary.
+/// <c>internal</c> to its own module); the AI Gateway call site is the pipeline named above, in
+/// the same project.
 ///
 /// <b>AC-3 / Appendix C rule 6</b> ("prefer deterministic arithmetic... to LLM reasoning"): this
 /// schema deliberately has <b>no</b> computed-total/extended-price property. The model reports only
 /// what a person could read directly off the page (quantity, sku, edition, unit price, list price,
-/// discount percent, term); <see cref="QuoteLineExtractionService"/> computes
+/// discount percent, term); <c>QuoteLineExtractionService</c> computes
 /// <c>QuoteLine.ExtendedPrice</c> (and, when needed, <c>QuoteLine.UnitPrice</c> itself from
 /// <c>listPrice</c>/<c>discountPercent</c>) in plain C# arithmetic afterward — the model is
 /// structurally incapable of supplying a fabricated total because there is nowhere in this schema

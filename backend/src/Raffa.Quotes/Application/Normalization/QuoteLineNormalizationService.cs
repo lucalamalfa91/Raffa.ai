@@ -13,12 +13,12 @@ namespace Raffa.Quotes.Application.Normalization;
 /// per-line figure that such a task can read.
 ///
 /// <b>Deterministic, in-process, same unit of work as extraction</b>: like
-/// <c>Raffa.Quotes.Application.Extraction.QuoteLineExtractionService.ApplyExtractedLines</c>, this
+/// <c>Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionService.ApplyExtractedLines</c>, this
 /// only mutates already-tracked <see cref="QuoteLine"/> entities — it does not call
 /// <c>SaveChangesAsync</c> itself. <see cref="NormalizeLines"/> reads
 /// <see cref="Microsoft.EntityFrameworkCore.DbContext.ChangeTracker"/>'s own local view (via
 /// <c>QuotesDbContext.QuoteLines.Local</c>), not a fresh database query, because its only caller
-/// today (<c>Raffa.Api.QuoteExtractionPipeline.ProcessAsync</c>) runs this immediately after
+/// today (<c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline.ProcessAsync</c>) runs this immediately after
 /// <c>ApplyExtractedLines</c> adds those very rows to the same <see cref="QuotesDbContext"/>
 /// instance's change tracker, still before the one shared <c>SaveChangesAsync</c> call that persists
 /// both extraction and normalization together as a single unit of work — a query against the
@@ -35,7 +35,7 @@ public sealed class QuoteLineNormalizationService(QuotesDbContext dbContext)
     /// <paramref name="tenantId"/> in place (see this type's own doc comment for why "currently
     /// tracked", not "queried from the database"). Returns a count of how many lines resolved to a
     /// real <see cref="QuoteLine.NormalizedAnnualUnitPrice"/> versus how many did not — mirrors
-    /// <c>Raffa.Quotes.Application.Extraction.QuoteLineExtractionOutcome</c>'s own
+    /// <c>Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionOutcome</c>'s own
     /// caller-facing-counts shape.
     /// </summary>
     public QuoteLineNormalizationOutcome NormalizeLines(TenantId tenantId, EntityId quoteId)
@@ -96,10 +96,10 @@ public sealed class QuoteLineNormalizationService(QuotesDbContext dbContext)
     }
 }
 
-/// <summary>Counts <c>Raffa.Api.QuoteExtractionPipeline</c> uses to report
+/// <summary>Counts <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c> uses to report
 /// <c>normalizedLineItemCount</c>/<c>unresolvedNormalizationCount</c> back over HTTP (see
 /// <c>Raffa.Api.QuotesEndpointExtensions</c>) — mirrors
-/// <c>Raffa.Quotes.Application.Extraction.QuoteLineExtractionOutcome</c>'s own named-result-crosses-
+/// <c>Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionOutcome</c>'s own named-result-crosses-
 /// an-assembly-boundary shape. <see cref="UnresolvedCount"/> is spec §11.3's own "line-item
 /// normalization is unresolved" guardrail made visible, not enforced — no task yet reads this value
 /// back to gate a savings target.</summary>

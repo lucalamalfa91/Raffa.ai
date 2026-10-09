@@ -10,9 +10,9 @@ namespace Raffa.Quotes.Application.Normalization;
 /// "Normalize SKU/edition to the canonical product mapping" and AC-2's "Show unmatched SKUs" half —
 /// the other half of AC-2, "...and allow manual product mapping", plus AC-3 "Re-run assessment
 /// after mapping correction", are task E05/F01/US02/T02's own scope). Mirrors
-/// <c>Raffa.Quotes.Application.Extraction.QuoteLineExtractionService</c>'s own "only adds/updates
+/// <c>Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionService</c>'s own "only adds/updates
 /// the change tracker, does not call <c>SaveChangesAsync</c> itself" division of responsibility, so
-/// a caller (<c>Raffa.Api.QuoteExtractionPipeline</c> today; task T02's own recalculate endpoint
+/// a caller (<c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c> today; task T02's own recalculate endpoint
 /// later) can persist this alongside whatever else it is already doing in one unit of work.
 ///
 /// <see cref="SkuProductMapping"/> is this module's own, self-contained "canonical product
@@ -112,7 +112,7 @@ public sealed class SkuNormalizationService(QuotesDbContext dbContext)
     }
 }
 
-/// <summary>Counts a caller (<c>Raffa.Api.QuoteExtractionPipeline</c> today) can fold into its
+/// <summary>Counts a caller (<c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c> today) can fold into its
 /// own response/telemetry — mirrors <c>QuoteLineExtractionOutcome</c>'s identical shape/purpose for
 /// the sibling extraction stage.</summary>
 public sealed record SkuNormalizationOutcome(

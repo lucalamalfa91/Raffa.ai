@@ -1,8 +1,9 @@
 using System.Text.Json;
+using Raffa.AiFlows.QuoteExtraction.Agents;
+using Raffa.AiFlows.QuoteExtraction.Schemas;
 using Raffa.AiGateway.Foundry;
-using Raffa.Quotes.Application.Extraction;
 
-namespace Raffa.Quotes.Tests;
+namespace Raffa.AiFlows.Tests.QuoteExtraction;
 
 /// <summary>
 /// Proves <see cref="QuoteLineJsonSchema.LineItems"/> is well-formed and shapes AC-2/AC-3 (task
@@ -94,6 +95,20 @@ public sealed class QuoteLineJsonSchemaTests
         Assert.False(confidence.TryGetProperty("minimum", out _));
         Assert.False(confidence.TryGetProperty("maximum", out _));
         Assert.Contains("0 to 1", confidence.GetProperty("description").GetString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>The schema text is sent to the model as <c>AiExtractionRequest.JsonSchema</c> and
+    /// is part of what the extraction is keyed on, so moving the builder between projects must not
+    /// change a single byte. This is the output as it was before the move to
+    /// <c>Raffa.AiFlows</c>; an intentional schema change updates this literal in the same commit.</summary>
+    private const string LineItemsSnapshot = """
+        {"type":"object","properties":{"items":{"type":"array","description":"Every priced line of the quote, in document order. At most 60 items.","items":{"type":"object","properties":{"sku":{"type":["string","null"],"description":"Product code / SKU / article number as written, or null."},"edition":{"type":["string","null"],"description":"Edition or tier as written (e.g. \u0027Enterprise\u0027, \u0027E3\u0027), or null."},"description":{"type":"string","description":"The line as named in the document (original language)."},"quantity":{"type":["number","null"],"description":"Quantity as a JSON number, or null."},"unit":{"type":["string","null"],"description":"Unit of measure as written (seats, users, hours, licences ...), or null."},"unitPrice":{"type":["number","null"],"description":"Quoted price per unit as a JSON number, no currency symbol, or null."},"listPrice":{"type":["number","null"],"description":"List (undiscounted) price per unit as a JSON number, or null."},"discountPercent":{"type":["number","null"],"description":"Discount percentage as a JSON number (15 for 15%), or null."},"term":{"type":["string","null"],"description":"Subscription or service term as written (e.g. \u002712 months\u0027, \u00273 years\u0027), or null."},"sourcePage":{"type":["integer","null"],"description":"The integer n of the [[PAGE n]] marker that precedes the line, or null."},"sourceSpan":{"type":["string","null"],"description":"A verbatim quote of at most 300 characters from that page that shows the line, or null."},"confidence":{"type":"number","description":"Number from 0 to 1: your probability that the line is read correctly; below 0.6 when the document is ambiguous."}},"required":["sku","edition","description","quantity","unit","unitPrice","listPrice","discountPercent","term","sourcePage","sourceSpan","confidence"],"additionalProperties":false}}},"required":["items"],"additionalProperties":false}
+        """;
+
+    [Fact]
+    public void LineItems_is_byte_identical_to_the_snapshot()
+    {
+        Assert.Equal(LineItemsSnapshot, QuoteLineJsonSchema.LineItems());
     }
 
     private static JsonElement GetItemSchema()
