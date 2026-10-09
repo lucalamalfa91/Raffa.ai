@@ -206,11 +206,6 @@ public sealed class DocumentAdmissionGate(
             ? $"{AdmissionConstants.GatewayUnavailablePrefix} the '{role}' role could not be reached ({error}). Nothing was stored."
             : error;
 
-    /// <summary>Same representative text <see cref="DocumentProcessingOrchestrator"/> hands the classify
-    /// role: every page, in order, separated by a blank line.</summary>
-    private static string BuildClassificationText(IReadOnlyList<DocumentPageText> pages) =>
-        string.Join("\n\n", pages.Select(p => p.Text));
-
     /// <summary>
     /// Foundry HTTP already retries inside <c>FoundryRetryPolicy</c>. This loop is for the
     /// thrown path — EF <see cref="TransientDataAccessFault"/> on heartbeat/audit — so one
@@ -220,7 +215,7 @@ public sealed class DocumentAdmissionGate(
         IReadOnlyList<DocumentPageText> pages, CancellationToken cancellationToken)
     {
         var wait = delay ?? Task.Delay;
-        var request = new AiClassificationRequest(BuildClassificationText(pages));
+        var request = new AiClassificationRequest(ClassificationText.Build(pages));
 
         for (var attempt = 0; ; attempt++)
         {

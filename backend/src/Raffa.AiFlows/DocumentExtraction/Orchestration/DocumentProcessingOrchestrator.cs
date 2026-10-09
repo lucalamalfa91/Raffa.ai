@@ -375,7 +375,7 @@ public sealed class DocumentProcessingOrchestrator(
             classificationJob.StartedAt = startedAt;
         }
 
-        var classificationText = BuildClassificationText(pages);
+        var classificationText = ClassificationText.Build(pages);
         var classifyResult = await aiGateway
             .ClassifyAsync(new AiClassificationRequest(classificationText), cancellationToken)
             .ConfigureAwait(false);
@@ -417,12 +417,6 @@ public sealed class DocumentProcessingOrchestrator(
                 && j.Status == ExtractionJobStatus.Queued)
             .OrderBy(j => j.QueuedAt)
             .FirstOrDefaultAsync(cancellationToken);
-
-    /// <summary>Representative text for the classify role (<see cref="AiClassificationRequest.DocumentText"/>:
-    /// "the full text of the document (or a representative prefix)") — every page, in order, so a
-    /// multi-page contract's type is judged on all of it, not on a cover page alone.</summary>
-    private static string BuildClassificationText(IReadOnlyList<DocumentPageText> pages) =>
-        string.Join("\n\n", pages.Select(p => p.Text));
 
     /// <summary>
     /// Indexes every non-blank page as one retrieval chunk (<c>chunkIndex</c> = zero-based page
