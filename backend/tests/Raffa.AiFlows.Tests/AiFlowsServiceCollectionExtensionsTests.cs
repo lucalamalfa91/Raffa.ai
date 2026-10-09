@@ -1,22 +1,26 @@
 using Microsoft.Extensions.DependencyInjection;
+using Raffa.Market;
+using Raffa.SharedKernel.Market;
 
 namespace Raffa.AiFlows.Tests;
 
 /// <summary>
-/// The AI flows project starts empty (no flow has moved in yet): <c>AddAiFlows</c> is the stable
-/// entry point the hosts already call, and it must be a harmless no-op until flows register.
+/// <c>AddAiFlows</c> is the stable entry point the hosts call. So far only the MarketKnowledge
+/// flow registers behind it; the flows that have not moved in yet register nothing.
 /// </summary>
 public sealed class AiFlowsServiceCollectionExtensionsTests
 {
     [Fact]
-    public void AddAiFlows_returns_the_same_collection_and_registers_nothing_yet()
+    public void AddAiFlows_returns_the_same_collection_and_registers_only_the_flows_that_moved_in()
     {
         var services = new ServiceCollection();
 
         var returned = services.AddAiFlows();
 
         Assert.Same(services, returned);
-        Assert.Empty(services);
+        Assert.Contains(services, d => d.ServiceType == typeof(IMarketPriceEstimator));
+        Assert.Contains(services, d => d.ServiceType == typeof(Raffa.Chat.Application.Council.IMarketRagSearch));
+        Assert.Equal(2, services.Count);
     }
 
     [Fact]
@@ -24,6 +28,8 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
 
+        // The market researcher's tool reads the Market module's retrieval, which a host supplies.
+        services.AddMarketModule();
         services.AddAiFlows().AddAiFlows();
 
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions
