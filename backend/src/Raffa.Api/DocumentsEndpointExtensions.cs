@@ -38,9 +38,9 @@ namespace Raffa.Api;
 ///
 /// <para>
 /// <b>What no longer happens in the request</b> (task E16/F02/US03/T01, wave w15, ADR-027 §D1,
-/// closing NW-27). <see cref="DocumentAdmissionGate"/>'s content half (parse/OCR, readable-text
+/// closing NW-27). <c>DocumentAdmissionGate</c>'s content half (parse/OCR, readable-text
 /// floor, <c>classify</c> role and threshold) and the whole of
-/// <see cref="DocumentProcessingPipeline"/> moved behind the Worker. Two visible consequences:
+/// <c>DocumentProcessingOrchestrator</c> moved behind the Worker. Two visible consequences:
 /// <list type="bullet">
 /// <item>a content refusal is <b>no longer a 422</b>. The document is persisted and the Worker
 /// drives it to <see cref="DocumentProcessingStatus.Rejected"/> carrying its reason

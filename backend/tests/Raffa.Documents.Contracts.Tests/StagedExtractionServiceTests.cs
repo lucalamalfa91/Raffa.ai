@@ -328,7 +328,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         // Task E13/F03/US01/T02 (R-SUP-01): the `supplier` critical fact rides the same evidence
         // path as every other metadata fact — and, cleared for use at 0.95, is reported on the
-        // summary for DocumentProcessingPipeline to resolve into Contract.SupplierId (this service
+        // summary for DocumentProcessingOrchestrator to resolve into Contract.SupplierId (this service
         // deliberately writes no SupplierId itself — ADR-002).
         var supplierEvidence = Assert.Single(evidence, e => e.FieldName == "supplier");
         Assert.Equal(SupplierLegalName, supplierEvidence.Value);
@@ -1096,7 +1096,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     /// <c>DocumentUploadService</c> creates a Contract shell at upload time with
     /// <see cref="ContractDocumentType.Other"/> as a placeholder, <see cref="StagedExtractionService"/>
     /// must promote that placeholder to the classified type (e.g. <c>Msa</c>) once
-    /// <c>DocumentProcessingPipeline</c> has classified the document and flushed
+    /// <c>DocumentProcessingOrchestrator</c> has classified the document and flushed
     /// <see cref="Document.DocumentType"/> before calling <see cref="StagedExtractionService.RunAsync"/>.
     /// Without this, the portfolio/360 type stays "Other" even after extraction completes (the
     /// E2E assertion at <c>R1EndToEndTests.cs:92</c> would fail with Expected "Msa"/Actual "Other").
@@ -1107,7 +1107,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
 
-        // Seed: document classified as Msa (DocumentProcessingPipeline has already set
+        // Seed: document classified as Msa (DocumentProcessingOrchestrator has already set
         // DocumentType and flushed it before calling RunAsync) plus a bootstrap Contract shell
         // with the upload-time placeholder Type = Other — exactly the state the pipeline hands
         // to StagedExtractionService after classification.

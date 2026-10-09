@@ -113,7 +113,7 @@ public sealed partial class StagedExtractionService(
 
     /// <summary>
     /// Runs the seven stages; <paramref name="classificationConfidence"/>, when the caller has one
-    /// (the admission gate's or <see cref="DocumentProcessingPipeline"/>'s own `classify` verdict for
+    /// (the admission gate's or <c>DocumentProcessingOrchestrator</c>'s own `classify` verdict for
     /// this document), is recorded as the <see cref="ExtractionFieldNames.Type"/> evidence row so the review
     /// screen can show a real confidence for "Contract type" — and a classification below
     /// <see cref="ExtractionConfidencePolicy.AutoAcceptThreshold"/> routes the document to review like any other weak fact.
@@ -261,7 +261,7 @@ public sealed partial class StagedExtractionService(
     /// When an existing bootstrap contract is found (created by <c>DocumentUploadService</c> at
     /// upload time with <see cref="ContractDocumentType.Other"/> as a placeholder), its
     /// <see cref="Contract.Type"/> is promoted to <see cref="Document.DocumentType"/> the moment
-    /// classification has resolved a specific type. <see cref="DocumentProcessingPipeline"/> flushes
+    /// classification has resolved a specific type. <c>DocumentProcessingOrchestrator</c> flushes
     /// <see cref="Document.DocumentType"/> via <c>SaveChangesAsync</c> <em>before</em> calling
     /// <see cref="RunAsync(TenantId, EntityId, IReadOnlyList{DocumentPageText}, double?, CancellationToken)"/>,
     /// so by the time this method runs the in-memory document already carries the real classified
@@ -548,7 +548,7 @@ public sealed partial class StagedExtractionService(
                 // Deliberately writes nothing onto Contract. `supplier` is a legal *name*;
                 // Contract.SupplierId is a cross-module reference this module may not resolve
                 // itself (ADR-002 — Documents/Contracts never references Raffa.Suppliers.Products),
-                // so the link is made one layer up by DocumentProcessingPipeline through
+                // so the link is made one layer up by DocumentProcessingOrchestrator through
                 // ISupplierResolver. The fact is still fully persisted as its own
                 // ExtractionEvidence row by the caller, exactly like every other metadata fact.
                 break;

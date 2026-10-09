@@ -1,4 +1,7 @@
 using System.Text;
+using Raffa.AiFlows.DocumentExtraction.Admission;
+using Raffa.AiFlows.DocumentExtraction.Orchestration;
+using Raffa.AiFlows.Shared.Parsing;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -18,7 +21,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Testcontainers.PostgreSql;
 
-namespace Raffa.Documents.Contracts.Tests;
+namespace Raffa.AiFlows.Tests.DocumentExtraction;
 
 /// <summary>
 /// Task E13/F04/US01/T02 (documents-v2-api): the V2 document lifecycle against a real
@@ -578,7 +581,7 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
         return documentId;
     }
 
-    private static DocumentProcessingPipeline CreatePipeline(
+    private static DocumentProcessingOrchestrator CreatePipeline(
         DocumentsContractsDbContext db, Harness harness, ITenantContext tenantContext) =>
         new(
             db,

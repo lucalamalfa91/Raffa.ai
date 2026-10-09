@@ -2,6 +2,9 @@ using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using Raffa.AiFlows.DocumentExtraction.Admission;
+using Raffa.AiFlows.Shared.Parsing;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -14,7 +17,7 @@ using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using WP = DocumentFormat.OpenXml.Wordprocessing;
 
-namespace Raffa.Documents.Contracts.Tests.Admission;
+namespace Raffa.AiFlows.Tests.DocumentExtraction.Admission;
 
 /// <summary>
 /// One admission + extract + preview proof per dropzone format (PDF, DOCX, XLSX, PNG, JPG).

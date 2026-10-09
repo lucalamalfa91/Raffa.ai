@@ -1,3 +1,7 @@
+using Raffa.AiFlows.DocumentExtraction.Classification;
+using Raffa.AiFlows.DocumentExtraction.Orchestration;
+using Raffa.AiFlows.Shared.Parsing;
+using Raffa.Documents.Contracts.Application.Admission;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Raffa.AiGateway;
@@ -7,7 +11,7 @@ using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 
-namespace Raffa.Documents.Contracts.Application.Admission;
+namespace Raffa.AiFlows.DocumentExtraction.Admission;
 
 /// <summary>
 /// Task E13/F04/US01/T01 (documents-admission): "only contracts get in" (ADR-024 "gate before
@@ -54,7 +58,7 @@ namespace Raffa.Documents.Contracts.Application.Admission;
 ///
 /// <para>
 /// <b>Classified once.</b> An admitted decision carries the parsed pages and the
-/// <see cref="DocumentClassification"/> so <see cref="DocumentProcessingPipeline"/> continues from
+/// <see cref="DocumentClassification"/> so <see cref="DocumentProcessingOrchestrator"/> continues from
 /// them instead of re-parsing and re-classifying (ADR-017 page budget, ADR-004 cost posture).
 /// </para>
 /// </summary>
@@ -108,7 +112,7 @@ public sealed class DocumentAdmissionGate(
         // LoggingAiGateway refuses to log — and therefore to run — an `ocr` or `classify` call
         // with no ambient tenant ("every AI call must be attributable to a tenant", ADR-011), and
         // the rejection audit write below needs the same scope for RLS (ADR-009). Same entry-point
-        // posture DocumentProcessingPipeline and AuditQueryService take: open this call's own
+        // posture DocumentProcessingOrchestrator and AuditQueryService take: open this call's own
         // scope rather than trusting one is already active.
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
@@ -202,7 +206,7 @@ public sealed class DocumentAdmissionGate(
             ? $"{AdmissionConstants.GatewayUnavailablePrefix} the '{role}' role could not be reached ({error}). Nothing was stored."
             : error;
 
-    /// <summary>Same representative text <see cref="DocumentProcessingPipeline"/> hands the classify
+    /// <summary>Same representative text <see cref="DocumentProcessingOrchestrator"/> hands the classify
     /// role: every page, in order, separated by a blank line.</summary>
     private static string BuildClassificationText(IReadOnlyList<DocumentPageText> pages) =>
         string.Join("\n\n", pages.Select(p => p.Text));

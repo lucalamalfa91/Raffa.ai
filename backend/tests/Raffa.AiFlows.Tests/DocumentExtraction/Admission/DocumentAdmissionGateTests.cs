@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Raffa.AiFlows.DocumentExtraction.Admission;
+using Raffa.AiFlows.Shared.Parsing;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -11,7 +14,7 @@ using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 
-namespace Raffa.Documents.Contracts.Tests.Admission;
+namespace Raffa.AiFlows.Tests.DocumentExtraction.Admission;
 
 /// <summary>
 /// Task E13/F04/US01/T01 (documents-admission): <see cref="DocumentAdmissionGate"/> decisions per

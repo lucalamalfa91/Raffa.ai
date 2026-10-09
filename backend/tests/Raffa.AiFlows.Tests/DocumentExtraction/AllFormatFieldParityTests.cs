@@ -3,6 +3,8 @@ using System.Text.Json;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using Raffa.AiFlows.Shared.Parsing;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
@@ -12,7 +14,7 @@ using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.SharedKernel;
 using WP = DocumentFormat.OpenXml.Wordprocessing;
 
-namespace Raffa.Documents.Contracts.Tests;
+namespace Raffa.AiFlows.Tests.DocumentExtraction;
 
 /// <summary>
 /// Every dropzone format (PDF, DOCX, XLSX, PNG, JPG) must hand staged extraction the same

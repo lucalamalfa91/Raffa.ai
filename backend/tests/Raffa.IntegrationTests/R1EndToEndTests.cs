@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Raffa.AiFlows.DocumentExtraction.Orchestration;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Infrastructure;
@@ -19,7 +20,7 @@ namespace Raffa.IntegrationTests;
 /// field correction preserves original extraction + history") and AC-4 ("At least one scanned or
 /// image-based contract extracts via Document Intelligence, full document, ADR-017") — driven
 /// entirely over real HTTP through the real <c>Raffa.Api</c> composition root (including the
-/// <see cref="Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline"/> this
+/// <c>DocumentProcessingOrchestrator</c> this
 /// task adds), against a real, migrated Postgres+pgvector+RLS database
 /// (see <see cref="R1IntegrationFixture"/>) — the same "one real host, no hand-rolled container"
 /// shape <c>R0EndToEndTests</c> already established for R0. AC-3 (cross-tenant isolation) is proved
@@ -252,7 +253,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
     /// supplier).
     ///
     /// <para>
-    /// Re-processing itself goes through the real <c>DocumentProcessingPipeline</c> resolved from
+    /// Re-processing itself goes through the real <c>DocumentProcessingOrchestrator</c> resolved from
     /// this host's own container — the same "resolve the real service from the host's service
     /// provider, skip HTTP" shape <see cref="Full_r1_path_upload_to_extract_to_portfolio_to_360_to_ask_raffa_to_correction"/>
     /// already uses to read <c>ExtractionEvidence</c> back. The reprocess *endpoint* is a sibling
@@ -291,7 +292,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
 
         using (var scope = _fixture.Services.CreateScope())
         {
-            var pipeline = scope.ServiceProvider.GetRequiredService<DocumentProcessingPipeline>();
+            var pipeline = scope.ServiceProvider.GetRequiredService<DocumentProcessingOrchestrator>();
 
             var reprocessed = await pipeline.ProcessAsync(
                 new TenantId(tenantId),
@@ -320,7 +321,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
     /// the Worker (<see cref="R1IntegrationFixture.DrainExtractionQueueAsync"/>) and returns the
     /// resulting document/contract ids. Since wave w15 (ADR-027 §D1) the upload returns at the
     /// store — 201, <c>processingStatus: "Uploaded"</c>, <c>contractId: null</c> — and
-    /// <see cref="Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline"/>
+    /// <c>DocumentProcessingOrchestrator</c>
     /// runs on the Worker, so the contract id has to be read after the drain instead of off the
     /// 201 (task E02/F06/US01/T01 is what used to make that response carry it).
     /// <see cref="ByteArrayContent.Headers"/>' <see cref="MediaTypeHeaderValue"/> is set explicitly:

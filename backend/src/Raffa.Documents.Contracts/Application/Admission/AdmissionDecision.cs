@@ -4,7 +4,7 @@ using Raffa.Documents.Contracts.Domain;
 
 namespace Raffa.Documents.Contracts.Application.Admission;
 
-/// <summary>How <see cref="DocumentAdmissionGate.EvaluateAsync"/> ended.</summary>
+/// <summary>How <c>DocumentAdmissionGate.EvaluateAsync</c> ended.</summary>
 public enum AdmissionOutcome
 {
     /// <summary>A contract-related document with enough readable text: persist and process it.</summary>
@@ -44,7 +44,7 @@ public static class AdmissionRejectionReasonExtensions
 
 /// <summary>
 /// The classify-role verdict the gate already obtained, carried into
-/// <see cref="DocumentProcessingPipeline.ProcessAsync(Raffa.SharedKernel.TenantId, Raffa.SharedKernel.EntityId, IReadOnlyList{DocumentPageText}, DocumentClassification, CancellationToken)"/>
+/// <c>DocumentProcessingOrchestrator.ProcessAsync</c> (pages + classification overload)
 /// so an admitted document is classified exactly once (task E13/F04/US01/T01: "reusing the pages
 /// and classification already computed ... so the model is not called twice").
 /// </summary>
@@ -56,7 +56,7 @@ public sealed record DocumentClassification(
 /// <summary>
 /// The gate's verdict on one upload, plus everything the caller needs to either build the 422
 /// body (<see cref="DetectedType"/>, <see cref="Confidence"/>, <see cref="Reason"/>,
-/// <see cref="DocumentAdmissionGate.Hint"/>) or continue into persistence without re-parsing or
+/// <c>DocumentAdmissionGate.Hint</c>) or continue into persistence without re-parsing or
 /// re-classifying (<see cref="Pages"/>, <see cref="Classification"/>).
 /// </summary>
 public sealed record AdmissionDecision

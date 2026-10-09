@@ -92,21 +92,18 @@ public static class ServiceCollectionExtensions
         // DocumentPageText list StagedExtractionService above already depends on.
         // NativeDocumentTextExtractor holds no per-request state (no DbContext, no ambient tenant
         // scope), so — unlike the DbContext-bound services above — Singleton is correct, not just
-        // convenient.
+        // convenient. HybridDocumentParsingService itself (the AI flow that calls it) is registered
+        // by Raffa.AiFlows' AddDocumentExtractionFlow.
         services.TryAddSingleton<INativeDocumentTextExtractor, NativeDocumentTextExtractor>();
-        services.AddScoped<HybridDocumentParsingService>();
         services.AddScoped<Contract360QueryService>();
         services.AddScoped<ContractCorrectionHistoryQueryService>();
 
-        // Task E02/F06/US01/T01 (r1-integration): the orchestrator that finally calls
-        // HybridDocumentParsingService/StagedExtractionService/EmbeddingRetrievalService together
-        // (see DocumentProcessingPipeline's own doc comment for why nothing did before this task).
-        // Scoped for the same reason every service above is: it shares this registration's own
-        // DbContext instance, not a second one.
-        services.AddScoped<DocumentProcessingPipeline>();
-        // The extraction handler depends on the port; the concrete type stays resolvable for callers
-        // that ask for it directly. Both names resolve to the same scoped instance.
-        services.AddScoped<IDocumentProcessingFlow>(sp => sp.GetRequiredService<DocumentProcessingPipeline>());
+        // IDocumentProcessingFlow (classify, extract, index: the document-processing orchestrator) and
+        // IDocumentAdmissionEvaluator (the content gate) are ports owned by this module and
+        // implemented in Raffa.AiFlows; ExtractionRequestedHandler depends only on the ports. Hosts
+        // register the implementations through AddAiFlows(). The orchestrator reaches the
+        // staged-extraction persistence below through StagedExtractionService, DocumentsContractsDbContext,
+        // EmbeddingRetrievalService and LineItemMarketPriceService, all public and registered here.
 
         // Per-line market comparison, written at extraction and refreshed when stale on read.
         // Its IMarketPriceMatcher / ISupplierNameLookup ports are optional constructor parameters:
@@ -114,7 +111,8 @@ public static class ServiceCollectionExtensions
         // host keeps what is stored.
         services.AddScoped<LineItemMarketPriceService>();
 
-        // Task E13/F04/US01/T01 (documents-admission): the admission gate and its thresholds.
+        // Task E13/F04/US01/T01 (documents-admission): the admission gate's thresholds (the gate itself,
+        // DocumentAdmissionGate, is registered by Raffa.AiFlows).
         // DocumentAdmissionOptions is bound once from the "Documents" section (defaults from its
         // own property initializers when the section is absent) and registered as a plain
         // singleton — the same shape Raffa.AiGateway uses for AiGatewayOcrOptions: the gate's
@@ -127,8 +125,6 @@ public static class ServiceCollectionExtensions
                 .Bind(options);
             return options;
         });
-        services.AddScoped<DocumentAdmissionGate>();
-        services.AddScoped<IDocumentAdmissionEvaluator>(sp => sp.GetRequiredService<DocumentAdmissionGate>());
 
         // Task E13/F04/US01/T02 (documents-v2-api): preview rendering + the reprocess/delete units
         // of work. Task E22/F02/US01/T01: PdfPageDocumentPreviewRenderer (Docnet.Core/pdfium) is

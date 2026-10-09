@@ -1,3 +1,6 @@
+using Raffa.AiFlows.DocumentExtraction.Orchestration;
+using Raffa.AiFlows.Shared.Parsing;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -13,11 +16,11 @@ using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 
-namespace Raffa.Documents.Contracts.Tests;
+namespace Raffa.AiFlows.Tests.DocumentExtraction.Orchestration;
 
 /// <summary>
 /// Proves task E13/F03/US01/T02's supplier-linking half (parent story us-01-supplier-identity AC-3,
-/// requirements R-SUP-01/R-SUP-02/R-SUP-03): <see cref="DocumentProcessingPipeline"/> turns the
+/// requirements R-SUP-01/R-SUP-02/R-SUP-03): <see cref="DocumentProcessingOrchestrator"/> turns the
 /// `metadata` stage's accepted <c>supplier</c> fact into <see cref="Contract.SupplierId"/> through
 /// <see cref="ISupplierResolver"/>, skips it when the fact was too weak to trust, works at all
 /// without the Suppliers module composed in, and — because the link is made on every processing
@@ -30,7 +33,7 @@ namespace Raffa.Documents.Contracts.Tests;
 /// <see cref="DocumentsContractsDbContext"/> and indexes real <see cref="Embedding"/> rows, neither
 /// of which an in-memory provider would exercise honestly.
 /// </summary>
-public sealed class DocumentProcessingPipelineSupplierTests : IAsyncLifetime
+public sealed class DocumentProcessingOrchestratorSupplierTests : IAsyncLifetime
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
 
@@ -142,7 +145,7 @@ public sealed class DocumentProcessingPipelineSupplierTests : IAsyncLifetime
             """,
     };
 
-    private DocumentProcessingPipeline CreatePipeline(
+    private DocumentProcessingOrchestrator CreatePipeline(
         DocumentsContractsDbContext dbContext,
         ITenantContext tenantContext,
         IAiGateway gateway,
@@ -150,7 +153,7 @@ public sealed class DocumentProcessingPipelineSupplierTests : IAsyncLifetime
     {
         var clock = new FixedClock(Now);
 
-        return new DocumentProcessingPipeline(
+        return new DocumentProcessingOrchestrator(
             dbContext,
             gateway,
             new HybridDocumentParsingService(gateway, new NativeDocumentTextExtractor()),

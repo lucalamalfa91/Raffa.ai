@@ -30,7 +30,7 @@ internal static class R1ExtractionFixtures
     public const string ScannedMimeType = "image/png";
 
     /// <summary>The commercial-terms stage's own low-confidence fact (below
-    /// <c>DocumentProcessingPipeline</c>/<c>StagedExtractionService</c>'s shared 0.6 threshold) —
+    /// <c>DocumentProcessingOrchestrator</c>/<c>StagedExtractionService</c>'s shared 0.6 threshold) —
     /// AC-2's "low-confidence field correction" needs one real field to correct. Both fixture
     /// documents extract to this same value; each is staged into its own, separate
     /// <c>Contract</c> row (one per uploaded <c>Document</c>).</summary>
@@ -56,7 +56,7 @@ internal static class R1ExtractionFixtures
     /// <summary>
     /// The supplier's legal name the scripted `metadata` stage reports for both fixtures (task
     /// E13/F03/US01/T02, requirements R-SUP-01: "legal name, page, span, confidence"). Emitted at
-    /// 0.95 — above the critical-field bar of 0.8 — so <c>DocumentProcessingPipeline</c> resolves it
+    /// 0.95 — above the critical-field bar of 0.8 — so <c>DocumentProcessingOrchestrator</c> resolves it
     /// through <c>ISupplierResolver</c> and the end-to-end test can assert a real name on the
     /// portfolio row rather than a bare guid (R-SUP-04).
     ///

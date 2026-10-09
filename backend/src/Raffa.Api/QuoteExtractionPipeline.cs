@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Raffa.AiFlows.Shared.Parsing;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Documents.Contracts.Application.Extraction;

@@ -9,12 +9,12 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// verdict (the pages the gate already parsed and its classification) to the document, run staged
 /// extraction and index the result. The handler depends on this port rather than on the
 /// implementation, so the implementation can live outside the module.
-/// <see cref="DocumentProcessingPipeline"/> is the implementation.
+/// <c>DocumentProcessingOrchestrator</c> is the implementation.
 /// </summary>
 public interface IDocumentProcessingFlow
 {
     /// <summary>Pages + classification in. See the matching overload of
-    /// <see cref="DocumentProcessingPipeline.ProcessAsync(TenantId, EntityId, IReadOnlyList{DocumentPageText}, DocumentClassification, ReadOnlyMemory{byte}, string?, string?, CancellationToken)"/>
+    /// <c>DocumentProcessingOrchestrator.ProcessAsync</c> (pages + classification overload)
     /// for the full contract.</summary>
     Task<Result<DocumentProcessingSummary>> ProcessAsync(
         TenantId tenantId,

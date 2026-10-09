@@ -51,7 +51,7 @@ public sealed class EmbeddingRetrievalService(
     ITenantContext tenantContext,
     IClock clock)
 {
-    /// <summary>Same discriminator <c>DocumentProcessingPipeline</c> indexes page chunks under
+    /// <summary>Same discriminator <c>DocumentProcessingOrchestrator</c> indexes page chunks under
     /// (mirrors <see cref="ContractEvidenceQueryService"/>'s own private constant of the same
     /// name) — the only <see cref="Embedding.SourceType"/> anything actually writes today, so
     /// <see cref="SearchByContractAsync"/> resolves "this contract"/"similar types" membership by

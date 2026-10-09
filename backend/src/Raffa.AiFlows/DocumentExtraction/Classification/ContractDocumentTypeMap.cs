@@ -1,12 +1,12 @@
 using Raffa.AiGateway.Contracts;
 using Raffa.Documents.Contracts.Domain;
 
-namespace Raffa.Documents.Contracts.Application.Extraction;
+namespace Raffa.AiFlows.DocumentExtraction.Classification;
 
 /// <summary>
 /// Maps the AI Gateway's classify taxonomy (<see cref="AiDocumentType"/>) onto the contract
 /// hierarchy one (<see cref="ContractDocumentType"/>). One place, used by both the admission gate
-/// (<c>Application.Admission.DocumentAdmissionGate</c>) and <see cref="DocumentProcessingPipeline"/>'s
+/// (<c>DocumentExtraction.Admission.DocumentAdmissionGate</c>) and <c>DocumentProcessingOrchestrator</c>'s
 /// classify-in-pipeline path, so "what the model said" becomes "what we store" the same way on
 /// every route. Task E13/F04/US01/T01 (documents-admission) widened the target enum so Quote /
 /// Invoice / Price list / NDA / DPA are kept as their own kinds instead of collapsing into

@@ -41,7 +41,7 @@ public sealed record LineItemMarketPrice(
 /// <see cref="ContractLineItemMarketPrice"/> — so the market column is filled from the moment a
 /// document is extracted, and stays current afterwards:
 /// <list type="bullet">
-/// <item><b>At extraction</b> (<see cref="PriceContractAsync"/>): <c>DocumentProcessingPipeline</c>
+/// <item><b>At extraction</b> (<see cref="PriceContractAsync"/>): <c>DocumentProcessingOrchestrator</c>
 /// prices every line right after the supplier is linked, on every (re)processing pass.</item>
 /// <item><b>On read</b> (<see cref="GetCurrentAsync"/>): a line never priced, or last compared
 /// longer ago than <see cref="RefreshAfter"/>, is re-priced before it is returned — a market feed

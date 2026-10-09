@@ -13,7 +13,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// <see cref="NativeTextExtractionResult.IsSufficient"/> — those formats are never scans.
 /// A PDF is sufficient only when pdfium recovered a real text layer (aligned with
 /// <see cref="DocumentAdmissionOptions.MinReadableChars"/>); an image-only scan stays
-/// insufficient so <see cref="HybridDocumentParsingService"/> can OCR it.
+/// insufficient so <c>HybridDocumentParsingService</c> can OCR it.
 ///
 /// Wave w19 / ADR-017 amendment 2026-09-09 (commit <c>380cc2a1</c>) removed PDF from this
 /// type. Real contracts then went to Document Intelligence or the fixture scanner, both of

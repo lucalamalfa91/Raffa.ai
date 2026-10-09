@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Raffa.AiFlows.DocumentExtraction;
 
 namespace Raffa.AiFlows;
 
@@ -8,8 +9,7 @@ namespace Raffa.AiFlows;
 /// <c>AddXxxFlow</c> registration method that this entry point calls; the hosts
 /// (<c>Raffa.Api</c>'s <c>Program.cs</c> and <c>Raffa.Worker</c>'s <c>AddWorkerHost</c>) call
 /// <see cref="AddAiFlows"/> once.
-/// Currently empty: no flow lives here yet, so the call registers nothing and changes no
-/// behaviour. The flows move in one at a time in later steps.
+/// The flows move in one at a time; each registers itself from here.
 /// </summary>
 public static class AiFlowsServiceCollectionExtensions
 {
@@ -17,6 +17,8 @@ public static class AiFlowsServiceCollectionExtensions
     public static IServiceCollection AddAiFlows(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+
+        services.AddDocumentExtractionFlow();
 
         return services;
     }

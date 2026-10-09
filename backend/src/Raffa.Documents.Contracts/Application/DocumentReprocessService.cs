@@ -44,7 +44,7 @@ public sealed class DocumentReprocessService(
     IAuditWriter auditWriter,
     IClock clock)
 {
-    /// <summary>Same discriminator <see cref="DocumentProcessingPipeline"/> indexes under.</summary>
+    /// <summary>Same discriminator <c>DocumentProcessingOrchestrator</c> indexes under.</summary>
     private const string DocumentSourceType = "Document";
 
     /// <summary>Audit action for a re-run that was queued (R-DOC-07; queued, not completed, since

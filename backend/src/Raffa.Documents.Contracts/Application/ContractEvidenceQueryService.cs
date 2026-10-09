@@ -78,7 +78,7 @@ public sealed record ContractFieldEvidenceBox(double X, double Y, double Width, 
 /// <para>
 /// <b>The highlighted passage comes from the indexed page text.</b> Every page the pipeline parses
 /// is stored verbatim as an <see cref="Embedding"/> chunk (<c>SourceType = "Document"</c>, one chunk
-/// per page — <c>DocumentProcessingPipeline.IndexForRetrievalAsync</c>), so the sentence around a
+/// per page — <c>DocumentProcessingOrchestrator.IndexForRetrievalAsync</c>), so the sentence around a
 /// fact's span can be quoted without re-reading the blob or re-running the parse. The span is
 /// searched whitespace-insensitively (the model may quote a line break as a space); when it cannot
 /// be located the passage is omitted rather than approximated.
@@ -106,7 +106,7 @@ public sealed record ContractFieldEvidenceBox(double X, double Y, double Width, 
 /// </summary>
 public sealed class ContractEvidenceQueryService(DocumentsContractsDbContext dbContext, ITenantContext tenantContext)
 {
-    /// <summary>Same discriminator <c>DocumentProcessingPipeline</c> indexes page chunks under.</summary>
+    /// <summary>Same discriminator <c>DocumentProcessingOrchestrator</c> indexes page chunks under.</summary>
     private const string DocumentSourceType = "Document";
 
     /// <summary>How far, in characters, the quoted passage may extend on either side of the span
