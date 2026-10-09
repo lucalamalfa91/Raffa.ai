@@ -28,6 +28,21 @@ public sealed class MarketEmbeddingConfiguration : IEntityTypeConfiguration<Mark
 
         builder.HasIndex(e => e.RecordId);
 
+        // F7-T01: approximate nearest-neighbour index for the cosine query
+        // (`ORDER BY vector <=> @q LIMIT k`, PgVectorMarketKnowledgeRetrieval). Without it every
+        // search scans and sorts the whole table (25,727 rows today). `vector_cosine_ops` matches the
+        // `<=>` operator the query uses -- an index with another operator class would silently never
+        // be picked. m / ef_construction are pgvector's defaults, stated so a rebuild is reproducible.
+        builder.HasIndex(e => e.Vector)
+            .HasMethod("hnsw")
+            .HasOperators("vector_cosine_ops")
+            .HasStorageParameter("m", 16)
+            .HasStorageParameter("ef_construction", 64);
+
+        // F7-T06: nullable on purpose -- rows written before the flag existed are "unmarked", not
+        // "real". See MarketEmbeddingEntity.IsFixture.
+        builder.Property(e => e.IsFixture);
+
         // FK to market_record (task objective: "recordId FK") -- both tables are owned by this
         // same module/DbContext, unlike Raffa.Documents.Contracts.Domain.Embedding's own
         // deliberately-no-FK polymorphic SourceId. Cascade: deleting a market_record (a future

@@ -9,10 +9,8 @@ namespace Raffa.Chat.Tests;
 /// `answer` result can be trusted as-is, and every way it must instead be downgraded to an honest
 /// "cannot determine" rather than let an unsupported or fabricated claim through (Appendix C rule 2:
 /// "Never show a consequential extracted fact without source evidence"; rule 10: "If data quality is
-/// insufficient, return uncertainty instead of fabricated precision"). <see cref="RagAnswerService"/>
-/// wiring this guard into its own <c>AnswerAsync</c> call (so the guarded result — not the gateway's
-/// raw claim — is what a caller and the audit trail actually see) is proven separately by
-/// <c>Raffa.Chat.Tests.RagAnswerServiceTests</c>, not duplicated here.
+/// insufficient, return uncertainty instead of fabricated precision"). The guard is composed into
+/// <see cref="Raffa.Chat.Application.Guards.GroundingGuard"/> (pack overload), proven by the guard tests.
 /// </summary>
 public sealed class AbstainGuardTests
 {

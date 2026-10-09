@@ -23,9 +23,21 @@ public sealed record AiResearchRequest(
     string SystemPrompt,
     string PromptVersion);
 
-/// <summary>One public web source the research role actually read (a tool citation, never a
-/// URL the model typed from memory).</summary>
-public sealed record AiWebSource(string Url, string Title, string Snippet, DateTimeOffset? PublishedAt = null);
+/// <summary>
+/// One public web source the research role actually read (a tool citation, never a URL the model
+/// typed from memory).
+/// </summary>
+/// <param name="Url">The tool's own citation URL.</param>
+/// <param name="Title">The page title the tool reported.</param>
+/// <param name="Snippet">A page excerpt supplied by the provider. The hosted <c>web_search</c> tool
+/// gives none (a <c>url_citation</c> annotation has a URL and a title only), so in production this
+/// is empty; the CI fixture used to fill it, which hid the empty-snippet bug (F3-T01).</param>
+/// <param name="PublishedAt">The page's publication date, when the provider reported one.</param>
+/// <param name="Quote">F3-T01: the passage of the page the model copied verbatim for this source
+/// (the structured output's <c>sources[].quote</c>) — the text a figure in the summary is checked
+/// against. Blank when the model supplied none.</param>
+public sealed record AiWebSource(
+    string Url, string Title, string Snippet, DateTimeOffset? PublishedAt = null, string Quote = "");
 
 /// <summary>
 /// Output of the <c>research</c> role. <see cref="OffTopic"/> is <see langword="true"/> when the

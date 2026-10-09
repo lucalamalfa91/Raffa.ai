@@ -95,7 +95,8 @@ public sealed class Contract360QueryService(DocumentsContractsDbContext dbContex
             renewalDate,
             contract.CancellationDeadline,
             contract.AutoRenewal,
-            topRisk);
+            topRisk,
+            contract.NoticePeriodDays);
 
         var overview = new Contract360Overview(
             contract.Currency,

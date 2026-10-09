@@ -61,6 +61,11 @@ namespace Raffa.Market.Contracts;
 /// <param name="PaymentTerms">Payment terms observed, e.g. <c>"Net 30"</c>, when known.</param>
 /// <param name="LicenseRestrictions">Licence/usage restrictions from the provider, stored
 /// internally where relevant (spec §10.3) — not necessarily surfaced to end users.</param>
+/// <param name="Industry">Buyer industry of the closed deals behind the record (e.g.
+/// <c>"Financial Services"</c>), when the corpus carries it. Kept (F7, "do not drop corpus fields"):
+/// before this field existed the deserializer silently discarded the corpus's <c>industry</c> key.</param>
+/// <param name="UnitMetric">What the unit price is per, e.g. <c>"per user / year"</c>, when the corpus
+/// carries it (feeds <see cref="Raffa.SharedKernel.Market.MarketProvenanceInfo.Unit"/>).</param>
 public sealed record MarketDeal(
     string Provider,
     string RecordId,
@@ -86,7 +91,9 @@ public sealed record MarketDeal(
     double? UpliftCapPct = null,
     int? NoticeDays = null,
     string? PaymentTerms = null,
-    string? LicenseRestrictions = null);
+    string? LicenseRestrictions = null,
+    string? Industry = null,
+    string? UnitMetric = null);
 
 /// <summary>
 /// One negotiated-clause example on a <see cref="MarketDeal"/> (R-MKT-01: "negotiated clauses

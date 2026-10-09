@@ -5,9 +5,9 @@ namespace Raffa.Chat.Application;
 
 /// <summary>
 /// No-fabrication guard for Ask Raffa grounded Q&amp;A (task E02/F04/US02/T02, abstain-guard;
-/// parent story us-02-rag-citations AC-2/AC-3). <see cref="RagAnswerService"/> already forwards a
+/// parent story us-02-rag-citations AC-2/AC-3). A
 /// gateway result whose <see cref="AiAnswerResult.CanDetermine"/> is <see langword="false"/>
-/// straight through as an honest "cannot determine" — <see cref="Fixtures.FixtureAiGateway
+/// passes straight through as an honest "cannot determine" — <see cref="Fixtures.FixtureAiGateway
 /// .AnswerAsync"/> already does exactly that for empty evidence (see that type's own doc comment).
 /// This guard exists for the opposite, currently-unchecked case: a result that *claims*
 /// <see cref="AiAnswerResult.CanDetermine"/> = <see langword="true"/> but whose
@@ -23,9 +23,8 @@ namespace Raffa.Chat.Application;
 /// <see cref="Raffa.AiGateway.IAiGateway"/> implementation ADR-004 anticipates: a real model can
 /// hallucinate a citation (cite a document it was never given), assert a claim backed by zero
 /// citations, or return an empty answer while still claiming "determined" — nothing upstream of this
-/// guard would catch any of those, because <see cref="RagAnswerService"/> has no database dependency
-/// (ADR-011 auth-before-retrieval — see that type's own doc comment) and otherwise trusts the
-/// gateway's own verdict verbatim.
+/// guard would catch any of those, because callers receive already-retrieved, already-authorized
+/// evidence (ADR-011 auth-before-retrieval) and otherwise trust the gateway's own verdict verbatim.
 /// </para>
 ///
 /// <para>
@@ -52,7 +51,7 @@ public sealed class AbstainGuard
     /// <param name="result">The gateway's own `answer` role result
     /// (<see cref="Raffa.AiGateway.IAiGateway.AnswerAsync"/>).</param>
     /// <param name="evidence">The same already-retrieved, already-authorized evidence the gateway
-    /// was given (<see cref="RagAnswerService.AnswerAsync"/>'s own <c>evidence</c> parameter) — the
+    /// was given (the caller's already-retrieved <c>evidence</c> list) — the
     /// only source of truth a citation may point back to.</param>
     /// <exception cref="ArgumentNullException"><paramref name="result"/> or
     /// <paramref name="evidence"/> is <see langword="null"/>.</exception>
@@ -176,8 +175,8 @@ public sealed class AbstainGuard
 
 /// <summary>
 /// <see cref="AbstainGuard.Enforce"/>'s outcome: the (possibly forced-abstain) result callers should
-/// actually use, plus whether the guard intervened and why. <see cref="RagAnswerService"/> folds
-/// <see cref="Intervened"/> into its own audit entry as a plain boolean — never <see cref="Reason"/>
+/// actually use, plus whether the guard intervened and why. Callers fold
+/// <see cref="Intervened"/> into their audit entry as a plain boolean — never <see cref="Reason"/>
 /// itself, which exists for tests/diagnostics only: <see cref="Reason"/> is deliberately excluded
 /// from the audit trail because it is free text describing the *gateway's* output, and ADR-011 caps
 /// every AI-adjacent audit write to reproducibility fields (never raw prompt, retrieved content, or

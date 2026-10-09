@@ -87,14 +87,21 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             AiClassificationRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("StagedExtractionService does not call ClassifyAsync.");
 
-        /// <summary>Every JSON schema the pipeline sent, in call order — so a test can prove they
-        /// are what a strict-mode structured-output call would accept.</summary>
-        public List<string> SentSchemas { get; } = [];
+        /// <summary>Every JSON schema the pipeline sent — order is call order only when the
+        /// pipeline still calls sequentially; NW-106 fires all seven stages concurrently, so
+        /// <see cref="_sentSchemasLock"/> guards this list the same way a real concurrent gateway
+        /// caller would need to. No test asserts an order on this list, only membership/count.</summary>
+        private readonly object _sentSchemasLock = new();
+        private readonly List<string> _sentSchemas = [];
+        public List<string> SentSchemas => _sentSchemas;
 
         public Task<Result<AiExtractionResult>> ExtractAsync(
             AiExtractionRequest request, CancellationToken cancellationToken = default)
         {
-            SentSchemas.Add(request.JsonSchema);
+            lock (_sentSchemasLock)
+            {
+                _sentSchemas.Add(request.JsonSchema);
+            }
 
             if (failStages?.Contains(request.StageName) == true)
             {
@@ -119,6 +126,65 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         public Task<Result<AiOcrResult>> OcrAsync(
             AiOcrRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("StagedExtractionService does not call OcrAsync.");
+    }
+
+    /// <summary>NW-106: proves the seven extraction stages' Foundry calls are actually in flight
+    /// together, not one after another — <see cref="MaxConcurrent"/> is the high-water mark of
+    /// simultaneously in-flight <see cref="ExtractAsync"/> calls, tracked with
+    /// <see cref="Interlocked"/> since this is exactly the kind of shared counter a real
+    /// concurrent gateway caller needs. A short delay per call gives the overlap something to
+    /// measure; without it, every call could in principle complete before the next one starts
+    /// even if they were launched together.</summary>
+    private sealed class ConcurrencyTrackingGateway : IAiGateway
+    {
+        private int _inFlight;
+        private int _maxConcurrent;
+
+        public int MaxConcurrent => _maxConcurrent;
+
+        public Task<Result<AiClassificationResult>> ClassifyAsync(
+            AiClassificationRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("StagedExtractionService does not call ClassifyAsync.");
+
+        public async Task<Result<AiExtractionResult>> ExtractAsync(
+            AiExtractionRequest request, CancellationToken cancellationToken = default)
+        {
+            var current = Interlocked.Increment(ref _inFlight);
+            InterlockedMax(ref _maxConcurrent, current);
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
+
+            Interlocked.Decrement(ref _inFlight);
+
+            var metadata = new AiCallMetadata("test-extract-model", "1", "test-v1", Now, "test-input-hash");
+            return Result<AiExtractionResult>.Success(new AiExtractionResult("{}", metadata));
+        }
+
+        public Task<Result<AiEmbeddingResult>> EmbedAsync(
+            AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("StagedExtractionService does not call EmbedAsync.");
+
+        public Task<Result<AiAnswerResult>> AnswerAsync(
+            AiAnswerRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("StagedExtractionService does not call AnswerAsync.");
+
+        public Task<Result<AiOcrResult>> OcrAsync(
+            AiOcrRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("StagedExtractionService does not call OcrAsync.");
+
+        private static void InterlockedMax(ref int target, int candidate)
+        {
+            int initial;
+            do
+            {
+                initial = target;
+                if (candidate <= initial)
+                {
+                    return;
+                }
+            }
+            while (Interlocked.CompareExchange(ref target, candidate, initial) != initial);
+        }
     }
 
     /// <summary>The supplier legal name every payload below reports for the `supplier` critical
@@ -316,6 +382,35 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.DoesNotContain(SupplierLegalName, auditEntry.Detail);
         Assert.DoesNotContain("Net 30", auditEntry.Detail);
         Assert.DoesNotContain("State of Delaware", auditEntry.Detail);
+    }
+
+    [Fact]
+    public async Task NW_106_fires_all_seven_extraction_stages_concurrently_not_one_after_another()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+
+        await using var seedDb = CreateContext(tenantContext);
+        var (_, document) = await SeedDocumentAsync(seedDb, tenantId);
+
+        var gateway = new ConcurrencyTrackingGateway();
+
+        await using var runDb = CreateContext(tenantContext);
+        var service = new StagedExtractionService(runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+
+        var pages = new[] { new DocumentPageText(1, "some contract text") };
+
+        var result = await service.RunAsync(tenantId, document.Id, pages);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(7, result.Value.Stages.Count);
+        // The whole point of NW-106: seven stages that used to run strictly one after another
+        // (max concurrency 1) now overlap. Not asserting ==7 — only that they genuinely overlap,
+        // which is the behaviour this fix exists for; a slower CI box settling at a lower but
+        // still->1 high-water mark is still a pass.
+        Assert.True(
+            gateway.MaxConcurrent > 1,
+            $"Expected the seven extraction stages to overlap, but the observed high-water mark was {gateway.MaxConcurrent}.");
     }
 
     [Fact]
@@ -545,9 +640,9 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Metadata].Status);
         Assert.Equal(ExtractionJobStatus.Completed, stages[ExtractionStage.Risk].Status);
 
-        // Every field that was found cleared the bar, so there is no field a reviewer could decide
-        // on: the document completes instead of asking anyone to "Review 0 fields".
-        Assert.Equal(DocumentProcessingStatus.Completed, result.Value.DocumentProcessingStatus);
+        // F5-T02: every field that was found cleared the bar, but a whole stage is missing -- the
+        // document is partial and never Completed (it used to complete here).
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, result.Value.DocumentProcessingStatus);
     }
 
     [Fact]
@@ -925,10 +1020,11 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
     /// <summary>
     /// A stage that fails entirely (model/network error) is a missing signal — an auto-accepted
-    /// supplier does not compensate for absent data, so the document still needs review.
+    /// supplier does not compensate for absent data, so the document is partial (F5-T02): it stays
+    /// on review, never <c>Completed</c>, even when no weak field is left to show.
     /// </summary>
     [Fact]
-    public async Task B2_a_failed_stage_with_no_weak_field_completes_instead_of_review_0_fields()
+    public async Task B2_a_failed_stage_with_no_weak_field_leaves_the_document_partial_never_completed()
     {
         var tenantId = TenantId.New();
         var tenantContext = new TenantContext();
@@ -955,9 +1051,10 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         Assert.True(result.IsSuccess);
         var summary = result.Value;
 
-        // A failed stage with every found field above the bar leaves nothing a reviewer could
-        // decide on: the document completes; the failed stage itself stays recorded as Failed.
-        Assert.Equal(DocumentProcessingStatus.Completed, summary.DocumentProcessingStatus);
+        // A failed stage with every found field above the bar leaves no field to review, but the
+        // stage's facts are missing: the document stays on review (partial) and the failed stage
+        // stays recorded as Failed, so a retry runs it alone.
+        Assert.Equal(DocumentProcessingStatus.NeedsReview, summary.DocumentProcessingStatus);
         Assert.Equal(SupplierLegalName, summary.AcceptedSupplierName);
 
         var commercialStage = summary.Stages.Single(s => s.Stage == ExtractionStage.CommercialTerms);

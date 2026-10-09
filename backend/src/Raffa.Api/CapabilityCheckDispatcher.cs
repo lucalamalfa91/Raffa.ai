@@ -1,4 +1,7 @@
 using System.Collections.Concurrent;
+using Raffa.AiGateway.Telemetry;
+using System.Globalization;
+using Microsoft.Extensions.Options;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Gaps;
@@ -22,13 +25,19 @@ namespace Raffa.Api;
 /// <param name="NamedSupplier">The known supplier the turn named or was scoped to, if any.</param>
 /// <param name="NamedContractId">That supplier's contract, when one resolved — Renewals'
 /// <c>?select=</c> and Contract 360's link.</param>
+/// <param name="TurnId">The id that ties the turn's audit rows together (<c>ask.capability_trigger</c>,
+/// <c>ask.capability_outcome</c>, <c>ask.capability_follow_up</c>) — not the message id, which
+/// does not exist yet when the check starts.</param>
+/// <param name="Actor">The caller's token subject, recorded on the outcome audit row.</param>
 internal sealed record CapabilityCheckRequest(
     TenantId TenantId,
     string Question,
     IReadOnlyList<string> SupplierNames,
     int ValidatedContractCount,
     string? NamedSupplier,
-    Guid? NamedContractId);
+    Guid? NamedContractId,
+    string? TurnId = null,
+    string Actor = "system");
 
 /// <summary>The one-turn hand-off between <see cref="AskCopilotService.AskAsync"/>, which decides
 /// whether a turn is checked and starts the check, and the endpoint, which persists the answer and
@@ -38,6 +47,11 @@ internal sealed class CapabilityCheckSlot
     /// <summary>Completes with the follow-up to append after the answer, or null when the check
     /// found nothing to propose (or failed — the check is fail-open).</summary>
     public Task<CopilotReply?>? FollowUp { get; set; }
+
+    /// <summary>Set by <see cref="AskCopilotService.AskAsync"/> for every checked turn (started or
+    /// not): the id of the turn's <c>ask.capability_*</c> audit rows. Empty when the turn was not
+    /// eligible for a check at all.</summary>
+    public string? TurnId { get; set; }
 }
 
 /// <summary>
@@ -48,21 +62,71 @@ internal sealed class CapabilityCheckSlot
 /// the check finds an operation Raffa cannot perform, the endpoint appends the follow-up as a
 /// separate Raffa message right after the answer: in the same response when the check finished
 /// first, otherwise from the background (<see cref="AppendWhenDone"/>) while the client polls.
+///
+/// <para>
+/// <b>Whether</b> a check starts is decided by the caller (INV-02): in
+/// <see cref="GapInvestigationMode.Triggered"/> mode only a turn the
+/// <see cref="InvestigatorTrigger"/> flags, in <see cref="GapInvestigationMode.Always"/> every
+/// fresh in-domain turn. This class owns the kill switch and the mode (read through
+/// <c>IOptionsMonitor</c>, so a change applies to the next turn without a restart) and the
+/// telemetry of every outcome (INV-05): one <c>ask.capability_outcome</c> audit row per started
+/// check — question, supported, known-gap, gap, low-confidence, unusable, failed, timeout — plus a
+/// <c>drop</c> row when a proposal was found but the conversation had moved on. The rows carry the
+/// verdict, its confidence, the gap key and the turn id; never the question or any model text.
+/// </para>
 /// </summary>
 internal sealed class CapabilityCheckDispatcher(
     IServiceScopeFactory scopeFactory,
-    GapInvestigationOptions options,
+    IOptionsMonitor<GapInvestigationOptions> optionsMonitor,
     ILogger<CapabilityCheckDispatcher> logger)
 {
     public const string AuditAction = "ask.capability_follow_up";
     public const string AuditResourceType = "capability_follow_up";
+
+    /// <summary>INV-03: one row per eligible turn — the mode, T1/T2/T3, whether the check ran, why.</summary>
+    public const string TriggerAuditAction = "ask.capability_trigger";
+    public const string TriggerAuditResourceType = "capability_trigger";
+
+    /// <summary>INV-05: one row per started check — its outcome, confidence and gap key.</summary>
+    public const string OutcomeAuditAction = "ask.capability_outcome";
+    public const string OutcomeAuditResourceType = "capability_outcome";
+
+    /// <summary>INV-05: a proposal the check found but the conversation had already moved past.</summary>
+    public const string OutcomeDrop = "drop";
+
+    /// <summary>INV-05: the check ended on its time budget.</summary>
+    public const string OutcomeTimeout = "timeout";
 
     /// <summary>How many validated suppliers an email follow-up offers as chips.</summary>
     private const int MaxDraftSupplierFollowUps = 5;
 
     private readonly ConcurrentDictionary<Task, byte> _background = new();
 
-    public bool Enabled => options.Enabled;
+    private GapInvestigationOptions _lastGood = new();
+
+    /// <summary>The live options. A configuration reload that no longer binds (an unknown
+    /// <c>Mode</c> word) must never take Ask down: the last good value stays in force.</summary>
+    private GapInvestigationOptions Current
+    {
+        get
+        {
+            try
+            {
+                return _lastGood = optionsMonitor.CurrentValue;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                logger.LogWarning(ex, "Chat:GapInvestigation could not be read; the last good configuration stays in force");
+                return _lastGood;
+            }
+        }
+    }
+
+    /// <summary>The kill switch (<c>Chat:GapInvestigation:Enabled</c>), re-read on every call.</summary>
+    public bool Enabled => Current.Enabled;
+
+    /// <summary><c>Chat:GapInvestigation:Mode</c>, re-read on every call.</summary>
+    public GapInvestigationMode Mode => Current.Mode;
 
     /// <summary>Starts the check for one turn. Never throws, never cancels with the request.</summary>
     public Task<CopilotReply?> Start(CapabilityCheckRequest request)
@@ -81,6 +145,7 @@ internal sealed class CapabilityCheckDispatcher(
         EntityId conversationId,
         EntityId answeredMessageId,
         CopilotReply followUp,
+        string? turnId = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(followUp);
@@ -93,6 +158,9 @@ internal sealed class CapabilityCheckDispatcher(
         {
             logger.LogInformation(
                 "Capability follow-up for message {MessageId} dropped: the conversation has moved on", answeredMessageId);
+            await TryAuditOutcomeAsync(
+                    scope.ServiceProvider, tenantId, userId, turnId, OutcomeDrop, followUp.Payload?.Gap?.Discovery?.Confidence, followUp.Payload?.Gap?.Key)
+                .ConfigureAwait(false);
             return null;
         }
 
@@ -122,7 +190,7 @@ internal sealed class CapabilityCheckDispatcher(
                         appended.MessageId.Value.ToString(),
                         clock.UtcNow,
                         $"conversationId={conversationId} answeredMessageId={answeredMessageId} " +
-                        $"gapKey={stamped.Payload?.Gap?.Key ?? "none"}"),
+                        $"gapKey={stamped.Payload?.Gap?.Key ?? "none"} turnId={FormatTurnId(turnId)}"),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -133,7 +201,12 @@ internal sealed class CapabilityCheckDispatcher(
     /// <summary>The check is still running when the answer is persisted: append its follow-up from
     /// the background once it completes. Failures are logged, never surfaced.</summary>
     public void AppendWhenDone(
-        Task<CopilotReply?> check, TenantId tenantId, string userId, EntityId conversationId, EntityId answeredMessageId)
+        Task<CopilotReply?> check,
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        EntityId answeredMessageId,
+        string? turnId = null)
     {
         ArgumentNullException.ThrowIfNull(check);
 
@@ -144,7 +217,7 @@ internal sealed class CapabilityCheckDispatcher(
                 var followUp = await check.ConfigureAwait(false);
                 if (followUp is not null)
                 {
-                    await AppendAsync(tenantId, userId, conversationId, answeredMessageId, followUp).ConfigureAwait(false);
+                    await AppendAsync(tenantId, userId, conversationId, answeredMessageId, followUp, turnId).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -169,19 +242,46 @@ internal sealed class CapabilityCheckDispatcher(
             var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
             using var tenantScope = tenantContext.BeginScope(request.TenantId);
 
-            var investigator = scope.ServiceProvider.GetRequiredService<CapabilityInvestigator>();
-            var investigation = await investigator
-                .InvestigateAsync(request.Question, request.SupplierNames, CancellationToken.None)
-                .ConfigureAwait(false);
+            // Its own run inside the turn that started it (the turn id flows in from AskAsync), so
+            // the investigator's ai.* row reads run=<id> step=capability-investigator.
+            using var run = RunContext.BeginRun();
+            using var step = RunContext.BeginStep("capability-investigator");
 
-            logger.LogInformation(
-                "Capability check finished: {Outcome}{Failure}",
-                investigation.Outcome,
-                investigation.Failure is null ? string.Empty : " (" + investigation.Failure + ")");
+            string outcome;
+            string? confidence = null;
+            string? gapKey = null;
+            try
+            {
+                var investigator = scope.ServiceProvider.GetRequiredService<CapabilityInvestigator>();
+                var investigation = await investigator
+                    .InvestigateAsync(request.Question, request.SupplierNames, CancellationToken.None)
+                    .ConfigureAwait(false);
 
-            return investigation.Gap is { } gap
-                ? BuildFollowUp(gap, investigation.AlternativeQuestions, request, scope.ServiceProvider.GetRequiredService<CapabilityRouting>())
-                : null;
+                logger.LogInformation(
+                    "Capability check finished: {Outcome}{Failure}",
+                    investigation.Outcome,
+                    investigation.Failure is null ? string.Empty : " (" + investigation.Failure + ")");
+
+                outcome = investigation.TimedOut ? OutcomeTimeout : investigation.Outcome;
+                confidence = investigation.Confidence;
+                gapKey = investigation.Gap?.Key;
+
+                // The verdict is audited before the follow-up is built: a failure while building
+                // the message must not lose the outcome row (INV-05: 100% of outcomes).
+                await TryAuditOutcomeAsync(scope.ServiceProvider, request.TenantId, request.Actor, request.TurnId, outcome, confidence, gapKey)
+                    .ConfigureAwait(false);
+
+                return investigation.Gap is { } gap
+                    ? BuildFollowUp(gap, investigation.AlternativeQuestions, request, scope.ServiceProvider.GetRequiredService<CapabilityRouting>())
+                    : null;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Capability check failed; no follow-up");
+                await TryAuditOutcomeAsync(scope.ServiceProvider, request.TenantId, request.Actor, request.TurnId, "failed", null, null)
+                    .ConfigureAwait(false);
+                return null;
+            }
         }
         catch (Exception ex)
         {
@@ -189,6 +289,38 @@ internal sealed class CapabilityCheckDispatcher(
             return null;
         }
     }
+
+    /// <summary>
+    /// INV-05: one <c>ask.capability_outcome</c> audit row — the verdict, its confidence, the gap
+    /// key and the turn id; never the question, a feature text or any model output. Telemetry
+    /// never fails a check: a writer that throws is logged and swallowed.
+    /// </summary>
+    private async Task TryAuditOutcomeAsync(
+        IServiceProvider services, TenantId tenantId, string actor, string? turnId, string outcome, string? confidence, string? gapKey)
+    {
+        try
+        {
+            var auditWriter = services.GetRequiredService<IAuditWriter>();
+            var clock = services.GetRequiredService<IClock>();
+            await auditWriter.WriteAsync(
+                    new AuditEntry(
+                        tenantId,
+                        actor,
+                        OutcomeAuditAction,
+                        OutcomeAuditResourceType,
+                        FormatTurnId(turnId),
+                        clock.UtcNow,
+                        $"turnId={FormatTurnId(turnId)} outcome={outcome} confidence={confidence ?? "none"} gapKey={gapKey ?? "none"}"),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "The capability outcome ({Outcome}) could not be audited", outcome);
+        }
+    }
+
+    private static string FormatTurnId(string? turnId) => turnId ?? "none";
 
     /// <summary>
     /// The follow-up message: "I checked what Raffa.ai can do for your request." then the gap's
@@ -232,22 +364,12 @@ internal sealed class CapabilityCheckDispatcher(
 
             case GapAlternative.DraftEmail:
             {
-                var suppliers = request.NamedSupplier is { } named
-                    ? [named]
-                    : request.SupplierNames
-                        .Where(name => !string.IsNullOrWhiteSpace(name))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-                        .Take(MaxDraftSupplierFollowUps)
-                        .ToList();
+                // The named supplier alone when the turn named one; otherwise every supplier on file
+                // (the builder sorts, de-duplicates and caps them).
+                IEnumerable<string?> suppliers = request.NamedSupplier is { } named ? [named] : request.SupplierNames;
 
-                var actions = portfolioIsEmpty
-                    ? routing.ResolveActions([CapabilityIntent.UnknownSupplier], context)
-                    : routing.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)], context);
-
-                var markdown = opening + " " + CapabilityGapCopy.AskWhichContract(gap, language, null, portfolioIsEmpty);
-                return CapabilityGapReplyBuilder.Redirect(
-                    gap, language, markdown, actions, suppliers.Select(name => CapabilityGapCopy.DraftFollowUp(language, name)).ToList());
+                return CapabilityGapReplyBuilder.WhichContract(
+                    gap, language, opening, unknownSupplier: null, portfolioIsEmpty, suppliers, routing, context);
             }
 
             default:

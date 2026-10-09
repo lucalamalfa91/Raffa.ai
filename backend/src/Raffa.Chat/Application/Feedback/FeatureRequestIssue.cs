@@ -46,7 +46,10 @@ public sealed record FeedbackAnswers(string What, string Frequency, string Impor
 /// type: there is no field for the question, a supplier, a contract value or a user). The repo
 /// the issue lands in is public. ADR-031 adds one member, <see cref="Discovery"/>, for a gap the
 /// capability investigator found: generic texts already scrubbed by
-/// <c>Gaps.DiscoveredGapText</c> (no supplier, amount, date, e-mail or link).
+/// <c>Gaps.DiscoveredGapText</c> (no supplier, amount, date, e-mail or link). The user's own
+/// free-text answer is scrubbed too, when the issue is composed (F4-T01,
+/// <see cref="FeatureRequestScrubber"/>): <see cref="KnownNames"/> lists the names to remove on top
+/// of what the scrubber recognises by shape — the tenant's suppliers and the submitting user.
 /// </summary>
 public sealed record FeatureRequestIssue(
     string GapKey,
@@ -55,7 +58,8 @@ public sealed record FeatureRequestIssue(
     string Environment,
     string WorkspaceHash,
     FeedbackAnswers Answers,
-    GapDiscovery? Discovery = null);
+    GapDiscovery? Discovery = null,
+    IReadOnlyList<string>? KnownNames = null);
 
 /// <summary>Composes the issue's title, body and labels — English, the developers' language, with
 /// the user's own free-text answer quoted as typed. Every issue is a proposal awaiting a human
@@ -137,7 +141,10 @@ public static class FeatureRequestIssueText
         body.AppendLine();
         body.AppendLine("**What exactly should Raffa do?**");
         body.AppendLine();
-        body.AppendLine(Quote(issue.Answers.What));
+        // F4-T01: the one free-text field of a public issue goes through the scrub, whichever
+        // publisher composes it.
+        var scrubbed = FeatureRequestScrubber.Scrub(issue.Answers.What, issue.KnownNames);
+        body.AppendLine(Quote(scrubbed.Length == 0 ? "(nothing left to publish after the privacy scrub)" : scrubbed));
         body.AppendLine();
         body.AppendLine($"**How often would you need it?** {FeedbackQuestions.LabelFor(issue.Answers.Frequency)}");
         body.AppendLine();

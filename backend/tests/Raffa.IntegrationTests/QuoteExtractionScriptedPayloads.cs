@@ -6,7 +6,7 @@ namespace Raffa.IntegrationTests;
 /// Shared fixture data for task E05/F01/US01/T01 (quote-extraction): a hand-built, minimal-but-real
 /// born-digital PDF (read by the `ocr` gateway role like every PDF since the ADR-017 amendment of
 /// 2026-09-09) and a scanned/image-style quote (proves AC-4's "scanned/image quote PDFs reuse the
-/// epic-02 hybrid OCR path... no 2-page cap" — an <c>image/tiff</c> mime type
+/// epic-02 hybrid OCR path... no 2-page cap" — an <c>image/png</c> mime type
 /// <c>NativeDocumentTextExtractor.CanHandle</c> always returns <see langword="false"/> for, so
 /// <c>HybridDocumentParsingService</c> structurally cannot take the native path), plus the scripted
 /// `QuoteLineItems`-stage payload <see cref="ScriptedR1AiGateway"/> returns for both. Same
@@ -20,8 +20,15 @@ internal static class QuoteExtractionScriptedPayloads
     public const string BornDigitalFileName = "quote-acme-enterprise.pdf";
     public const string BornDigitalMimeType = "application/pdf";
 
-    public const string ScannedFileName = "scanned-quote-northwind.tiff";
-    public const string ScannedMimeType = "image/tiff";
+    // Task F6-T04: PNG rather than the original TIFF -- `POST /api/quotes` now applies the same
+    // extension-and-magic-bytes admission as `POST /api/documents` (PDF, DOCX, XLSX, PNG, JPEG), so
+    // a .tiff would be refused with a 415 before it reached the pipeline this fixture exercises.
+    // PNG keeps the property that made TIFF the right choice here: an image MIME type
+    // NativeDocumentTextExtractor.CanHandle never accepts, so the `ocr` role must read it.
+    public const string ScannedFileName = "scanned-quote-northwind.png";
+    public const string ScannedMimeType = "image/png";
+
+    private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
     public const string ExpectedSku = "SKU-ENT-100";
     public const string ExpectedEdition = "Enterprise";
@@ -89,6 +96,8 @@ internal static class QuoteExtractionScriptedPayloads
         const string page1 = "Supplier Quote Q-2002 (scanned copy) for Northwind Traders.";
         const string page2 = "Enterprise Suite, 10 seats, $100/seat, annual term.";
 
-        return Encoding.UTF8.GetBytes(page1 + "\f" + page2);
+        // Starts with the real 8-byte PNG signature (what DocumentFormatSniffer checks);
+        // FixtureAiGateway.OcrAsync strips it before decoding, so the page text is unchanged.
+        return [.. PngSignature, .. Encoding.UTF8.GetBytes(page1 + "\f" + page2)];
     }
 }

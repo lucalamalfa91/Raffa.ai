@@ -11,26 +11,26 @@ namespace Raffa.AiGateway.Configuration;
 /// answer, ocr, analyst, research) is untouched and keeps calling Foundry exactly as today.
 ///
 /// <para>
-/// <b>Why OpenRouter, not TypeSafe's own API directly:</b> OpenRouter is the one place Jev's
-/// request/response contract is publicly documented (<c>POST /api/v1/systemone</c>, model
-/// <c>typesafe/jev-1.13</c>): a <c>state</c> (the document text) plus a map of typed
-/// <c>questions</c> (here, one <c>choice</c> question over the fixed <see cref="Contracts.AiDocumentType"/>
-/// taxonomy), answered with a chosen option, per-option probabilities and a confidence — no
-/// arbitrary free-value or multi-field JSON output exists in this API, which is exactly why this
-/// pilot is scoped to <c>classify</c> and not <c>extract</c> (see this task's own plan: extraction
-/// needs free-value fields — dates, amounts, verbatim clause text — that none of Jev's three
-/// question primitives, Choice/Noul/Score, can produce).
+/// <b>The wire contract:</b> TypeSafe's System One API (<c>POST /v1/systemone</c>, documented at
+/// https://docs.typesafe.ai/api), reachable either directly at <c>api.typesafe.ai</c> or, with the
+/// identical request and response, through OpenRouter's <c>/api/v1/systemone</c> (this pilot's
+/// default -- an OpenRouter key needs no separate TypeSafe account). A <c>state</c> plus a map of
+/// typed <c>questions</c> is answered, per question, with a chosen option, per-option
+/// probabilities and a confidence. No arbitrary free-value or multi-field JSON output exists in this
+/// API, which is exactly why this pilot is scoped to decisions and not to <c>extract</c>: extraction
+/// needs free-value fields -- dates, amounts, verbatim clause text -- that none of Jev's three
+/// question primitives, Choice/Noul/Score, can produce.
 /// </para>
 ///
 /// <para>
-/// <b>Unverified contract, flagged on purpose:</b> this options type and
-/// <see cref="Jev.JevHttpJsonClient"/> were built from OpenRouter's published documentation and
-/// third-party write-ups, not from a live call against a real API key (this development
-/// environment could not reach <c>openrouter.ai</c> to confirm the exact response field names).
-/// The very first thing to do with a real <see cref="ApiKey"/> is a manual smoke test against one
-/// known document before trusting any dev upload to this path — <see cref="Jev.JevHttpJsonClient"/>
-/// fails loudly (a <see cref="SharedKernel.Result{T}"/> failure naming the unexpected shape) rather
-/// than silently misreading a field, precisely because this contract is not yet proven.
+/// <b>Read against the documentation, not yet against a live key:</b> the client was rewritten
+/// against TypeSafe's published API reference and cookbooks, but no call has been made with a real
+/// <see cref="ApiKey"/> from this code. The first thing to do with one is a manual smoke test against
+/// one known document -- <see cref="Jev.JevHttpJsonClient"/> fails loudly (a
+/// <see cref="SharedKernel.Result{T}"/> failure naming the unexpected shape) rather than silently
+/// misreading a field. Jev's primary training language is English; Italian and German contracts are
+/// "handled but not equally well" (https://docs.typesafe.ai/models#language-support), so accuracy on
+/// Raffa's own IT/DE documents must be measured before this path is trusted beyond dev.
 /// </para>
 /// </summary>
 public sealed class AiGatewayJevOptions
@@ -76,6 +76,24 @@ public sealed class AiGatewayJevOptions
     /// <summary>OpenRouter's recommended <c>X-Title</c> attribution header — see <see cref="HttpReferer"/>'s
     /// own doc comment.</summary>
     public string? AppTitle { get; init; } = "Raffa";
+
+    /// <summary>
+    /// The lowest Jev confidence (TypeSafe's own <c>confidence</c> on a Choice answer, 0..1) at which
+    /// <see cref="Jev.JevAiGateway"/> accepts a classification; below it, or when the Jev call
+    /// fails, the document is classified by the Foundry gateway instead. A starting point, not a
+    /// calibration -- the thresholds that matter are the ones read off the logged probability
+    /// distributions (<see cref="Jev.JevHttpJsonClient.LogDecisions"/>) against labelled Raffa
+    /// documents.
+    /// </summary>
+    public double ClassifyMinConfidence { get; init; } = 0.6;
+
+    /// <summary>
+    /// Ask the same Choice twice in one request with the options in opposite order and accept the
+    /// answer only when both agree (the confidence is then the lower of the two). Jev "leans toward
+    /// the option that comes first" (https://docs.typesafe.ai/model-jaggedness/jev-1.13); the second
+    /// question costs a few input tokens and no extra round trip.
+    /// </summary>
+    public bool CheckOptionOrder { get; init; } = true;
 
     /// <summary>Same representative-prefix cap <see cref="AiGatewayFoundryOptions.ClassifyMaxInputChars"/>
     /// applies today, reused rather than duplicated so a Jev call is billed for the same input size

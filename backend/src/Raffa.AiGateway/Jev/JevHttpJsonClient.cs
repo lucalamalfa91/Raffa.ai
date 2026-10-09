@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
+using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Foundry;
 using Raffa.SharedKernel;
@@ -17,7 +19,10 @@ namespace Raffa.AiGateway.Jev;
 /// existing 503-mapping needs no Jev-specific branch.
 /// </summary>
 public sealed class JevHttpJsonClient(
-    HttpClient httpClient, AiGatewayJevOptions options, FoundryRetryPolicy? retryPolicy = null)
+    HttpClient httpClient,
+    AiGatewayJevOptions options,
+    FoundryRetryPolicy? retryPolicy = null,
+    ILogger<JevHttpJsonClient>? logger = null)
 {
     private static readonly MediaTypeHeaderValue JsonContentType = new("application/json") { CharSet = "utf-8" };
 
@@ -99,5 +104,41 @@ public sealed class JevHttpJsonClient(
         }
 
         return Result<TResponse>.Success(parsed);
+    }
+
+    /// <summary>
+    /// One structured log line per question: the chosen option, TypeSafe's confidence and the two
+    /// most likely options with their probabilities -- never the state or the question text. This is
+    /// what thresholds are calibrated from (TypeSafe: "start conservative, test with your own data");
+    /// without the distribution a threshold can only be guessed. Also carries the served model and
+    /// the token usage so a cost comparison needs no second source.
+    /// </summary>
+    public void LogDecisions(string call, JevSystemOneResponse response)
+    {
+        if (logger is null || !logger.IsEnabled(LogLevel.Information) || response.Answers is null)
+        {
+            return;
+        }
+
+        foreach (var (key, answer) in response.Answers)
+        {
+            var top = (answer.Probabilities ?? new Dictionary<string, double>())
+                .OrderByDescending(pair => pair.Value)
+                .Take(2)
+                .Select(pair => string.Create(CultureInfo.InvariantCulture, $"{pair.Key}={pair.Value:0.000}"));
+
+            logger.LogInformation(
+                "Jev {Call}/{Question}: choice={Choice} confidence={Confidence} noul={Noul} top2=[{Top}] " +
+                "servedModel={ServedModel} inputTokens={InputTokens} cost={Cost}",
+                call,
+                key,
+                answer.Choice,
+                answer.Confidence,
+                answer.Noul,
+                string.Join(", ", top),
+                response.Model,
+                response.Usage?.InputTokens,
+                response.Usage?.Cost);
+        }
     }
 }

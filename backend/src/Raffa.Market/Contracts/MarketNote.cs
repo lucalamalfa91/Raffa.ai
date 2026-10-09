@@ -33,6 +33,9 @@ namespace Raffa.Market.Contracts;
 /// this hit (token-overlap ratio for <see cref="Retrieval.InMemoryMarketKnowledgeRetrieval"/> in
 /// this task; a vector-similarity score once T02 swaps in the pgvector index) — not a property of
 /// the record itself, only of one search's ranking of it.</param>
+/// <param name="ProvenanceInfo">Structured provenance of the note's figures (F7-T11): source class,
+/// sample, as-of date, unit. Internal metadata, never rendered by itself (decision D5);
+/// <see langword="null"/> only for a note built outside <see cref="Retrieval.MarketNoteComposer"/>.</param>
 public sealed record MarketNote(
     string RecordId,
     string Title,
@@ -41,4 +44,5 @@ public sealed record MarketNote(
     string Geography,
     DateTimeOffset UpdatedAt,
     string Provenance,
-    double Score);
+    double Score,
+    Raffa.SharedKernel.Market.MarketProvenanceInfo? ProvenanceInfo = null);

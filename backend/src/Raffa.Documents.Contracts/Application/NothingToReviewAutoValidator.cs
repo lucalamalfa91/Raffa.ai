@@ -58,8 +58,15 @@ public sealed class NothingToReviewAutoValidator(
         var weakByContract = await WeakFactCountsAsync(dbContext, tenantId, contractIds, cancellationToken)
             .ConfigureAwait(false);
 
+        // F5-T02: a document with a failed extraction stage is partial, not "nothing to review" -- its
+        // missing stage is exactly what the missing weak facts would have been. It stays on review
+        // until the stage has run.
+        var partial = await Extraction.ExtractionPartialState
+            .LoadAsync(dbContext, tenantId, candidates.Select(d => d.Id).ToList(), cancellationToken)
+            .ConfigureAwait(false);
+
         var validated = candidates
-            .Where(d => weakByContract.GetValueOrDefault(d.ContractId!.Value) == 0)
+            .Where(d => weakByContract.GetValueOrDefault(d.ContractId!.Value) == 0 && !partial.ContainsKey(d.Id))
             .ToList();
 
         if (validated.Count == 0)

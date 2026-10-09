@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.SharedKernel;
 
@@ -12,11 +13,29 @@ namespace Raffa.AiGateway.Jev;
 /// exactly like a Foundry call -- the recorded <see cref="AiCallMetadata.ModelId"/> is the one
 /// visible way to tell, after the fact, which calls this pilot actually touched.
 /// </summary>
-public sealed class JevAiGateway(IAiGateway inner, JevClassifyClient classifyClient) : IAiGateway
+public sealed class JevAiGateway(IAiGateway inner, JevClassifyClient classifyClient, AiGatewayJevOptions options) : IAiGateway
 {
-    public Task<Result<AiClassificationResult>> ClassifyAsync(
-        AiClassificationRequest request, CancellationToken cancellationToken = default) =>
-        classifyClient.ClassifyAsync(request, cancellationToken);
+    /// <summary>
+    /// Jev first, Foundry only when Jev cannot be trusted with this document: a failed call (network,
+    /// 5xx/529 after the retries, an unreadable answer, a missing key) or an answer under
+    /// <see cref="AiGatewayJevOptions.ClassifyMinConfidence"/>. This is the confidence-gated cascade
+    /// TypeSafe's own cookbooks recommend (a cheap, fast decision that reports how sure it is, with a
+    /// fallback for the cases it is not sure about) -- the admission gate never sees a Jev outage as
+    /// a 503 that Foundry would have served, and a document Jev is unsure about is judged by the
+    /// model the pilot is being compared with. <see cref="AiCallMetadata.ModelId"/> on the result
+    /// says which of the two answered.
+    /// </summary>
+    public async Task<Result<AiClassificationResult>> ClassifyAsync(
+        AiClassificationRequest request, CancellationToken cancellationToken = default)
+    {
+        var jev = await classifyClient.ClassifyAsync(request, cancellationToken).ConfigureAwait(false);
+        if (jev.IsSuccess && jev.Value.Confidence >= options.ClassifyMinConfidence)
+        {
+            return jev;
+        }
+
+        return await inner.ClassifyAsync(request, cancellationToken).ConfigureAwait(false);
+    }
 
     public Task<Result<AiExtractionResult>> ExtractAsync(
         AiExtractionRequest request, CancellationToken cancellationToken = default) =>

@@ -35,8 +35,15 @@ public sealed class HybridDocumentParsingService(
             }
         }
 
+        // `native.Pages.Count > 0` is pdfium's own page count for a PDF it could actually open —
+        // the same count the "sufficient" check above just used, so handing it to the gateway as
+        // AiOcrRequest.KnownPageCount is a trustworthy pre-check, not a guess. A zero count means
+        // pdfium could not open the file at all (ExtractPdf's catch-and-return-empty path) rather
+        // than a real zero-page PDF, so it is not trustworthy and must not be passed as known —
+        // the gateway falls back to finding the real count itself.
+        var knownPageCount = native is { Pages.Count: > 0 } ? native.Pages.Count : (int?)null;
         var ocrResult = await aiGateway
-            .OcrAsync(new AiOcrRequest(fileName, mimeType, content), cancellationToken)
+            .OcrAsync(new AiOcrRequest(fileName, mimeType, content, knownPageCount), cancellationToken)
             .ConfigureAwait(false);
 
         if (ocrResult.IsSuccess && ocrResult.Value.Pages.Count > 0)

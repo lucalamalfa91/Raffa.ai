@@ -86,4 +86,7 @@ public sealed class ExtractionEvidence : TenantScopedEntity
     public DateTimeOffset? DecidedAt { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>F5-T01: the run that wrote this fact (<see cref="ExtractionJob.ExtractionRunId"/>); null on older rows.</summary>
+    public Guid? ExtractionRunId { get; set; }
 }

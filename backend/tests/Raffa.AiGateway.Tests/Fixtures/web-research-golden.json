@@ -1,0 +1,163 @@
+[
+  {
+    "name": "aligned-lists-keep-their-numbers",
+    "maxSources": 5,
+    "summary": "Caps of 5-10% are common [1]; notice runs 60 to 90 days [2].",
+    "payloadSources": [
+      { "n": 1, "url": "https://example.com/a", "title": "A" },
+      { "n": 2, "url": "https://example.org/b", "title": "B" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/a", "title": "A" },
+      { "url": "https://example.org/b", "title": "B" }
+    ],
+    "expectedSummary": "Caps of 5-10% are common [1]; notice runs 60 to 90 days [2].",
+    "expectedSources": ["https://example.com/a", "https://example.org/b"]
+  },
+  {
+    "name": "marker-follows-the-models-n-not-the-annotation-position",
+    "maxSources": 5,
+    "summary": "First fact [1]. Second fact [2].",
+    "payloadSources": [
+      { "n": 1, "url": "https://example.com/z", "title": "Z" },
+      { "n": 2, "url": "https://example.com/x", "title": "X" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/x", "title": "X" },
+      { "url": "https://example.com/y", "title": "Y" },
+      { "url": "https://example.com/z", "title": "Z" }
+    ],
+    "expectedSummary": "First fact [1]. Second fact [2].",
+    "expectedSources": ["https://example.com/z", "https://example.com/x"]
+  },
+  {
+    "name": "payload-listed-out-of-order-is-sorted-by-n",
+    "maxSources": 5,
+    "summary": "Alpha [2]. Beta [1].",
+    "payloadSources": [
+      { "n": 2, "url": "https://example.org/second", "title": "Second" },
+      { "n": 1, "url": "https://example.com/first", "title": "First" }
+    ],
+    "annotations": [
+      { "url": "https://example.org/second", "title": "Second" },
+      { "url": "https://example.com/first", "title": "First" }
+    ],
+    "expectedSummary": "Alpha [2]. Beta [1].",
+    "expectedSources": ["https://example.com/first", "https://example.org/second"]
+  },
+  {
+    "name": "urls-are-normalised-before-matching",
+    "maxSources": 5,
+    "summary": "Fact one [1]. Fact two [2].",
+    "payloadSources": [
+      { "n": 1, "url": "HTTP://Example.COM/a/?utm_source=newsletter&utm_medium=email#section-2", "title": "A" },
+      { "n": 2, "url": "https://example.org/b?id=7&utm_campaign=x", "title": "B" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/a", "title": "A" },
+      { "url": "https://EXAMPLE.org/b?id=7#top", "title": "B" }
+    ],
+    "expectedSummary": "Fact one [1]. Fact two [2].",
+    "expectedSources": ["https://example.com/a", "https://example.org/b?id=7"]
+  },
+  {
+    "name": "a-source-the-tool-never-cited-is-dropped-and-its-marker-names-nothing",
+    "maxSources": 5,
+    "summary": "Real [1]. Invented [2]. Real again [3].",
+    "payloadSources": [
+      { "n": 1, "url": "https://example.com/a", "title": "A" },
+      { "n": 2, "url": "https://made-up.example/never-visited", "title": "Invented" },
+      { "n": 3, "url": "https://example.org/c", "title": "C" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/a", "title": "A" },
+      { "url": "https://example.org/c", "title": "C" }
+    ],
+    "expectedSummary": "Real [1]. Invented [0]. Real again [2].",
+    "expectedSources": ["https://example.com/a", "https://example.org/c"]
+  },
+  {
+    "name": "gaps-in-n-are-renumbered-consecutively",
+    "maxSources": 5,
+    "summary": "One [1], three [3].",
+    "payloadSources": [
+      { "n": 1, "url": "https://example.com/a", "title": "A" },
+      { "n": 3, "url": "https://example.org/c", "title": "C" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/a", "title": "A" },
+      { "url": "https://example.org/c", "title": "C" }
+    ],
+    "expectedSummary": "One [1], three [2].",
+    "expectedSources": ["https://example.com/a", "https://example.org/c"]
+  },
+  {
+    "name": "cited-sources-survive-the-max-sources-cap",
+    "maxSources": 2,
+    "summary": "Only the third and fourth matter [3][4].",
+    "payloadSources": [
+      { "n": 1, "url": "https://example.com/a", "title": "A" },
+      { "n": 2, "url": "https://example.com/b", "title": "B" },
+      { "n": 3, "url": "https://example.com/c", "title": "C" },
+      { "n": 4, "url": "https://example.com/d", "title": "D" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/a", "title": "A" },
+      { "url": "https://example.com/b", "title": "B" },
+      { "url": "https://example.com/c", "title": "C" },
+      { "url": "https://example.com/d", "title": "D" }
+    ],
+    "expectedSummary": "Only the third and fourth matter [1][2].",
+    "expectedSources": ["https://example.com/c", "https://example.com/d"]
+  },
+  {
+    "name": "uncited-sources-are-trimmed-to-the-cap-after-the-cited-ones",
+    "maxSources": 2,
+    "summary": "Only the third matters [3].",
+    "payloadSources": [
+      { "n": 1, "url": "https://example.com/a", "title": "A" },
+      { "n": 2, "url": "https://example.com/b", "title": "B" },
+      { "n": 3, "url": "https://example.com/c", "title": "C" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/a", "title": "A" },
+      { "url": "https://example.com/b", "title": "B" },
+      { "url": "https://example.com/c", "title": "C" }
+    ],
+    "expectedSummary": "Only the third matters [2].",
+    "expectedSources": ["https://example.com/a", "https://example.com/c"]
+  },
+  {
+    "name": "two-numbers-for-one-url-collapse-to-one-source",
+    "maxSources": 5,
+    "summary": "Same page twice [1][2], other page [3].",
+    "payloadSources": [
+      { "n": 1, "url": "https://example.com/a", "title": "A" },
+      { "n": 2, "url": "https://example.com/a/", "title": "A again" },
+      { "n": 3, "url": "https://example.org/c", "title": "C" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/a", "title": "A" },
+      { "url": "https://example.org/c", "title": "C" }
+    ],
+    "expectedSummary": "Same page twice [1][1], other page [2].",
+    "expectedSources": ["https://example.com/a", "https://example.org/c"]
+  },
+  {
+    "name": "one-number-for-two-urls-is-ambiguous-and-names-nothing",
+    "maxSources": 5,
+    "summary": "Ambiguous [1], clear [2].",
+    "payloadSources": [
+      { "n": 1, "url": "https://example.com/a", "title": "A" },
+      { "n": 1, "url": "https://example.com/other", "title": "Other" },
+      { "n": 2, "url": "https://example.org/c", "title": "C" }
+    ],
+    "annotations": [
+      { "url": "https://example.com/a", "title": "A" },
+      { "url": "https://example.com/other", "title": "Other" },
+      { "url": "https://example.org/c", "title": "C" }
+    ],
+    "expectedSummary": "Ambiguous [0], clear [1].",
+    "expectedSources": ["https://example.org/c"]
+  }
+]

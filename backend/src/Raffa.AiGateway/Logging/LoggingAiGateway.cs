@@ -1,7 +1,10 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
+using Raffa.AiGateway.Telemetry;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 
@@ -58,6 +61,10 @@ public sealed class LoggingAiGateway : IAiGateway
     /// </summary>
     private const string ResourceType = "ai_call";
 
+    /// <summary>Written for <c>run=</c>/<c>turn=</c> when no <see cref="RunContext"/> is active, so
+    /// the key is always present and a query on it never has to treat absence as a case.</summary>
+    private const string NoneValue = "none";
+
     private readonly IAiGateway _inner;
     private readonly IAuditWriter _auditWriter;
     private readonly ITenantContext _tenantContext;
@@ -101,120 +108,162 @@ public sealed class LoggingAiGateway : IAiGateway
     }
 
     /// <inheritdoc/>
-    public async Task<Result<AiClassificationResult>> ClassifyAsync(
-        AiClassificationRequest request, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.ClassifyAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (result.IsSuccess)
-        {
-            await LogBestEffortAsync("classified", result.Value.Metadata, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return result;
-    }
+    public Task<Result<AiClassificationResult>> ClassifyAsync(
+        AiClassificationRequest request, CancellationToken cancellationToken = default) =>
+        InvokeAsync(
+            "classified", "chat", "classifier", fallbackStep: null,
+            () => _inner.ClassifyAsync(request, cancellationToken),
+            r => r.Metadata, extraDetail: null, cancellationToken);
 
     /// <inheritdoc/>
-    public async Task<Result<AiExtractionResult>> ExtractAsync(
-        AiExtractionRequest request, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (result.IsSuccess)
-        {
-            await LogBestEffortAsync("extracted", result.Value.Metadata, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return result;
-    }
+    public Task<Result<AiExtractionResult>> ExtractAsync(
+        AiExtractionRequest request, CancellationToken cancellationToken = default) =>
+        InvokeAsync(
+            "extracted", "chat", "extractor", fallbackStep: request.StageName,
+            () => _inner.ExtractAsync(request, cancellationToken),
+            r => r.Metadata, extraDetail: null, cancellationToken);
 
     /// <inheritdoc/>
-    public async Task<Result<AiEmbeddingResult>> EmbedAsync(
-        AiEmbeddingRequest request, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.EmbedAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (result.IsSuccess)
-        {
-            await LogBestEffortAsync("embedded", result.Value.Metadata, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return result;
-    }
+    public Task<Result<AiEmbeddingResult>> EmbedAsync(
+        AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
+        InvokeAsync(
+            "embedded", "embeddings", "embedder", fallbackStep: null,
+            () => _inner.EmbedAsync(request, cancellationToken),
+            r => r.Metadata, extraDetail: null, cancellationToken);
 
     /// <inheritdoc/>
-    public async Task<Result<AiAnswerResult>> AnswerAsync(
-        AiAnswerRequest request, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.AnswerAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (result.IsSuccess)
-        {
-            await LogBestEffortAsync("answered", result.Value.Metadata, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        return result;
-    }
+    public Task<Result<AiAnswerResult>> AnswerAsync(
+        AiAnswerRequest request, CancellationToken cancellationToken = default) =>
+        InvokeAsync(
+            "answered", "chat", "answerer", fallbackStep: null,
+            () => _inner.AnswerAsync(request, cancellationToken),
+            r => r.Metadata, extraDetail: null, cancellationToken);
 
     /// <inheritdoc/>
-    public async Task<Result<AiAnalysisResult>> AnalyzeAsync(
-        AiAnalysisRequest request, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (result.IsSuccess)
-        {
-            await LogBestEffortAsync("analyzed", result.Value.Metadata, cancellationToken, $"agent={request.AgentName}")
-                .ConfigureAwait(false);
-        }
-
-        return result;
-    }
+    public Task<Result<AiAnalysisResult>> AnalyzeAsync(
+        AiAnalysisRequest request, CancellationToken cancellationToken = default) =>
+        InvokeAsync(
+            "analyzed", "chat", request.AgentName, fallbackStep: request.AgentName,
+            () => _inner.AnalyzeAsync(request, cancellationToken),
+            r => r.Metadata, extraDetail: null, cancellationToken);
 
     /// <summary>ADR-030: one <c>ai_call</c> row per web research, carrying the query's hash and the
     /// source count -- never the query text.</summary>
-    public async Task<Result<AiResearchResult>> ResearchAsync(
-        AiResearchRequest request, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.ResearchAsync(request, cancellationToken).ConfigureAwait(false);
+    public Task<Result<AiResearchResult>> ResearchAsync(
+        AiResearchRequest request, CancellationToken cancellationToken = default) =>
+        InvokeAsync(
+            "researched", "chat", "web-researcher", fallbackStep: null,
+            () => _inner.ResearchAsync(request, cancellationToken),
+            r => r.Metadata,
+            r => $"sourceCount={r.Sources.Count} offTopic={r.OffTopic} " +
+                 $"queryHash={Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Query)))}",
+            cancellationToken);
 
-        if (result.IsSuccess)
+    public Task<Result<AiOcrResult>> OcrAsync(
+        AiOcrRequest request, CancellationToken cancellationToken = default) =>
+        // ADR-017: "Per-page OCR usage MUST be logged (page count, model id, cost attribution)" --
+        // the one field the other roles' log line does not carry, so it is threaded through as an
+        // addendum rather than duplicating LogAsync's whole body.
+        InvokeAsync(
+            "ocr", "ocr", "ocr", fallbackStep: null,
+            () => _inner.OcrAsync(request, cancellationToken),
+            r => r.Metadata, r => $"pageCount={r.Pages.Count}", cancellationToken);
+
+    /// <summary>
+    /// The one path every role call takes (plan T-01): runs the inner call inside an
+    /// <c>Raffa.Agents</c> span (agent name and version, tenant hash, tokens, outcome, latency --
+    /// never text), then, on success, writes the audit row stamped with the same agent, run, turn
+    /// and step. A failed inner call still gets a span (outcome <c>error</c>) but no audit row,
+    /// exactly as before. <paramref name="fallbackStep"/> names the step when no
+    /// <see cref="RunContext"/> step is active (the agent name for an analyst call, the stage name
+    /// for an extraction stage), so every <c>ai.*</c> row carries a <c>step=</c>.
+    /// </summary>
+    private async Task<Result<T>> InvokeAsync<T>(
+        string role,
+        string operation,
+        string agentName,
+        string? fallbackStep,
+        Func<Task<Result<T>>> call,
+        Func<T, AiCallMetadata> metadataOf,
+        Func<T, string?>? extraDetail,
+        CancellationToken cancellationToken)
+    {
+        var context = RunContext.Current;
+        var runId = context?.RunId ?? NoneValue;
+        var turnId = context?.TurnId ?? NoneValue;
+        var stepName = context?.StepName ?? RunContext.Sanitize(fallbackStep) ?? RunContext.Sanitize(agentName) ?? NoneValue;
+        var agent = RunContext.Sanitize(agentName) ?? NoneValue;
+
+        using var activity = AgentTelemetry.Source.StartActivity($"{operation} {agent}", ActivityKind.Client);
+        if (activity is not null)
         {
-            var queryHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Query)));
-            await LogBestEffortAsync(
-                    "researched",
-                    result.Value.Metadata,
-                    cancellationToken,
-                    $"sourceCount={result.Value.Sources.Count} offTopic={result.Value.OffTopic} queryHash={queryHash}")
-                .ConfigureAwait(false);
+            activity.SetTag(AgentTelemetry.OperationName, operation);
+            activity.SetTag(AgentTelemetry.AgentName, agent);
+            activity.SetTag(AgentTelemetry.Role, role);
+            activity.SetTag(AgentTelemetry.RunId, runId);
+            activity.SetTag(AgentTelemetry.TurnId, turnId);
+            activity.SetTag(AgentTelemetry.StepName, stepName);
+            if (_tenantContext.Current is { } tenant)
+            {
+                activity.SetTag(AgentTelemetry.TenantHash, AgentTelemetry.HashTenant(tenant));
+            }
         }
 
-        return result;
-    }
-
-    public async Task<Result<AiOcrResult>> OcrAsync(
-        AiOcrRequest request, CancellationToken cancellationToken = default)
-    {
-        var result = await _inner.OcrAsync(request, cancellationToken).ConfigureAwait(false);
-
-        if (result.IsSuccess)
+        var clock = Stopwatch.StartNew();
+        var outcome = AgentTelemetry.OutcomeError;
+        try
         {
-            // ADR-017: "Per-page OCR usage MUST be logged (page count, model id, cost
-            // attribution)" — the one field the other four roles' log line does not carry, so it
-            // is threaded through as an addendum rather than duplicating LogAsync's whole body.
-            await LogBestEffortAsync(
-                    "ocr",
-                    result.Value.Metadata,
-                    cancellationToken,
-                    extraDetail: $"pageCount={result.Value.Pages.Count}")
-                .ConfigureAwait(false);
-        }
+            var result = await call().ConfigureAwait(false);
+            clock.Stop();
 
-        return result;
+            if (result.IsFailure)
+            {
+                // A failed call never reaches a model, or the model's answer was unusable: no
+                // metadata, no audit row; the span says so (outcome stays "error"). The error text
+                // is not copied (it can quote provider output).
+                return result;
+            }
+
+            var metadata = metadataOf(result.Value);
+            if (activity is not null)
+            {
+                activity.SetTag(AgentTelemetry.AgentVersion, metadata.PromptVersion);
+                activity.SetTag(AgentTelemetry.ResponseModel, metadata.ModelId);
+                activity.SetTag(AgentTelemetry.ModelVersion, metadata.ModelVersion);
+                if (metadata.Usage is { } usage)
+                {
+                    activity.SetTag(AgentTelemetry.UsageInputTokens, usage.PromptTokens);
+                    activity.SetTag(AgentTelemetry.UsageOutputTokens, usage.CompletionTokens);
+                }
+            }
+
+            var detail = string.Join(' ', new[]
+            {
+                extraDetail?.Invoke(result.Value),
+                $"agent={agent} run={runId} turn={turnId} step={stepName} " +
+                $"latencyMs={clock.ElapsedMilliseconds.ToString(CultureInfo.InvariantCulture)} outcome={AgentTelemetry.OutcomeOk}",
+            }.Where(part => !string.IsNullOrEmpty(part)));
+
+            await LogBestEffortAsync(role, metadata, cancellationToken, detail).ConfigureAwait(false);
+
+            outcome = AgentTelemetry.OutcomeOk;
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = AgentTelemetry.OutcomeCancelled;
+            throw;
+        }
+        finally
+        {
+            if (outcome == AgentTelemetry.OutcomeError)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error);
+            }
+
+            activity?.SetTag(AgentTelemetry.Outcome, outcome);
+            activity?.SetTag(AgentTelemetry.LatencyMs, clock.ElapsedMilliseconds);
+        }
     }
 
     /// <summary>
@@ -224,7 +273,7 @@ public sealed class LoggingAiGateway : IAiGateway
     /// and still throws. A non-transient audit failure still throws (ADR-011).
     /// </summary>
     private async Task LogBestEffortAsync(
-        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string? extraDetail = null)
+        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string extraDetail)
     {
         try
         {
@@ -245,13 +294,9 @@ public sealed class LoggingAiGateway : IAiGateway
     /// "fail closed" posture <see cref="ITenantContext.Current"/>'s own doc comment describes for
     /// RLS.
     /// </summary>
-    /// <param name="extraDetail">
-    /// Role-specific addendum appended to the standard reproducibility fields — today only
-    /// <see cref="OcrAsync"/> supplies one (page count, ADR-017). <see langword="null"/> for every
-    /// other role, unchanged from before this parameter existed.
-    /// </param>
+    /// <param name="extraDetail">The call's own fields (agent, run, turn, step, latency, and a role-specific addendum).</param>
     private async Task LogAsync(
-        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string? extraDetail = null)
+        string role, AiCallMetadata metadata, CancellationToken cancellationToken, string extraDetail)
     {
         var tenantId = _tenantContext.Current ?? throw new InvalidOperationException(
             $"AI Gateway logging requires an active tenant scope (ITenantContext.BeginScope); " +
@@ -272,10 +317,7 @@ public sealed class LoggingAiGateway : IAiGateway
             detail += $" promptTokens={usage.PromptTokens} completionTokens={usage.CompletionTokens}";
         }
 
-        if (extraDetail is not null)
-        {
-            detail += $" {extraDetail}";
-        }
+        detail += $" {extraDetail}";
 
         await _auditWriteLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try

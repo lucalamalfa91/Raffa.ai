@@ -34,6 +34,9 @@ public sealed class Obligation : TenantScopedEntity
 
     public required DateTimeOffset CreatedAt { get; set; }
 
+    /// <summary>F5-T01: the run that wrote this fact (<see cref="ExtractionJob.ExtractionRunId"/>); null on older rows.</summary>
+    public Guid? ExtractionRunId { get; set; }
+
     /// <summary>Optimistic-concurrency guard — see <see cref="Contract.Version"/>.</summary>
     public int Version { get; set; } = 1;
 }

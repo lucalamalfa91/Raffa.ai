@@ -132,7 +132,7 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
         FileName = "test-contract.pdf",
         MimeType = "application/pdf",
         StoragePath = $"{tenantId.Value}/test-contract.pdf",
-        Checksum = "test-checksum",
+        Checksum = $"test-checksum-{Guid.NewGuid():N}",
         ProcessingStatus = processingStatus,
         CreatedAt = DateTimeOffset.UtcNow,
     };

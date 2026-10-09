@@ -59,6 +59,16 @@ internal static class AiEvalOptions
     /// <c>Content Include="golden\*.json"</c> copy step.</summary>
     public static string GoldenOutputDirectory => Path.Combine(AppContext.BaseDirectory, "golden");
 
+    /// <summary>INV-04: where the investigator trigger's report is written (git-ignored, like the
+    /// golden-set report).</summary>
+    public static string InvestigatorReportPath => Path.Combine(ProjectDirectory, "reports", "investigator-last-run.md");
+
+    /// <summary>INV-04: the checked-in <c>investigator-set/</c> directory in the source tree.</summary>
+    public static string InvestigatorDirectory => Path.Combine(ProjectDirectory, "investigator-set");
+
+    /// <summary>INV-04: fallback next to the compiled test assembly (csproj <c>Content</c> copy).</summary>
+    public static string InvestigatorOutputDirectory => Path.Combine(AppContext.BaseDirectory, "investigator-set");
+
     /// <summary>
     /// This project's own directory, resolved from the compiler-supplied path of this source file
     /// rather than from <see cref="AppContext.BaseDirectory"/> + a hard-coded <c>../../..</c> hop.

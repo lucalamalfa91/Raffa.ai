@@ -74,6 +74,7 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
 
         var extracted = 0;
         var skipped = 0;
+        var invalid = 0;
         var anyLowConfidence = false;
 
         foreach (var item in items)
@@ -81,6 +82,19 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
             if (string.IsNullOrWhiteSpace(item.Description))
             {
                 skipped++;
+                continue;
+            }
+
+            // Task F6-T04/T06 (payload validation): the strict-mode schema guarantees types, not
+            // ranges. A row with a negative quantity or price, a discount outside [0, 100] or a
+            // confidence outside [0, 1] cannot be a correctly read line, and persisting it would
+            // feed garbage into ComputePricing and the benchmark. It is discarded and counted — in
+            // SkippedCount too, so the job lands in NeedsReview and a person looks — never
+            // silently clamped into a plausible-looking number (Appendix C rule 10).
+            if (!HasValidRanges(item))
+            {
+                skipped++;
+                invalid++;
                 continue;
             }
 
@@ -115,8 +129,21 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
             extracted++;
         }
 
-        return new QuoteLineExtractionOutcome(extracted, skipped, anyLowConfidence);
+        return new QuoteLineExtractionOutcome(extracted, skipped, anyLowConfidence, invalid);
     }
+
+    /// <summary>
+    /// Range check for one extracted fact: quantity, unit price and list price are not negative,
+    /// the discount is within 0-100 percent, the confidence (when reported) is within 0-1. A
+    /// <see langword="null"/> field is "not stated" and always passes — absence is handled by
+    /// <see cref="ComputePricing"/> and the confidence rule, not here.
+    /// </summary>
+    internal static bool HasValidRanges(ExtractedQuoteLineFact item) =>
+        item.Quantity is null or >= 0m
+        && item.UnitPrice is null or >= 0m
+        && item.ListPrice is null or >= 0m
+        && item.DiscountPercent is null or (>= 0m and <= 100m)
+        && item.Confidence is null or (>= 0d and <= 1d);
 
     /// <summary>
     /// AC-3's deterministic arithmetic, isolated as its own pure function so it is directly
@@ -157,4 +184,8 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
 /// <see cref="QuoteExtractionJobStatus"/>/<see cref="QuoteProcessingStatus"/> — mirrors
 /// <c>StagedExtractionService</c>'s own inline stage-result tuple shape, named here since this
 /// service's result crosses an assembly boundary to its caller.</summary>
-public sealed record QuoteLineExtractionOutcome(int ExtractedCount, int SkippedCount, bool AnyLowConfidence);
+/// <param name="InvalidCount">Task F6-T04: how many of <paramref name="SkippedCount"/> were
+/// discarded for an out-of-range value (negative quantity/price, discount outside 0-100,
+/// confidence outside 0-1) rather than for a blank description.</param>
+public sealed record QuoteLineExtractionOutcome(
+    int ExtractedCount, int SkippedCount, bool AnyLowConfidence, int InvalidCount = 0);

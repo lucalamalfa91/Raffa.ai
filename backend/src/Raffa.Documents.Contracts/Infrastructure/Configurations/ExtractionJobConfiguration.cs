@@ -28,11 +28,17 @@ public sealed class ExtractionJobConfiguration : IEntityTypeConfiguration<Extrac
         // manual data migration (AC-1/AC-2); ClaimedAt/ClaimedBy stay nullable — a never-claimed
         // Queued row needs no sentinel.
         builder.Property(e => e.AttemptCount).HasDefaultValue(0);
+
+        // F5: run id, checkpoint hash/counts and failure kind. All nullable: older rows keep NULL and
+        // are never reused as a checkpoint.
+        builder.Property(e => e.InputHash).HasMaxLength(64);
+        builder.Property(e => e.FailureKind).HasConversion<string>().HasMaxLength(20);
         builder.Property(e => e.ClaimedBy).HasMaxLength(200);
 
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.DocumentId);
         builder.HasIndex(e => e.Status);
+        builder.HasIndex(e => e.ExtractionRunId);
 
         // Owned by the document: a job is meaningless once its document is gone.
         builder.HasOne<Document>()

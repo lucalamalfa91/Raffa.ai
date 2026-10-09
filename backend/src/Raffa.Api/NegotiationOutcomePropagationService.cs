@@ -122,7 +122,7 @@ internal sealed class NegotiationOutcomePropagationService(
     /// for a non-human write (ADR-011 w16 clause 16c) — not an interim placeholder pending ADR-010,
     /// which landed in wave w15. The convention this constant originated (ADR-011 w16 clause 16) is
     /// reused, not re-invented, by <c>Raffa.Savings.Application.SavingsOpportunityService
-    /// .SystemActor</c> and <c>Raffa.Chat.Application.RagAnswerService.SystemActor</c>.
+    /// .SystemActor</c>.
     /// </summary>
     private const string SystemActor = "system:negotiation-outcome-propagation";
 

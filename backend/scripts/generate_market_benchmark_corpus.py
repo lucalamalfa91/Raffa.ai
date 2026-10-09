@@ -12,6 +12,7 @@ Writes:
                                                   generated record replaced by this run's.
   backend/fixtures/market-benchmarks/*.md          benchmark reports by country, company size and
                                                   product category, aggregated from the corpus.
+                                                  (git-ignored: a development artefact, not tracked)
 
 Deterministic (fixed seed). Run:  python3 backend/scripts/generate_market_benchmark_corpus.py
 """
@@ -579,8 +580,9 @@ def main() -> None:
     # Hand-written (supplier, product) pairs are test oracles (some deliberately thin): never add to them.
     generated = [d for d in generate() if (d["supplier"].lower(), d["product"].lower()) not in legacy_pairs]
     reports = write_reports(generated)
-    for d in generated:
-        d.pop("unitMetric", None)
+    # `industry` and `unitMetric` stay in the feed: MarketDeal carries both (F7), and the provenance
+    # DTO reads the unit from `unitMetric`. (They used to be dropped here, so what a price was "per"
+    # never reached the corpus.)
     feed["feedVersion"] = FEED_VERSION
     feed["deals"] = legacy + generated
     FEED.write_text(json.dumps(feed, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")

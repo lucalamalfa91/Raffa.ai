@@ -31,6 +31,7 @@ public sealed class ClauseConfiguration : IEntityTypeConfiguration<Clause>
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.ContractId);
         builder.HasIndex(e => e.SourceDocumentId);
+        builder.HasIndex(e => e.ExtractionRunId);
 
         // Owned by the contract: a clause has no meaning without it.
         builder.HasOne<Contract>()

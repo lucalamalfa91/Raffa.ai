@@ -14,6 +14,7 @@ using Raffa.SharedKernel.Tenancy;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Raffa.Api.Tests;
 
@@ -51,7 +52,8 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
                 services.AddSingleton<ISupplierNameLookup>(new StubSupplierNameLookup(supplierNames));
                 if (gapInvestigation is not null)
                 {
-                    services.AddSingleton(gapInvestigation);
+                    // INV-03: the options are read through IOptionsMonitor.
+                    services.AddSingleton<IOptionsMonitor<GapInvestigationOptions>>(new StaticGapInvestigationOptions(gapInvestigation));
                 }
             }));
 
@@ -328,6 +330,13 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
         Assert.Contains("gapInvestigation=started", turn.Detail, StringComparison.Ordinal);
         var offered = Assert.Single(audit.Entries, e => e.Action == CapabilityCheckDispatcher.AuditAction);
         Assert.Contains("gapKey=discovered:management-report", offered.Detail, StringComparison.Ordinal);
+
+        // Plan T-01: the turn row and the follow-up's row carry the same turn id, and the turn row
+        // says its agentic flow ran none (an interview turn runs no flow).
+        var turnId = System.Text.RegularExpressions.Regex.Match(turn.Detail!, @"turnId=([0-9a-f]{16})\b").Groups[1].Value;
+        Assert.NotEmpty(turnId);
+        Assert.Contains($"turnId={turnId}", offered.Detail, StringComparison.Ordinal);
+        Assert.Contains("flow=none", turn.Detail, StringComparison.Ordinal);
 
         // Resume: question, answer, follow-up — in that order, the follow-up with its chips.
         using var getRequest = Request(HttpMethod.Get, $"/api/conversations/{conversationId}", tenantId);

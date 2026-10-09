@@ -21,6 +21,18 @@ internal sealed partial class FeedbackHostOptions
 
     public GitHubOptions GitHub { get; set; } = new();
 
+    /// <summary>F4-D02: this deployment is reachable by people the operator does not know (a public
+    /// demo, an open pilot). While true the public GitHub channel is off, whatever
+    /// <see cref="GitHubOptions.Enabled"/> says and with or without a token: every submission is
+    /// stored and answered "recorded", and nothing leaves the tenant. Default false (the dev and
+    /// internal environments keep their channel). Published by the infrastructure as
+    /// <c>Feedback__ExposedEnvironment</c>.</summary>
+    public bool ExposedEnvironment { get; set; }
+
+    /// <summary>The one question the publisher and the host registration ask: may an issue be
+    /// opened at all?</summary>
+    public bool GitHubPublishingActive => GitHub.Enabled && !ExposedEnvironment;
+
     public sealed class GitHubOptions
     {
         /// <summary>A product switch: a valid token behind <see langword="false"/> is harmless and
@@ -50,7 +62,7 @@ internal sealed partial class FeedbackHostOptions
     /// <summary>Fail closed at startup on the composed pair, and only on it.</summary>
     public void ValidateOrThrow()
     {
-        if (!GitHub.Enabled)
+        if (!GitHubPublishingActive)
         {
             return;
         }

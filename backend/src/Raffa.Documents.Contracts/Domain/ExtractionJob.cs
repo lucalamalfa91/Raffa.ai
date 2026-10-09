@@ -51,4 +51,38 @@ public sealed class ExtractionJob : TenantScopedEntity
     /// ahead of the FIFO, ordered by this instant ("asked first"). Null for every job nobody waited
     /// for; reset to null by a reprocess, which queues a fresh run nobody has asked for yet.</summary>
     public DateTimeOffset? PrioritisedAt { get; set; }
+
+    /// <summary>F5-T01/F5-T02: identifies one extraction run over a document. The stage jobs of a run and
+    /// the facts they wrote share it; a resumed run keeps the id of the run it continues. Null on the
+    /// classification job and on older rows.</summary>
+    public Guid? ExtractionRunId { get; set; }
+
+    /// <summary>F5-T02 checkpoint: SHA-256 (hex) of the exact page-marked text this stage was given. A
+    /// finished stage job is reused by a later run of an <em>incomplete</em> run only when this hash is
+    /// unchanged, so a resume never skips a stage on different text. Null for classification and older
+    /// rows (never reused).</summary>
+    public string? InputHash { get; set; }
+
+    /// <summary>F5-T02: what kind of failure ended a <see cref="ExtractionJobStatus.Failed"/> stage job.</summary>
+    public ExtractionStageFailureKind? FailureKind { get; set; }
+
+    /// <summary>F5-T02 checkpoint: facts this stage accepted, so a reused stage reports the same counts
+    /// without being re-applied. Null on older rows.</summary>
+    public int? ExtractedCount { get; set; }
+
+    /// <summary>F5-T02 checkpoint: facts this stage skipped (see <see cref="ExtractedCount"/>).</summary>
+    public int? SkippedCount { get; set; }
+}
+
+/// <summary>
+/// F5-T02: why a staged-extraction stage failed. <see cref="Transient"/>: the AI provider could not be
+/// reached or kept throttling (429 / 5xx / timeout after the in-call retries), so running the stage
+/// again later may well succeed. <see cref="Permanent"/>: the stage's own input or output was unusable
+/// (empty text, malformed payload). Either way the document is <em>partial</em> and never
+/// <c>Completed</c>. Stored as text, so a new value is a code-only change.
+/// </summary>
+public enum ExtractionStageFailureKind
+{
+    Transient,
+    Permanent,
 }

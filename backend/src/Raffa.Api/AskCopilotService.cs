@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Raffa.AiGateway.Telemetry;
 using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application;
@@ -135,33 +137,29 @@ namespace Raffa.Api;
 /// NW-91/NW-92; ADR-024 — this task's own citation is "w19 cl. 22; lock 8", not yet folded into
 /// this ADR's own amendment history on disk, so <c>reports/architecture/waves/w19.md</c>'s
 /// NW-91/NW-92 rows are the verifiable source cited from the methods below instead of a clause
-/// number this file cannot confirm): <see cref="BuildNoticePackAsync"/> answers a notice/preavviso/
-/// disdetta question (<see cref="IntentPlanner"/>'s own notice lexicon, mirrored locally because
-/// <c>IntentPlanner.cs</c> is outside this task's file scope) from the scoped contract's own
-/// <see cref="Contract360Renewal"/> fact, a host-computed day count (<see cref="RenewalEngine"/>/
-/// <see cref="IClock"/>, the same fallback <see cref="BuildRenewalStrategyPackAsync"/> already uses
-/// via <see cref="InsightsEndpointExtensions.ToStrategyInputs"/>), <see cref="StrategyPackBuilder"/>'s
-/// own "when you must move" explanation, and — only when this contract's own extracted clauses name
-/// one — a matching-clause citation built from <see cref="Contract360Result.Clauses"/>, never from
-/// <see cref="EmbeddingRetrievalService"/> (every notice question this pack answers is exactly the
-/// shape a full HTTP round trip already exercises under this project's InMemory EF Core provider,
-/// which cannot translate <c>Embedding.Vector.CosineDistance</c> — <c>InMemoryAskEngineFactory</c>'s
-/// own doc comment). Every date is a <see cref="PackValueKind.Date"/> value; "N days" is only ever a
-/// calculator-produced <see cref="PackValueKind.Number"/> value, never <c>EndDate − CancellationDeadline</c>
-/// and never model arithmetic (NW-92).
+/// number this file cannot confirm): <see cref="BuildNoticeFallbackReplyAsync"/> answers a notice/preavviso/
+/// disdetta question (<see cref="IntentPlanner.IsNoticeQuestion"/>, the one notice lexicon) from the
+/// scoped contract's own <see cref="Contract360Renewal"/> fact and — only when this contract's own
+/// extracted clauses name one — a matching-clause citation built from
+/// <see cref="Contract360Result.Clauses"/>, never from <see cref="EmbeddingRetrievalService"/> (every
+/// notice question is exactly the shape a full HTTP round trip already exercises under this
+/// project's InMemory EF Core provider, which cannot translate
+/// <c>Embedding.Vector.CosineDistance</c> — <c>InMemoryAskEngineFactory</c>'s own doc comment).
+/// Every date is a <see cref="PackValueKind.Date"/> value, read straight off the fact and never
+/// re-derived or model arithmetic (NW-92).
 /// </para>
 ///
 /// <para>
 /// <b>Five server-decided notice fallbacks</b> (task E30/F02/US01/T01, NW-94; parent story
 /// us-01-notice-fallbacks, "a scoped notice turn never asks 'which supplier'"; this task's own
 /// citation is "ADR-024 w19 cl. 22", the same not-yet-folded-in clause number
-/// <see cref="BuildNoticePackAsync"/>'s own doc comment already notes, so
+/// the notice pack's doc comment noted, so
 /// <c>reports/architecture/waves/w19.md</c>'s NW-94 row is again the verifiable source):
 /// <see cref="BuildNoticeFallbackReplyAsync"/> intercepts every notice question — before any pack
 /// is built and before <see cref="AnswerComposer"/> ever runs, the same short-circuit shape
 /// <see cref="BuildRoutingOnlyReply"/> already uses for <see cref="AskIntent.Navigate"/>/
 /// <see cref="AskIntent.QuoteRoute"/> — and decides one of five outcomes purely from facts
-/// <see cref="BuildNoticePackAsync"/>'s own helpers already compute: a resolved deadline plus a
+/// <see cref="BuildNoticeFactItem"/>/<see cref="BuildMatchingClauseItem"/> compute: a resolved deadline plus a
 /// span-anchored clause answers with the deep-link (two-CTA ids, NW-83/NW-93); a deadline with no
 /// span answers the date alone, never a fabricated page; no deadline but a matching clause quotes
 /// it verbatim; neither abstains, naming the contract; and no contract resolved at all (an
@@ -211,8 +209,13 @@ internal sealed partial class AskCopilotService(
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock,
-    LineItemMarketPriceService? lineItemMarketPriceService = null)
+    LineItemMarketPriceService? lineItemMarketPriceService = null,
+    InvestigatorTrigger? investigatorTriggerOverride = null)
 {
+    /// <summary>INV-01: the deterministic trigger of the capability investigator (the shared
+    /// instance over the embedded lexicon unless a test supplies its own).</summary>
+    private readonly InvestigatorTrigger investigatorTrigger = investigatorTriggerOverride ?? InvestigatorTrigger.Default;
+
     private const int ClauseTopK = 5;
 
     /// <summary>Task E28/F02/US01/T01 (NW-81 AC-2 "lower K"): the labelled "similar types" peer
@@ -290,6 +293,11 @@ internal sealed partial class AskCopilotService(
         var turnHints = hints ?? AskTurnHints.None;
 
         using var scope = tenantContext.BeginScope(tenantId);
+
+        // One id for the whole turn (plan T-01): every ask.* / chat.* audit row of the turn and every
+        // ai.* row its AI calls write carry it, so a turn can be followed end to end.
+        using var turn = RunContext.BeginTurn();
+        using var run = RunContext.BeginRun();
 
         var portfolio = await portfolioQueryService
             .GetPortfolioAsync(tenantId, PortfolioFilter.None, new PortfolioPageRequest(1, PortfolioPageRequest.MaxPageSize), cancellationToken)
@@ -371,38 +379,74 @@ internal sealed partial class AskCopilotService(
             };
         }
 
-        // ADR-031: Raffa's own judgement on whether this turn asks for an operation nothing in
-        // Raffa performs — started here, beside the answer, never in front of it: the answer below
-        // is computed while the investigator's model call is in flight, and the endpoint appends
-        // any proposal as a separate message after the answer (CapabilityCheckDispatcher). Only a
-        // fresh, typed InDomain turn is checked: the fixed catalog already had its say in the gate;
-        // Greeting/OffDomain/Legal/Capability/NeedsDocument make no AI Gateway call and stay that
-        // way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an interview
-        // option, a web consent) continues one that was already checked; and only a caller that
-        // will persist a follow-up (the conversation endpoints) passes a slot.
+        // ADR-031 / INV-02: Raffa's own judgement on whether this turn asks for an operation nothing
+        // in Raffa performs. It runs beside the answer, never in front of it, and since decision D3
+        // it costs a model call only when the deterministic InvestigatorTrigger says the turn is
+        // worth one (Chat:GapInvestigation:Mode = Triggered, the default; Always keeps the old
+        // call-on-every-turn behaviour for diagnosis):
+        //   - T3 (an operational request the catalog does not cover) reads the question alone, so
+        //     the check starts HERE and runs in parallel with the answer, as it always did;
+        //   - T1 (no intent recognised) and T2 (Raffa could not answer) need the planner and the
+        //     composer, so they are decided right after the reply below, and the check starts then:
+        //     the answer is never delayed, and the follow-up still lands as a separate message
+        //     through CapabilityCheckDispatcher.AppendWhenDone.
+        // Only a fresh, typed InDomain turn is eligible: the fixed catalog already had its say in
+        // the gate; Greeting/OffDomain/Legal/Capability/NeedsDocument make no AI Gateway call and
+        // stay that way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an
+        // interview option, a web consent) continues one that was already checked; and only a
+        // caller that will persist a follow-up (the conversation endpoints) passes a slot.
         var gapInvestigation = "skipped";
-        if (capabilityCheck is not null && gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints))
+        var turnTrace = new InDomainTurnTrace();
+        var investigatorEligible = false;
+        var investigatorStarted = false;
+        var investigatorMode = GapInvestigationMode.Triggered;
+        var triggerVerdict = TriggerVerdict.None;
+        // One id per turn, shared with the run telemetry (RunContext) so every audit row of the turn agrees.
+        var turnId = RunContext.Current?.TurnId ?? RunContext.NewId();
+
+        void StartInvestigator()
         {
+            var (namedItem, _, _) = ResolveNamedContractItem(scopedContractItem, gate.NamedSupplier, portfolio, supplierNames);
+            var namedSupplier = namedItem?.SupplierId is { } namedSupplierId &&
+                supplierNames.TryGetValue(new EntityId(namedSupplierId), out var namedSupplierName)
+                    ? namedSupplierName
+                    : null;
+
+            capabilityCheck!.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
+                tenantId,
+                question,
+                supplierNames.Values.ToList(),
+                portfolio.TotalCount,
+                namedSupplier,
+                namedItem?.ContractId,
+                turnId,
+                actor));
+            investigatorStarted = true;
+            gapInvestigation = "started";
+        }
+
+        var investigatorTurn = capabilityCheck is not null && gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints);
+        if (investigatorTurn)
+        {
+            capabilityCheck!.TurnId = turnId;
+
             if (!capabilityCheckDispatcher.Enabled)
             {
                 gapInvestigation = "off";
+                triggerVerdict = new TriggerVerdict(false, false, false, InvestigatorTrigger.ReasonKillSwitch);
             }
             else
             {
-                var (namedItem, _, _) = ResolveNamedContractItem(scopedContractItem, gate.NamedSupplier, portfolio, supplierNames);
-                var namedSupplier = namedItem?.SupplierId is { } namedSupplierId &&
-                    supplierNames.TryGetValue(new EntityId(namedSupplierId), out var namedSupplierName)
-                        ? namedSupplierName
-                        : null;
+                investigatorEligible = true;
+                investigatorMode = capabilityCheckDispatcher.Mode;
 
-                capabilityCheck.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
-                    tenantId,
-                    question,
-                    supplierNames.Values.ToList(),
-                    portfolio.TotalCount,
-                    namedSupplier,
-                    namedItem?.ContractId));
-                gapInvestigation = "started";
+                // T3 reads the question alone: it (and Always mode) starts the check now, in
+                // parallel with the answer. T1/T2 are decided after the reply, below.
+                if (investigatorMode == GapInvestigationMode.Always ||
+                    investigatorTrigger.Evaluate(plan: null, replyOutcome: null, question).ShouldRun)
+                {
+                    StartInvestigator();
+                }
             }
         }
 
@@ -428,13 +472,46 @@ internal sealed partial class AskCopilotService(
                     .ConfigureAwait(false),
                 GateLabel.InDomain => await BuildInDomainReplyAsync(
                     tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
-                    scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken)
+                    scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken,
+                    turnTrace)
                     .ConfigureAwait(false),
                 _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
             };
 
+        // INV-02: T1 (the planner found no intent) and T2 (Raffa could not answer) are known only
+        // now. The check starts after the reply is built — never before it, so the answer's
+        // latency is unchanged — and the endpoint appends its follow-up as a separate message.
+        if (investigatorEligible)
+        {
+            // The full verdict (T3 again, now with what T1 and T2 found), also in Always mode: the
+            // audit then shows what Triggered would have done, which is how the reduction in
+            // gaps-v1 calls is measured (plan 5.4).
+            triggerVerdict = investigatorTrigger.Evaluate(
+                turnTrace.Plan, new ReplyOutcome(reply.Kind, guardIntervened, fallbackUsed), question);
+
+            if (!investigatorStarted)
+            {
+                if (triggerVerdict.ShouldRun)
+                {
+                    StartInvestigator();
+                }
+                else
+                {
+                    gapInvestigation = "not-triggered";
+                }
+            }
+        }
+
         await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, gapInvestigation, turnHints.WebMode, actor, cancellationToken)
             .ConfigureAwait(false);
+
+        if (investigatorTurn)
+        {
+            await WriteTriggerAuditAsync(
+                    tenantId, actor, turnId, investigatorEligible ? investigatorMode.ToString() : "off",
+                    triggerVerdict, investigatorStarted, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
         // answer above), so "asked, said no" is visible without the query ever being logged.
@@ -548,7 +625,8 @@ internal sealed partial class AskCopilotService(
         string actor,
         AskTurnHints hints,
         bool previousRaffaTurnWasInterview,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        InDomainTurnTrace? trace = null)
     {
         // A bare follow-up ("non mi hai risposto", "e quindi?") is planned on the previous user
         // question too, so it inherits that turn's intent and saving goal instead of falling
@@ -561,6 +639,13 @@ internal sealed partial class AskCopilotService(
         var plan = hints.ForcedIntent is { } forcedIntent
             ? intentPlanner.Plan(question, namedSupplier, previousUserQuestion, forcedIntent)
             : intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
+
+        // INV-02: hand the plan to the caller, which decides trigger T1 (no intent recognised)
+        // from it once the reply exists. Observation only: nothing below reads the trace.
+        if (trace is not null)
+        {
+            trace.Plan = plan;
+        }
 
         // ADR-030: an interview option that named one contract narrows this turn to it exactly as
         // a scoped conversation would; an id this tenant cannot see refuses (the NW-76 posture),
@@ -638,7 +723,7 @@ internal sealed partial class AskCopilotService(
                 NamedSupplierContractCount: supplierMatches.Count,
                 PortfolioIsEmpty: portfolio.Items.Count == 0,
                 PreviousRaffaTurnWasInterview: previousRaffaTurnWasInterview,
-                IsNoticeQuestion: NoticeQuestionPattern.IsMatch(question));
+                IsNoticeQuestion: IntentPlanner.IsNoticeQuestion(question));
             var signals = AmbiguityDetector.Detect(question, plan, interviewContext, interviewOptions);
             if (signals.Verdict == AmbiguityVerdict.Ambiguous)
             {
@@ -661,13 +746,10 @@ internal sealed partial class AskCopilotService(
         // above already uses. Deliberately checked before namedContractItem is known to be
         // resolved or not: BuildNoticeFallbackReplyAsync itself is what tells "a resolved contract"
         // (cases 1-4) apart from "an unscoped notice question" (case 5, NW-94's own "unscoped
-        // deictic" abstain), so both must reach it rather than only the scoped half. This makes
-        // BuildStructuredFactOrNoticePackAsync's own "namedContractItem is not null &&
-        // NoticeQuestionPattern.IsMatch(question)" branch unreachable from this call site --
-        // feature-01's own method, left exactly as written (this task's "do not touch the pack"),
-        // the same "unreachable in practice, kept exhaustive" shape DescribeStructuredResult's own
-        // default case below already documents for an identical reason.
-        if (plan.Intent == AskIntent.StructuredFact && NoticeQuestionPattern.IsMatch(question))
+        // deictic" abstain), so both must reach it rather than only the scoped half. Because every
+        // notice question leaves here, the pack switch below never sees one: the structured-fact
+        // pack is the plain one, with no notice branch of its own.
+        if (plan.Intent == AskIntent.StructuredFact && IntentPlanner.IsNoticeQuestion(question))
         {
             return (
                 await BuildNoticeFallbackReplyAsync(question, namedContractItem, disambiguationItem, routingContext, cancellationToken)
@@ -678,7 +760,7 @@ internal sealed partial class AskCopilotService(
 
         var packItems = plan.Intent switch
         {
-            AskIntent.StructuredFact => await BuildStructuredFactOrNoticePackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken)
+            AskIntent.StructuredFact => await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken)
                 .ConfigureAwait(false),
             AskIntent.Clause => await BuildClausePackAsync(tenantId, question, namedContractItem, cancellationToken)
                 .ConfigureAwait(false),
@@ -740,6 +822,9 @@ internal sealed partial class AskCopilotService(
                     ConveneCouncil: IsCouncilIntent(plan.Intent, namedContractItem)),
                 cancellationToken)
             .ConfigureAwait(false);
+
+        // F2-T01: the flow's steps, failures and market queries (names and counts) ride on the turn's one audit row.
+        RunContext.AddTurnDetail(flow.ToAuditDetail());
 
         if (flow.MarketItems.Count > 0)
         {
@@ -1292,24 +1377,13 @@ internal sealed partial class AskCopilotService(
                     : $"Total annual spend across {result.MatchedContractIds.Count} validated " +
                       "contract(s) with a recorded figure."),
 
-            // Unreachable in practice — BuildStructuredFactPackAsync only ever calls this helper
-            // inside its own "result.Kind != DeterministicQueryKind.Unsupported" branch — but kept
-            // exhaustive and just as chrome-free as the two real cases above, never a default that
-            // silently reintroduces developer trace text if a future DeterministicQueryKind member
-            // ever reaches here uncovered.
-            _ => ("Portfolio query result", "Raffa computed this from your validated contracts."),
+            // BuildStructuredFactPackAsync only ever calls this helper inside its own
+            // "result.Kind != DeterministicQueryKind.Unsupported" branch, so no other member can
+            // reach here. A new DeterministicQueryKind member must get its own chrome-free copy
+            // above: failing loudly beats a default that silently reintroduces developer trace text.
+            _ => throw new UnreachableException(
+                $"DescribeStructuredResult is only called for a supported deterministic query, not {result.Kind}."),
         };
-
-    // Task E30/F01/US01/T01 (NW-91/NW-92): the same notice/preavviso/disdetta/cancellation-deadline
-    // lexicon IntentPlanner.NoticePattern already matches to steer this question to
-    // AskIntent.StructuredFact in the first place (task E27/F01/US01/T01, NW-79/NW-91) --
-    // duplicated here, not referenced, because IntentPlanner.cs is outside this task's own "Files
-    // to create or modify" (the same "each composition file owns its own copy" shape
-    // InsightsEndpointExtensions.ComputeRenewal's own doc comment already accepts for an identical
-    // reason).
-    private static readonly Regex NoticeQuestionPattern = new(
-        @"\b(notice|preavviso|disdetta(\s+period)?|cancellation\s+deadline)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // The matching-clause evidence item's own vocabulary (task E30/F01/US01/T01): a notice question
     // is supported by whichever of this contract's own extracted clauses actually discusses when or
@@ -1318,92 +1392,6 @@ internal sealed partial class AskCopilotService(
     private static readonly Regex NoticeClauseTypePattern = new(
         @"notice|cancellat|terminat|auto.?renew|renewal",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    /// <summary>
-    /// Task E30/F01/US01/T01 (NW-91/NW-92): <see cref="AskIntent.StructuredFact"/> covers both a
-    /// plain structured-fact question and a notice/preavviso/disdetta one — <see cref="IntentPlanner"/>
-    /// deliberately reuses the one intent for both (its own notice-lexicon doc comment) rather than
-    /// adding an eleventh <see cref="AskIntent"/> member. This is the split point: a notice question
-    /// about a resolved, named contract gets the structured notice pack
-    /// (<see cref="BuildNoticePackAsync"/>); everything else (no contract in scope, or a plain
-    /// dates/spend question) keeps the pre-existing <see cref="BuildStructuredFactPackAsync"/>
-    /// behaviour unchanged.
-    /// </summary>
-    private async Task<IReadOnlyList<PackItem>> BuildStructuredFactOrNoticePackAsync(
-        string question,
-        PortfolioListItem? namedContractItem,
-        PortfolioPage portfolio,
-        IReadOnlyDictionary<EntityId, string> supplierNames,
-        CancellationToken cancellationToken) =>
-        namedContractItem is not null && NoticeQuestionPattern.IsMatch(question)
-            ? await BuildNoticePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
-            : await BuildStructuredFactPackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken).ConfigureAwait(false);
-
-    /// <summary>
-    /// Task E30/F01/US01/T01 (NW-91/NW-92, parent story us-01-notice-pack AC-1/AC-2/AC-3): the
-    /// structured notice pack, in the task's own pack order — the scoped fact
-    /// (<c>endDate</c>/<c>cancellationDeadline</c>/<c>autoRenewal</c>/<c>renewalTermMonths</c>), the
-    /// host-computed day count, <see cref="StrategyPackBuilder"/>'s own "when you must move"
-    /// explanation, then a matching-clause evidence item when one exists. See this type's own doc
-    /// comment for the full rationale (why RAG is never called from here despite the coding
-    /// objective naming it a fallback).
-    ///
-    /// <para>
-    /// <b>Never model arithmetic (AC-2, NW-92)</b>: every date below is read straight off
-    /// <see cref="Contract360Renewal"/> (never re-derived), and the day count is
-    /// <see cref="InsightsEndpointExtensions.ToStrategyInputs"/>'s own fallback — the same
-    /// <see cref="RenewalEngine"/> result <see cref="BuildRenewalStrategyPackAsync"/> already
-    /// computes, falling back to this contract's own asOf-relative day count only because
-    /// <see cref="Raffa.Renewals.Application.ContractRenewalTerms.CancellationNoticeDays"/> has no
-    /// persisted column this wave (that record's own doc comment) — never
-    /// <c>EndDate − CancellationDeadline</c>, which this task's own coding objective forbids
-    /// outright.
-    /// </para>
-    /// </summary>
-    internal async Task<IReadOnlyList<PackItem>> BuildNoticePackAsync(
-        PortfolioListItem namedContractItem, CancellationToken cancellationToken)
-    {
-        var contract360 = await contract360QueryService
-            .GetByIdAsync(CurrentTenantId, new EntityId(namedContractItem.ContractId), cancellationToken)
-            .ConfigureAwait(false);
-
-        if (contract360 is null)
-        {
-            return [];
-        }
-
-        var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
-        var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
-
-        // Same RenewalEngine + IClock composition BuildRenewalStrategyPackAsync already uses (this
-        // task's own "daysUntilNotice computed host-side via RenewalEngine/IClock") --
-        // ToStrategyInputs' own fallback (that method's doc comment: "the cancellation deadline
-        // comes from two places") is what actually produces a day count when, as always this wave,
-        // no notice-day count is on file: it falls back to Contract360Header.CancellationDeadline
-        // (the same raw fact Contract360Renewal.CancellationDeadline carries) with the days-left
-        // count derived from asOfDate the same way the engine would -- never EndDate minus
-        // CancellationDeadline.
-        var renewal = InsightsEndpointExtensions.ComputeRenewal(contract360.Header, renewalEngine);
-        var strategyInputs = InsightsEndpointExtensions
-            .ToStrategyInputs(contract360, renewal, pricedLines: [], criticalFacts: [], asOfDate)
-            with
-            { SupplierName = supplierName };
-        var whenYouMustMove = StrategyPackBuilder.Build(strategyInputs).WhenYouMustMove;
-
-        var items = new List<PackItem>
-        {
-            BuildNoticeFactItem(namedContractItem, contract360.Renewal, supplierName),
-            BuildWhenYouMustMoveItem(namedContractItem.ContractId, supplierName, whenYouMustMove),
-        };
-
-        var clauseItem = BuildMatchingClauseItem(contract360, namedContractItem.ContractId);
-        if (clauseItem is not null)
-        {
-            items.Add(clauseItem);
-        }
-
-        return items;
-    }
 
     /// <summary>
     /// Task E30/F01/US01/T01: the notice pack's first item — the scoped fact itself
@@ -1474,41 +1462,6 @@ internal sealed partial class AskCopilotService(
     }
 
     /// <summary>
-    /// Task E30/F01/US01/T01: the notice pack's second item — <see cref="StrategyPackBuilder"/>'s
-    /// own "when you must move" explanation (task text: "miss / passed / no auto-renew"), the same
-    /// honest narration <see cref="BuildRenewalStrategyPackAsync"/> already cites verbatim, never
-    /// re-worded here. <c>daysUntilNotice</c> is the one new <see cref="PackValue"/> this item
-    /// carries beyond <see cref="BuildDateValues"/>'s existing two dates — AC-3's "deadline passed N
-    /// days ago" names an N that must itself be a pack value, and
-    /// <see cref="WhenYouMustMove.DaysLeft"/> (signed — negative means already passed, never floored
-    /// to zero, that record's own doc comment) is exactly that N, computed by the calculators, never
-    /// restated by a model.
-    /// </summary>
-    private static PackItem BuildWhenYouMustMoveItem(Guid contractId, string displayName, WhenYouMustMove whenYouMustMove)
-    {
-        var values = new List<PackValue>(BuildDateValues(whenYouMustMove.RenewalDate, whenYouMustMove.CancellationDeadline));
-        if (whenYouMustMove.DaysLeft is { } daysLeft)
-        {
-            values.Add(new PackValue("daysUntilNotice", daysLeft.ToString(CultureInfo.InvariantCulture), PackValueKind.Number));
-        }
-
-        return new PackItem(
-            InsightsCitationKeys.Calc("when-you-must-move"),
-            PackCorpus.Calc,
-            $"{displayName} — when you must move",
-            null,
-            null,
-            null,
-            whenYouMustMove.Explanation,
-            $"/contracts/{contractId}",
-            null,
-            null,
-            "deterministic calculator",
-            values,
-            contractId.ToString());
-    }
-
-    /// <summary>
     /// Task E30/F01/US01/T01: the notice pack's optional third item — supporting evidence for the
     /// <c>cancellationDeadline</c> fact above, the first of this contract's own extracted
     /// <see cref="Contract360Clause"/> rows whose <see cref="Contract360Clause.ClauseType"/> or
@@ -1557,10 +1510,8 @@ internal sealed partial class AskCopilotService(
     /// Task E30/F02/US01/T01 (NW-94; parent story us-01-notice-fallbacks AC-1/AC-2/AC-3, "a scoped
     /// notice turn never asks 'which supplier'"): the five server-decided outcomes for a notice
     /// question, called directly from <see cref="BuildInDomainReplyAsync"/>'s own short-circuit
-    /// (see that method's own comment at the call site) rather than through
-    /// <see cref="BuildStructuredFactOrNoticePackAsync"/>'s wrapper -- this method reuses
-    /// <see cref="BuildNoticeFactItem"/>/<see cref="BuildMatchingClauseItem"/> directly (the same
-    /// two feature-01 helpers <see cref="BuildNoticePackAsync"/> itself calls) so it gets each
+    /// (see that method's own comment at the call site) -- this method uses
+    /// <see cref="BuildNoticeFactItem"/>/<see cref="BuildMatchingClauseItem"/> directly so it gets each
     /// item typed instead of re-parsing a flattened <see cref="PackItem"/> list, and resolves
     /// <see cref="Contract360Result"/> exactly once, the same "one fetch per intent" shape every
     /// other <c>BuildXxxPackAsync</c> method in this file already follows.
@@ -1606,8 +1557,7 @@ internal sealed partial class AskCopilotService(
     /// named, never the generic <see cref="ResolveAbstainRecoveryActions"/> hint.</item>
     /// </list>
     /// A contract resolved by <see cref="ResolveNamedContractItem"/> but since vanished from
-    /// <see cref="Contract360QueryService"/> (deleted mid-call -- the same rare race
-    /// <see cref="BuildNoticePackAsync"/> itself already answers with an empty pack) falls straight
+    /// <see cref="Contract360QueryService"/> (deleted mid-call -- a rare race) falls straight
     /// into the "neither" branch: there is no fact and no evidence either way, so it is
     /// indistinguishable from a contract that genuinely has neither.
     /// </para>
@@ -2320,6 +2270,13 @@ internal sealed partial class AskCopilotService(
     /// with <c>persistTodos: true</c> so the ranked set is upserted before
     /// <see cref="AnswerComposer.AnswerAsync"/>. Tenant evidence is appended, not prepended: the
     /// calc corpus's own "when you must move" item must stay first (AC-3).
+    ///
+    /// <para>
+    /// <paramref name="persistTodos"/> is <see langword="true"/> for the live Q3 turn (the user is
+    /// asking what to negotiate, and the Renewals link the reply offers is true after the turn) and
+    /// <see langword="false"/> for the drafted email (F1-D07, decision D7): a draft is a copyable
+    /// text with no side effect, so building its pack writes nothing.
+    /// </para>
     /// </summary>
     internal async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyWithEvidenceAsync(
         TenantId tenantId,
@@ -2327,10 +2284,11 @@ internal sealed partial class AskCopilotService(
         PortfolioListItem namedContractItem,
         string actor,
         CancellationToken cancellationToken,
-        SavingsGoal? goal = null)
+        SavingsGoal? goal = null,
+        bool persistTodos = true)
     {
         var strategyItems = (await BuildRenewalStrategyPackAsync(
-                namedContractItem, cancellationToken, persistTodos: true, actor)
+                namedContractItem, cancellationToken, persistTodos, persistTodos ? actor : string.Empty)
             .ConfigureAwait(false)).ToList();
 
         // The money behind the strategy: the target verdict, the grounded levers, the supplier's
@@ -2338,8 +2296,8 @@ internal sealed partial class AskCopilotService(
         strategyItems.AddRange(await BuildLeverAddendumAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false));
 
         // Tenant clause evidence (AC-2). SearchByContractAsync uses CosineDistance, which
-        // InMemory EF cannot translate — the same constraint BuildNoticePackAsync documents
-        // and therefore never calls embeddings. A translation miss is empty tenant corpus,
+        // InMemory EF cannot translate — the same constraint the notice fallbacks document
+        // and therefore never call embeddings. A translation miss is empty tenant corpus,
         // never a failed Q3 turn: calc/market/raffa + persist already completed above.
         IReadOnlyList<PackItem> clauseItems;
         try
@@ -2989,10 +2947,8 @@ internal sealed partial class AskCopilotService(
         var packHash = ComputeHash(string.Join('|', reply.Citations.Select(c => c.N + ":" + c.Corpus)));
 
         // AC-7 / R-ASK-09: "audit records abstainGuardIntervened=true" when Guards.RegenerateOnce's
-        // retry-then-downgrade path fired — same field name Application.RagAnswerService's own
-        // (older, evidence-only) audit entry already uses, see that type's own WriteAsync call, so
-        // an operator/query filters on one consistent key regardless of which Ask path produced the
-        // row.
+        // retry-then-downgrade path fired — the field name every Ask audit entry carries,
+        // so an operator/query filters on one consistent key.
         await auditWriter.WriteAsync(
             new AuditEntry(
                 tenantId,
@@ -3008,7 +2964,9 @@ internal sealed partial class AskCopilotService(
                 $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
                 $"unverified={reply.Provenance.Unverified} " +
                 $"gapInvestigation={gapInvestigation} " +
-                $"webMode={webMode}"),
+                $"webMode={webMode} " +
+                $"turnId={RunContext.Current?.TurnId ?? "none"} " +
+                (RunContext.TurnDetail ?? "flow=none")),
             cancellationToken).ConfigureAwait(false);
     }
 

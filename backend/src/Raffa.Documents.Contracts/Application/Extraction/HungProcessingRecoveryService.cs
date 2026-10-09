@@ -146,6 +146,78 @@ public sealed class HungProcessingRecoveryService(
             await RecoverDocumentAsync(tenantId, documentId, force: false, cancellationToken)
                 .ConfigureAwait(false);
         }
+
+        await RetryPartialInTenantAsync(tenantId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>F5-T02: how many times a stage that failed transiently is run again automatically.</summary>
+    public const int MaxStageRetries = 3;
+
+    /// <summary>F5-T02: how long a transiently failed stage is left alone before its retry, so a
+    /// provider outage is not hammered by every list refresh.</summary>
+    public static readonly TimeSpan PartialRetryCooldown = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// F5-T02: puts back on the queue the <see cref="DocumentProcessingStatus.NeedsReview"/>
+    /// documents whose extraction is partial because a stage failed <em>transiently</em> (the
+    /// provider was unreachable or throttling, even after the in-call retries), at most
+    /// <see cref="MaxStageRetries"/> times per stage and not before <see cref="PartialRetryCooldown"/>
+    /// has passed. The re-run resumes the open run: only the failed stage is called again, the
+    /// stages that finished for the same text are reused (<see cref="StagedExtractionService"/>).
+    /// A permanent failure is never retried here -- a human decides.
+    /// </summary>
+    public async Task RetryPartialInTenantAsync(TenantId tenantId, CancellationToken cancellationToken = default)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var reviewIds = await dbContext.Documents
+            .AsNoTracking()
+            .Where(d => d.TenantId == tenantId && d.ProcessingStatus == DocumentProcessingStatus.NeedsReview)
+            .Select(d => d.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var partial = await ExtractionPartialState
+            .LoadAsync(dbContext, tenantId, reviewIds, cancellationToken)
+            .ConfigureAwait(false);
+
+        var now = clock.UtcNow;
+        var retryable = partial
+            .Where(p => p.Value.Any(stage =>
+                stage.Kind == ExtractionStageFailureKind.Transient
+                && stage.FailedAttempts < MaxStageRetries
+                && now - stage.LastFailedAt >= PartialRetryCooldown))
+            .Select(p => p.Key)
+            .ToList();
+
+        foreach (var documentId in retryable)
+        {
+            dbContext.ChangeTracker.Clear();
+
+            // Best effort, like the queue-jump: this runs on the document list's read path, and a
+            // retry that cannot be queued right now (storage or broker hiccup) must not turn the list
+            // into a 500 -- the document simply stays partial and is tried again on a later read.
+            try
+            {
+                var queued = await reprocessService
+                    .ReprocessAsync(tenantId, documentId, ExtractionRequestedHandler.WorkerActor, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (FinishRequeue(documentId, queued) == HungRecoveryAction.Requeued)
+                {
+                    logger.LogInformation(
+                        "Partial extraction of document {DocumentId} re-enqueued to retry its failed stage(s)",
+                        documentId.Value);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(
+                    exception, "Could not re-enqueue partial extraction of document {DocumentId}; it stays partial",
+                    documentId.Value);
+                dbContext.ChangeTracker.Clear();
+            }
+        }
     }
 
     /// <summary>

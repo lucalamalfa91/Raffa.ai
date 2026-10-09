@@ -27,7 +27,11 @@ public sealed class FoundryHttpJsonClient(
     private readonly FoundryRetryPolicy _retryPolicy = retryPolicy ?? new FoundryRetryPolicy(new AiGatewayResilienceOptions());
 
     public async Task<Result<TResponse>> PostAsync<TRequest, TResponse>(
-        string relativeUrl, TRequest body, CancellationToken cancellationToken)
+        string relativeUrl,
+        TRequest body,
+        CancellationToken cancellationToken,
+        int? maxRetriesOverride = null,
+        TimeSpan? attemptTimeout = null)
         where TRequest : notnull
     {
         var payload = JsonSerializer.SerializeToUtf8Bytes(body, FoundryJsonOptions.Web);
@@ -43,7 +47,9 @@ public sealed class FoundryHttpJsonClient(
                     await AttachAuthAsync(request, token).ConfigureAwait(false);
                     return request;
                 },
-                cancellationToken)
+                cancellationToken,
+                maxRetriesOverride,
+                attemptTimeout)
             .ConfigureAwait(false);
 
         if (sent.IsFailure)

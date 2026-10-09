@@ -1,6 +1,5 @@
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
-using Raffa.AiGateway.Foundry;
 using Raffa.AiGateway.Foundry.Prompts;
 using Raffa.SharedKernel;
 
@@ -16,6 +15,7 @@ namespace Raffa.AiGateway.Jev;
 public sealed class JevClassifyClient(JevHttpJsonClient httpClient, AiGatewayJevOptions options, IClock clock)
 {
     private const string QuestionKey = "documentType";
+    private const string ReversedQuestionKey = "documentTypeReversed";
 
     /// <summary>Bump when the question text/criteria below changes -- recorded in every
     /// <see cref="AiCallMetadata.PromptVersion"/> this client produces, the same convention
@@ -39,20 +39,25 @@ public sealed class JevClassifyClient(JevHttpJsonClient httpClient, AiGatewayJev
             label => label,
             label => ClassifyPromptTemplate.Glosses[Enum.Parse<AiDocumentType>(label)]);
 
-        var wireRequest = new JevSystemOneRequest(
-            Model: options.Model,
-            State: documentText,
-            Questions: new Dictionary<string, JevQuestion>
-            {
-                [QuestionKey] = new(
-                    Type: "choice",
-                    Instructions:
-                        "Classify this business document into exactly one of the given types. The " +
-                        "document may be written in any language; classify it on its meaning, never " +
-                        "on its language or a file name. Decide by what the document does, not by " +
-                        "its title.",
-                    Criteria: criteria),
-            });
+        const string instructions =
+            "Classify this business document into exactly one of the given types. The " +
+            "document may be written in any language; classify it on its meaning, never " +
+            "on its language or a file name. Decide by what the document does, not by " +
+            "its title.";
+
+        var questions = new Dictionary<string, JevQuestion>
+        {
+            [QuestionKey] = new("choice", instructions, criteria),
+        };
+
+        if (options.CheckOptionOrder)
+        {
+            // Same question, options in the opposite order, same request: see
+            // AiGatewayJevOptions.CheckOptionOrder.
+            questions[ReversedQuestionKey] = new("choice", instructions, JevOptionOrder.Reversed(criteria));
+        }
+
+        var wireRequest = new JevSystemOneRequest(options.Model, documentText, questions);
 
         var sent = await httpClient
             .PostAsync<JevSystemOneRequest, JevSystemOneResponse>(options.Endpoint, wireRequest, cancellationToken)
@@ -63,26 +68,32 @@ public sealed class JevClassifyClient(JevHttpJsonClient httpClient, AiGatewayJev
             return Result<AiClassificationResult>.Failure(sent.Error);
         }
 
-        var answers = sent.Value.Answers;
-        if (answers is null || !answers.TryGetValue(QuestionKey, out var answer))
+        httpClient.LogDecisions("classify", sent.Value);
+
+        if (!JevAnswers.TryReadChoice(sent.Value.Answers, QuestionKey, out var answer) ||
+            !Enum.TryParse<AiDocumentType>(answer!.Choice, ignoreCase: true, out var documentType))
         {
             return Result<AiClassificationResult>.Failure(
-                $"Jev classify response carried no '{QuestionKey}' answer. This client's response " +
-                "contract is unverified against a live account -- see AiGatewayJevOptions's own " +
-                "doc comment.");
+                $"Jev classify response carried no usable '{QuestionKey}' answer " +
+                $"(choice: '{answer?.Choice}'). A Choice answer is {{type, choice, probabilities, confidence}} " +
+                "-- https://docs.typesafe.ai/api#choice-answer.");
         }
 
-        if (!JevAnswerReader.TryReadChoice(answer, out var choice, out var confidence) ||
-            !Enum.TryParse<AiDocumentType>(choice, ignoreCase: true, out var documentType))
+        var confidence = answer.Confidence;
+        if (options.CheckOptionOrder)
         {
-            return Result<AiClassificationResult>.Failure(
-                $"Jev classify response named an unrecognized or unparseable document type: '{choice}'.");
+            // Both orders must name the same type. A disagreement is the order bias speaking, so the
+            // result is reported as "not sure at all" (confidence 0) and the gateway decorator hands
+            // the document to Foundry.
+            confidence = JevAnswers.TryReadChoice(sent.Value.Answers, ReversedQuestionKey, out var reversed) &&
+                         string.Equals(reversed!.Choice, answer.Choice, StringComparison.OrdinalIgnoreCase)
+                ? Math.Min(answer.Confidence, reversed.Confidence)
+                : 0;
         }
 
-        var model = new AiModelSelection(options.Model, options.Model);
-        var metadata = FoundryCallMetadataFactory.Build(model, Version, clock, documentText);
-
-        return Result<AiClassificationResult>.Success(
-            new AiClassificationResult(documentType, Math.Clamp(confidence, 0, 1), metadata));
+        return Result<AiClassificationResult>.Success(new AiClassificationResult(
+            documentType,
+            confidence,
+            JevAnswers.Metadata(options.Model, sent.Value, Version, clock, documentText)));
     }
 }

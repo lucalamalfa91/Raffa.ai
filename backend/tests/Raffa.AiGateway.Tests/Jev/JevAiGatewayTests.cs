@@ -8,9 +8,10 @@ using Raffa.SharedKernel;
 namespace Raffa.AiGateway.Tests.Jev;
 
 /// <summary>
-/// Proves the decorator's one job: `classify` goes to Jev, every other role passes straight
-/// through to <c>inner</c> untouched (<see cref="JevAiGateway"/>'s own doc comment — this pilot's
-/// scope boundary).
+/// Proves the decorator's jobs: `classify` goes to Jev first and falls back to <c>inner</c> when Jev
+/// fails or is not sure (<see cref="AiGatewayJevOptions.ClassifyMinConfidence"/>); every other role
+/// passes straight through to <c>inner</c> untouched (<see cref="JevAiGateway"/>'s own doc comment —
+/// this pilot's scope boundary).
 /// </summary>
 public class JevAiGatewayTests
 {
@@ -92,15 +93,35 @@ public class JevAiGatewayTests
         var options = new AiGatewayJevOptions { Enabled = true, ApiKey = "fake-openrouter-key" };
         var jevHttpClient = new JevHttpJsonClient(httpClient, options, TestRetryPolicies.NoDelay());
         var classifyClient = new JevClassifyClient(jevHttpClient, options, new FixedClock(Now));
-        var gateway = new JevAiGateway(inner, classifyClient);
+        var gateway = new JevAiGateway(inner, classifyClient, options);
 
         return (gateway, inner, handler);
     }
 
-    private static Func<HttpRequestMessage, HttpResponseMessage> JevClassifiesAsMsa() =>
-        FakeHttpMessageHandler.Json(
+    private static Func<HttpRequestMessage, HttpResponseMessage> JevClassifies(
+        string choice, double confidence, string? reversedChoice = null)
+    {
+        static object Answer(string choice, double confidence) => new
+        {
+            type = "choice",
+            choice,
+            probabilities = new Dictionary<string, double> { [choice] = confidence },
+            confidence,
+        };
+
+        return FakeHttpMessageHandler.Json(
             HttpStatusCode.OK,
-            """{"answers":{"documentType":{"choice":"Msa","confidence":0.77}}}""");
+            System.Text.Json.JsonSerializer.Serialize(new
+            {
+                answers = new Dictionary<string, object>
+                {
+                    ["documentType"] = Answer(choice, confidence),
+                    ["documentTypeReversed"] = Answer(reversedChoice ?? choice, confidence),
+                },
+            }));
+    }
+
+    private static Func<HttpRequestMessage, HttpResponseMessage> JevClassifiesAsMsa() => JevClassifies("Msa", 0.77);
 
     [Fact]
     public async Task ClassifyAsync_goes_to_Jev_not_inner()
@@ -115,6 +136,43 @@ public class JevAiGatewayTests
         Assert.Equal("typesafe/jev-1.13", result.Value.Metadata.ModelId);
         Assert.Empty(inner.Calls);
         Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_falls_back_to_inner_when_Jev_is_not_sure_enough()
+    {
+        var (gateway, inner, handler) = Create(JevClassifies("Msa", 0.45));
+
+        var result = await gateway.ClassifyAsync(new AiClassificationRequest("MSA text"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("inner-model", result.Value.Metadata.ModelId);
+        Assert.Equal([nameof(IAiGateway.ClassifyAsync)], inner.Calls);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_falls_back_to_inner_when_the_two_option_orders_disagree()
+    {
+        var (gateway, inner, _) = Create(JevClassifies("Msa", 0.95, reversedChoice: "OrderForm"));
+
+        var result = await gateway.ClassifyAsync(new AiClassificationRequest("MSA text"), CancellationToken.None);
+
+        Assert.Equal("inner-model", result.Value.Metadata.ModelId);
+        Assert.Equal([nameof(IAiGateway.ClassifyAsync)], inner.Calls);
+    }
+
+    [Fact]
+    public async Task ClassifyAsync_falls_back_to_inner_when_Jev_is_down_instead_of_failing_the_upload()
+    {
+        var (gateway, inner, _) = Create(
+            FakeHttpMessageHandler.Json(HttpStatusCode.ServiceUnavailable, """{"error":{"message":"down"}}"""));
+
+        var result = await gateway.ClassifyAsync(new AiClassificationRequest("MSA text"), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("inner-model", result.Value.Metadata.ModelId);
+        Assert.Equal([nameof(IAiGateway.ClassifyAsync)], inner.Calls);
     }
 
     [Fact]

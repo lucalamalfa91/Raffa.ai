@@ -31,7 +31,7 @@ backend/
     Raffa.Renewals/            # renewal engine + opportunity + explainable priority score + threshold scheduler + dashboard pipeline + action (R2; live) — see "Renewal Intelligence" below
     Raffa.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Raffa.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) + read-back: `QuoteQueryService` (stored fields only, computes nothing) backing GET /api/quotes (tenant list) and GET /api/quotes/{id} (the quote with its recorded negotiation outcomes embedded, newest first) — task E19/F02/US01/T01, quote-read-api, wave w16 NW-12, ADR-028 §D2 — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
-    Raffa.Chat/                # Ask Raffa structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + RagAnswerService (task E02/F04/US02/T01) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Raffa.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Raffa — conversations store" below
+    Raffa.Chat/                # Ask Raffa structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Raffa.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Raffa — conversations store" below
   tests/                         # per-module + architecture + R0-R4 integration
 ```
 
@@ -529,36 +529,50 @@ budget (ADR-017: fail visibly, never silently truncate) is its own
 **Jev classify-role pilot (dev-only trial, not an ADR-004 model swap).**
 `AiGateway:Jev:Enabled` (default `false`, only ever `true` on `dev`) wraps
 whichever gateway `AiGateway:Endpoint` picked with `Jev.JevAiGateway`: the
-`classify` role (document-admission taxonomy) is asked as a single
-`"choice"` question against TypeSafe AI's Jev model through OpenRouter's
-Decisions API (`AiGateway:Jev:ApiKey`, a Container Apps secret — never a
+`classify` role (document-admission taxonomy) is asked as a `"choice"`
+question against TypeSafe AI's Jev model through the System One API
+(`POST /v1/systemone`, reached here on OpenRouter's identical
+`/api/v1/systemone`; `AiGateway:Jev:ApiKey`, a Container Apps secret — never a
 plain env var), and every other role passes straight through to Foundry/
-Fixture unchanged. Scoped to `classify` only on purpose: Jev's three
-question primitives (choice/noul/score) cannot produce the free-value
-output (dates, amounts, verbatim clause text) the `extract` role needs, so
-this pilot never touches extraction. `Jev.JevHttpJsonClient`'s
-request/response shape was built from OpenRouter's published documentation
-and third-party write-ups, not a live call — see
-`Configuration.AiGatewayJevOptions`'s own doc comment before trusting any
-dev upload to this path. Turning it on requires both the `Enabled` flag and
-a real OpenRouter API key; either one missing keeps the pilot inert (an
-unset key fails only the classify call itself, gracefully, never the host).
+Fixture unchanged. Jev goes first and Foundry is the fallback: a failed Jev
+call (after the bounded retries, 529 "Overloaded" included) or an answer under
+`AiGateway:Jev:ClassifyMinConfidence` (default 0.6) is classified by the
+gateway the pilot sits in front of, and the result's `ModelId` says which
+one answered. By default every Choice is asked twice in one request with the
+options in opposite orders (`AiGateway:Jev:CheckOptionOrder`) -- Jev leans toward
+the first option -- and an order disagreement counts as "not sure".
+Scoped to `classify` only on purpose: Jev's three question primitives
+(choice/noul/score) cannot produce the free-value output (dates, amounts,
+verbatim clause text) the `extract` role needs, so this pilot never touches
+extraction. The client was written against TypeSafe's published API reference
+and cookbooks, not yet against a live key -- see
+`Configuration.AiGatewayJevOptions`'s own doc comment before trusting any dev
+upload to this path, and measure accuracy on Italian/German documents first
+(Jev's primary training language is English). Every call logs the chosen
+option, TypeSafe's confidence and the two most likely options' probabilities
+(never the text) so thresholds can be calibrated from data; the audit
+metadata carries the served model version and token usage. Turning it on
+requires both the `Enabled` flag and a real API key; either one missing keeps
+the pilot inert (an unset key fails only the Jev call, which then falls back
+to Foundry, never the host).
 
 The same `AiGateway:Jev:Enabled`/`AiGateway:Jev:ApiKey` switch also covers
-`Raffa.Chat.Application.Gaps.CapabilityInvestigator` (ADR-031): the real
-classification -- verdict/knownGapKey/nearestCapabilityKey -- is asked of
-Jev as "choice" decisions (`Raffa.Chat.Application.Gaps.JevVerdictClient`),
-never the LLM. `question`/`supported`/`known-gap` verdicts never touch
-Foundry at all once Jev decides them; a `gap` verdict still makes one
-Foundry `analyst` call, but only to write the free-text feature description
-Jev's primitives cannot produce -- Foundry's own verdict/confidence on that
-call are discarded, Jev's stand. A Jev failure of any kind falls back to
-the pre-existing Foundry-only path unchanged (same fail-open guarantee
-ADR-031 already had). Jev's raw confidence is bucketed into the existing
-high/medium/low vocabulary by `GapInvestigationOptions.JevHighConfidenceThreshold`/
+`Raffa.Chat.Application.Gaps.CapabilityInvestigator` (ADR-031). The user's
+turn is the whole Jev `state`; one Choice lists every operation (`question`,
+`capability:<key>`, `known-gap:<key>`, `none`) and a second names the nearest
+capability, and the verdict is derived in code from the option Jev chose --
+never the LLM (`Raffa.Chat.Application.Gaps.JevVerdictClient`). Question,
+capability and known-gap results never touch Foundry at all; `none` (a new
+gap) makes one Foundry `analyst` call, but only to write the free-text feature
+description Jev's primitives cannot produce -- Foundry's own verdict/confidence
+on that call are discarded, Jev's stand, and a description Foundry cannot
+write leaves no follow-up. A Jev failure of any kind falls back to the
+pre-existing Foundry-only path unchanged (same fail-open guarantee ADR-031
+already had). Jev's confidence is bucketed into the existing high/medium/low
+vocabulary by `GapInvestigationOptions.JevHighConfidenceThreshold`/
 `JevMediumConfidenceThreshold` -- starting points, not a measured
-calibration for this four-way verdict (see `AiGatewayJevOptions`'s own doc
-comment on why Jev needs per-question calibration).
+calibration (see `AiGatewayJevOptions`'s own doc comment on why Jev needs
+per-question calibration).
 
 `Raffa.Documents.Contracts.Application.Extraction.HybridDocumentParsingService`
 implements the hybrid OCR pre-pass (ADR-017): native text extraction
@@ -572,7 +586,37 @@ clauses → obligations → risk) over the resulting page-mapped text
 (`DocumentPageText`) and persists every fact with source span/page +
 confidence (spec §7.3) — directly on `ContractLineItem`/`Clause`/
 `Obligation`/`Risk`, or via the `ExtractionEvidence` table for `Contract`'s
-own scalar fields.
+own scalar fields. The arrows above are the stages' conceptual/display
+order, not their execution order: since NW-106, all seven `extract` calls
+fire concurrently (`StartStagesAsync`) because none depends on another's
+result — a single frontier-model call can already take 100s+
+(`AiGatewayResilienceOptions`'s own doc comment), so seven of them one
+after another was the single largest, purely structural cost in the whole
+pipeline. Every `DbContext` write (job status, evidence rows) still happens
+strictly sequentially afterward (`ApplyStageResultAsync`, one stage at a
+time, in pipeline order) — EF Core's `DbContext` is not safe for concurrent
+use, so only the network wait itself is parallelized, never the persistence.
+
+NW-106's OCR half (`FoundryOcrClient.OcrAsync`) originally stayed sequential:
+the ADR-017 page budget is enforced on the page count `prebuilt-read`
+reports, before the costlier `prebuilt-layout` is ever called, so a naive
+`Task.WhenAll` over both would spend the layout call on documents about to
+be rejected anyway. `AiOcrRequest.KnownPageCount` resolves that without
+weakening the guarantee: `HybridDocumentParsingService` already runs pdfium
+natively on every PDF before OCR is even considered, so it already has a
+trustworthy page count (pdfium's own, used for the exact same budget notion)
+for the common case — a PDF pdfium could open, even one with insufficient
+text (the OCR-fallback case). Handed to the gateway as `KnownPageCount`, an
+over-budget document is rejected before any Document Intelligence call at
+all (cheaper than before: zero calls, not one), and an in-budget document
+gets `prebuilt-read` and `prebuilt-layout` concurrently, because nothing is
+left for their ordering to protect. The known count is only ever a
+pre-check, never a replacement for the authoritative one: the budget is
+re-checked against what `prebuilt-read` itself reports afterward regardless.
+A format with no trustworthy local count — an image, or a PDF pdfium
+genuinely failed to open (its own zero-page result is treated as "unknown",
+not "really zero pages", so it is never passed on) — gets `KnownPageCount:
+null` and keeps the original sequential behavior as the only safe fallback.
 
 `Raffa.Documents.Contracts.Application.Extraction.DocumentProcessingPipeline`
 (task E02/F06/US01/T01, r1-integration) is that caller: given the just-
@@ -643,7 +687,7 @@ on — `LoggingAiGateway` depends on the Scoped `IAuditWriter`
 (`Raffa.Audit`'s own registration), and every current `IAiGateway`
 consumer (`DocumentProcessingPipeline`, `StagedExtractionService`,
 `EmbeddingRetrievalService`, `HybridDocumentParsingService`,
-`QuoteExtractionPipeline`, `RagAnswerService`) was already Scoped, so this
+`QuoteExtractionPipeline`) was already Scoped, so this
 is a captive-dependency fix, not a behaviour change for any of them; see
 `ServiceCollectionExtensions`'s own doc comment for the full reasoning.
 Auth is `Azure.Identity.DefaultAzureCredential` (managed identity on
@@ -662,10 +706,10 @@ ADR-024's structured-answer fields (`SystemPrompt`/`PackJson` on the
 request; `AnswerMarkdown`/`CitationKeys`/`ActionKeys`/`AbstainReason`/
 `FollowUps` on the result), all optional/nullable additions — the existing
 `Answer`/`Citations` fields and every pre-existing call site
-(`RagAnswerService`, `AbstainGuard`, and their own tests) keep compiling
-and behaving unchanged; a later task ("F06") replaces
-`RagAnswerService`'s own evidence-chunk-concat with the versioned persona
-prompt + context pack ADR-024 describes. New root-level `AiGateway`
+(`AbstainGuard`, and their own tests) keep compiling
+and behaving unchanged; a later task ("F06") replaced
+the evidence-chunk-concat of the (since removed) `RagAnswerService` with the
+versioned persona prompt + context pack ADR-024 describes. New root-level `AiGateway`
 configuration keys (siblings of `AiGateway:Models`/`AiGateway:Ocr`, bound
 by `Configuration.AiGatewayFoundryOptions`): `AiGateway:Endpoint`,
 `AiGateway:ProjectName`, `AiGateway:DocumentIntelligenceConnection`
@@ -791,7 +835,8 @@ index, and the negotiated discount by category, size and term; support
 plans are priced as a share of the licences they cover (category
 `Support & Services`, never matched across suppliers). The script also
 writes aggregated benchmark reports by country, size and category to
-`backend/fixtures/market-benchmarks/`. Generated ids start with `MKT-ZZ-`
+`backend/fixtures/market-benchmarks/` (a git-ignored development artefact: nothing reads it,
+so it is regenerated on demand and not tracked). Generated ids start with `MKT-ZZ-`
 (they sort after every hand-written id, so a tie never shadows an oracle)
 and never add to a hand-written supplier/product pair.
 Re-run the script after editing the catalog; it keeps the hand-written rows
@@ -1071,16 +1116,16 @@ contract value") is reported as `Unsupported` rather than answered against
 the wrong field.
 
 `Raffa.Chat.Application.RagAnswerService` (task E02/F04/US02/T01,
-us-02-rag-citations, AC-1/AC-2/AC-3) turns a `Semantic` decision plus
-already-retrieved, already-authorized evidence into a grounded answer with
-citations via `IAiGateway.AnswerAsync` (ADR-004 `answer` role) — citations
-or an explicit "cannot determine" (spec §8.4 "no evidence, no claim"), never
-a fabricated answer. It also writes one `IAuditWriter` entry per successful
-call (`chat.answered` — ADR-011 "audit of access"), never the raw
-question/evidence/answer text.
+us-02-rag-citations) used to turn a `Semantic` decision plus already-retrieved,
+already-authorized evidence into a grounded answer with citations via
+`IAiGateway.AnswerAsync`. It was never called by any host once
+`AskCopilotService` took over (see "Superseded by the V2 engine" below) and
+has been removed together with its `chat.answered` audit row and the reserved
+`system:rag-answer` principal; the grounding and abstain rules it enforced
+live on in `AbstainGuard` and `GroundingGuard`.
 
 `Raffa.Chat.Application.AbstainGuard` (task E02/F04/US02/T02, abstain-guard)
-is the no-fabrication guard `RagAnswerService.AnswerAsync` runs on every
+is the no-fabrication guard that runs on every
 gateway result before it is audited or returned: a "cannot determine" result
 passes straight through, but a "determined" result is only trusted when it
 carries at least one citation, has non-empty answer text, and every citation's
@@ -1098,9 +1143,9 @@ free-text reason itself is deliberately not logged (ADR-011: no model
 output/content in audit rows).
 
 `Raffa.Chat` cannot reference `Raffa.Documents.Contracts` (see
-"Dependency direction" below), so neither `DeterministicQueryHandler` nor
-`RagAnswerService` retrieves anything itself: both operate on caller-supplied
-data (`ContractFact` / a pre-retrieved evidence list respectively) — small
+"Dependency direction" below), so `DeterministicQueryHandler` does not
+retrieve anything itself: it operates on caller-supplied
+data (`ContractFact`) — small
 DTOs/parameters the module owns or accepts, never the real `Contract`/
 `Embedding` entities. `DocumentId` on an `AiEvidenceSnippet` built from an
 `Embedding` hit is a `{SourceType}:{SourceId}` composite (not a bare id): a
@@ -1112,13 +1157,13 @@ and silently relabelling one as the other would misattribute the citation.
 `Raffa.Api.ChatEndpointExtensions` (`POST /api/chat/query`) used to be the
 composition root that closed the gap above directly — it resolved the
 tenant, called `EmbeddingRetrievalService.SearchAsync` itself, and called
-`RagAnswerService` for the `Semantic` branch only, with the `Structured`
+`RagAnswerService` (since removed) for the `Semantic` branch only, with the `Structured`
 branch left as an honest "not wired yet" (no `ContractFact` mapping existed).
 `POST /api/chat/query` now instead delegates into `AskCopilotService`, the
 new V2 pack-composition root that reuses this router/planner/handler trio as
 one of several intents — see "Ask Raffa — conversations store" below for
 where that composition now lives; `AskRaffaQueryRouter`/
-`DeterministicQueryPlanner`/`DeterministicQueryHandler`/`RagAnswerService`/
+`DeterministicQueryPlanner`/`DeterministicQueryHandler`/
 `AbstainGuard` themselves are unchanged, still pure, and still directly
 unit-tested exactly as this section describes.
 
@@ -1274,9 +1319,27 @@ attempt and forced `Guards.RegenerateOnce`'s retry-then-downgrade path — and
 `chat.answered`), never
 just because the reply happens to be `abstain` (an empty pack or a failed
 gateway call both also produce `kind=abstain` but leave this field `false` —
-the same field name/shape `RagAnswerService`'s older, evidence-only audit
-entry already uses; see this file's "Ask Raffa — query router" section
-above). The context pack's token budget is
+the same field name/shape the older, evidence-only audit
+entry used; see this file's "Ask Raffa — query router" section
+above). Since task T-01 / F2-T01 the same row also carries `turnId=<id>`
+(random, 16 hex) and, for a turn that ran Ask's agentic flow, the flow's
+outcome as names and counts only -- `runId=`, `stepsRun=N steps=a,b,c`,
+`failures=N failedSteps=x,y`, `marketQueries=N` -- or `flow=none`. The
+`ask.capability_follow_up` and `chat.web_research*` rows carry the same
+`turnId=`, and every `ai.*` row of the gateway decorator
+(`LoggingAiGateway`) carries `agent= run= turn= step= latencyMs= outcome=`
+(`run=none`/`turn=none` outside a turn) plus the existing model, token and
+hash fields -- so a turn is followed end to end by `turnId`, and one run by
+`runId`. The ids come from `Raffa.AiGateway.Telemetry.RunContext` (an
+`AsyncLocal` the Ask turn, the agentic flow and, later, the step runner open
+with `BeginTurn`/`BeginRun`/`BeginStep`); every AI call is also a span on
+the `Raffa.Agents` `ActivitySource` (`gen_ai.*` and `raffa.*` attributes, a
+tenant hash, never text; no exporter is registered -- add
+`AddSource("Raffa.Agents")` to an OpenTelemetry tracer provider to collect
+them). The negotiation council's verdict (`calc:council:verdict`) is
+computed by `CouncilVerdict` from the calculators' `calc:savings-target` /
+`calc:portfolio-target` items -- the strategist no longer returns one
+(`council-v3`). The context pack's token budget is
 `Pack.PackBudget`, optionally configured via `Chat:PackTokenBudget`
 (`Chat__PackTokenBudget` env var form) and registered in `Program.cs`
 *before* `AddChatModule`'s own always-usable default so a configured value
@@ -1513,6 +1576,43 @@ It now rides the same route with one branch before the planner:
    refuses to start, `FeedbackHostOptions.ValidateOrThrow`). `FeatureRequestIssueText`
    is the whole allow-list of a public issue. `appsettings.Development.json`
    sets `Feedback:GitHub:Enabled=false`, the stored-only path.
+   **Privacy of the free text (F4-T01)**: the one field a user types is
+   scrubbed by `FeatureRequestScrubber` when the issue is composed — links,
+   addresses, phone numbers, IBAN/tax codes, ids, amounts and any token with a
+   digit become `[link]`/`[email]`/`[number]`/`[id]`, every supplier of the
+   tenant (`IFeedbackNameSource`, the host's `PortfolioFeedbackNameSource`) and
+   the submitting user become `[name]`, and so does any other capitalised run
+   that is not product vocabulary. **One offer, one report (F4-D02)**: the
+   unique index decides a race, the loser gets `AlreadySubmitted` (409) and no
+   second issue. `Feedback__ExposedEnvironment=true` switches the public
+   GitHub channel off whatever `Feedback__GitHub__Enabled` says (no token
+   needed; every submission is stored `recorded`).
+
+6. **The capability investigator** (`Raffa.Chat.Application.Gaps`, ADR-031,
+   INV-01..05, decision D3). It no longer costs a `gaps-v1` call on every
+   typed in-domain turn: `Chat:GapInvestigation:Mode` is `Triggered` by
+   default, and `InvestigatorTrigger` (pure, no model) decides — T1 the
+   planner recognised no intent (`IntentPlanBasis.Fallback`), T2 Raffa could
+   not answer (abstain, fallback answer, guard downgrade), T3 an operational
+   request nothing in the catalog covers (verbs of doing + request formulas +
+   deliverable nouns, in `Gaps/Lexicon/investigator-trigger-lexicon.json`,
+   versioned, it/en baseline and fr/es/de seed; vetoed when the verb belongs
+   to a third party, to the user's own obligation, or the question is about
+   the text of a clause). T3 reads the question alone, so the check starts
+   before the answer and runs beside it; T1/T2 are decided right after the
+   reply, so the answer is never delayed and the follow-up is still a
+   separate message (`CapabilityCheckDispatcher.AppendWhenDone`). `Always`
+   restores the old behaviour for diagnosis, `Enabled=false` is the kill
+   switch, both read through `IOptionsMonitor` (no restart). Audit, never
+   any text: `ask.capability_trigger` (mode, t1/t2/t3, ran, reason, lexicon
+   version) for every eligible turn, `ask.capability_outcome` (question,
+   supported, known-gap, gap, low-confidence, unusable, failed, timeout,
+   drop; confidence; gap key) for every started check, all sharing one
+   `turnId`. The offline evaluation set (150 phrases, 30 per language,
+   `tests/Raffa.AiEval/investigator-set/`) is run by
+   `Raffa.AiEval.Investigator` and writes
+   `reports/investigator-last-run.md` (precision/recall per trigger, per
+   language and overall; the 90/60/70 targets are alarms, not gates).
 
 Golden cases `seeded-capability_gap-email-draft-salesforce-en` (the
 screenshot question, → `draft`), `seeded-capability_gap-email-draft-unscoped-it`,
@@ -1629,10 +1729,25 @@ and **no pack** — isolation is in the type. In `Raffa.Chat`,
 language)` is the only caller of `ResearchAsync` and the only producer of
 `PackCorpus.Web` (`WebResearchIsolationTests`); it runs `Guards.WebGuard`
 (≥ 1 source, https + public DNS host only, `[n]` in range, no foreign URL in
-the prose), then `NumericGuard` against the sources' snippets, then
-`GroundingGuard`; a failure is an abstain naming the hosts (no retry — every
-call is budgeted), `offTopic` is a refusal. The persona is
-`Prompts/research/v1.md` (`WebResearchPrompt`, `research-v1`). The query is
+the prose), then `Guards.WebFigureGuard` (F3-T01), then `GroundingGuard`; a
+failure is an abstain naming the hosts (no retry — every call is budgeted),
+`offTopic` is a refusal. The hosted search tool returns a URL and a title and
+**no page text** (`AiWebSource.Snippet` is always empty in production), so the
+research role's strict JSON carries `sources[].quote` — the passage the model
+copied verbatim — onto `AiWebSource.Quote`, and the web pack's snippet (the
+citation's excerpt) is that quote. `WebFigureGuard` reads each sentence of the
+summary: every figure (percentage, amount as ISO code, symbol, word or `40k` /
+`1,5M`, full date in the five languages or US order, month and year, a
+percentage spelled out, both bounds of a range) must share its sentence with a
+`[n]` marker and appear — same value, same currency, any of the five
+languages' number formats — in the quote (or title or snippet) of a source that
+sentence cites. Three states: *verified*; *reported* (an explicit figure — a
+percentage, an ISO-coded amount, a full date — with no cited source quote at
+all; kept only with `Chat:WebResearch:AllowReportedFigures`, default false);
+*rejected*. A sentence stating a rejected figure is removed, not the whole
+answer (`WebResearchOutcome.SentencesRemoved`, `GuardIntervened`); when no
+sentence with a marker is left the reply is the usual abstain. The persona is
+`Prompts/research/v2.md` (`WebResearchPrompt`, `research-v2`; v1 stays on disk). The query is
 `WebQuerySanitizer`'s: the user's words minus the "search the web" phrase and
 every amount, percentage, date, money shorthand, e-mail and URL.
 
@@ -1662,8 +1777,9 @@ root's `web_research_enabled` variable; `scripts/foundry_research_probe.py`
 is the pre-flight/diagnostic and `AiGateway:ResearchWebSearchToolType`
 (default `web_search`) covers the tool's earlier `web_search_preview` name
 (see `infra/README.md`). The fixture gateway's `ResearchAsync` returns two
-example.com/.org sources (off-topic without a procurement word), which is
-what `AskWebResearchConsentTests` exercises.
+example.com/.org sources shaped like production's (empty `Snippet`, the text in
+`Quote`; off-topic without a procurement word), which is what
+`AskWebResearchConsentTests` exercises.
 
 ## Ask Raffa — capability catalog
 

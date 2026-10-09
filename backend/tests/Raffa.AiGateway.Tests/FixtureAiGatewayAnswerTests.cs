@@ -56,4 +56,18 @@ public class FixtureAiGatewayAnswerTests
 
         Assert.True(result.IsFailure);
     }
+
+    [Fact]
+    public async Task Answer_echoes_the_prompt_version_the_caller_declared_for_its_prompt()
+    {
+        var gateway = CreateGateway();
+        var evidence = new AiEvidenceSnippet("doc-1", Page: 1, Section: null, Text: "Liability is capped.");
+
+        var declared = await gateway.AnswerAsync(
+            new AiAnswerRequest("Liability?", Evidence: [evidence], SystemPrompt: "persona", PromptVersion: "answer-v2.5"));
+        var undeclared = await gateway.AnswerAsync(new AiAnswerRequest("Liability?", Evidence: [evidence]));
+
+        Assert.Equal("answer-v2.5", declared.Value.Metadata.PromptVersion);
+        Assert.Equal("fixture-v1", undeclared.Value.Metadata.PromptVersion);
+    }
 }

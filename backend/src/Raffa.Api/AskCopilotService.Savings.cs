@@ -1,6 +1,7 @@
 using System.Globalization;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Playbook;
@@ -750,10 +751,11 @@ internal sealed partial class AskCopilotService
 
     private static string FeasibilityLabel(SavingsFeasibility feasibility) => feasibility switch
     {
-        SavingsFeasibility.Reachable => "target reachable",
-        SavingsFeasibility.Stretch => "target is a stretch",
-        SavingsFeasibility.NotSupported => "target not supported by the evidence",
-        _ => "no target named",
+        // The council's verdict (CouncilVerdict) reads these labels back: one definition, in Raffa.Chat.
+        SavingsFeasibility.Reachable => CouncilVerdict.ReachableLabel,
+        SavingsFeasibility.Stretch => CouncilVerdict.StretchLabel,
+        SavingsFeasibility.NotSupported => CouncilVerdict.NotSupportedLabel,
+        _ => CouncilVerdict.NoTargetLabel,
     };
 
     private static string Amount(decimal value) => Math.Round(value, 0, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);

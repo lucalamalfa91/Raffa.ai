@@ -297,4 +297,90 @@ public sealed class MarketMigrationScriptTests : IAsyncLifetime
             }
         }
     }
+
+    /// <summary>
+    /// F7-T01 / F7-T06 acceptance against the schema the script really creates: an HNSW index with
+    /// the cosine operator class on <c>market_embedding.vector</c>, and the nullable
+    /// <c>is_fixture</c> flag. Needs Docker (Testcontainers).
+    /// </summary>
+    [Fact]
+    public async Task Script_creates_the_hnsw_cosine_index_and_the_nullable_fixture_flag()
+    {
+        var script = await ReadScriptAsync();
+
+        await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await connection.OpenAsync();
+        await using (var apply = new NpgsqlCommand(script, connection))
+        {
+            await apply.ExecuteNonQueryAsync();
+        }
+
+        await using (var index = new NpgsqlCommand(
+            "SELECT indexdef FROM pg_indexes WHERE tablename = 'market_embedding' " +
+            "AND indexname = 'ix_market_embedding_vector'", connection))
+        {
+            var definition = (string?)await index.ExecuteScalarAsync();
+            Assert.NotNull(definition);
+            Assert.Contains("USING hnsw", definition, StringComparison.Ordinal);
+            Assert.Contains("vector_cosine_ops", definition, StringComparison.Ordinal);
+        }
+
+        await using (var column = new NpgsqlCommand(
+            "SELECT is_nullable FROM information_schema.columns " +
+            "WHERE table_name = 'market_embedding' AND column_name = 'is_fixture'", connection))
+        {
+            Assert.Equal("YES", (string?)await column.ExecuteScalarAsync());
+        }
+    }
+
+    /// <summary>
+    /// The cosine top-k query is answered from the HNSW index, not by sorting the table: with
+    /// sequential scans disabled, the plan of <c>ORDER BY vector &lt;=&gt; q LIMIT k</c> must name
+    /// the index. Needs Docker (Testcontainers).
+    /// </summary>
+    [Fact]
+    public async Task The_cosine_top_k_query_plan_uses_the_hnsw_index()
+    {
+        var script = await ReadScriptAsync();
+
+        await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await connection.OpenAsync();
+        await using (var apply = new NpgsqlCommand(script, connection))
+        {
+            await apply.ExecuteNonQueryAsync();
+        }
+
+        await using (var seed = new NpgsqlCommand(
+            "INSERT INTO market_record (record_id, feed_version, provider, payload_json, provenance_label, updated_at) " +
+            "SELECT 'R-' || g, 'v1', 'Internal Dataset', '{}'::jsonb, 'x', now() FROM generate_series(1, 200) AS g; " +
+            "INSERT INTO market_embedding (id, record_id, chunk_index, chunk_text, vector, model, created_at) " +
+            "SELECT gen_random_uuid(), 'R-' || g, 0, 'note', " +
+            "(SELECT array_agg(random()::real) FROM generate_series(1, 1536) AS s WHERE s > -g)::vector(1536), " +
+            "'text-embedding-3-small', now() FROM generate_series(1, 200) AS g;",
+            connection))
+        {
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        var queryVector = "[" + string.Join(",", Enumerable.Range(0, 1536).Select(i => i == 0 ? "1" : "0")) + "]";
+
+        await using (var planner = new NpgsqlCommand("SET enable_seqscan = off", connection))
+        {
+            await planner.ExecuteNonQueryAsync();
+        }
+
+        var plan = new List<string>();
+        await using (var explain = new NpgsqlCommand(
+            $"EXPLAIN SELECT record_id FROM market_embedding ORDER BY vector <=> '{queryVector}'::vector LIMIT 5",
+            connection))
+        await using (var reader = await explain.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                plan.Add(reader.GetString(0));
+            }
+        }
+
+        Assert.Contains(plan, line => line.Contains("ix_market_embedding_vector", StringComparison.Ordinal));
+    }
 }

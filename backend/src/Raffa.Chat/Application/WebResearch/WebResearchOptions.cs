@@ -28,6 +28,12 @@ public sealed class WebResearchOptions
     /// <summary>Upper bound on the sanitised query's length, in characters.</summary>
     public int MaxQueryChars { get; set; } = 300;
 
+    /// <summary>F3-D02: keep a sentence whose figures are explicit (a percentage, an amount with its ISO
+    /// currency code, a full date) and cited but have no source quote to be checked against. Off by
+    /// default: a figure nothing could check is cut, as it always was. A symbol, word or shorthand figure
+    /// (<c>$36</c>, <c>ten euros</c>, <c>40k</c>) is never kept without a quote.</summary>
+    public bool AllowReportedFigures { get; set; }
+
     /// <summary>The source cap, clamped to the range the research role accepts.</summary>
     public int EffectiveMaxSources => Math.Clamp(MaxSources, 1, 10);
 }

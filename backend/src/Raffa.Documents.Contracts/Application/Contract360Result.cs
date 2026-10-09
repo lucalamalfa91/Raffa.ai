@@ -68,7 +68,8 @@ public sealed record Contract360Header(
     DateOnly? RenewalDate,
     DateOnly? CancellationDeadline,
     bool AutoRenewal,
-    RiskSeverity? Risk);
+    RiskSeverity? Risk,
+    int? NoticePeriodDays = null);
 
 /// <summary>
 /// Overview tab: the descriptive/administrative <see cref="Contract"/> fields not already

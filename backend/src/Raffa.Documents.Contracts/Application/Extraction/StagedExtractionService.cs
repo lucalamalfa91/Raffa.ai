@@ -19,12 +19,18 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 ///
 /// <b>AC-1</b> ("staged: metadata -&gt; commercial terms -&gt; dates -&gt; price/SKU -&gt; clauses
 /// -&gt; obligations -&gt; risk"): <see cref="RunAsync"/> runs exactly those seven
-/// <see cref="ExtractionStage"/> values, in that order, each as its own <see cref="IAiGateway.ExtractAsync"/>
+/// <see cref="ExtractionStage"/> values, each as its own <see cref="IAiGateway.ExtractAsync"/>
 /// call against its own schema (spec §7.2 "avoid one giant prompt; split extraction into
 /// bounded, schema-constrained tasks") and its own <see cref="ExtractionJob"/> row — one stage's
 /// failure is recorded on that stage's job and does not abort the remaining stages (mirrors
 /// ADR-017's "fail visibly, never silently truncate", generalized from OCR page-budget to any
-/// stage of this pipeline).
+/// stage of this pipeline). <b>NW-106:</b> "in that order" names the pipeline's conceptual/
+/// display order, not its execution order — the seven calls are independent reads over the same
+/// text (none depends on another's result), so <see cref="StartStagesAsync"/> fires all seven at
+/// once instead of one after another (the single largest, purely structural latency in this
+/// pipeline before this fix); <see cref="ApplyStageResultAsync"/> still awaits and persists them
+/// strictly one at a time, in pipeline order, because <see cref="DocumentsContractsDbContext"/>
+/// is not safe for concurrent use.
 ///
 /// <b>AC-2</b> ("every extracted fact carries source span + confidence"): every persisted fact
 /// carries <c>SourceSpan</c>/<c>SourcePage</c>/<c>Confidence</c> — directly on
@@ -50,7 +56,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// reports/open-questions.md (same reasoning <c>Raffa.Api/Program.cs</c>'s X-Tenant-Id comment
 /// already gives for a mid-wave append risking the phase-barrier merge).
 /// </summary>
-public sealed class StagedExtractionService(
+public sealed partial class StagedExtractionService(
     DocumentsContractsDbContext dbContext,
     IAiGateway aiGateway,
     ITenantContext tenantContext,
@@ -101,7 +107,7 @@ public sealed class StagedExtractionService(
         ["annualSpend", "totalContractValue", "paymentTerms"];
 
     private static readonly string[] DatesFields =
-        ["startDate", "endDate", "effectiveDate", "cancellationDeadline", "autoRenewal", "renewalTermMonths"];
+        ["startDate", "endDate", "effectiveDate", "cancellationDeadline", "autoRenewal", "renewalTermMonths", "noticePeriodDays"];
 
     private static readonly JsonSerializerOptions PayloadSerializerOptions = new()
     {
@@ -171,45 +177,71 @@ public sealed class StagedExtractionService(
 
         var now = clock.UtcNow;
         var contract = await EnsureContractAsync(tenantId, document, now, cancellationToken).ConfigureAwait(false);
-        var runEvidence = new List<(string FieldName, double? Confidence)>();
+
+        var documentText = BuildPageMarkedText(pages);
+
+        // F5-T01/F5-T02: decide whether this call starts a fresh run or continues an incomplete one
+        // over the same text, and what a human already owns on this contract. Both are read before
+        // anything is written.
+        var plan = await PlanRunAsync(tenantId, document.Id, ComputeInputHash(documentText), now, cancellationToken)
+            .ConfigureAwait(false);
+        var context = new RunContext(
+            tenantId,
+            document.Id,
+            contract,
+            plan,
+            pages.Count,
+            await LoadProtectionAsync(tenantId, contract, cancellationToken).ConfigureAwait(false),
+            ReplaceUnattributedRows: !await dbContext.Documents
+                .AnyAsync(d => d.TenantId == tenantId && d.ContractId == contract.Id && d.Id != document.Id, cancellationToken)
+                .ConfigureAwait(false));
 
         if (classificationConfidence is { } typeConfidence)
         {
-            await RecordClassificationEvidenceAsync(tenantId, document, contract, typeConfidence, now, runEvidence, cancellationToken)
+            await RecordClassificationEvidenceAsync(context, document, typeConfidence, now, cancellationToken)
                 .ConfigureAwait(false);
         }
-
-        var documentText = BuildPageMarkedText(pages);
-        var pageCount = pages.Count;
 
         document.ProcessingStatus = DocumentProcessingStatus.Processing;
 
+        // NW-106: the seven stages are independent reads over the same text, so their gateway calls are
+        // started together (StartStagesAsync) while every dbContext write below stays sequential.
+        // F5-T02: on a resume only the stages without a finished checkpoint get a job and a call.
+        var pending = await StartStagesAsync(context, documentText, cancellationToken).ConfigureAwait(false);
         var stageResults = new List<StagedExtractionStageResult>(PipelineStages.Length);
-        string? acceptedSupplierName = null;
 
-        foreach (var stage in PipelineStages)
+        using (progressHeartbeat?.BeginMemoryPulses())
         {
-            var (stageResult, stageSupplierName) = await RunStageAsync(
-                    tenantId, document.Id, contract, stage, documentText, pageCount, runEvidence, cancellationToken)
-                .ConfigureAwait(false);
-            stageResults.Add(stageResult);
-
-            // First accepted `supplier` fact wins — only the `metadata` stage can produce one
-            // (MetadataFields), so this never silently picks between competing stages.
-            acceptedSupplierName ??= stageSupplierName;
+            foreach (var stage in PipelineStages)
+            {
+                stageResults.Add(
+                    plan.Reused.TryGetValue(stage, out var checkpoint)
+                        ? await ReuseCheckpointAsync(context, checkpoint, cancellationToken).ConfigureAwait(false)
+                        : await ApplyStageResultAsync(context, pending[stage], cancellationToken).ConfigureAwait(false));
+            }
         }
 
-        OfficializeDerivedStatus(tenantId, document, contract, now, runEvidence);
+        // F5-D08: cancellationDeadline = endDate - noticePeriodDays, computed here and not left to
+        // the model's own arithmetic. It reads the evidence the Dates stage wrote, which the loop
+        // above has already saved.
+        await DeriveCancellationDeadlineAsync(context, cancellationToken).ConfigureAwait(false);
+
+        OfficializeDerivedStatus(context, now);
 
         document.ProcessingStatus = DetermineDocumentStatus(stageResults, classificationConfidence);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
+        // F5-T02: a stage that did not finish leaves the document partial, whatever the facts that
+        // did arrive look like. "Review 0 fields" below is only ever about weak facts; it must never
+        // turn a document that is missing a whole stage into Completed.
+        var failedStages = stageResults.Where(s => s.Status == ExtractionJobStatus.Failed).ToList();
+
         // "Review 0 fields" is never a state to park a document in: a weak line item, clause,
-        // obligation or risk, or a failed stage, can route the document to review without leaving
-        // a single field the review screen can show. Counted after the save, on the same latest-
-        // evidence-per-field rule the Documents row uses (NothingToReviewAutoValidator).
-        if (document.ProcessingStatus == DocumentProcessingStatus.NeedsReview)
+        // obligation or risk can route the document to review without leaving a single field the
+        // review screen can show. Counted after the save, on the same latest-evidence-per-field
+        // rule the Documents row uses (NothingToReviewAutoValidator).
+        if (document.ProcessingStatus == DocumentProcessingStatus.NeedsReview && failedStages.Count == 0)
         {
             var weakByContract = await NothingToReviewAutoValidator
                 .WeakFactCountsAsync(dbContext, tenantId, [contract.Id], cancellationToken)
@@ -230,12 +262,12 @@ public sealed class StagedExtractionService(
                     "document",
                     documentId.Value.ToString(),
                     now,
-                    BuildExtractionAuditDetail(contract.Id, runEvidence)),
+                    BuildExtractionAuditDetail(context, failedStages)),
                 cancellationToken)
             .ConfigureAwait(false);
 
         return Result<StagedExtractionSummary>.Success(
-            new StagedExtractionSummary(contract.Id, document.ProcessingStatus, stageResults, acceptedSupplierName));
+            new StagedExtractionSummary(contract.Id, document.ProcessingStatus, stageResults, context.AcceptedSupplierName));
     }
 
     /// <summary>
@@ -330,142 +362,97 @@ public sealed class StagedExtractionService(
         return builder.ToString();
     }
 
-    /// <summary>Runs one stage and reports both its <see cref="StagedExtractionStageResult"/> and
-    /// the `supplier` legal name that stage accepted, if any (see
-    /// <see cref="StagedExtractionSummary.AcceptedSupplierName"/>) — the two travel together
-    /// because whether the fact was accepted at all is decided here, against
-    /// <see cref="ExtractionConfidencePolicy"/>, not by the caller re-reading evidence rows.</summary>
-    private async Task<(StagedExtractionStageResult Result, string? AcceptedSupplierName)> RunStageAsync(
-        TenantId tenantId,
-        EntityId documentId,
-        Contract contract,
-        ExtractionStage stage,
-        string documentText,
-        int pageCount,
-        List<(string FieldName, double? Confidence)> runEvidence,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Awaits one stage's in-flight extraction call and applies it. F5-T01: the stage's facts, the
+    /// removal of the previous run's rows (list stages) and the job row go out in one
+    /// <c>SaveChangesAsync</c> -- one transaction -- and only after the payload has parsed, so a failed
+    /// stage leaves what an earlier run stored untouched. F5-T02: a failure is typed and recorded on the
+    /// job; the caller turns any failed stage into a partial document.
+    /// </summary>
+    private async Task<StagedExtractionStageResult> ApplyStageResultAsync(
+        RunContext context, PendingStage pending, CancellationToken cancellationToken)
     {
-        var startedAt = clock.UtcNow;
+        var job = pending.Job;
+        context.StageJobIds[job.Stage] = job.Id;
 
-        var job = new ExtractionJob
-        {
-            TenantId = tenantId,
-            DocumentId = documentId,
-            Stage = stage,
-            Status = ExtractionJobStatus.Running,
-            QueuedAt = startedAt,
-            StartedAt = startedAt,
-        };
-        dbContext.ExtractionJobs.Add(job);
-        // Persist the Running heartbeat before the gateway call so a hang is visible as this
-        // stage (not the previous one) and hang recovery has a fresh started_at to measure.
-        hangWatch?.Heartbeat();
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        var request = new AiExtractionRequest(
-            StageName: stage.ToString(),
-            DocumentText: documentText,
-            JsonSchema: BuildSchema(stage));
+        // Always set by StartStagesAsync for every job this method is ever called with.
+        var startedAt = job.StartedAt!.Value;
 
         Result<AiExtractionResult> extractResult;
-        if (progressHeartbeat is null)
+        try
         {
-            extractResult = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
+            extractResult = await pending.Call.ConfigureAwait(false);
         }
-        else
+        catch (Exception exception) when (IsTransientTransportFault(exception, cancellationToken))
         {
-            using (progressHeartbeat.Bind(job))
-            using (progressHeartbeat.BeginFoundryAttempts())
-            using (progressHeartbeat.BeginMemoryPulses())
-            {
-                extractResult = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
-            }
+            // A network-level fault that escaped the gateway's own retries: the same "could not be
+            // reached" a returned AiGatewayErrors.UnavailablePrefix failure means, so the stage is
+            // recorded as failed-transient instead of taking the whole run down.
+            extractResult = Result<AiExtractionResult>.Failure(
+                $"{AiGatewayErrors.UnavailablePrefix} {exception.GetType().Name}: {exception.Message}");
         }
 
         var completedAt = clock.UtcNow;
 
         if (extractResult.IsFailure)
         {
-            job.Status = ExtractionJobStatus.Failed;
-            job.ErrorDetail = Truncate(extractResult.Error);
-            job.CompletedAt = completedAt;
-
-            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-            return (new StagedExtractionStageResult(stage, job.Status, 0, 0, job.ErrorDetail), null);
+            return await FailStageAsync(
+                    job, extractResult.Error, ClassifyFailure(extractResult.Error), completedAt, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         job.ModelId = extractResult.Value.Metadata.ModelId;
+        var payloadJson = extractResult.Value.PayloadJson;
 
         StageApplyResult applied;
 
         try
         {
-            applied = stage switch
+            applied = job.Stage switch
             {
-                ExtractionStage.Metadata => ApplyFacts(
-                    tenantId, contract, documentId, job.Id, extractResult.Value.PayloadJson,
-                    MetadataFields, pageCount, startedAt, runEvidence, ApplyMetadataFact),
-                ExtractionStage.CommercialTerms => ApplyFacts(
-                    tenantId, contract, documentId, job.Id, extractResult.Value.PayloadJson,
-                    CommercialTermsFields, pageCount, startedAt, runEvidence, ApplyCommercialTermsFact),
-                ExtractionStage.DatesAndRenewalTerms => ApplyFacts(
-                    tenantId, contract, documentId, job.Id, extractResult.Value.PayloadJson,
-                    DatesFields, pageCount, startedAt, runEvidence, ApplyDatesFact),
-                ExtractionStage.LineItems => ApplyLineItems(
-                    tenantId, contract, extractResult.Value.PayloadJson, pageCount, startedAt),
-                ExtractionStage.LegalClauses => ApplyClauses(
-                    tenantId, contract, documentId, extractResult.Value.PayloadJson, pageCount, startedAt),
-                ExtractionStage.Obligations => ApplyObligations(
-                    tenantId, contract, documentId, extractResult.Value.PayloadJson, pageCount, startedAt),
-                ExtractionStage.Risk => ApplyRisks(
-                    tenantId, contract, extractResult.Value.PayloadJson, pageCount, startedAt),
-                _ => throw new InvalidOperationException($"Stage {stage} is not part of the staged extraction pipeline."),
+                ExtractionStage.Metadata => ApplyFacts(context, job.Id, payloadJson, MetadataFields, startedAt, ApplyMetadataFact),
+                ExtractionStage.CommercialTerms => ApplyFacts(context, job.Id, payloadJson, CommercialTermsFields, startedAt, ApplyCommercialTermsFact),
+                ExtractionStage.DatesAndRenewalTerms => ApplyFacts(context, job.Id, payloadJson, DatesFields, startedAt, ApplyDatesFact),
+                ExtractionStage.LineItems => await ApplyLineItemsAsync(context, payloadJson, startedAt, cancellationToken).ConfigureAwait(false),
+                ExtractionStage.LegalClauses => await ApplyClausesAsync(context, payloadJson, startedAt, cancellationToken).ConfigureAwait(false),
+                ExtractionStage.Obligations => await ApplyObligationsAsync(context, payloadJson, startedAt, cancellationToken).ConfigureAwait(false),
+                ExtractionStage.Risk => await ApplyRisksAsync(context, payloadJson, startedAt, cancellationToken).ConfigureAwait(false),
+                _ => throw new InvalidOperationException($"Stage {job.Stage} is not part of the staged extraction pipeline."),
             };
         }
         catch (JsonException ex)
         {
             // The gateway does not validate the model's output against the schema it was given
-            // (IAiGateway.ExtractAsync's own doc comment) — a real (non-fixture) model can still
-            // return syntactically invalid JSON. One malformed stage must not crash the other six.
-            job.Status = ExtractionJobStatus.Failed;
-            job.ErrorDetail = Truncate($"Malformed extraction payload: {ex.Message}");
-            job.CompletedAt = completedAt;
-
-            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-            return (new StagedExtractionStageResult(stage, job.Status, 0, 0, job.ErrorDetail), null);
+            // (IAiGateway.ExtractAsync's own doc comment): a real model can still return invalid JSON.
+            // One malformed stage must not crash the other six. Parsing is the first thing every Apply
+            // does, so nothing was staged for this stage yet.
+            return await FailStageAsync(
+                    job, $"Malformed extraction payload: {ex.Message}", ExtractionStageFailureKind.Permanent,
+                    completedAt, cancellationToken)
+                .ConfigureAwait(false);
         }
 
-        // Human-in-the-loop principle, as narrowed on 2026-09-21 (ADR-024 amendment of that
-        // date): a stage needs review exactly when it produced a fact below
-        // ExtractionConfidencePolicy — something a reviewer can actually decide on. A stage that
-        // found nothing (every fact absent, or an empty list) is a legitimate answer, not a review
-        // trigger: "nothing to review" is not a state the review screen can resolve, and parking
-        // the document there only asked the user to sign off on an empty list ("Review 0 fields").
-        // An absent scalar field still surfaces on the review screen as "Not found in the
-        // document", where the user may type it; it never blocks validation. A fact naming a
-        // field outside the stage's allow-list is counted in Skipped for the audit detail but is
-        // not a review trigger either — strict structured output makes it unreachable in practice.
+        // A stage needs review exactly when it produced a fact below ExtractionConfidencePolicy --
+        // something a reviewer can decide on (ADR-024 amendment 2026-09-21). A stage that found nothing
+        // is a legitimate answer, and so is a fact outside the stage's allow-list (counted in Skipped).
         job.Status = applied.AnyBelowThreshold
             ? ExtractionJobStatus.NeedsReview
             : ExtractionJobStatus.Completed;
         job.CompletedAt = completedAt;
+        job.ErrorDetail = null;
+        job.FailureKind = null;
+        job.ExtractedCount = applied.Extracted;
+        job.SkippedCount = applied.Skipped;
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        return (
-            new StagedExtractionStageResult(stage, job.Status, applied.Extracted, applied.Skipped, null),
-            applied.AcceptedSupplierName);
+        return new StagedExtractionStageResult(job.Stage, job.Status, applied.Extracted, applied.Skipped, null);
     }
 
     /// <summary>What one stage's `Apply...` call produced: the counts
-    /// <see cref="StagedExtractionStageResult"/> reports, whether any fact fell below its own
-    /// confidence bar, and the `supplier` legal name (if that stage accepted one). The last member
-    /// defaults to <see langword="null"/> so the four "one row = one fact" stages — which can never
-    /// produce a supplier fact — construct this with the same three values they always had.</summary>
-    private readonly record struct StageApplyResult(
-        int Extracted, int Skipped, bool AnyBelowThreshold, string? AcceptedSupplierName = null);
+    /// <see cref="StagedExtractionStageResult"/> reports, and whether any fact fell below its own
+    /// confidence bar.</summary>
+    private readonly record struct StageApplyResult(int Extracted, int Skipped, bool AnyBelowThreshold);
 
     private static string BuildSchema(ExtractionStage stage) => stage switch
     {
@@ -480,42 +467,30 @@ public sealed class StagedExtractionService(
     };
 
     /// <summary>Shared handling for the three scalar-field stages: parses the generic
-    /// <see cref="ExtractedFactsPayload"/> shape, applies each recognized field onto
-    /// <paramref name="contract"/> via <paramref name="applyToContract"/>, and records one
-    /// <see cref="ExtractionEvidence"/> row per fact (AC-2). A fact naming a field outside
-    /// <paramref name="allowedFields"/> is skipped, not applied — the JSON Schema's own
-    /// <c>enum</c> constrains a well-behaved model to never send one, but this method does not
-    /// trust that alone.
-    ///
-    /// <para>
-    /// Every field is judged against <see cref="ExtractionConfidencePolicy"/> — the five
-    /// critical ones included, no second bar. The <see cref="ExtractionEvidence"/> row is
-    /// written either way, so a rejected fact still reaches the review list <em>with</em> its page,
-    /// span, confidence and decision. Only <see cref="StageApplyResult.AcceptedSupplierName"/>
-    /// distinguishes a linked supplier from a proposed one.
-    /// </para>
+    /// <see cref="ExtractedFactsPayload"/>, applies each recognized field onto the contract via
+    /// <paramref name="applyToContract"/> and records one <see cref="ExtractionEvidence"/> row per fact
+    /// (AC-2), accepted or not, so a rejected fact still reaches the review list with its page, span,
+    /// confidence and decision. A fact naming a field outside <paramref name="allowedFields"/> is
+    /// skipped: the schema's <c>enum</c> constrains a well-behaved model, but this does not trust that.
+    /// Every field is judged against <see cref="ExtractionConfidencePolicy"/>, no second bar.
     /// </summary>
     private StageApplyResult ApplyFacts(
-        TenantId tenantId,
-        Contract contract,
-        EntityId sourceDocumentId,
+        RunContext context,
         EntityId extractionJobId,
         string payloadJson,
         IReadOnlyList<string> allowedFields,
-        int pageCount,
         DateTimeOffset now,
-        List<(string FieldName, double? Confidence)> runEvidence,
         Action<Contract, string, string?> applyToContract)
     {
+        var contract = context.Contract;
         var payload = JsonSerializer.Deserialize<ExtractedFactsPayload>(payloadJson, PayloadSerializerOptions);
-        var facts = payload?.Facts ?? [];
 
         var extracted = 0;
         var skipped = 0;
         var anyBelowThreshold = false;
         string? acceptedSupplierName = null;
 
-        foreach (var fact in facts)
+        foreach (var fact in payload?.Facts ?? [])
         {
             if (fact.Field is null || !allowedFields.Contains(fact.Field, StringComparer.Ordinal))
             {
@@ -525,21 +500,41 @@ public sealed class StagedExtractionService(
 
             if (string.IsNullOrWhiteSpace(fact.Value))
             {
-                // Strict structured outputs cannot omit a property, so a model reports "the
-                // document does not state this" as value: null (ExtractPromptTemplate rule 2). That
-                // is an absent fact — not extracted, not skipped, no evidence row, and never a null
-                // overwrite of a contract field a previous stage or a human already set.
+                // Strict structured outputs cannot omit a property, so "the document does not state
+                // this" arrives as value: null. That is an absent fact: not extracted, not skipped, no
+                // evidence row, and never a null overwrite of a field a previous stage or a human set.
+                continue;
+            }
+
+            var page = ClampPage(fact.SourcePage, context.PageCount);
+
+            // F5-T01: a field a human corrected or confirmed is theirs. Extraction does not write it;
+            // a different reading is offered on the evidence list as a proposal to review, a reading
+            // that adds nothing (same as the contract, or as the last proposal) is dropped.
+            if (context.Protection.IsProtected(fact.Field))
+            {
+                extracted++;
+
+                if (!ExtractionConfidencePolicy.IsStatusField(fact.Field)
+                    && !ProposalAddsNothing(contract, context.Protection, fact.Field, fact.Value))
+                {
+                    anyBelowThreshold = true;
+                    context.Protection.NoteLatestEvidence(fact.Field, fact.Value);
+                    AddEvidence(
+                        context, fact.Field, fact.Value, fact.Confidence, ExtractionConfidencePolicy.ReviewRequired,
+                        now, extractionJobId, page, fact.SourceSpan);
+                }
+
                 continue;
             }
 
             applyToContract(contract, fact.Field, fact.Value);
+            extracted++;
 
-            // Status is derived from start/end after every stage has run — a fuzzy LLM "active"
-            // must not park the document in review. The model's proposal is applied onto the
-            // contract as an interim value; evidence is written by OfficializeDerivedStatus.
+            // Status is derived from start/end after every stage has run (OfficializeDerivedStatus): a
+            // fuzzy LLM "active" must not park the document in review, so it gets no evidence here.
             if (ExtractionConfidencePolicy.IsStatusField(fact.Field))
             {
-                extracted++;
                 continue;
             }
 
@@ -555,38 +550,22 @@ public sealed class StagedExtractionService(
                 decision = ExtractionConfidencePolicy.Decide(fact.Confidence);
             }
 
-            var accepted = decision == ExtractionConfidencePolicy.AutoAccepted;
-
-            if (!accepted)
+            if (decision != ExtractionConfidencePolicy.AutoAccepted)
             {
                 anyBelowThreshold = true;
             }
-            else if (fact.Field == SupplierFieldName && !string.IsNullOrWhiteSpace(fact.Value))
+            else if (fact.Field == SupplierFieldName)
             {
                 acceptedSupplierName = fact.Value.Trim();
             }
 
-            dbContext.ExtractionEvidences.Add(new ExtractionEvidence
-            {
-                TenantId = tenantId,
-                ContractId = contract.Id,
-                SourceDocumentId = sourceDocumentId,
-                ExtractionJobId = extractionJobId,
-                FieldName = fact.Field,
-                Value = fact.Value,
-                SourceSpan = fact.SourceSpan,
-                SourcePage = ClampPage(fact.SourcePage, pageCount),
-                Confidence = confidence,
-                Decision = decision,
-                DecidedAt = now,
-                CreatedAt = now,
-            });
-            runEvidence.Add((fact.Field, confidence));
-
-            extracted++;
+            AddEvidence(context, fact.Field, fact.Value, confidence, decision, now, extractionJobId, page, fact.SourceSpan);
         }
 
-        return new StageApplyResult(extracted, skipped, anyBelowThreshold, acceptedSupplierName);
+        // Only `metadata` produces a supplier, so this never silently picks between competing stages.
+        context.AcceptedSupplierName ??= acceptedSupplierName;
+
+        return new StageApplyResult(extracted, skipped, anyBelowThreshold);
     }
 
     private static void ApplyMetadataFact(Contract contract, string field, string? value)
@@ -685,218 +664,236 @@ public sealed class StagedExtractionService(
 
                 break;
             case "renewalTermMonths":
-                if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var months))
+                if (TryParseInt(value, out var months))
                 {
                     contract.RenewalTermMonths = months;
+                }
+
+                break;
+            case NoticePeriodDaysFieldName:
+                if (TryParseInt(value, out var noticeDays) && noticeDays >= 0)
+                {
+                    contract.NoticePeriodDays = noticeDays;
                 }
 
                 break;
         }
     }
 
-    private StageApplyResult ApplyLineItems(
-        TenantId tenantId, Contract contract, string payloadJson, int pageCount, DateTimeOffset now)
+    /// <summary>
+    /// Builds the rows of a list stage ("one row = one fact"): an item that <paramref name="toRow"/>
+    /// maps to <see langword="null"/> is skipped, and one row below the confidence bar flags the stage
+    /// for review.
+    /// </summary>
+    private static StageApplyResult CollectRows<TItem, TRow>(
+        IEnumerable<TItem>? items, List<TRow> rows, Func<TItem, TRow?> toRow, Func<TRow, double?> confidenceOf)
+        where TRow : class
     {
-        var payload = JsonSerializer.Deserialize<ExtractedLineItemsPayload>(payloadJson, PayloadSerializerOptions);
-        var items = payload?.Items ?? [];
-
-        var extracted = 0;
         var skipped = 0;
         var anyLowConfidence = false;
 
-        foreach (var item in items)
+        foreach (var item in items ?? [])
         {
-            if (string.IsNullOrWhiteSpace(item.Description))
+            if (toRow(item) is not { } row)
             {
                 skipped++;
                 continue;
             }
 
-            if (ExtractionConfidencePolicy.RequiresReview(item.Confidence))
-            {
-                anyLowConfidence = true;
-            }
-
-            dbContext.ContractLineItems.Add(new ContractLineItem
-            {
-                TenantId = tenantId,
-                ContractId = contract.Id,
-                Sku = item.Sku,
-                Description = item.Description,
-                Quantity = item.Quantity,
-                Unit = item.Unit,
-                UnitPrice = item.UnitPrice,
-                ListPrice = item.ListPrice,
-                Discount = item.Discount,
-                BillingPeriod = item.BillingPeriod,
-                AnnualCost = item.AnnualCost,
-                TotalCost = item.TotalCost,
-                SourceSpan = item.SourceSpan,
-                SourcePage = ClampPage(item.SourcePage, pageCount),
-                Confidence = item.Confidence,
-                CreatedAt = now,
-            });
-
-            extracted++;
+            anyLowConfidence |= ExtractionConfidencePolicy.RequiresReview(confidenceOf(row));
+            rows.Add(row);
         }
 
-        return new StageApplyResult(extracted, skipped, anyLowConfidence);
+        return new StageApplyResult(rows.Count, skipped, anyLowConfidence);
     }
 
-    private StageApplyResult ApplyClauses(
-        TenantId tenantId, Contract contract, EntityId sourceDocumentId, string payloadJson, int pageCount, DateTimeOffset now)
+    private async Task<StageApplyResult> ApplyLineItemsAsync(
+        RunContext context, string payloadJson, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var payload = JsonSerializer.Deserialize<ExtractedClausesPayload>(payloadJson, PayloadSerializerOptions);
-        var items = payload?.Items ?? [];
+        var rows = new List<ContractLineItem>();
+        var applied = CollectRows(
+            JsonSerializer.Deserialize<ExtractedLineItemsPayload>(payloadJson, PayloadSerializerOptions)?.Items,
+            rows,
+            item => string.IsNullOrWhiteSpace(item.Description)
+                ? null
+                : new ContractLineItem
+                {
+                    TenantId = context.TenantId,
+                    ContractId = context.Contract.Id,
+                    SourceDocumentId = context.DocumentId,
+                    ExtractionRunId = context.RunId,
+                    Sku = item.Sku,
+                    Description = item.Description,
+                    Quantity = item.Quantity,
+                    Unit = item.Unit,
+                    UnitPrice = item.UnitPrice,
+                    ListPrice = item.ListPrice,
+                    Discount = item.Discount,
+                    BillingPeriod = item.BillingPeriod,
+                    AnnualCost = item.AnnualCost,
+                    TotalCost = item.TotalCost,
+                    SourceSpan = item.SourceSpan,
+                    SourcePage = ClampPage(item.SourcePage, context.PageCount),
+                    Confidence = item.Confidence,
+                    CreatedAt = now,
+                },
+            row => row.Confidence);
 
-        var extracted = 0;
-        var skipped = 0;
-        var anyLowConfidence = false;
+        await ReplaceRowsAsync(
+                context,
+                dbContext.ContractLineItems.Where(x => x.TenantId == context.TenantId
+                    && x.ContractId == context.Contract.Id
+                    && (x.SourceDocumentId == context.DocumentId
+                        || (context.ReplaceUnattributedRows && x.SourceDocumentId == null))),
+                dbContext.ContractLineItems,
+                rows,
+                x => NormalizeKeyPart(x.Sku) + "|" + NormalizeKeyPart(x.Description),
+                cancellationToken,
+                isLinkedElsewhere: x => x.ProductId is not null)
+            .ConfigureAwait(false);
 
-        foreach (var item in items)
-        {
-            if (string.IsNullOrWhiteSpace(item.ClauseType) || string.IsNullOrWhiteSpace(item.RawText))
-            {
-                skipped++;
-                continue;
-            }
-
-            RiskSeverity? riskLevel = null;
-            if (!string.IsNullOrWhiteSpace(item.RiskLevel)
-                && Enum.TryParse<RiskSeverity>(item.RiskLevel, ignoreCase: true, out var parsedRiskLevel))
-            {
-                riskLevel = parsedRiskLevel;
-            }
-
-            if (ExtractionConfidencePolicy.RequiresReview(item.Confidence))
-            {
-                anyLowConfidence = true;
-            }
-
-            dbContext.Clauses.Add(new Clause
-            {
-                TenantId = tenantId,
-                ContractId = contract.Id,
-                SourceDocumentId = sourceDocumentId,
-                ClauseType = item.ClauseType,
-                RawText = item.RawText,
-                NormalizedValue = item.NormalizedValue,
-                RiskLevel = riskLevel,
-                SourceSpan = item.SourceSpan,
-                SourcePage = ClampPage(item.SourcePage, pageCount),
-                Confidence = item.Confidence,
-                CreatedAt = now,
-            });
-
-            extracted++;
-        }
-
-        return new StageApplyResult(extracted, skipped, anyLowConfidence);
+        return applied;
     }
 
-    private StageApplyResult ApplyObligations(
-        TenantId tenantId, Contract contract, EntityId sourceDocumentId, string payloadJson, int pageCount, DateTimeOffset now)
+    private async Task<StageApplyResult> ApplyClausesAsync(
+        RunContext context, string payloadJson, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var payload = JsonSerializer.Deserialize<ExtractedObligationsPayload>(payloadJson, PayloadSerializerOptions);
-        var items = payload?.Items ?? [];
+        var rows = new List<Clause>();
+        var applied = CollectRows(
+            JsonSerializer.Deserialize<ExtractedClausesPayload>(payloadJson, PayloadSerializerOptions)?.Items,
+            rows,
+            item => string.IsNullOrWhiteSpace(item.ClauseType) || string.IsNullOrWhiteSpace(item.RawText)
+                ? null
+                : new Clause
+                {
+                    TenantId = context.TenantId,
+                    ContractId = context.Contract.Id,
+                    SourceDocumentId = context.DocumentId,
+                    ExtractionRunId = context.RunId,
+                    ClauseType = item.ClauseType,
+                    RawText = item.RawText,
+                    NormalizedValue = item.NormalizedValue,
+                    RiskLevel = Enum.TryParse<RiskSeverity>(item.RiskLevel, ignoreCase: true, out var riskLevel) ? riskLevel : null,
+                    SourceSpan = item.SourceSpan,
+                    SourcePage = ClampPage(item.SourcePage, context.PageCount),
+                    Confidence = item.Confidence,
+                    CreatedAt = now,
+                },
+            row => row.Confidence);
 
-        var extracted = 0;
-        var skipped = 0;
-        var anyLowConfidence = false;
+        // A risk may point at a clause (Risk.ClauseId, restrict): such a clause is not ours to delete.
+        var referenced = (await dbContext.Risks
+                .AsNoTracking()
+                .Where(r => r.TenantId == context.TenantId && r.ContractId == context.Contract.Id && r.ClauseId != null)
+                .Select(r => r.ClauseId!.Value)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false))
+            .ToHashSet();
 
-        foreach (var item in items)
-        {
-            if (string.IsNullOrWhiteSpace(item.Party)
+        await ReplaceRowsAsync(
+                context,
+                dbContext.Clauses.Where(x => x.TenantId == context.TenantId
+                    && x.ContractId == context.Contract.Id
+                    && x.SourceDocumentId == context.DocumentId),
+                dbContext.Clauses,
+                rows,
+                x => NormalizeKeyPart(x.ClauseType) + "|" + NormalizeKeyPart(x.RawText),
+                cancellationToken,
+                isLinkedElsewhere: x => referenced.Contains(x.Id))
+            .ConfigureAwait(false);
+
+        return applied;
+    }
+
+    private async Task<StageApplyResult> ApplyObligationsAsync(
+        RunContext context, string payloadJson, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var rows = new List<Obligation>();
+        var applied = CollectRows(
+            JsonSerializer.Deserialize<ExtractedObligationsPayload>(payloadJson, PayloadSerializerOptions)?.Items,
+            rows,
+            item => string.IsNullOrWhiteSpace(item.Party)
                 || string.IsNullOrWhiteSpace(item.ObligationType)
-                || string.IsNullOrWhiteSpace(item.Description))
-            {
-                skipped++;
-                continue;
-            }
+                || string.IsNullOrWhiteSpace(item.Description)
+                ? null
+                : new Obligation
+                {
+                    TenantId = context.TenantId,
+                    ContractId = context.Contract.Id,
+                    SourceDocumentId = context.DocumentId,
+                    ExtractionRunId = context.RunId,
+                    Party = item.Party,
+                    ObligationType = item.ObligationType,
+                    Description = item.Description,
+                    DueDate = TryParseDate(item.DueDate, out var dueDate) ? dueDate : null,
+                    RecurrenceRule = item.RecurrenceRule,
+                    Criticality = item.Criticality,
+                    Status = item.Status,
+                    Confidence = item.Confidence,
+                    SourceSpan = item.SourceSpan,
+                    SourcePage = ClampPage(item.SourcePage, context.PageCount),
+                    CreatedAt = now,
+                },
+            row => row.Confidence);
 
-            DateOnly? dueDate = null;
-            if (TryParseDate(item.DueDate, out var parsedDueDate))
-            {
-                dueDate = parsedDueDate;
-            }
+        await ReplaceRowsAsync(
+                context,
+                dbContext.Obligations.Where(x => x.TenantId == context.TenantId
+                    && x.ContractId == context.Contract.Id
+                    && x.SourceDocumentId == context.DocumentId),
+                dbContext.Obligations,
+                rows,
+                x => NormalizeKeyPart(x.ObligationType) + "|" + NormalizeKeyPart(x.Party) + "|" + NormalizeKeyPart(x.Description),
+                cancellationToken)
+            .ConfigureAwait(false);
 
-            if (ExtractionConfidencePolicy.RequiresReview(item.Confidence))
-            {
-                anyLowConfidence = true;
-            }
-
-            dbContext.Obligations.Add(new Obligation
-            {
-                TenantId = tenantId,
-                ContractId = contract.Id,
-                SourceDocumentId = sourceDocumentId,
-                Party = item.Party,
-                ObligationType = item.ObligationType,
-                Description = item.Description,
-                DueDate = dueDate,
-                RecurrenceRule = item.RecurrenceRule,
-                Criticality = item.Criticality,
-                Status = item.Status,
-                Confidence = item.Confidence,
-                SourceSpan = item.SourceSpan,
-                SourcePage = ClampPage(item.SourcePage, pageCount),
-                CreatedAt = now,
-            });
-
-            extracted++;
-        }
-
-        return new StageApplyResult(extracted, skipped, anyLowConfidence);
+        return applied;
     }
 
-    private StageApplyResult ApplyRisks(
-        TenantId tenantId, Contract contract, string payloadJson, int pageCount, DateTimeOffset now)
+    private async Task<StageApplyResult> ApplyRisksAsync(
+        RunContext context, string payloadJson, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var payload = JsonSerializer.Deserialize<ExtractedRisksPayload>(payloadJson, PayloadSerializerOptions);
-        var items = payload?.Items ?? [];
-
-        var extracted = 0;
-        var skipped = 0;
-        var anyLowConfidence = false;
-
-        foreach (var item in items)
-        {
-            // Risk.Severity is a required (non-nullable) column — an item whose severity does
-            // not parse cannot be persisted at all (Appendix C rule 10: return uncertainty
-            // instead of fabricated precision; fabricating a default severity would be exactly
-            // that).
-            if (string.IsNullOrWhiteSpace(item.RiskType)
+        var rows = new List<Risk>();
+        var applied = CollectRows(
+            JsonSerializer.Deserialize<ExtractedRisksPayload>(payloadJson, PayloadSerializerOptions)?.Items,
+            rows,
+            // Risk.Severity is a required column: an item whose severity does not parse cannot be
+            // persisted, and a fabricated default would be exactly the fake precision Appendix C rule 10
+            // forbids.
+            item => string.IsNullOrWhiteSpace(item.RiskType)
                 || string.IsNullOrWhiteSpace(item.Description)
-                || string.IsNullOrWhiteSpace(item.Severity)
-                || !Enum.TryParse<RiskSeverity>(item.Severity, ignoreCase: true, out var severity))
-            {
-                skipped++;
-                continue;
-            }
+                || !Enum.TryParse<RiskSeverity>(item.Severity, ignoreCase: true, out var severity)
+                ? null
+                : new Risk
+                {
+                    TenantId = context.TenantId,
+                    ContractId = context.Contract.Id,
+                    SourceDocumentId = context.DocumentId,
+                    ExtractionRunId = context.RunId,
+                    RiskType = item.RiskType,
+                    Severity = severity,
+                    Description = item.Description,
+                    Status = item.Status,
+                    Confidence = item.Confidence,
+                    SourceSpan = item.SourceSpan,
+                    SourcePage = ClampPage(item.SourcePage, context.PageCount),
+                    IdentifiedAt = now,
+                },
+            row => row.Confidence);
 
-            if (ExtractionConfidencePolicy.RequiresReview(item.Confidence))
-            {
-                anyLowConfidence = true;
-            }
+        await ReplaceRowsAsync(
+                context,
+                dbContext.Risks.Where(x => x.TenantId == context.TenantId
+                    && x.ContractId == context.Contract.Id
+                    && (x.SourceDocumentId == context.DocumentId
+                        || (context.ReplaceUnattributedRows && x.SourceDocumentId == null))),
+                dbContext.Risks,
+                rows,
+                x => NormalizeKeyPart(x.RiskType) + "|" + NormalizeKeyPart(x.Description),
+                cancellationToken)
+            .ConfigureAwait(false);
 
-            dbContext.Risks.Add(new Risk
-            {
-                TenantId = tenantId,
-                ContractId = contract.Id,
-                RiskType = item.RiskType,
-                Severity = severity,
-                Description = item.Description,
-                Status = item.Status,
-                Confidence = item.Confidence,
-                SourceSpan = item.SourceSpan,
-                SourcePage = ClampPage(item.SourcePage, pageCount),
-                IdentifiedAt = now,
-            });
-
-            extracted++;
-        }
-
-        return new StageApplyResult(extracted, skipped, anyLowConfidence);
+        return applied;
     }
 
     /// <summary>A page number the model reports outside the document's actual page range is
@@ -910,6 +907,9 @@ public sealed class StagedExtractionService(
 
     private static bool TryParseDate(string? value, out DateOnly result) =>
         DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out result);
+
+    private static bool TryParseInt(string? value, out int result) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out result);
 
     /// <summary>
     /// Decides the final <see cref="DocumentProcessingStatus"/> for the document once all seven
@@ -964,13 +964,16 @@ public sealed class StagedExtractionService(
     /// known, the interim extracted status (if any, and not the bootstrap placeholder) is
     /// officialized so the field still cannot block validation.
     /// </summary>
-    private void OfficializeDerivedStatus(
-        TenantId tenantId,
-        Document document,
-        Contract contract,
-        DateTimeOffset now,
-        List<(string FieldName, double? Confidence)> runEvidence)
+    private void OfficializeDerivedStatus(RunContext context, DateTimeOffset now)
     {
+        var contract = context.Contract;
+
+        // F5-T01: a status a human set or confirmed is not re-derived over their head.
+        if (context.Protection.IsProtected(ExtractionConfidencePolicy.StatusFieldName))
+        {
+            return;
+        }
+
         var today = DateOnly.FromDateTime(now.UtcDateTime);
         var derived = ExtractionConfidencePolicy.DeriveStatus(contract.StartDate, contract.EndDate, today);
         var status = derived
@@ -985,19 +988,13 @@ public sealed class StagedExtractionService(
         }
 
         contract.Status = status;
-        dbContext.ExtractionEvidences.Add(new ExtractionEvidence
-        {
-            TenantId = tenantId,
-            ContractId = contract.Id,
-            SourceDocumentId = document.Id,
-            FieldName = ExtractionConfidencePolicy.StatusFieldName,
-            Value = status,
-            Confidence = ExtractionConfidencePolicy.OfficialConfidence,
-            Decision = ExtractionConfidencePolicy.AutoAccepted,
-            DecidedAt = now,
-            CreatedAt = now,
-        });
-        runEvidence.Add((ExtractionConfidencePolicy.StatusFieldName, ExtractionConfidencePolicy.OfficialConfidence));
+        AddEvidence(
+            context,
+            ExtractionConfidencePolicy.StatusFieldName,
+            status,
+            ExtractionConfidencePolicy.OfficialConfidence,
+            ExtractionConfidencePolicy.AutoAccepted,
+            now);
     }
 
     /// <summary>
@@ -1010,14 +1007,14 @@ public sealed class StagedExtractionService(
     /// precision Appendix C rule 10 forbids.
     /// </summary>
     private async Task RecordClassificationEvidenceAsync(
-        TenantId tenantId,
+        RunContext context,
         Document document,
-        Contract contract,
         double confidence,
         DateTimeOffset now,
-        List<(string FieldName, double? Confidence)> runEvidence,
         CancellationToken cancellationToken)
     {
+        var tenantId = context.TenantId;
+        var contract = context.Contract;
         var classificationJobId = await dbContext.ExtractionJobs
             .Where(j => j.TenantId == tenantId && j.DocumentId == document.Id && j.Stage == ExtractionStage.Classification)
             .OrderByDescending(j => j.QueuedAt)
@@ -1026,37 +1023,21 @@ public sealed class StagedExtractionService(
             .ConfigureAwait(false);
 
         var decision = ExtractionConfidencePolicy.Decide(confidence);
-        dbContext.ExtractionEvidences.Add(new ExtractionEvidence
-        {
-            TenantId = tenantId,
-            ContractId = contract.Id,
-            SourceDocumentId = document.Id,
-            ExtractionJobId = classificationJobId,
-            FieldName = TypeFieldName,
-            Value = document.DocumentType.ToString(),
-            SourceSpan = null,
-            SourcePage = null,
-            Confidence = confidence,
-            Decision = decision,
-            DecidedAt = now,
-            CreatedAt = now,
-        });
-        runEvidence.Add((TypeFieldName, confidence));
-    }
 
-    /// <summary>
-    /// One audit row's detail: field names and confidence numbers, never a field value
-    /// (ADR-011 w17 clause 21). The audit table is append-only, so a value written once cannot
-    /// be removed.
-    /// </summary>
-    private static string BuildExtractionAuditDetail(
-        EntityId contractId, IReadOnlyList<(string FieldName, double? Confidence)> runEvidence)
-    {
-        var fields = string.Join(",",
-            runEvidence
-                .OrderBy(f => f.FieldName, StringComparer.OrdinalIgnoreCase)
-                .Select(f => f.FieldName + ":" + FormatConfidence(f.Confidence)));
-        return $"contractId={contractId.Value}; fields={fields}";
+        // F5-T01: a contract type a human set or confirmed is theirs. A verdict that agrees with it (or
+        // repeats what was proposed last time) adds nothing; one that disagrees is a proposal to review.
+        if (context.Protection.IsProtected(TypeFieldName))
+        {
+            if (ProposalAddsNothing(contract, context.Protection, TypeFieldName, document.DocumentType.ToString()))
+            {
+                return;
+            }
+
+            decision = ExtractionConfidencePolicy.ReviewRequired;
+        }
+
+        AddEvidence(
+            context, TypeFieldName, document.DocumentType.ToString(), confidence, decision, now, classificationJobId);
     }
 
     /// <summary>

@@ -59,4 +59,5 @@ public sealed record PortfolioListItem(
     string Status,
     RiskSeverity? Risk,
     string? FileName,
-    DocumentProcessingStatus? DocumentProcessingStatus);
+    DocumentProcessingStatus? DocumentProcessingStatus,
+    int? NoticePeriodDays = null);

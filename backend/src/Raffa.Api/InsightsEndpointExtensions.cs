@@ -523,7 +523,7 @@ public static class InsightsEndpointExtensions
         ArgumentNullException.ThrowIfNull(renewalEngine);
 
         var terms = new ContractRenewalTerms(
-            header.ContractId, header.EndDate, header.AutoRenewal, CancellationNoticeDays: null);
+            header.ContractId, header.EndDate, header.AutoRenewal, header.NoticePeriodDays);
         return renewalEngine.Calculate(terms);
     }
 
