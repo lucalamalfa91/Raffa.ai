@@ -84,13 +84,11 @@ public static class ServiceCollectionExtensions
         // answer is scrubbed of them before it is published; without a host source none are known.
         services.TryAddScoped<IFeedbackNameSource, NullFeedbackNameSource>();
 
-        // ADR-030: web research. The options default to Enabled=false (the kill switch), so a host
-        // that never binds Chat:WebResearch has no web path at all.
-        services.TryAddSingleton(new WebResearchOptions());
-        // The budget (persistence, this module) reads its daily limit through this port; it resolves
-        // the options lazily, so a host that swaps WebResearchOptions after this call is honoured.
-        services.TryAddSingleton<IWebResearchBudgetLimit>(sp => sp.GetRequiredService<WebResearchOptions>());
-        services.AddScoped<WebResearchComposer>();
+        // ADR-030 gate 3: the budget (persistence, this module) reads its daily limit through the
+        // IWebResearchBudgetLimit port. The web-research flow (AddAiFlows) replaces this closed
+        // default with its configured WebResearchOptions; a host without that flow has no web path,
+        // so the gate stays closed, consistent with the kill switch being off by default.
+        services.TryAddSingleton<IWebResearchBudgetLimit>(new ClosedWebResearchBudgetLimit());
 
         // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
         // dependency at all — this project has no PackageReference for

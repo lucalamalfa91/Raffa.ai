@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Lexicons;
 
 /// <summary>
 /// The two deterministic lexicons of ADR-030's web research: the explicit request ("cerca sul

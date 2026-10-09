@@ -1,7 +1,8 @@
+using Raffa.AiFlows.WebResearch.Guards;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Guards;
 
-namespace Raffa.Chat.Tests.Guards;
+namespace Raffa.AiFlows.Tests.WebResearch.Guards;
 
 /// <summary>ADR-030: a web summary is shown only when every marker and every URL point at a source
 /// the search tool itself returned, and every source is a public https host.</summary>

@@ -1,9 +1,12 @@
 using System.Text.RegularExpressions;
+using Raffa.AiFlows.WebResearch.Lexicons;
+using Raffa.AiFlows.WebResearch.Orchestration;
+using Raffa.AiFlows.WebResearch.Query;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Language;
 using Raffa.Chat.Application.Reply;
 
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Replies;
 
 /// <summary>
 /// The two replies only a web-mode turn produces (ADR-032). <see cref="OffContext"/> points a

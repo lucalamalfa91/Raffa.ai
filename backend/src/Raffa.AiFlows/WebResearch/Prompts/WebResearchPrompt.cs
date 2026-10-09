@@ -1,4 +1,4 @@
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Prompts;
 
 /// <summary>
 /// The versioned persona of the <c>research</c> role (ADR-030) — the same "constant plus a

@@ -686,7 +686,7 @@ public sealed class FixtureAiGateway(
         @"benchmark\w*|market|mercato|tender|gara|sla|subscription|insurance|assicura\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>The web-mode purpose (ADR-032, <c>Raffa.Chat.Application.WebResearch.WebModeLexicon
+    /// <summary>The web-mode purpose (ADR-032, <c>Raffa.AiFlows.WebResearch.Lexicons.WebModeLexicon
     /// .Purpose</c> — this project cannot reference it, ADR-002).</summary>
     private const string OpenResearchPurpose = "Open";
 

@@ -101,7 +101,7 @@ builder.Services.AddScoped<WorkspaceRoleResolver>();
 
 // ADR-030 gate 2: Chat asks "did this workspace opt into web research?" through a port it owns;
 // the host answers from the Identity/Workspace row (the two modules never reference each other).
-builder.Services.AddScoped<Raffa.Chat.Application.WebResearch.IWorkspaceWebResearchPolicy, WorkspaceWebResearchPolicy>();
+builder.Services.AddScoped<Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearchPolicy, WorkspaceWebResearchPolicy>();
 
 // Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1), retired to the validated token
 // by task E18/F01/US01/T01 (wave w15, NW-05; ADR-022 w15 footer clause 1): the one identity seam
@@ -253,8 +253,8 @@ builder.Services.AddSingleton(interviewOptions);
 
 // ADR-030: Chat:WebResearch — the kill switch (default OFF), the workspace opt-in requirement,
 // the daily budget and the query bounds of the one path that may reach the public web.
-var webResearchOptions = new Raffa.Chat.Application.WebResearch.WebResearchOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.WebResearch.WebResearchOptions.SectionName).Bind(webResearchOptions);
+var webResearchOptions = new Raffa.AiFlows.WebResearch.Configuration.WebResearchOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.WebResearch.Configuration.WebResearchOptions.SectionName).Bind(webResearchOptions);
 builder.Services.AddSingleton(webResearchOptions);
 
 // Feedback:* (ADR-030 D5): the environment name every published issue carries, and the GitHub

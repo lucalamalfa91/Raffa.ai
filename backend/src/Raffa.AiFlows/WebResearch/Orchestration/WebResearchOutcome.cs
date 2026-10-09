@@ -1,6 +1,6 @@
 using Raffa.Chat.Application.Reply;
 
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Orchestration;
 
 /// <summary>What one authorised web research produced (ADR-030).</summary>
 public enum WebResearchOutcomeKind
@@ -62,8 +62,8 @@ public sealed record WebResearchOutcome(
 {
     public ReplyKind AsReplyKind => Kind switch
     {
-        WebResearchOutcomeKind.Answered => Reply.ReplyKind.Answer,
-        WebResearchOutcomeKind.Refused => Reply.ReplyKind.Refusal,
-        _ => Reply.ReplyKind.Abstain,
+        WebResearchOutcomeKind.Answered => ReplyKind.Answer,
+        WebResearchOutcomeKind.Refused => ReplyKind.Refusal,
+        _ => ReplyKind.Abstain,
     };
 }

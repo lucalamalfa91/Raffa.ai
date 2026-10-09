@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
+using Raffa.Chat.Application.Guards;
 
-namespace Raffa.Chat.Application.Guards;
+namespace Raffa.AiFlows.WebResearch.Guards;
 
 /// <summary>One sentence of a web summary: <see cref="Text"/> spans <c>[Start, End)</c> of the markdown and
 /// carries the <c>[n]</c> markers that close it (even when they follow the full stop).</summary>

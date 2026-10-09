@@ -1,6 +1,7 @@
+using Raffa.AiFlows.WebResearch.Query;
 using Raffa.Chat.Application.WebResearch;
 
-namespace Raffa.Chat.Tests.WebResearch;
+namespace Raffa.AiFlows.Tests.WebResearch.Query;
 
 /// <summary>ADR-030: the query that leaves Raffa carries the user's words and nothing that looks
 /// like a tenant figure.</summary>

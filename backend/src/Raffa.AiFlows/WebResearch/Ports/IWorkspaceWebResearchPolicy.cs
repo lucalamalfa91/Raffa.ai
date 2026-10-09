@@ -1,6 +1,6 @@
 using Raffa.SharedKernel;
 
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Ports;
 
 /// <summary>
 /// Gate 2 of ADR-030 — whether this workspace's Admin opted into web research. The workspace row

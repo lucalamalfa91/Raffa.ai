@@ -1,4 +1,6 @@
-namespace Raffa.Chat.Application.WebResearch;
+using Raffa.Chat.Application.WebResearch;
+
+namespace Raffa.AiFlows.WebResearch.Configuration;
 
 /// <summary>
 /// <c>Chat:WebResearch</c> — the three gates and the bounds of the one path that may leave the

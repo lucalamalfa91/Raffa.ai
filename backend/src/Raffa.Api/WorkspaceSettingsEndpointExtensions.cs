@@ -1,3 +1,4 @@
+using Raffa.AiFlows.WebResearch.Configuration;
 using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.Identity.Workspace.Domain;

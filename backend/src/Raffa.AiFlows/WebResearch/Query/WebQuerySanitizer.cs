@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
+using Raffa.AiFlows.WebResearch.Lexicons;
 
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Query;
 
 /// <summary>
 /// Builds the one string that leaves Raffa (ADR-030). The query is made only of the user's own

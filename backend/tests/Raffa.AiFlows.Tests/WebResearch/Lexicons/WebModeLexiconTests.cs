@@ -1,6 +1,7 @@
+using Raffa.AiFlows.WebResearch.Lexicons;
 using Raffa.Chat.Application.WebResearch;
 
-namespace Raffa.Chat.Tests.WebResearch;
+namespace Raffa.AiFlows.Tests.WebResearch.Lexicons;
 
 /// <summary>
 /// ADR-032: with the web-search toggle on, the only question Raffa does not research is the plainly

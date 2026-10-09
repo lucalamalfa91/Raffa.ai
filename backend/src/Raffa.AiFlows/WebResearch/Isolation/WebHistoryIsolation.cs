@@ -1,8 +1,9 @@
 using System.Text.Json;
+using Raffa.AiFlows.WebResearch.Replies;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Domain.Conversations;
 
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Isolation;
 
 /// <summary>
 /// F3-D03 — the history a later turn's prompts see never carries web text. A web-research reply is

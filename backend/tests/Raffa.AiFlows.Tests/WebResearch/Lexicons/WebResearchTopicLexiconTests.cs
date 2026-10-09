@@ -1,6 +1,7 @@
+using Raffa.AiFlows.WebResearch.Lexicons;
 using Raffa.Chat.Application.WebResearch;
 
-namespace Raffa.Chat.Tests.WebResearch;
+namespace Raffa.AiFlows.Tests.WebResearch.Lexicons;
 
 public sealed class WebResearchTopicLexiconTests
 {

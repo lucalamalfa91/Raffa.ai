@@ -2,8 +2,9 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Raffa.AiGateway.Contracts;
+using Raffa.Chat.Application.Guards;
 
-namespace Raffa.Chat.Application.Guards;
+namespace Raffa.AiFlows.WebResearch.Guards;
 
 /// <summary>What kind of figure a web summary stated.</summary>
 public enum WebFigureKind

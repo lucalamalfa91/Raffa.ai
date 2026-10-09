@@ -1,7 +1,8 @@
+using Raffa.AiFlows.WebResearch.Guards;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Guards;
 
-namespace Raffa.Chat.Tests.Guards;
+namespace Raffa.AiFlows.Tests.WebResearch.Guards;
 
 /// <summary>
 /// F3-T01 / F3-D02 — the web figure check: a figure shares its sentence with a marker and is found in

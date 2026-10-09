@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Raffa.AiFlows.Ask.Routing;
+using Raffa.AiFlows.WebResearch.Lexicons;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain;
 

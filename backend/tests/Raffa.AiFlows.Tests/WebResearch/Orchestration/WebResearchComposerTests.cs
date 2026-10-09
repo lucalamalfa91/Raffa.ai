@@ -1,12 +1,17 @@
+using Raffa.AiFlows.WebResearch.Configuration;
+using Raffa.AiFlows.WebResearch.Lexicons;
+using Raffa.AiFlows.WebResearch.Orchestration;
+using Raffa.AiFlows.WebResearch.Prompts;
+using Raffa.AiFlows.WebResearch.Replies;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Application.WebResearch;
-using Raffa.Chat.Tests.TestSupport;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.SharedKernel;
 
-namespace Raffa.Chat.Tests.WebResearch;
+namespace Raffa.AiFlows.Tests.WebResearch.Orchestration;
 
 /// <summary>
 /// ADR-030: the composer's input is three strings and its output is guard-approved or an honest

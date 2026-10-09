@@ -5,7 +5,6 @@ using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Infrastructure;
 using Raffa.SharedKernel;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Raffa.Chat.Tests;
 
@@ -48,8 +47,6 @@ public sealed class ServiceCollectionExtensionsTests
 
         Assert.IsType<NullFeatureRequestPublisher>(scope.ServiceProvider.GetRequiredService<IFeatureRequestPublisher>());
         Assert.Equal("local", scope.ServiceProvider.GetRequiredService<FeedbackOptions>().Environment);
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchComposer>());
-        Assert.False(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchOptions>().Enabled);
     }
 
     [Fact]
@@ -101,28 +98,22 @@ public sealed class ServiceCollectionExtensionsTests
     }
 
     /// <summary>
-    /// The budget reads its daily limit through <c>IWebResearchBudgetLimit</c>, which must resolve to
-    /// the <em>current</em> <c>WebResearchOptions</c> even when a host swaps those options after
-    /// <c>AddChatModule</c> (the API tests do exactly that).
+    /// The budget reads its daily limit through <c>IWebResearchBudgetLimit</c>. This module registers
+    /// the closed default (no web-research flow, no web path); the flow replaces it with its own
+    /// options when a host composes the AI flows layer (proved in Raffa.AiFlows.Tests).
     /// </summary>
     [Fact]
-    public void The_budget_limit_follows_the_registered_WebResearchOptions()
+    public void Without_the_web_research_flow_the_budget_limit_is_the_closed_default()
     {
         var services = new ServiceCollection();
         services.AddSingleton<IAiGateway, NotExercisedGateway>();
         services.AddScoped<IAuditWriter, NoOpAuditWriter>();
         services.AddChatModule();
 
-        using (var defaults = services.BuildServiceProvider())
-        {
-            Assert.Equal(20, defaults.GetRequiredService<Raffa.Chat.Application.WebResearch.IWebResearchBudgetLimit>().DailyCallsPerTenant);
-        }
+        using var provider = services.BuildServiceProvider();
 
-        services.RemoveAll<Raffa.Chat.Application.WebResearch.WebResearchOptions>();
-        services.AddSingleton(new Raffa.Chat.Application.WebResearch.WebResearchOptions { DailyCallsPerTenant = 3 });
-
-        using var swapped = services.BuildServiceProvider();
-        Assert.Equal(3, swapped.GetRequiredService<Raffa.Chat.Application.WebResearch.IWebResearchBudgetLimit>().DailyCallsPerTenant);
+        Assert.IsType<Raffa.Chat.Application.WebResearch.ClosedWebResearchBudgetLimit>(
+            provider.GetRequiredService<Raffa.Chat.Application.WebResearch.IWebResearchBudgetLimit>());
     }
 
     [Fact]

@@ -1,4 +1,6 @@
 using Raffa.AiFlows.Ask.Interview;
+using Raffa.AiFlows.WebResearch.Lexicons;
+using Raffa.AiFlows.WebResearch.Query;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain;

@@ -1,8 +1,9 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using Raffa.AiGateway.Contracts;
+using Raffa.Chat.Application.Guards;
 
-namespace Raffa.Chat.Application.Guards;
+namespace Raffa.AiFlows.WebResearch.Guards;
 
 /// <summary>
 /// ADR-030's own guard on a web-research summary, run before <see cref="NumericGuard"/> and

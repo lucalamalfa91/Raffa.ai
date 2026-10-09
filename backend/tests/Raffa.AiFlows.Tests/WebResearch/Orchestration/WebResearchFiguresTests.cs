@@ -1,13 +1,16 @@
+using Raffa.AiFlows.WebResearch.Configuration;
+using Raffa.AiFlows.WebResearch.Orchestration;
+using Raffa.AiFlows.WebResearch.Prompts;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.WebResearch;
-using Raffa.Chat.Tests.TestSupport;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.SharedKernel;
 
-namespace Raffa.Chat.Tests.WebResearch;
+namespace Raffa.AiFlows.Tests.WebResearch.Orchestration;
 
 /// <summary>
 /// F3-T01 / F3-D02 — figures in a web answer are checked against the verbatim quote of the cited source.

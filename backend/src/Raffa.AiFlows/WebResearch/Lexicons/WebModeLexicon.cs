@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Lexicons;
 
 /// <summary>
 /// The one filter left when the user switches Ask's web search on (ADR-032): a question that is

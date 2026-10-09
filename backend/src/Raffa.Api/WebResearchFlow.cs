@@ -1,5 +1,10 @@
 using Raffa.AiFlows.Ask.Interview;
+using Raffa.AiFlows.WebResearch.Configuration;
 using Raffa.AiFlows.WebResearch.Consent;
+using Raffa.AiFlows.WebResearch.Lexicons;
+using Raffa.AiFlows.WebResearch.Orchestration;
+using Raffa.AiFlows.WebResearch.Ports;
+using Raffa.AiFlows.WebResearch.Query;
 using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;

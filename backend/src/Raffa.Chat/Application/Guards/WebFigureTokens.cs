@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Raffa.Chat.Application.Guards;
 
 namespace Raffa.Chat.Application.Guards;
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Raffa.AiFlows.WebResearch.Configuration;
 using Raffa.AiFlows.WebResearch.Consent;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;

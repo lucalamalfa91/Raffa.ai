@@ -1,4 +1,9 @@
 using System.Globalization;
+using Raffa.AiFlows.WebResearch.Configuration;
+using Raffa.AiFlows.WebResearch.Guards;
+using Raffa.AiFlows.WebResearch.Lexicons;
+using Raffa.AiFlows.WebResearch.Prompts;
+using Raffa.AiFlows.WebResearch.Replies;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Guards;
@@ -6,7 +11,7 @@ using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Reply;
 using Raffa.SharedKernel;
 
-namespace Raffa.Chat.Application.WebResearch;
+namespace Raffa.AiFlows.WebResearch.Orchestration;
 
 /// <summary>
 /// The only caller of <see cref="IAiGateway.ResearchAsync"/> and the only producer of

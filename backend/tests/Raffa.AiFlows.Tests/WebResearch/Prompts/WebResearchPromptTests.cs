@@ -1,6 +1,7 @@
+using Raffa.AiFlows.WebResearch.Prompts;
 using Raffa.Chat.Application.WebResearch;
 
-namespace Raffa.Chat.Tests.WebResearch;
+namespace Raffa.AiFlows.Tests.WebResearch.Prompts;
 
 /// <summary>Same drift proof as <c>AnswerPromptV2Tests</c>, for the research persona (ADR-030).</summary>
 public sealed class WebResearchPromptTests
@@ -21,7 +22,7 @@ public sealed class WebResearchPromptTests
     public void Markdown_file_carries_the_constant_verbatim_and_the_same_version()
     {
         var versionTag = WebResearchPrompt.Version.Replace("research-", string.Empty, StringComparison.Ordinal);
-        var path = RepoRelative(Path.Combine("src", "Raffa.Chat", "Prompts", "research", $"{versionTag}.md"));
+        var path = RepoRelative(Path.Combine("src", "Raffa.AiFlows", "WebResearch", "Prompts", "research", $"{versionTag}.md"));
 
         Assert.True(File.Exists(path), $"Expected the versioned prompt file at {path}.");
 
@@ -74,15 +75,15 @@ public sealed class WebResearchPromptTests
     [Fact]
     public void F3_T01_the_previous_persona_versions_stay_on_disk_for_history()
     {
-        Assert.True(File.Exists(RepoRelative(Path.Combine("src", "Raffa.Chat", "Prompts", "research", "v1.md"))));
-        Assert.True(File.Exists(RepoRelative(Path.Combine("src", "Raffa.Chat", "Prompts", "research", "open-v1.md"))));
+        Assert.True(File.Exists(RepoRelative(Path.Combine("src", "Raffa.AiFlows", "WebResearch", "Prompts", "research", "v1.md"))));
+        Assert.True(File.Exists(RepoRelative(Path.Combine("src", "Raffa.AiFlows", "WebResearch", "Prompts", "research", "open-v1.md"))));
     }
 
     [Fact]
     public void Open_persona_markdown_file_carries_the_constant_verbatim_and_the_same_version()
     {
         var versionTag = WebResearchPrompt.OpenVersion.Replace("research-", string.Empty, StringComparison.Ordinal);
-        var path = RepoRelative(Path.Combine("src", "Raffa.Chat", "Prompts", "research", $"{versionTag}.md"));
+        var path = RepoRelative(Path.Combine("src", "Raffa.AiFlows", "WebResearch", "Prompts", "research", $"{versionTag}.md"));
 
         Assert.True(File.Exists(path), $"Expected the versioned prompt file at {path}.");
 

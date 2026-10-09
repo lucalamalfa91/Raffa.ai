@@ -25,7 +25,7 @@ public sealed class WebResearchBudgetTests : IAsyncLifetime
     private WebResearchBudget NewBudget(TenantContext tenantContext, int limit, out Raffa.Chat.Infrastructure.ChatDbContext db, DateTimeOffset? now = null)
     {
         db = _postgres.CreateDbContext(tenantContext);
-        return new WebResearchBudget(db, tenantContext, new WebResearchOptions { Enabled = true, DailyCallsPerTenant = limit }, new FixedClock(now ?? Now));
+        return new WebResearchBudget(db, tenantContext, new FixedLimit(limit), new FixedClock(now ?? Now));
     }
 
     private async Task<int> CallsAsync(TenantContext tenantContext, TenantId tenant, DateOnly day)
@@ -165,5 +165,11 @@ public sealed class WebResearchBudgetTests : IAsyncLifetime
         await using var _ = db;
 
         Assert.Null(await budget.TryReserveAsync(tenant));
+    }
+
+    /// <summary>The one number the budget needs; the flow's options type is not this module's concern.</summary>
+    private sealed class FixedLimit(int dailyCallsPerTenant) : IWebResearchBudgetLimit
+    {
+        public int DailyCallsPerTenant { get; } = dailyCallsPerTenant;
     }
 }

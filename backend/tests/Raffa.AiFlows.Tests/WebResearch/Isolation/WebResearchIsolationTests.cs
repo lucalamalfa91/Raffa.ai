@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Raffa.Chat.Tests.WebResearch;
+namespace Raffa.AiFlows.Tests.WebResearch.Isolation;
 
 /// <summary>
 /// ADR-030's structural isolation, held by a source scan rather than a convention: the research
@@ -54,7 +54,7 @@ public sealed class WebResearchIsolationTests
     [Fact]
     public void The_answer_composer_never_touches_the_research_role()
     {
-        var answerComposer = File.ReadAllText(Path.Combine(BackendRoot(), "src", "Raffa.Chat", "Application", "Answering", "AnswerComposer.cs"));
+        var answerComposer = File.ReadAllText(Path.Combine(BackendRoot(), "src", "Raffa.AiFlows", "Ask", "Answering", "AnswerComposer.cs"));
 
         Assert.DoesNotContain("ResearchAsync", answerComposer, StringComparison.Ordinal);
         Assert.DoesNotContain("PackCorpus.Web", answerComposer, StringComparison.Ordinal);

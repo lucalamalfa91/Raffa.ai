@@ -1,9 +1,12 @@
+using Raffa.AiFlows.WebResearch.Orchestration;
+using Raffa.AiFlows.WebResearch.Prompts;
+using Raffa.AiFlows.WebResearch.Replies;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Application.WebResearch;
 
-namespace Raffa.Chat.Tests.WebResearch;
+namespace Raffa.AiFlows.Tests.WebResearch.Replies;
 
 /// <summary>
 /// ADR-032: the off-context pointer is two outbound links and no model call; a combined web-mode
