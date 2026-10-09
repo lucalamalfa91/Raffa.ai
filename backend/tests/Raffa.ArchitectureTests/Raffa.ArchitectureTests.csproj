@@ -32,6 +32,7 @@
     <ProjectReference Include="..\..\src\Raffa.Audit\Raffa.Audit.csproj" />
     <ProjectReference Include="..\..\src\Raffa.Api\Raffa.Api.csproj" />
     <ProjectReference Include="..\..\src\Raffa.Worker\Raffa.Worker.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.AiFlows\Raffa.AiFlows.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,3 +1,4 @@
+using Raffa.AiFlows;
 using Raffa.Audit.Infrastructure;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Renewals.Infrastructure;
@@ -75,6 +76,9 @@ public static class WorkerServiceCollectionExtensions
         // module; the Worker did not, so DocumentProcessingPipeline.LinkSupplierAsync ran with a
         // null ISupplierResolver and left every extracted supplier name unlinked.
         services.AddSuppliersProductsModule(documentsContractsConnectionString);
+        // AI flows layer (ADR-002 amendment): after every module so a flow can replace a module
+        // default. Empty for now -- no flow has moved in yet, so this registers nothing.
+        services.AddAiFlows();
 
         // TryAdd: Raffa.Worker.Tests pre-registers a fake IActiveRenewalContractsSource /
         // millisecond-scale RenewalThresholdSchedulerOptions before calling AddWorkerHost (mirrors

@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Raffa.Api\Raffa.Api.csproj" />
+    <ProjectReference Include="..\..\src\Raffa.AiFlows\Raffa.AiFlows.csproj" />
     <ProjectReference Include="..\..\src\Raffa.AiGateway\Raffa.AiGateway.csproj" />
     <!-- Task E21/F02/US01/T01 (NW-22): RenewalsEndpointTests stubs IBenchmarkService to prove
          the endpoint resolves the market band and carries it on the wire. IBenchmarkService and

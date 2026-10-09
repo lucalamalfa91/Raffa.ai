@@ -4,7 +4,9 @@
 project per bounded context, a shared kernel, and three composition roots
 (`Raffa.Api`, `Raffa.Worker`, `Raffa.Tools`). Domain modules never reference
 a provider SDK or another domain's internals — `Raffa.ArchitectureTests`
-fails the build if a project reference points the wrong way.
+fails the build if a project reference points the wrong way. `Raffa.AiFlows`
+sits above the modules (ADR-002 amendment, 2026-10-09): it may reference the
+kernel, the gateway and the modules, and only the two hosts may reference it.
 
 Honours ADR-003 (Postgres + pgvector, EF Core), ADR-009 (RLS as the
 non-bypassable backstop), and ADR-005 (API + worker as Container Apps).
@@ -19,6 +21,7 @@ backend/
     Raffa.Api/                 # thin HTTP composition root (port 8080 in containers)
     Raffa.Worker/              # thin worker composition root
     Raffa.Tools/               # operator console (wave w17, NW-73, task E20/F02/US02/T01): third composition root, no table, no endpoint, no business rule; `dotnet run` on the GitHub runner via reprocess-tenant-documents.yml — see "Bulk whole-tenant reprocess" below
+    Raffa.AiFlows/             # AI flows layer (ADR-002 amendment, 2026-10-09): orchestration and AI logic (orchestrators, agents, prompts, JSON schemas, guards, lexicons), one subfolder per flow; data and persistence stay in the modules. References SharedKernel, AiGateway and the domain modules only; referenced only by Raffa.Api and Raffa.Worker (`AddAiFlows()`); no provider SDK or persistence package. Empty for now: no flow has moved in yet
     Raffa.SharedKernel/        # TenantId, EntityId, Result<T>, IClock, IAuditWriter, IDocumentStorage
     Raffa.Identity.Workspace/  # workspace, membership, roles (live)
     Raffa.Documents.Contracts/ # upload + admission gate (task E13/F04/US01/T01), metadata, hybrid OCR pre-pass, staged extraction, portfolio list, Contract 360, contract correction + history (live)
@@ -32,7 +35,7 @@ backend/
     Raffa.Savings/             # price normalization + percentile/target/savings-range calculator (R3; task E04/F02/US01/T01) + persisted, trackable SavingsOpportunity + GET/PATCH /api/savings (task E04/F02/US02/T01) — see "Savings Intelligence" below
     Raffa.Quotes/              # quote upload + hybrid-OCR-reused, schema-constrained line-item extraction (evidence + confidence; deterministic pricing) + POST /api/quotes (R4; task E05/F01/US01/T01) + SKU/edition normalization against a per-tenant canonical mapping, unmatched-SKU flagging (task E05/F01/US02/T01) + benchmark matching/above-in-line-below market assessment + GET /api/quotes/{id}/assessment, AddBenchmarkModule now wired (task E05/F02/US01/T01) + deterministic recommended target range/potential saving on that same endpoint (task E05/F02/US01/T02) + deterministic negotiation strategy (opening target/acceptable range/walk-away threshold + seven canonical levers with rationale, NegotiationStrategyService, no HTTP endpoint yet) (task E05/F03/US01/T01) + NegotiationOutcome capture (original/target/final/deterministic saving+discount/duration/levers used) + POST /api/negotiations/outcomes, append-only/audit-tracked (task E05/F03/US02/T01) + read-back: `QuoteQueryService` (stored fields only, computes nothing) backing GET /api/quotes (tenant list) and GET /api/quotes/{id} (the quote with its recorded negotiation outcomes embedded, newest first) — task E19/F02/US01/T01, quote-read-api, wave w16 NW-12, ADR-028 §D2 — see "Quote Check" / "Market Assessment" / "Negotiation Strategy" / "Negotiation Outcome" below
     Raffa.Chat/                # Ask Raffa structured-vs-semantic query router (R1, task E02/F04/US01/T01) + deterministic dates/spend query handlers (task E02/F04/US01/T02) + AbstainGuard no-fabrication guard (task E02/F04/US02/T02); AddChatModule wired into Raffa.Api by this last task; own ChatDbContext + Conversation/ConversationMessage under RLS + ConversationService (create/list/get/append) (task E13/F05/US01/T01) — see "Ask Raffa — conversations store" below
-  tests/                         # per-module + architecture + R0-R4 integration
+  tests/                         # per-module + architecture + R0-R4 integration (+ Raffa.AiFlows.Tests for the AI flows layer)
 ```
 
 Hosts are composition roots only: they register modules via `AddXxxModule`
