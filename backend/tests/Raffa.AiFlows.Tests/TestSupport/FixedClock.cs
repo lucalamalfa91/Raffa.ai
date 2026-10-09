@@ -4,7 +4,7 @@ namespace Raffa.AiFlows.Tests.TestSupport;
 
 /// <summary>
 /// Fixed <see cref="IClock"/> for deterministic
-/// <see cref="Raffa.Chat.Application.DeterministicQueryHandler"/> "renewal window" assertions.
+/// <see cref="Raffa.AiFlows.Ask.Routing.DeterministicQueryHandler"/> "renewal window" assertions.
 /// <c>SystemClock</c>'s own doc comment notes "every test project in this solution already
 /// follows that pattern with its own local fake rather than [SystemClock]" — this is this
 /// project's copy of that pattern (mirrors <c>Raffa.AiGateway.Tests.TestSupport.FixedClock</c>).

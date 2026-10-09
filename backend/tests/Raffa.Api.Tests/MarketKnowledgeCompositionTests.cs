@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Raffa.AiFlows.MarketKnowledge.Estimation;
+using Raffa.AiFlows.Negotiation.Tools;
 using Raffa.Api.Tests.TestSupport;
-using Raffa.Chat.Application.Council;
 using Raffa.SharedKernel.Market;
 
 namespace Raffa.Api.Tests;

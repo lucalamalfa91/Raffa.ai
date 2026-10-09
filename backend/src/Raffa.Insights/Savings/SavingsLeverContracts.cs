@@ -68,7 +68,7 @@ public sealed record SavingsLeverInputs(
 /// <summary>
 /// One grounded lever. Amounts are whole units of <see cref="SavingsLeverPlan.Currency"/>
 /// (rounded away from zero), percentages carry two decimals — exactly the forms
-/// <c>Raffa.Chat.Application.Guards.NumericGuard</c> compares against, so every number here can be
+/// <c>Raffa.AiFlows.Shared.Guards.NumericGuard</c> compares against, so every number here can be
 /// echoed by the answer verbatim.
 /// </summary>
 /// <param name="Key">Stable kebab-case identity (also the tail of the pack citation key).</param>

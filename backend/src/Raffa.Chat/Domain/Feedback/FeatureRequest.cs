@@ -35,7 +35,7 @@ public sealed class FeatureRequest : TenantScopedEntity
     /// trail only; the published issue carries no identity by design.</summary>
     public required string UserId { get; set; }
 
-    /// <summary><c>Application.Gaps.CapabilityGap.Key</c>.</summary>
+    /// <summary><c>CapabilityGaps.Catalog.CapabilityGap.Key</c> (AI flows layer).</summary>
     public required string GapKey { get; set; }
 
     /// <summary>The gap's title in the question's language, as the card showed it.</summary>

@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Feedback;
-using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.Chat.Infrastructure;
@@ -99,7 +98,6 @@ public sealed class FeedbackServiceRaceTests : IAsyncLifetime
         var publisher = new CountingPublisher();
 
         // A Raffa turn that carries the feedback offer.
-        var gap = CapabilityGapCatalog.Find(CapabilityGapCatalog.ExportFileKey)!;
         EntityId conversationId;
         EntityId messageId;
         var (_, seedConversations, seedDb) = Create(publisher);
@@ -107,8 +105,27 @@ public sealed class FeedbackServiceRaceTests : IAsyncLifetime
         {
             conversationId = (await seedConversations.CreateAsync(tenantId, userId, null)).ConversationId;
             var payload = new ReplyPayload(
-                Gap: new GapInfo(gap.Key, gap.TitleEn, "en"),
-                FeedbackOffer: CapabilityGapCopy.FeedbackOfferFor(gap, "en"));
+                Gap: new GapInfo("export-file", "Export contracts to a file", "en"),
+                FeedbackOffer: new FeedbackOffer(
+                    "Want to report this to the Raffa.ai team so they can build it?",
+                    "Sì", "No", "Avanti", "Indietro", "Invia", "Invio in corso…", "Grazie!",
+                    "Non sono riuscito a inviare la segnalazione. Riprova.",
+                    "Le risposte saranno pubbliche su GitHub.",
+                    [
+                        new FeedbackQuestion(FeedbackQuestions.WhatKey, FeedbackQuestions.TextKind, "Cosa dovrebbe fare Raffa esattamente?", "prefill", null),
+                        new FeedbackQuestion(FeedbackQuestions.FrequencyKey, FeedbackQuestions.ChoiceKind, "Quanto spesso ti servirebbe?", null,
+                        [
+                            new FeedbackChoice(FeedbackQuestions.FrequencyEveryRenewal, "ad ogni rinnovo"),
+                            new FeedbackChoice(FeedbackQuestions.FrequencyWeekly, "ogni settimana"),
+                            new FeedbackChoice(FeedbackQuestions.FrequencySometimes, "ogni tanto"),
+                        ]),
+                        new FeedbackQuestion(FeedbackQuestions.ImportanceKey, FeedbackQuestions.ChoiceKind, "Quanto è importante per il tuo lavoro?", null,
+                        [
+                            new FeedbackChoice(FeedbackQuestions.ImportanceBlocking, "bloccante"),
+                            new FeedbackChoice(FeedbackQuestions.ImportanceVeryUseful, "molto utile"),
+                            new FeedbackChoice(FeedbackQuestions.ImportanceNiceToHave, "comodo"),
+                        ]),
+                    ]));
             var appended = await seedConversations.AppendMessageAsync(
                 tenantId, userId, conversationId,
                 new AppendConversationMessageRequest(

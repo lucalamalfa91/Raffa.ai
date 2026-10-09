@@ -1,5 +1,5 @@
+using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Reply;
 
 namespace Raffa.Chat.Tests.Reply;
@@ -9,11 +9,30 @@ public sealed class ReplyPayloadJsonTests
     [Fact]
     public void Round_trips_every_member_and_writes_nulls_explicitly()
     {
-        var gap = CapabilityGapCatalog.Find(CapabilityGapCatalog.EmailDraftKey)!;
+        // Hand-written: Chat owns the payload contract, not the capability-gap catalog that builds it.
         var payload = new ReplyPayload(
-            new GapInfo(gap.Key, gap.TitleIt, "it"),
+            new GapInfo("email-draft", "Scrivere un'email di negoziazione", "it"),
             new EmailDraft("Oggetto", "Corpo\ncon due righe"),
-            CapabilityGapCopy.FeedbackOfferFor(gap, "it"),
+            new FeedbackOffer(
+                "Vuoi segnalarlo al team Raffa.ai perché lo implementi?",
+                "Sì", "No", "Avanti", "Indietro", "Invia", "Invio in corso…", "Grazie!",
+                "Non sono riuscito a inviare la segnalazione. Riprova.",
+                "Le risposte saranno pubbliche su GitHub.",
+                [
+                    new FeedbackQuestion(FeedbackQuestions.WhatKey, FeedbackQuestions.TextKind, "Cosa dovrebbe fare Raffa esattamente?", "prefill", null),
+                    new FeedbackQuestion(FeedbackQuestions.FrequencyKey, FeedbackQuestions.ChoiceKind, "Quanto spesso ti servirebbe?", null,
+                    [
+                        new FeedbackChoice(FeedbackQuestions.FrequencyEveryRenewal, "ad ogni rinnovo"),
+                        new FeedbackChoice(FeedbackQuestions.FrequencyWeekly, "ogni settimana"),
+                        new FeedbackChoice(FeedbackQuestions.FrequencySometimes, "ogni tanto"),
+                    ]),
+                    new FeedbackQuestion(FeedbackQuestions.ImportanceKey, FeedbackQuestions.ChoiceKind, "Quanto è importante per il tuo lavoro?", null,
+                    [
+                        new FeedbackChoice(FeedbackQuestions.ImportanceBlocking, "bloccante"),
+                        new FeedbackChoice(FeedbackQuestions.ImportanceVeryUseful, "molto utile"),
+                        new FeedbackChoice(FeedbackQuestions.ImportanceNiceToHave, "comodo"),
+                    ]),
+                ]),
             null);
 
         var json = ReplyPayloadJson.Serialize(payload);

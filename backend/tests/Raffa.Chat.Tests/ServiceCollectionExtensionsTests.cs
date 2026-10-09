@@ -1,26 +1,21 @@
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
-using Raffa.Chat.Application;
-using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Infrastructure;
 using Raffa.SharedKernel;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Raffa.Chat.Tests;
 
 /// <summary>
-/// Proves task E02/F04/US02/T01's own wiring claim (mirrors
-/// <c>Raffa.AiGateway.Tests.ServiceCollectionExtensionsTests</c>): <see cref="AskRaffaQueryRouter"/>,
-/// <see cref="DeterministicQueryPlanner"/>, <see cref="DeterministicQueryHandler"/>,
-/// <see cref="AbstainGuard"/> (task E02/F04/US02/T02) and the ask engine's
-/// <see cref="Raffa.Chat.Application.Answering.AnswerComposer"/> are all
-/// resolvable from a container that has
-/// <see cref="AddChatModule"/> plus this module's two external dependencies
-/// (<see cref="IAiGateway"/>, <see cref="IAuditWriter"/>) registered — the shape
-/// <c>Raffa.Api.Program</c>'s real composition already provides via
-/// <c>AddDocumentsContractsModule</c>/<c>AddAuditModule</c>.
+/// Proves this module's own wiring (mirrors <c>Raffa.AiGateway.Tests.ServiceCollectionExtensionsTests</c>):
+/// what <see cref="AddChatModule"/> registers (the clock, the feedback seam, the closed web-research
+/// budget limit and, given a connection string, the conversation store) resolves from a container
+/// that has this module's two external dependencies (<see cref="IAiGateway"/>,
+/// <see cref="IAuditWriter"/>) registered, the shape <c>Raffa.Api.Program</c>'s real composition
+/// already provides via <c>AddDocumentsContractsModule</c>/<c>AddAuditModule</c>. The AI flows
+/// (router, gate, planner, answer composer, guards) are registered by <c>AddAiFlows</c> and proved
+/// in the AI flows layer's own tests.
 ///
 /// <see cref="ServiceProviderOptions.ValidateOnBuild"/> + <see cref="ServiceProviderOptions.ValidateScopes"/>
 /// (both <see langword="true"/> below) is the actual proof behind
@@ -44,18 +39,10 @@ public sealed class ServiceCollectionExtensionsTests
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
         using var scope = provider.CreateScope();
 
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AskRaffaQueryRouter>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<DeterministicQueryPlanner>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<DeterministicQueryHandler>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AbstainGuard>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Answering.AnswerComposer>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IClock>());
 
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<NegotiationDraftingWorkflow>());
         Assert.IsType<NullFeatureRequestPublisher>(scope.ServiceProvider.GetRequiredService<IFeatureRequestPublisher>());
         Assert.Equal("local", scope.ServiceProvider.GetRequiredService<FeedbackOptions>().Environment);
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchComposer>());
-        Assert.False(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchOptions>().Enabled);
     }
 
     [Fact]
@@ -104,35 +91,25 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Infrastructure.ChatDbContext>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Conversations.ConversationService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchBudget>());
-        // The zero-argument surface from the other test above still resolves too -- the overload
-        // is additive, never a replacement.
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AskRaffaQueryRouter>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Answering.AnswerComposer>());
     }
 
     /// <summary>
-    /// The budget reads its daily limit through <c>IWebResearchBudgetLimit</c>, which must resolve to
-    /// the <em>current</em> <c>WebResearchOptions</c> even when a host swaps those options after
-    /// <c>AddChatModule</c> (the API tests do exactly that).
+    /// The budget reads its daily limit through <c>IWebResearchBudgetLimit</c>. This module registers
+    /// the closed default (no web-research flow, no web path); the flow replaces it with its own
+    /// options when a host composes the AI flows layer (proved in the AI flows layer's own tests).
     /// </summary>
     [Fact]
-    public void The_budget_limit_follows_the_registered_WebResearchOptions()
+    public void Without_the_web_research_flow_the_budget_limit_is_the_closed_default()
     {
         var services = new ServiceCollection();
         services.AddSingleton<IAiGateway, NotExercisedGateway>();
         services.AddScoped<IAuditWriter, NoOpAuditWriter>();
         services.AddChatModule();
 
-        using (var defaults = services.BuildServiceProvider())
-        {
-            Assert.Equal(20, defaults.GetRequiredService<Raffa.Chat.Application.WebResearch.IWebResearchBudgetLimit>().DailyCallsPerTenant);
-        }
+        using var provider = services.BuildServiceProvider();
 
-        services.RemoveAll<Raffa.Chat.Application.WebResearch.WebResearchOptions>();
-        services.AddSingleton(new Raffa.Chat.Application.WebResearch.WebResearchOptions { DailyCallsPerTenant = 3 });
-
-        using var swapped = services.BuildServiceProvider();
-        Assert.Equal(3, swapped.GetRequiredService<Raffa.Chat.Application.WebResearch.IWebResearchBudgetLimit>().DailyCallsPerTenant);
+        Assert.IsType<Raffa.Chat.Application.WebResearch.ClosedWebResearchBudgetLimit>(
+            provider.GetRequiredService<Raffa.Chat.Application.WebResearch.IWebResearchBudgetLimit>());
     }
 
     [Fact]

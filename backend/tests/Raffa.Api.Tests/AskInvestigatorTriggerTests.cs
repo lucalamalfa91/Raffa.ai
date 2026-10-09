@@ -1,12 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Raffa.AiFlows.CapabilityGaps.Investigation;
 using Raffa.Api.Tests.TestSupport;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
-using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Reply;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Renewals.Application;

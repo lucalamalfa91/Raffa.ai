@@ -125,7 +125,7 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
         //    `citations[]` — see ChatEndpointTests' own doc comment on the supersession) and made
         //    `POST /api/chat/query` resolve caller identity, so this call now needs an X-User-Id
         //    header too. `citations[].documentId` now echoes the pack's own citationKey
-        //    (`Application.Pack.PackItem.CitationKey`, `AskCopilotService.BuildClausePackAsync`'s
+        //    (`Shared.Pack.PackItem.CitationKey`, `AskCopilotService.BuildClausePackAsync`'s
         //    own `fact:{sourceId}:chunk[{index}]` shape for a clause hit), not a bare
         //    `Document:{id}` — still traceable back to this document by substring, same convention
         //    `AskRaffaRagCrossTenantIsolationTests` already uses for the identical new shape.

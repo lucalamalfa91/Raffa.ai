@@ -177,7 +177,7 @@ public sealed class RenewalEngineTests
         Assert.Equal(RenewalCalculationStatus.CannotDetermine, results[2].Status);
     }
 
-    // Same structural proof Raffa.Chat.Tests.DeterministicQueryHandlerTests uses for the AI
+    // Same structural proof Raffa.AiFlows.Tests.Ask.Routing.DeterministicQueryHandlerTests uses for the AI
     // Gateway: Appendix C rule 3 ("never call a benchmark provider directly from renewal, savings
     // or quote business logic") must hold for this specific class, not just at the project-
     // reference level (Raffa.Renewals.csproj is *allowed* to reference Raffa.Benchmark, so

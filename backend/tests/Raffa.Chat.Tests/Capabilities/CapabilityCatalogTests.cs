@@ -5,8 +5,9 @@ namespace Raffa.Chat.Tests.Capabilities;
 /// <summary>
 /// Proves task E13/F08/US01/T01's catalog completeness (story us-01-capability-catalog AC-1/AC-4):
 /// every V2 route named in `raffa-v2/ia-v2.md`'s route map (plus the two Documents sub-states
-/// R-SYS-01/R-SYS-03 also name) has exactly one catalog entry, with the field shape AC-1 requires,
-/// and <see cref="FeatureCitation.For"/> produces the R-SYS-03 feature-card shape from it.
+/// R-SYS-01/R-SYS-03 also name) has exactly one catalog entry, with the field shape AC-1 requires.
+/// (The R-SYS-03 feature-card shape built from an entry is tested next to <c>FeatureCitation</c> in
+/// the AI flows layer's tests.)
 /// </summary>
 public sealed class CapabilityCatalogTests
 {
@@ -162,38 +163,5 @@ public sealed class CapabilityCatalogTests
         var chips = CapabilityCatalog.SuggestionsFor("contract-360");
 
         Assert.Equal(2, chips.Count);
-    }
-
-    // --- Feature citations (R-SYS-03) ---
-
-    [Fact]
-    public void FeatureCitation_for_uses_the_raffa_corpus_and_route_as_subtitle_and_href()
-    {
-        var capability = CapabilityCatalog.Find("savings")!;
-
-        var citation = FeatureCitation.For(capability);
-
-        Assert.Equal("raffa", citation.Corpus);
-        Assert.Equal(capability.Title, citation.Title);
-        Assert.Equal(capability.RoutePattern, citation.Subtitle);
-        Assert.Equal(capability.Description, citation.Snippet);
-        Assert.Equal(capability.RoutePattern, citation.Href);
-    }
-
-    [Fact]
-    public void FeatureCitation_matches_R_SYS_03_AC_1_for_reviewing_weak_facts()
-    {
-        var capability = CapabilityCatalog.Find("documents-attention")!;
-
-        var citation = FeatureCitation.For(capability);
-
-        Assert.Equal("Documents › Review", citation.Title);
-        Assert.Equal("/documents?filter=attention", citation.Href);
-    }
-
-    [Fact]
-    public void FeatureCitation_for_rejects_null()
-    {
-        Assert.Throws<ArgumentNullException>(() => FeatureCitation.For(null!));
     }
 }

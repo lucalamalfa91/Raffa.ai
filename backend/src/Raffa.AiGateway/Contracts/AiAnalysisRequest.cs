@@ -2,7 +2,7 @@ namespace Raffa.AiGateway.Contracts;
 
 /// <summary>
 /// One bounded, schema-constrained reasoning step over caller-supplied evidence — the call shape
-/// behind Ask Raffa's negotiation council (<c>Raffa.Chat.Application.Council</c>): a specialist
+/// behind Ask Raffa's negotiation council (<c>Raffa.AiFlows.Negotiation</c>): a specialist
 /// agent (contract analyst, market analyst, lever strategist) reads a JSON input assembled from
 /// the context pack and returns strict JSON matching <paramref name="JsonSchema"/>. Like every
 /// other role: no tools, no grounding, no browsing — the agent sees only <paramref name="InputJson"/>.

@@ -1,13 +1,18 @@
+using Raffa.AiFlows.Ask.Gate;
+using Raffa.AiFlows.Ask.Interview;
+using Raffa.AiFlows.Ask.Planning;
+using Raffa.AiFlows.CapabilityGaps.Catalog;
+using Raffa.AiFlows.CapabilityGaps.Copy;
+using Raffa.AiFlows.CapabilityGaps.Drafting;
+using Raffa.AiFlows.CapabilityGaps.Investigation;
+using Raffa.AiFlows.CapabilityGaps.Replies;
+using Raffa.AiFlows.Negotiation.Orchestration;
+using Raffa.AiFlows.Shared.Routing;
 using Raffa.AiGateway.Telemetry;
 using System.Globalization;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Council;
-using Raffa.Chat.Application.Drafting;
-using Raffa.Chat.Application.Gaps;
-using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Language;
-using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain;
 using Raffa.Documents.Contracts.Application;
@@ -197,14 +202,14 @@ internal sealed partial class AskCopilotService
         CapabilityGap gap,
         string language,
         PortfolioListItem namedContractItem,
-        Raffa.Chat.Application.Pack.PackItem? disambiguationItem,
+        Raffa.AiFlows.Shared.Pack.PackItem? disambiguationItem,
         RoutingContext routingContext,
         string actor,
         CancellationToken cancellationToken)
     {
         var goal = SavingsGoalParser.Parse(question);
 
-        IReadOnlyList<Raffa.Chat.Application.Pack.PackItem> packItems =
+        IReadOnlyList<Raffa.AiFlows.Shared.Pack.PackItem> packItems =
             await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, goal, persistTodos: false)
                 .ConfigureAwait(false);
 

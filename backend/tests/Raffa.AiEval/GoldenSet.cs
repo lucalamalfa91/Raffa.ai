@@ -119,7 +119,7 @@ internal static class GoldenSet
 internal static class GoldenSetKnownGaps
 {
     /// <summary>
-    /// <c>Raffa.Chat.Application.Gate.DomainGate.ExtractSupplierCandidate</c> takes the first
+    /// <c>Raffa.AiFlows.Ask.Gate.DomainGate.ExtractSupplierCandidate</c> takes the first
     /// capitalized run after position 0 as a supplier name. In English that catches the pronoun
     /// "I", so R-STR-01's own worked question ("How should I approach the Salesforce renewal?")
     /// resolves the candidate "I", finds no such supplier, and returns
@@ -134,7 +134,7 @@ internal static class GoldenSetKnownGaps
     public const string PronounReadAsSupplier = "GAP-ASK-PRONOUN-AS-SUPPLIER";
 
     /// <summary>
-    /// <c>Raffa.Chat.Application.AskRaffaQueryRouter</c>'s structured/semantic keyword lists
+    /// <c>Raffa.AiFlows.Ask.Routing.AskRaffaQueryRouter</c>'s structured/semantic keyword lists
     /// are English-only ("renew", "expir", "spend", "next N days"), so an Italian dates/spend
     /// question — which the prototype's own intent table lists in the same row as its English twin
     /// ("expire / scad / end", "120 / days / giorni / renew / rinnov / scadono") — falls through to

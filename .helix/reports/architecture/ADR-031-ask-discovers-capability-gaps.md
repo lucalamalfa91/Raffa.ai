@@ -56,7 +56,7 @@ anything is built.
 
 ### D1 — The capability investigator
 
-`Raffa.Chat.Application.Gaps.CapabilityInvestigator` calls `IAiGateway.AnalyzeAsync` with the
+`Raffa.AiFlows.CapabilityGaps.Investigation.CapabilityInvestigator` calls `IAiGateway.AnalyzeAsync` with the
 agent `capability-investigator` (`CapabilityInvestigatorAgent`, version `gaps-v1`, mirrored in
 `Prompts/gaps/v1.md` with a drift test). Its input is the question, its language, the ten
 `CapabilityCatalog` screens, the six abilities of the Ask chat itself and the five

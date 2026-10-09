@@ -1,5 +1,8 @@
+using Raffa.AiFlows.CapabilityGaps.Catalog;
+using Raffa.AiFlows.CapabilityGaps.Copy;
+using Raffa.AiFlows.CapabilityGaps.Replies;
+using Raffa.AiFlows.Shared.Routing;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Language;
 using Raffa.Chat.Application.Reply;
 using Raffa.SharedKernel;

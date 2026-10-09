@@ -1,10 +1,10 @@
 using System.Globalization;
+using Raffa.AiFlows.Negotiation.Verdict;
+using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
+using Raffa.AiFlows.Shared.Playbook;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Council;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
-using Raffa.Chat.Application.Playbook;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Insights.Application;
 using Raffa.Insights.Contracts;

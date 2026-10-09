@@ -6,7 +6,7 @@ namespace Raffa.Chat.Domain;
 /// (the `answer` role) may only narrate the pack assembled for one of these — it never picks the
 /// intent itself and never answers free-form (R-ASK-03: "a model call may only pick among the
 /// fixed intents, never free-form" — in this implementation the intent is decided entirely
-/// deterministically by <see cref="Application.Planning.IntentPlanner"/>, so no model call is
+/// deterministically by <c>Ask.Planning.IntentPlanner</c> (AI flows layer), so no model call is
 /// spent on intent selection at all).
 /// </summary>
 public enum AskIntent
@@ -45,7 +45,7 @@ public enum AskIntent
 
     /// <summary>"Come posso salvare 40K sul prossimo quarterly basandomi sui contratti attivi?" —
     /// a quantified saving goal (amount and/or window, see
-    /// <see cref="Application.Planning.SavingsGoal"/>) with no supplier in scope: the
+    /// <c>Shared.Planning.SavingsGoal</c>) with no supplier in scope: the
     /// portfolio-wide candidate list that adds up to the target inside the window.</summary>
     PortfolioSavingsTarget,
 

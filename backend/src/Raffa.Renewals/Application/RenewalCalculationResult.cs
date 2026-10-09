@@ -29,7 +29,7 @@ namespace Raffa.Renewals.Application;
 /// <see cref="ContractRenewalTerms.CancellationNoticeDays"/> — when that is missing or negative
 /// (invalid), this stays null and <see cref="Explanation"/> says which. "No aggregate was
 /// computed" and "the renewal date has no deadline" must stay distinguishable the same way
-/// <c>Raffa.Chat.Application.DeterministicQueryResult.AggregateAnnualSpend</c>'s own doc comment
+/// <c>Raffa.AiFlows.Ask.Routing.DeterministicQueryResult.AggregateAnnualSpend</c>'s own doc comment
 /// already draws that line for a different field.
 /// </param>
 /// <param name="DaysUntilRenewal">
@@ -44,7 +44,7 @@ namespace Raffa.Renewals.Application;
 /// <param name="Explanation">Human-readable trace of what the engine computed and why — not meant
 /// to be shown to an end user as-is, but enough for a test (or a developer) to see why a result
 /// has the shape it does without re-deriving it, the same role
-/// <c>Raffa.Chat.Application.DeterministicQueryResult.Explanation</c> plays there.</param>
+/// <c>Raffa.AiFlows.Ask.Routing.DeterministicQueryResult.Explanation</c> plays there.</param>
 public sealed record RenewalCalculationResult(
     EntityId ContractId,
     RenewalCalculationStatus Status,

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Raffa.AiFlows.MarketKnowledge.Estimation;
 using Raffa.AiFlows.MarketKnowledge.Retrieval;
-using Raffa.Chat.Application.Council;
+using Raffa.AiFlows.Negotiation.Tools;
 using Raffa.Market;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Market;

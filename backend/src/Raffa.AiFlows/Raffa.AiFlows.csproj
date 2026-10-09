@@ -32,6 +32,14 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- INV-01 / LANG-05: the investigator trigger's T3 lexicon is versioned data, not code. The
+         LogicalName is what InvestigatorTriggerLexicon.ResourceName reads: if the two diverge the
+         lexicon loads empty ("unavailable") and T3 never fires. -->
+    <EmbeddedResource Include="CapabilityGaps\Investigation\Lexicon\investigator-trigger-lexicon.json"
+                      LogicalName="Raffa.AiFlows.CapabilityGaps.investigator-trigger-lexicon.json" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -1,8 +1,12 @@
+using Raffa.AiFlows.CapabilityGaps.Catalog;
+using Raffa.AiFlows.CapabilityGaps.Copy;
+using Raffa.AiFlows.CapabilityGaps.Investigation;
+using Raffa.AiFlows.CapabilityGaps.Replies;
+using Raffa.AiFlows.Shared.Routing;
 using Raffa.AiGateway.Telemetry;
 using System.Globalization;
 using Microsoft.Extensions.Options;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Language;
 using Raffa.Chat.Application.Reply;
 using Raffa.SharedKernel;

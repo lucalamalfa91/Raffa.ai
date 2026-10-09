@@ -1,17 +1,5 @@
-using Raffa.AiGateway.Configuration;
-using Raffa.AiGateway.Jev;
-using Raffa.Chat.Application;
-using Raffa.Chat.Application.Answering;
-using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
-using Raffa.Chat.Application.Council;
-using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Feedback;
-using Raffa.Chat.Application.Gaps;
-using Raffa.Chat.Application.Interview;
-using Raffa.Chat.Application.Gate;
-using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
@@ -24,49 +12,23 @@ namespace Raffa.Chat.Infrastructure;
 /// <summary>
 /// Composition-root wiring for the Chat module (ADR-002: "each module exposes an
 /// AddXxx(IServiceCollection) extension method"; domain modules never wire themselves into a host
-/// directly). Task E02/F04/US01/T01 (query-router) and task E02/F04/US01/T02
-/// (deterministic-queries) added <see cref="AskRaffaQueryRouter"/>,
-/// <see cref="DeterministicQueryPlanner"/> and <see cref="DeterministicQueryHandler"/> but no host
-/// took a dependency on any of them yet, so this composition method did not exist —
-/// <c>Raffa.Api.Raffa.Api.csproj</c> already carried a <c>ProjectReference</c> to
-/// <c>Raffa.Chat.csproj</c> in anticipation of it (see that file). Task E02/F04/US02/T01
-/// (rag-citations) added the first host caller; the legacy evidence-only <c>RagAnswerService</c> it
-/// introduced was removed once <c>Raffa.Api.AskCopilotService</c>'s pack-composition path replaced it
-/// (no host ever called it again). Task E02/F04/US02/T02 (abstain-guard) adds
-/// <see cref="AbstainGuard"/>, which <see cref="Guards.GroundingGuard"/> and the answer composer
-/// still use.
+/// directly). This module owns the conversation store and its persistence: the optional
+/// <paramref name="chatConnectionString"/> below adds <c>Infrastructure.ChatDbContext</c>,
+/// <c>Application.Conversations.ConversationService</c>, the feedback write path and the
+/// web-research budget. Called with no argument (unit tests, this module's own DI-shape test
+/// <c>ServiceCollectionExtensionsTests</c>) it registers only what needs no database.
+///
+/// The Ask AI logic (router, gate, planner, answer composer, council, drafting, gaps, web
+/// research, pack and guards) lives in the AI flows layer, which sits above the modules and is
+/// registered by the hosts through <c>AddAiFlows</c> (ADR-002 amendment); this module does not
+/// reference it.
 ///
 /// Every registration is Scoped, not Singleton, for one uniform per-request/job lifetime across the
-/// module — the same choice <c>Raffa.Documents.Contracts.Infrastructure.ServiceCollectionExtensions
-/// .AddDocumentsContractsModule</c> already makes for every one of its own services, and the safe one
-/// for services that depend on <see cref="IAuditWriter"/>, which
+/// module, the safe one for services that depend on <see cref="IAuditWriter"/>, which
 /// <c>Raffa.Audit.Infrastructure.ServiceCollectionExtensions.AddAuditModule</c> registers Scoped
 /// (it wraps a Scoped <c>AuditDbContext</c>): a Singleton capturing it would be rejected at startup by
 /// <c>ServiceProviderOptions.ValidateOnBuild</c> (enabled by default for the Development environment
 /// <c>WebApplicationFactory</c>-based tests run under).
-///
-/// Task E13/F05/US01/T01 (story us-01-conversations, AC-4) adds the optional
-/// <paramref name="chatConnectionString"/> the overload below takes: called with no argument
-/// (every existing caller — unit tests, and this module's own DI-shape test
-/// <c>ServiceCollectionExtensionsTests</c>), <see cref="AddChatModule"/> registers exactly what
-/// it always has, unchanged, so nothing that already resolves
-/// <see cref="AskRaffaQueryRouter"/> without a database breaks.
-/// Called with a connection string, it additionally registers <c>Infrastructure.ChatDbContext</c>
-/// and <c>Application.Conversations.ConversationService</c> — the same "a module's own
-/// composition method also wires its own DbContext" shape
-/// <see cref="Raffa.Documents.Contracts.Infrastructure.ServiceCollectionExtensions.AddDocumentsContractsModule"/>/
-/// <see cref="Raffa.Audit.Infrastructure.ServiceCollectionExtensions.AddAuditModule"/> already
-/// use, except optional here because — unlike those two modules — this module already has real,
-/// non-database callers (the query router/RAG services above) that must keep resolving with zero
-/// configuration. Task T02 is the first caller that passes one, from `Raffa.Api.Program`
-/// (`ConnectionStrings:Chat`, this story's own council-decided key) — this task deliberately does
-/// not touch `Program.cs` itself (see the task's own "Do not touch" list).
-///
-/// Task E13/F08/US01/T01 (story us-01-capability-catalog) adds <see cref="CapabilityRouting"/> —
-/// the phase-2 writer of this file, per that story's own dependency row ("`AddChatModule` file
-/// ownership order (T01 phase 1 → this phase 2)"). Registered unconditionally (like the query
-/// router/RAG services above, not gated on <paramref name="chatConnectionString"/>): it needs no
-/// database, only the static <see cref="CapabilityCatalog"/> it calls directly.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
@@ -80,65 +42,6 @@ public static class ServiceCollectionExtensions
         // .AddDocumentsContractsModule.
         services.TryAddSingleton<IClock, SystemClock>();
 
-        services.AddScoped<AskRaffaQueryRouter>();
-        services.AddScoped<DeterministicQueryPlanner>();
-        services.AddScoped<DeterministicQueryHandler>();
-        services.AddScoped<AbstainGuard>();
-        services.AddScoped<CapabilityRouting>();
-
-        // Task E13/F06/US01/T01 (ask-engine): the V2 gate/planner/answer engine. Each of these is
-        // stateless (no database, no per-request field), registered the same uniform
-        // per-request/job lifetime as every sibling service above.
-        services.AddScoped<DomainGate>();
-        services.AddScoped<IntentPlanner>();
-        services.AddScoped<AnswerComposer>();
-
-        // The negotiation council (Application.Council): three analyst calls over the pack for the
-        // savings/negotiation intents. TryAdd on the options so a host that bound Chat:Council
-        // before calling this keeps its own values; the default is "on" with the documented bounds.
-        services.TryAddSingleton(new CouncilOptions());
-        services.AddScoped<NegotiationCouncil>();
-
-        // Ask's agentic flow (Application.Council.AskAgentFlow): the market data check (supplied per
-        // turn by the composition root), the market researcher and the council above. The
-        // researcher's market RAG (IMarketRagSearch) is registered by the host's AI flows layer
-        // (the MarketKnowledge flow, via AddAiFlows); without it the researcher step is skipped.
-        services.AddScoped<MarketResearcher>();
-        services.AddScoped<AskAgentFlow>();
-
-        // The drafting workflow (Application.Drafting, ADR-030 D3): the offer planner and the
-        // negotiation writer behind a `draft` reply. Same TryAdd-options / Scoped-service shape as
-        // the council above; the host binds Chat:Drafting before calling this.
-        services.TryAddSingleton(new DraftingOptions());
-        services.AddScoped<NegotiationDraftingWorkflow>();
-
-        // The capability investigator (Application.Gaps, ADR-031): decides whether a fresh turn asks
-        // for a feature Raffa does not have. The verdict is decided by the Jev classify-role pilot
-        // when it is on (never the LLM -- CapabilityInvestigator's own doc comment); the analyst-role
-        // Foundry call only ever writes a gap's free-text description. The host binds
-        // Chat:GapInvestigation (as IOptionsMonitor, so the mode and the kill switch change without
-        // a restart) before calling this; absent that, the defaults: Triggered, enabled.
-        services.AddOptions<GapInvestigationOptions>();
-        // AiGatewayJevOptions/JevHttpJsonClient are normally registered (config-bound) by
-        // Raffa.AiGateway.ServiceCollectionExtensions.AddAiGatewayModule, called before this one by
-        // every real host (same ordering IAiGateway itself already relies on). TryAdd here is the
-        // same defensive fallback every other option in this method already gets -- a host or test
-        // that calls only AddChatModule still gets a safe, Jev-off default rather than a missing
-        // registration (Raffa.Chat.Tests.ServiceCollectionExtensionsTests never registers
-        // IConfiguration at all, so this cannot be a config-binding factory here).
-        services.TryAddSingleton(new AiGatewayJevOptions());
-        services.TryAddSingleton(sp => new JevHttpJsonClient(
-            new HttpClient { Timeout = TimeSpan.FromSeconds(180) },
-            sp.GetRequiredService<AiGatewayJevOptions>()));
-        services.TryAddSingleton<JevVerdictClient>();
-        // A factory, not constructor selection: the investigator has a second, options-instance
-        // constructor for tests and tools, and the container must not weigh the two.
-        services.AddScoped(sp => new CapabilityInvestigator(
-            sp.GetRequiredService<Raffa.AiGateway.IAiGateway>(),
-            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>(),
-            sp.GetRequiredService<AiGatewayJevOptions>(),
-            sp.GetRequiredService<JevVerdictClient>()));
-
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
         // GitHub publisher and binds Feedback:* before calling this when a token is configured;
         // otherwise these defaults keep every submission "recorded" with no outbound call.
@@ -149,32 +52,11 @@ public static class ServiceCollectionExtensions
         // answer is scrubbed of them before it is published; without a host source none are known.
         services.TryAddScoped<IFeedbackNameSource, NullFeedbackNameSource>();
 
-        // ADR-030: the interview (kill switch + bounds) — a configured value registered before
-        // this call wins, same TryAdd contract as CouncilOptions above.
-        services.TryAddSingleton(new InterviewOptions());
-        services.AddScoped<InterviewPlanner>();
-
-        // ADR-030: web research. The options default to Enabled=false (the kill switch), so a host
-        // that never binds Chat:WebResearch has no web path at all.
-        services.TryAddSingleton(new WebResearchOptions());
-        // The budget (persistence, this module) reads its daily limit through this port; it resolves
-        // the options lazily, so a host that swaps WebResearchOptions after this call is honoured.
-        services.TryAddSingleton<IWebResearchBudgetLimit>(sp => sp.GetRequiredService<WebResearchOptions>());
-        services.AddScoped<WebResearchComposer>();
-
-        // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration
-        // dependency at all — this project has no PackageReference for
-        // Microsoft.Extensions.Configuration.Binder (unlike Raffa.Api/Program.cs, a full
-        // Microsoft.NET.Sdk.Web host where that package is always available), so binding
-        // Chat:PackTokenBudget here would be a new, untested package dependency for a single
-        // scalar read. Raffa.Api.Program registers the configuration-bound PackBudget *before*
-        // calling AddChatModule when a value is present — TryAddSingleton's "first registration
-        // wins" then makes the configured value the one that actually resolves, this default only
-        // when no configuration overrides it (same order-dependent override shape
-        // Raffa.Market.ServiceCollectionExtensions.MakeMarketFeedTheDefaultActiveAdapter's own
-        // doc comment documents, minus the Replace() call since ordering alone is enough for a
-        // TryAdd target no one has registered yet at that point).
-        services.TryAddSingleton(new PackBudget());
+        // ADR-030 gate 3: the budget (persistence, this module) reads its daily limit through the
+        // IWebResearchBudgetLimit port. The web-research flow (AddAiFlows) replaces this closed
+        // default with its configured WebResearchOptions; a host without that flow has no web path,
+        // so the gate stays closed, consistent with the kill switch being off by default.
+        services.TryAddSingleton<IWebResearchBudgetLimit>(new ClosedWebResearchBudgetLimit());
 
         if (chatConnectionString is not null)
         {

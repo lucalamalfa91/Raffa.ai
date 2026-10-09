@@ -6,7 +6,7 @@ namespace Raffa.Renewals.Application;
 /// The per-contract facts <see cref="RenewalPipelineBuilder"/> needs to build one
 /// <c>GET /api/renewals</c> pipeline row (task E03/F03/US01/T01, us-01-renewal-dashboard-api
 /// AC-1/AC-2; product spec §9.3/§10.1). Same shape decision as <see cref="ContractRenewalTerms"/>
-/// and <c>Raffa.Chat.Application.ContractFact</c>: a small DTO, not the real
+/// and <c>Raffa.AiFlows.Ask.Routing.ContractFact</c>: a small DTO, not the real
 /// <c>Raffa.Documents.Contracts.Domain.Contract</c> — ADR-002 forbids <c>Raffa.Renewals</c>
 /// from referencing <c>Raffa.Documents.Contracts</c> at all
 /// (<c>Raffa.ArchitectureTests.DependencyDirectionTests</c>'s allow-list for this module is

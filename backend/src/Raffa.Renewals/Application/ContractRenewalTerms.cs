@@ -13,7 +13,7 @@ namespace Raffa.Renewals.Application;
 /// <c>Raffa.SharedKernel</c> and <c>Raffa.Benchmark</c>
 /// (<c>Raffa.ArchitectureTests.DependencyDirectionTests</c>'s allow-list for this module; see
 /// <c>backend/README.md</c>'s "Dependency direction" table). This is the same shape decision
-/// <c>Raffa.Chat.Application.ContractFact</c> already made for the same reason — a composition
+/// <c>Raffa.AiFlows.Ask.Routing.ContractFact</c> already made for the same reason — a composition
 /// root (<c>Raffa.Api</c>, which may reference every module) maps a real <c>Contract</c> row
 /// onto this DTO 1:1; no task in this wave wires that composition yet (this task's own wave-spec
 /// entry depends on nothing but the empty <c>Raffa.Renewals</c> scaffold, not on a
@@ -32,7 +32,7 @@ namespace Raffa.Renewals.Application;
 /// <param name="AutoRenewal">The source <c>Contract.AutoRenewal</c>. A contract only has a
 /// renewal date/cancellation deadline to compute when this is true — the same rule
 /// <c>Raffa.Documents.Contracts.Application.PortfolioListItem.RenewalDate</c> and
-/// <c>Raffa.Chat.Application.DeterministicQueryHandler</c>'s renewal-window filter already
+/// <c>Raffa.AiFlows.Ask.Routing.DeterministicQueryHandler</c>'s renewal-window filter already
 /// apply; see <see cref="Raffa.Renewals.Domain.RenewalCalculationStatus.NoRenewal"/>.</param>
 /// <param name="CancellationNoticeDays">
 /// How many days before <see cref="EndDate"/> notice must be given to cancel out of
@@ -51,7 +51,7 @@ namespace Raffa.Renewals.Application;
 /// column/extraction field and mapping it onto this parameter is a follow-up composition task
 /// (`Raffa.Documents.Contracts` is a different module and a different task's file scope — "do
 /// not touch" per this task's own instructions), the same kind of gap
-/// <c>Raffa.Chat.Application.ContractFact</c> already documents for its own callers.
+/// <c>Raffa.AiFlows.Ask.Routing.ContractFact</c> already documents for its own callers.
 /// </para>
 /// </param>
 public sealed record ContractRenewalTerms(

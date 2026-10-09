@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Raffa.AiFlows.QuoteExtraction;
 using Raffa.AiFlows.QuoteExtraction.Agents;
 using Raffa.AiFlows.QuoteExtraction.Orchestration;
+using Raffa.Chat.Infrastructure;
 using Raffa.Market;
 using Raffa.Quotes.Infrastructure;
 using Raffa.SharedKernel.Market;
@@ -27,7 +28,7 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
 
         Assert.Same(services, returned);
         Assert.Contains(services, d => d.ServiceType == typeof(IMarketPriceEstimator));
-        Assert.Contains(services, d => d.ServiceType == typeof(Raffa.Chat.Application.Council.IMarketRagSearch));
+        Assert.Contains(services, d => d.ServiceType == typeof(Raffa.AiFlows.Negotiation.Tools.IMarketRagSearch));
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(QuoteExtractionPipeline));
     }
 
@@ -48,6 +49,52 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
             ValidateScopes = true,
         });
         Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public void AddAiFlows_resolves_every_flow_service_with_no_captive_dependency()
+    {
+        var services = DocumentsModuleServices.Create();
+        services.AddMarketModule();
+        services.AddChatModule();
+        services.AddAiFlows();
+
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true,
+        });
+        using var scope = provider.CreateScope();
+
+        Type[] flowServices =
+        [
+            // Ask
+            typeof(Raffa.AiFlows.Ask.Routing.AskRaffaQueryRouter),
+            typeof(Raffa.AiFlows.Ask.Routing.DeterministicQueryPlanner),
+            typeof(Raffa.AiFlows.Ask.Routing.DeterministicQueryHandler),
+            typeof(Raffa.AiFlows.Ask.Gate.DomainGate),
+            typeof(Raffa.AiFlows.Ask.Planning.IntentPlanner),
+            typeof(Raffa.AiFlows.Ask.Answering.AnswerComposer),
+            typeof(Raffa.AiFlows.Ask.Interview.InterviewPlanner),
+            typeof(Raffa.AiFlows.Shared.Guards.AbstainGuard),
+            typeof(Raffa.AiFlows.Shared.Routing.CapabilityRouting),
+            typeof(Raffa.AiFlows.Shared.Pack.PackBudget),
+            // Negotiation
+            typeof(Raffa.AiFlows.Negotiation.Orchestration.NegotiationCouncil),
+            typeof(Raffa.AiFlows.Negotiation.Agents.MarketResearcher),
+            typeof(Raffa.AiFlows.Negotiation.Orchestration.AskAgentFlow),
+            // CapabilityGaps
+            typeof(Raffa.AiFlows.CapabilityGaps.Drafting.NegotiationDraftingWorkflow),
+            typeof(Raffa.AiFlows.CapabilityGaps.Investigation.CapabilityInvestigator),
+            // WebResearch
+            typeof(Raffa.AiFlows.WebResearch.Orchestration.WebResearchComposer),
+            typeof(Raffa.AiFlows.WebResearch.Configuration.WebResearchOptions),
+        ];
+
+        foreach (var serviceType in flowServices)
+        {
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService(serviceType));
+        }
     }
 
     [Fact]

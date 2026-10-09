@@ -101,7 +101,7 @@ builder.Services.AddScoped<WorkspaceRoleResolver>();
 
 // ADR-030 gate 2: Chat asks "did this workspace opt into web research?" through a port it owns;
 // the host answers from the Identity/Workspace row (the two modules never reference each other).
-builder.Services.AddScoped<Raffa.Chat.Application.WebResearch.IWorkspaceWebResearchPolicy, WorkspaceWebResearchPolicy>();
+builder.Services.AddScoped<Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearchPolicy, WorkspaceWebResearchPolicy>();
 
 // Task E14/F02/US01/T01 (wave w14 "workspace is real", ADR-025 §A1), retired to the validated token
 // by task E18/F01/US01/T01 (wave w15, NW-05; ADR-022 w15 footer clause 1): the one identity seam
@@ -228,33 +228,33 @@ var chatConnectionString = BoundPostgres(
 
 // Chat:Council (kill switch + bounds of the negotiation council), registered before
 // AddChatModule's own TryAddSingleton default so a configured value wins.
-var councilOptions = new Raffa.Chat.Application.Council.CouncilOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.Council.CouncilOptions.SectionName).Bind(councilOptions);
+var councilOptions = new Raffa.AiFlows.Negotiation.Options.CouncilOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.Negotiation.Options.CouncilOptions.SectionName).Bind(councilOptions);
 builder.Services.AddSingleton(councilOptions);
 
 // Chat:Drafting (ADR-030 D3): the drafting workflow's kill switch and bounds, same shape.
-var draftingOptions = new Raffa.Chat.Application.Drafting.DraftingOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
+var draftingOptions = new Raffa.AiFlows.CapabilityGaps.Drafting.DraftingOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.CapabilityGaps.Drafting.DraftingOptions.SectionName).Bind(draftingOptions);
 builder.Services.AddSingleton(draftingOptions);
 
 // ADR-031 / INV-03: Chat:GapInvestigation — the capability investigator's mode (Triggered by
 // default, Always for diagnosis), kill switch, confidence threshold and time budget. Read through
 // IOptionsMonitor, so a configuration change applies without a restart.
-builder.Services.Configure<Raffa.Chat.Application.Gaps.GapInvestigationOptions>(
-    builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName));
+builder.Services.Configure<Raffa.AiFlows.CapabilityGaps.Investigation.GapInvestigationOptions>(
+    builder.Configuration.GetSection(Raffa.AiFlows.CapabilityGaps.Investigation.GapInvestigationOptions.SectionName));
 builder.Services.AddSingleton<Raffa.Api.CapabilityCheckRunner>();
 builder.Services.AddSingleton<Raffa.Api.CapabilityFollowUpAppender>();
 
 // ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
 // council/drafting options above so a configured value wins over the module's TryAdd default.
-var interviewOptions = new Raffa.Chat.Application.Interview.InterviewOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
+var interviewOptions = new Raffa.AiFlows.Ask.Interview.InterviewOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.Ask.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
 builder.Services.AddSingleton(interviewOptions);
 
 // ADR-030: Chat:WebResearch — the kill switch (default OFF), the workspace opt-in requirement,
 // the daily budget and the query bounds of the one path that may reach the public web.
-var webResearchOptions = new Raffa.Chat.Application.WebResearch.WebResearchOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.WebResearch.WebResearchOptions.SectionName).Bind(webResearchOptions);
+var webResearchOptions = new Raffa.AiFlows.WebResearch.Configuration.WebResearchOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.WebResearch.Configuration.WebResearchOptions.SectionName).Bind(webResearchOptions);
 builder.Services.AddSingleton(webResearchOptions);
 
 // Feedback:* (ADR-030 D5): the environment name every published issue carries, and the GitHub
@@ -290,8 +290,8 @@ builder.Services.AddChatModule(chatConnectionString);
 // "first registration wins" — see Raffa.Chat.Infrastructure.ServiceCollectionExtensions's own
 // doc comment on this exact ordering contract). Absent configuration, GetValue<int?> returns
 // null and PackBudget falls back to its own DefaultMaxTokens, unchanged from before this line.
-builder.Services.AddSingleton(new Raffa.Chat.Application.Pack.PackBudget(
-    builder.Configuration.GetValue<int?>(Raffa.Chat.Application.Pack.PackBudget.SectionName)));
+builder.Services.AddSingleton(new Raffa.AiFlows.Shared.Pack.PackBudget(
+    builder.Configuration.GetValue<int?>(Raffa.AiFlows.Shared.Pack.PackBudget.SectionName)));
 
 // Task E13/F06/US01/T01 (ask-engine): Suppliers/Products' own AddSuppliersProductsModule(string)
 // (ADR-002) — task E13/F03/US01/T01 registered ISupplierResolver/ISupplierNameLookup here but no

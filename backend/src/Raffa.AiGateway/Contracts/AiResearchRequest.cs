@@ -3,7 +3,7 @@ namespace Raffa.AiGateway.Contracts;
 /// <summary>
 /// Input of the <c>research</c> role (ADR-030): the one Foundry call that may reach the public
 /// web. Deliberately carries <b>no</b> context pack, evidence or tenant text — only a query the
-/// caller already sanitised (<c>Raffa.Chat.Application.WebResearch.WebQuerySanitizer</c>), the
+/// caller already sanitised (<c>Raffa.AiFlows.WebResearch.Query.WebQuerySanitizer</c>), the
 /// research purpose, the answer language and the source cap. The isolation from tenant data is in
 /// this type's shape, not in a convention.
 /// </summary>
