@@ -1,3 +1,8 @@
+using Raffa.Identity.Workspace.Infrastructure;
+using Raffa.Insights;
+using Raffa.Renewals.Infrastructure;
+using Raffa.Savings.Infrastructure;
+using Raffa.Suppliers.Products.Infrastructure;
 using Raffa.AiFlows.Tests.TestSupport;
 using Microsoft.Extensions.DependencyInjection;
 using Raffa.AiFlows.QuoteExtraction;
@@ -42,6 +47,7 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
         // The market researcher's tool reads the Market module's retrieval, which a host supplies.
         services.AddMarketModule();
         services.AddChatModule();
+        AddAskPackModules(services);
         services.AddScoped<Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearchPolicy, HostWorkspaceWebResearchPolicy>();
         services.AddScoped<Raffa.Chat.Application.WebResearch.IWebResearchBudget, HostWebResearchBudget>();
         services.AddAiFlows().AddAiFlows();
@@ -60,6 +66,7 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
         var services = DocumentsModuleServices.Create();
         services.AddMarketModule();
         services.AddChatModule();
+        AddAskPackModules(services);
         services.AddScoped<Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearchPolicy, HostWorkspaceWebResearchPolicy>();
         services.AddScoped<Raffa.Chat.Application.WebResearch.IWebResearchBudget, HostWebResearchBudget>();
         services.AddAiFlows();
@@ -103,6 +110,17 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
         {
             Assert.NotNull(scope.ServiceProvider.GetRequiredService(serviceType));
         }
+    }
+
+    /// <summary>The domain modules the Ask pack-composition root (<c>AskCopilotService</c>) and the
+    /// benchmark key resolver sit on; the host composes them, so the tests do the same.</summary>
+    private static void AddAskPackModules(IServiceCollection services)
+    {
+        services.AddSuppliersProductsModule(DocumentsModuleServices.ConnectionString);
+        services.AddRenewalsModule(DocumentsModuleServices.ConnectionString);
+        services.AddSavingsModule(DocumentsModuleServices.ConnectionString);
+        services.AddInsightsModule();
+        services.AddIdentityWorkspaceModule(DocumentsModuleServices.ConnectionString);
     }
 
     [Fact]
