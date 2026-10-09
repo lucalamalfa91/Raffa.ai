@@ -35,7 +35,6 @@ public sealed class RiskConfiguration : IEntityTypeConfiguration<Risk>
         builder.HasIndex(e => e.ContractId);
         builder.HasIndex(e => e.ClauseId);
         builder.HasIndex(e => e.SourceDocumentId);
-        builder.HasIndex(e => e.ExtractionRunId);
 
         // Owned by the contract: a risk has no meaning without it.
         builder.HasOne<Contract>()

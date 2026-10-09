@@ -47,7 +47,6 @@ public sealed class ContractLineItemConfiguration : IEntityTypeConfiguration<Con
         builder.HasIndex(e => e.ContractId);
         builder.HasIndex(e => e.ProductId);
         builder.HasIndex(e => e.SourceDocumentId);
-        builder.HasIndex(e => e.ExtractionRunId);
 
         // Owned by the contract: a line item has no meaning without it.
         builder.HasOne<Contract>()

@@ -96,9 +96,6 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.HasIndex("ContractId")
                         .HasDatabaseName("ix_clause_contract_id");
 
-                    b.HasIndex("ExtractionRunId")
-                        .HasDatabaseName("ix_clause_extraction_run_id");
-
                     b.HasIndex("SourceDocumentId")
                         .HasDatabaseName("ix_clause_source_document_id");
 
@@ -324,9 +321,6 @@ namespace Raffa.Documents.Contracts.Migrations
 
                     b.HasIndex("ContractId")
                         .HasDatabaseName("ix_contract_line_item_contract_id");
-
-                    b.HasIndex("ExtractionRunId")
-                        .HasDatabaseName("ix_contract_line_item_extraction_run_id");
 
                     b.HasIndex("ProductId")
                         .HasDatabaseName("ix_contract_line_item_product_id");
@@ -1037,9 +1031,6 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.HasIndex("DocumentId")
                         .HasDatabaseName("ix_extraction_job_document_id");
 
-                    b.HasIndex("ExtractionRunId")
-                        .HasDatabaseName("ix_extraction_job_extraction_run_id");
-
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_extraction_job_status");
 
@@ -1139,9 +1130,6 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.HasIndex("DueDate")
                         .HasDatabaseName("ix_obligation_due_date");
 
-                    b.HasIndex("ExtractionRunId")
-                        .HasDatabaseName("ix_obligation_extraction_run_id");
-
                     b.HasIndex("SourceDocumentId")
                         .HasDatabaseName("ix_obligation_source_document_id");
 
@@ -1231,9 +1219,6 @@ namespace Raffa.Documents.Contracts.Migrations
 
                     b.HasIndex("ContractId")
                         .HasDatabaseName("ix_risk_contract_id");
-
-                    b.HasIndex("ExtractionRunId")
-                        .HasDatabaseName("ix_risk_extraction_run_id");
 
                     b.HasIndex("SourceDocumentId")
                         .HasDatabaseName("ix_risk_source_document_id");

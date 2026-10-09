@@ -1286,27 +1286,6 @@ END $EF$;
 DO $EF$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
-    CREATE INDEX ix_risk_extraction_run_id ON risk (extraction_run_id);
-    END IF;
-END $EF$;
-
-DO $EF$
-BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
-    CREATE INDEX ix_obligation_extraction_run_id ON obligation (extraction_run_id);
-    END IF;
-END $EF$;
-
-DO $EF$
-BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
-    CREATE INDEX ix_extraction_job_extraction_run_id ON extraction_job (extraction_run_id);
-    END IF;
-END $EF$;
-
-DO $EF$
-BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
     CREATE PROCEDURE ux_document_checksum_setup() LANGUAGE plpgsql AS $f$
     BEGIN
         IF EXISTS (
@@ -1336,20 +1315,6 @@ DO $EF$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
     DROP PROCEDURE ux_document_checksum_setup();
-    END IF;
-END $EF$;
-
-DO $EF$
-BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
-    CREATE INDEX ix_contract_line_item_extraction_run_id ON contract_line_item (extraction_run_id);
-    END IF;
-END $EF$;
-
-DO $EF$
-BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
-    CREATE INDEX ix_clause_extraction_run_id ON clause (extraction_run_id);
     END IF;
 END $EF$;
 

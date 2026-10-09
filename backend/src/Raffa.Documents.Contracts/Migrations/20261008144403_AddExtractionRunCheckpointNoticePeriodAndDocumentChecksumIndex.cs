@@ -79,21 +79,6 @@ namespace Raffa.Documents.Contracts.Migrations
                 type: "uuid",
                 nullable: true);
 
-            migrationBuilder.CreateIndex(
-                name: "ix_risk_extraction_run_id",
-                table: "risk",
-                column: "extraction_run_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_obligation_extraction_run_id",
-                table: "obligation",
-                column: "extraction_run_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_extraction_job_extraction_run_id",
-                table: "extraction_job",
-                column: "extraction_run_id");
-
             // F5-D01: one document per (tenant, checksum). Written as SQL, not CreateIndex, so that the
             // migration cannot fail on data: the old upload path never checked, so a database may
             // already hold the same file twice. The model's index (see DocumentConfiguration) is
@@ -125,42 +110,12 @@ namespace Raffa.Documents.Contracts.Migrations
                 """);
             migrationBuilder.Sql("CALL ux_document_checksum_setup();");
             migrationBuilder.Sql("DROP PROCEDURE ux_document_checksum_setup();");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_contract_line_item_extraction_run_id",
-                table: "contract_line_item",
-                column: "extraction_run_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_clause_extraction_run_id",
-                table: "clause",
-                column: "extraction_run_id");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "ix_risk_extraction_run_id",
-                table: "risk");
-
-            migrationBuilder.DropIndex(
-                name: "ix_obligation_extraction_run_id",
-                table: "obligation");
-
-            migrationBuilder.DropIndex(
-                name: "ix_extraction_job_extraction_run_id",
-                table: "extraction_job");
-
             migrationBuilder.Sql("DROP INDEX IF EXISTS ux_document_tenant_checksum;");
-
-            migrationBuilder.DropIndex(
-                name: "ix_contract_line_item_extraction_run_id",
-                table: "contract_line_item");
-
-            migrationBuilder.DropIndex(
-                name: "ix_clause_extraction_run_id",
-                table: "clause");
 
             migrationBuilder.DropColumn(
                 name: "extraction_run_id",

@@ -87,12 +87,6 @@ public sealed class ExtractionEvidence : TenantScopedEntity
 
     public required DateTimeOffset CreatedAt { get; set; }
 
-    /// <summary>
-    /// F5-T01: the extraction run that produced this fact (the <see cref="ExtractionJob.ExtractionRunId"/>
-    /// of the stage job). A re-run replaces the rows of the previous run for the same
-    /// (contract, source document) instead of adding to them, and a row carrying a human
-    /// correction is kept. Null for rows written before this column existed (nullable on purpose:
-    /// existing data and the previous image keep working unchanged).
-    /// </summary>
+    /// <summary>F5-T01: the run that wrote this fact (<see cref="ExtractionJob.ExtractionRunId"/>); null on older rows.</summary>
     public Guid? ExtractionRunId { get; set; }
 }
