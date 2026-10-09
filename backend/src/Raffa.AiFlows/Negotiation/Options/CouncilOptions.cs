@@ -1,4 +1,4 @@
-namespace Raffa.Chat.Application.Council;
+namespace Raffa.AiFlows.Negotiation.Options;
 
 /// <summary>Bound from <c>Chat:Council</c>. The kill switch and the bounds of the negotiation
 /// council (<see cref="NegotiationCouncil"/>).</summary>

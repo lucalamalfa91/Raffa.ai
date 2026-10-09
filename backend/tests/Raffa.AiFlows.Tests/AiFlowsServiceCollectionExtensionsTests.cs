@@ -27,7 +27,7 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
 
         Assert.Same(services, returned);
         Assert.Contains(services, d => d.ServiceType == typeof(IMarketPriceEstimator));
-        Assert.Contains(services, d => d.ServiceType == typeof(Raffa.Chat.Application.Council.IMarketRagSearch));
+        Assert.Contains(services, d => d.ServiceType == typeof(Raffa.AiFlows.Negotiation.Tools.IMarketRagSearch));
         Assert.DoesNotContain(services, d => d.ServiceType == typeof(QuoteExtractionPipeline));
     }
 

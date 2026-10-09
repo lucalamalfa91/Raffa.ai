@@ -1,10 +1,11 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Raffa.AiFlows.Negotiation.Agents;
 using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 
-namespace Raffa.Chat.Application.Council;
+namespace Raffa.AiFlows.Negotiation.Orchestration;
 
 /// <summary>The deterministic market data check's result: the pack items it adds (the contract's
 /// facts, what it is missing, the market's estimate and practice, comparable deals) and the missing

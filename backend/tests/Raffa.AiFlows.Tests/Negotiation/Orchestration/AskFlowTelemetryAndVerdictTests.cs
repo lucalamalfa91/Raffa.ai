@@ -1,14 +1,17 @@
+using Raffa.AiFlows.Negotiation.Agents;
+using Raffa.AiFlows.Negotiation.Options;
+using Raffa.AiFlows.Negotiation.Orchestration;
+using Raffa.AiFlows.Negotiation.Tools;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
 using Raffa.AiGateway.Telemetry;
-using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 using Raffa.SharedKernel;
 
-namespace Raffa.Chat.Tests.Council;
+namespace Raffa.AiFlows.Tests.Negotiation.Orchestration;
 
 /// <summary>
 /// Plan T-01 / F2-T01 (the flow's run, steps and audit fragment) and F2-T08 / F2-D03 (one owner of

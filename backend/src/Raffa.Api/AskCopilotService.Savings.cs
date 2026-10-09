@@ -1,7 +1,7 @@
 using System.Globalization;
+using Raffa.AiFlows.Negotiation.Verdict;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.Playbook;

@@ -3,13 +3,13 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Raffa.AiFlows.Negotiation.Orchestration;
 using Raffa.AiGateway.Telemetry;
 using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Gate;
@@ -806,7 +806,7 @@ internal sealed partial class AskCopilotService(
             packItems = packItems.Prepend(disambiguationItem).ToList();
         }
 
-        // Ask's agentic flow (Raffa.Chat.Application.Council.AskAgentFlow), one coordinated sequence
+        // Ask's agentic flow (Raffa.AiFlows.Negotiation.Orchestration.AskAgentFlow), one coordinated sequence
         // before the answer role writes (persona v2.5: say what is missing, answer from the market):
         //   1. market data check (deterministic, below): for the contract the turn is about -- or,
         //      on a multi-contract turn (a quarter, savings across contracts), the ones the pack is

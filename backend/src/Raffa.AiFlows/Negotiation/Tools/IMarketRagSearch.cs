@@ -1,7 +1,7 @@
 using Raffa.Chat.Application.Pack;
 using Raffa.SharedKernel;
 
-namespace Raffa.Chat.Application.Council;
+namespace Raffa.AiFlows.Negotiation.Tools;
 
 /// <summary>
 /// The market RAG as the market researcher's one tool: a short keyword query in, the closest

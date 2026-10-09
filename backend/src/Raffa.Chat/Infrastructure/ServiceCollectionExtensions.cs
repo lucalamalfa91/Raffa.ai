@@ -4,7 +4,6 @@ using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
-using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Drafting;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Gaps;
@@ -92,19 +91,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DomainGate>();
         services.AddScoped<IntentPlanner>();
         services.AddScoped<AnswerComposer>();
-
-        // The negotiation council (Application.Council): three analyst calls over the pack for the
-        // savings/negotiation intents. TryAdd on the options so a host that bound Chat:Council
-        // before calling this keeps its own values; the default is "on" with the documented bounds.
-        services.TryAddSingleton(new CouncilOptions());
-        services.AddScoped<NegotiationCouncil>();
-
-        // Ask's agentic flow (Application.Council.AskAgentFlow): the market data check (supplied per
-        // turn by the composition root), the market researcher and the council above. The
-        // researcher's market RAG (IMarketRagSearch) is registered by the host's AI flows layer
-        // (the MarketKnowledge flow, via AddAiFlows); without it the researcher step is skipped.
-        services.AddScoped<MarketResearcher>();
-        services.AddScoped<AskAgentFlow>();
 
         // The drafting workflow (Application.Drafting, ADR-030 D3): the offer planner and the
         // negotiation writer behind a `draft` reply. Same TryAdd-options / Scoped-service shape as

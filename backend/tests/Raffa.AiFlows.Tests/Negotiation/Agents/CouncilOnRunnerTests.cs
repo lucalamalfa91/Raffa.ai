@@ -1,20 +1,22 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Raffa.AiFlows.Negotiation.Agents;
+using Raffa.AiFlows.Negotiation.Options;
+using Raffa.AiFlows.Negotiation.Orchestration;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Agents;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
 using Raffa.AiGateway.Logging;
-using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
-using Raffa.Chat.Tests.TestSupport;
+using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 
-namespace Raffa.Chat.Tests.Agents;
+namespace Raffa.AiFlows.Tests.Negotiation.Agents;
 
 /// <summary>
 /// Plan A-01, worked example: a pretend council whose every model call is a <see cref="StepRunner"/>

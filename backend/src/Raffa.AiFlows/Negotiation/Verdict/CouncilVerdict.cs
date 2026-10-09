@@ -4,7 +4,7 @@ using Raffa.Chat.Application.Language;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 
-namespace Raffa.Chat.Application.Council;
+namespace Raffa.AiFlows.Negotiation.Verdict;
 
 /// <summary>What the verdict says: the first three are the calculators' feasibility scale, the last
 /// three answer a turn with no goal ("is a meaningful saving available?").</summary>

@@ -1,11 +1,13 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Raffa.AiFlows.Negotiation.Options;
+using Raffa.AiFlows.Negotiation.Tools;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 
-namespace Raffa.Chat.Application.Council;
+namespace Raffa.AiFlows.Negotiation.Agents;
 
 /// <summary>What the market researcher brought back: the market notes to add to the pack, the
 /// queries it ran, whether it ran at all, and why it failed when it did.</summary>

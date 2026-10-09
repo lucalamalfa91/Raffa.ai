@@ -228,8 +228,8 @@ var chatConnectionString = BoundPostgres(
 
 // Chat:Council (kill switch + bounds of the negotiation council), registered before
 // AddChatModule's own TryAddSingleton default so a configured value wins.
-var councilOptions = new Raffa.Chat.Application.Council.CouncilOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.Council.CouncilOptions.SectionName).Bind(councilOptions);
+var councilOptions = new Raffa.AiFlows.Negotiation.Options.CouncilOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.Negotiation.Options.CouncilOptions.SectionName).Bind(councilOptions);
 builder.Services.AddSingleton(councilOptions);
 
 // Chat:Drafting (ADR-030 D3): the drafting workflow's kill switch and bounds, same shape.

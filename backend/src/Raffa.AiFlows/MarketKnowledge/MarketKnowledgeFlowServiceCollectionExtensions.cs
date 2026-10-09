@@ -32,9 +32,7 @@ internal static class MarketKnowledgeFlowServiceCollectionExtensions
             sp.GetService<Raffa.AiGateway.IAiGateway>(),
             sp.GetService<Microsoft.Extensions.Logging.ILogger<MarketPriceEstimator>>()));
 
-        // Until the Council flow moves in (P2.a) the interface still lives in Raffa.Chat; the
-        // registration target changes namespace then, nothing else.
-        services.AddScoped<Raffa.Chat.Application.Council.IMarketRagSearch, MarketRagSearch>();
+        services.AddScoped<Negotiation.Tools.IMarketRagSearch, MarketRagSearch>();
 
         return services;
     }

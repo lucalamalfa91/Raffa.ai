@@ -1,4 +1,4 @@
-namespace Raffa.Chat.Application.Council;
+namespace Raffa.AiFlows.Negotiation.Agents;
 
 /// <summary>
 /// The specialist agents of Ask's agentic flow (<see cref="AskAgentFlow"/>), each a versioned

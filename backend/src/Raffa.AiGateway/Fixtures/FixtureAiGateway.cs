@@ -576,7 +576,7 @@ public sealed class FixtureAiGateway(
     }
 
     /// <summary>Structural mirror of the analyst/planner/writer inputs
-    /// (<c>Raffa.Chat.Application.Council.NegotiationCouncil</c> and
+    /// (<c>Raffa.AiFlows.Negotiation.Orchestration.NegotiationCouncil</c> and
     /// <c>Raffa.Chat.Application.Drafting.NegotiationDraftingWorkflow</c>): only the fields the
     /// doubles read; every other field of the real input is ignored.</summary>
     private sealed record FixtureAnalysisInput(
@@ -590,7 +590,7 @@ public sealed class FixtureAiGateway(
 
     private sealed record FixturePlanAsk(string? Lever, string? Sentence, IReadOnlyList<string>? CitationKeys);
 
-    /// <summary>The Ask flow's market researcher (<c>Raffa.Chat.Application.Council.CouncilAgents
+    /// <summary>The Ask flow's market researcher (<c>Raffa.AiFlows.Negotiation.Agents.CouncilAgents
     /// .MarketResearcherName</c> — this project cannot reference it, ADR-002).</summary>
     private const string MarketResearcherAgentName = "market-researcher";
 

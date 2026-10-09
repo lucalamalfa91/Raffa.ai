@@ -1,5 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Raffa.AiFlows.Negotiation.Agents;
+using Raffa.AiFlows.Negotiation.Options;
+using Raffa.AiFlows.Negotiation.Verdict;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Telemetry;
@@ -8,7 +11,7 @@ using Raffa.Chat.Application.Guards;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 
-namespace Raffa.Chat.Application.Council;
+namespace Raffa.AiFlows.Negotiation.Orchestration;
 
 /// <summary>What the council produced for one turn: the pack items to insert, which agents ran,
 /// and which failed (a failed agent degrades the council, never the turn).</summary>

@@ -1,10 +1,10 @@
-using Raffa.Chat.Application.Council;
+using Raffa.AiFlows.Negotiation.Verdict;
 using Raffa.Chat.Application.Guards;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
-using Raffa.Chat.Tests.TestSupport;
+using Raffa.AiFlows.Tests.TestSupport;
 
-namespace Raffa.Chat.Tests.Council;
+namespace Raffa.AiFlows.Tests.Negotiation.Verdict;
 
 /// <summary>
 /// Plan F2-D03 / F2-T08: the verdict on the goal has one owner, a deterministic component that reads

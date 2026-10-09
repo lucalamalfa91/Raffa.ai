@@ -1,13 +1,16 @@
 using System.Text.Json;
+using Raffa.AiFlows.Negotiation.Agents;
+using Raffa.AiFlows.Negotiation.Options;
+using Raffa.AiFlows.Negotiation.Orchestration;
+using Raffa.AiFlows.Negotiation.Tools;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
-using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Pack;
 using Raffa.SharedKernel;
 
-namespace Raffa.Chat.Tests.Council;
+namespace Raffa.AiFlows.Tests.Negotiation.Orchestration;
 
 /// <summary>
 /// Ask's agentic flow, one coordinated sequence: the deterministic market data check first, then

@@ -1,4 +1,4 @@
-using Raffa.Chat.Application.Council;
+using Raffa.AiFlows.Negotiation.Tools;
 using Raffa.Chat.Application.Pack;
 using Raffa.Insights.Contracts;
 using Raffa.Market.Retrieval;

@@ -1,9 +1,10 @@
+using Raffa.AiFlows.Negotiation.Agents;
+using Raffa.AiFlows.Negotiation.Options;
 using Raffa.AiGateway.Agents;
-using Raffa.Chat.Application.Council;
 using Raffa.Chat.Application.Pack;
 using Raffa.Chat.Application.Planning;
 
-namespace Raffa.Chat.Tests.Agents;
+namespace Raffa.AiFlows.Tests.Negotiation.Agents;
 
 // The wire shapes of the council, as plain immutable records (plan 3.2: input/output records that
 // serialize, so a step can become a durable activity unchanged). They mirror the private DTOs of
