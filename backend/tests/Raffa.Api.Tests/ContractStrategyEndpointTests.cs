@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Shared.ContractContext;
 using System.Net;
 using System.Text.Json;
 using Raffa.Api.Tests.TestSupport;

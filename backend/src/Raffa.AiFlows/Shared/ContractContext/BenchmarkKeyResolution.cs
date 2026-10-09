@@ -4,7 +4,7 @@ using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.Shared.ContractContext;
 
 /// <summary>
 /// Task E21/F01/US01/T01 (ADR-002 w17 clause 3, ADR-024 w17 clause 10): the one place in the
@@ -18,14 +18,14 @@ namespace Raffa.Api;
 /// so two calls to the benchmark service for one screen cannot disagree on which key they used.
 ///
 /// <para>
-/// Pattern: <see cref="PortfolioEndpointExtensions.ResolveSupplierNamesAsync"/> — one place per
+/// Pattern: <c>PortfolioEndpointExtensions.ResolveSupplierNamesAsync</c> — one place per
 /// host that calls <see cref="ISupplierNameLookup"/>, wrapped in its own
 /// <see cref="ITenantContext.BeginScope"/>. This service is registered Scoped (not Singleton) so
 /// it participates in the request's own DI scope and can hold Scoped dependencies
 /// (<see cref="IdentityWorkspaceDbContext"/>).
 /// </para>
 /// </summary>
-internal sealed class BenchmarkKeyResolution(
+public sealed class BenchmarkKeyResolution(
     ISupplierNameLookup supplierNameLookup,
     IdentityWorkspaceDbContext identityDbContext,
     ITenantContext tenantContext)
@@ -88,16 +88,16 @@ internal sealed class BenchmarkKeyResolution(
 /// result that the host maps to a single <c>status: "insufficient_data"</c> entry (ADR-024 w17
 /// clause 11: an empty array cannot be told apart from "never wired").
 /// </summary>
-internal abstract record BenchmarkKeyResult
+public abstract record BenchmarkKeyResult
 {
     private BenchmarkKeyResult() { }
 
     /// <summary>Both supplier name and geography resolved — the caller may build a
     /// <c>BenchmarkQuery</c>.</summary>
-    internal sealed record Complete(string Supplier, string Geography) : BenchmarkKeyResult;
+    public sealed record Complete(string Supplier, string Geography) : BenchmarkKeyResult;
 
     /// <summary>At least one dimension was missing or unresolvable. The caller must not attempt
     /// a benchmark lookup and must emit a single <c>"insufficient_data"</c> entry
     /// (ADR-024 w17 clause 11).</summary>
-    internal sealed record Incomplete : BenchmarkKeyResult;
+    public sealed record Incomplete : BenchmarkKeyResult;
 }

@@ -11,7 +11,7 @@ using Raffa.Savings.Application;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Market;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.Shared.ContractContext;
 
 /// <summary>
 /// The pure composition and mapping the Insights endpoints and Ask's packs share: a
@@ -23,12 +23,12 @@ namespace Raffa.Api;
 /// formula lives in the calculators.
 ///
 /// <para>
-/// Extracted from <see cref="InsightsEndpointExtensions"/> unchanged (same bodies, same signatures);
+/// Extracted from <c>InsightsEndpointExtensions</c> unchanged (same bodies, same signatures);
 /// that class keeps same-named public wrappers that delegate here, so its callers and the tests that
 /// call it directly are untouched. Unit-tested directly with fakes from <c>Raffa.Insights.Tests</c>.
 /// </para>
 /// </summary>
-internal static class ContractInsightsMapper
+public static class ContractInsightsMapper
 {
     /// <summary>
     /// Composes one <see cref="Contract360Result"/> plus its already-computed

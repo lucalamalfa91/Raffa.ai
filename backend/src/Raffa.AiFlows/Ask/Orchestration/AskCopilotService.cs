@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Shared.ContractContext;
 using Raffa.AiFlows.Shared.Audit;
 using Raffa.AiFlows.CapabilityGaps.Investigation;
 using Raffa.AiFlows.Negotiation.DataCheck;
@@ -42,7 +43,7 @@ using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 using Raffa.Suppliers.Products.Application;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.Ask.Orchestration;
 
 /// <summary>
 /// The Ask V2 pack-composition root (task E13/F06/US01/T01, ask-engine; ADR-024 "context pack
@@ -57,8 +58,8 @@ namespace Raffa.Api;
 /// savings opportunities (<see cref="SavingsOpportunityService"/>) and supplier names
 /// (<see cref="ISupplierNameLookup"/>) are all composed into one
 /// <see cref="Raffa.AiFlows.Shared.Pack.PackItem"/> list, then handed to
-/// <c>Raffa.Chat</c>'s own gate/planner/guards/answer pipeline. <see cref="ChatEndpointExtensions"/>
-/// and <see cref="ConversationsEndpointExtensions"/> are this service's only two callers
+/// <c>Raffa.Chat</c>'s own gate/planner/guards/answer pipeline. <c>ChatEndpointExtensions</c>
+/// and <c>ConversationsEndpointExtensions</c> are this service's only two callers
 /// (`POST /api/chat/query`'s alias and `POST /api/conversations/{id}/messages` respectively).
 ///
 /// <para>
@@ -75,7 +76,7 @@ namespace Raffa.Api;
 /// <para>
 /// <b>Scoped entries (task E25/F03/US01/T01, NW-56; ADR-024)</b>: <see cref="AskAsync"/>'s own
 /// <c>scopeContractId</c> parameter — the conversation's persisted
-/// <c>Conversation.ScopeContractId</c>, threaded in by <see cref="ConversationsEndpointExtensions"/>
+/// <c>Conversation.ScopeContractId</c>, threaded in by <c>ConversationsEndpointExtensions</c>
 /// — resolves to a known supplier name and overrides the domain gate's own free-text extraction
 /// before the reply switch decides, so a turn opened from Contract 360's "Ask about it" is always
 /// about that one contract, never a generic gate/hello, regardless of whether the question itself
@@ -105,7 +106,7 @@ namespace Raffa.Api;
 /// <see cref="BuildRenewalStrategyPackAsync"/>/<see cref="BuildMarketComparePackAsync"/> both
 /// resolve the (supplier name, geography) key through the same <see cref="BenchmarkKeyResolution"/>
 /// <c>InsightsEndpointExtensions.GetContractStrategyAsync</c> already calls, then pass it to the
-/// same async <c>InsightsEndpointExtensions.ToPricedLines</c> overload — never
+/// same async <c>ContractInsightsMapper.ToPricedLines</c> overload — never
 /// <c>Contract.GoverningLaw</c> as a geography stand-in (the gap this doc comment used to name; a
 /// contract still has no dedicated geography column, but the workspace's own country, the same
 /// proxy <c>/strategy</c> already accepted as honest in ADR-024 w17 clause 8, is a real resolution,
@@ -186,7 +187,7 @@ namespace Raffa.Api;
 /// abstain.
 /// </para>
 /// </summary>
-internal sealed partial class AskCopilotService(
+public sealed partial class AskCopilotService(
     DomainGate domainGate,
     IntentPlanner intentPlanner,
     AnswerComposer answerComposer,
@@ -2142,7 +2143,7 @@ internal sealed partial class AskCopilotService(
             return [];
         }
 
-        var renewal = InsightsEndpointExtensions.ComputeRenewal(contract360.Header, renewalEngine);
+        var renewal = ContractInsightsMapper.ComputeRenewal(contract360.Header, renewalEngine);
         var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
         // One resolution per screen (ADR-024 w17 clause 7), extended to Ask (task E28/F01/US01/T01,
@@ -2160,11 +2161,11 @@ internal sealed partial class AskCopilotService(
         var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
 
-        var criticalFacts = InsightsEndpointExtensions.ToCriticalFacts(contract360);
+        var criticalFacts = ContractInsightsMapper.ToCriticalFacts(contract360);
         var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
 
         // Composed by the same mapping GET /api/contracts/{id}/strategy uses
-        // (InsightsEndpointExtensions.ToStrategyInputs / StrategyPackBuilder.Build), so Ask and the
+        // (ContractInsightsMapper.ToStrategyInputs / StrategyPackBuilder.Build), so Ask and the
         // endpoint narrate the identical targets whenever a band exists (AC-2) and the identical
         // "insufficient market data" explanation when it does not (AC-3;
         // PricedLineNegotiationCalculator.ComputeTargetRange). Ask overrides SupplierName with its
@@ -2173,7 +2174,7 @@ internal sealed partial class AskCopilotService(
         // BenchmarkKeyResolution call) purely for narration text ("Notify X of intent..." etc.); the
         // override never touches a priced line's own Benchmark/band, so it cannot desync the numbers
         // this task fixes.
-        var strategyInputs = InsightsEndpointExtensions
+        var strategyInputs = ContractInsightsMapper
             .ToStrategyInputs(contract360, renewal, pricedLines, criticalFacts, asOfDate)
             with
             { SupplierName = supplierName };
@@ -2382,7 +2383,7 @@ internal sealed partial class AskCopilotService(
             return [];
         }
 
-        var renewal = InsightsEndpointExtensions.ComputeRenewal(contract360.Header, renewalEngine);
+        var renewal = ContractInsightsMapper.ComputeRenewal(contract360.Header, renewalEngine);
         var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
         // One resolution per screen (ADR-024 w17 clause 7), same as BuildRenewalStrategyPackAsync/
@@ -2405,7 +2406,7 @@ internal sealed partial class AskCopilotService(
                 .Select(r => new NegotiationRiskSnapshot(
                     r.RiskType,
                     r.Description,
-                    InsightsEndpointExtensions.ToCriticalityRiskSeverity(r.Severity) ?? CriticalityRiskSeverity.None))
+                    ContractInsightsMapper.ToCriticalityRiskSeverity(r.Severity) ?? CriticalityRiskSeverity.None))
                 .ToList(),
             contract360.Overview.PaymentTerms);
 
@@ -2485,12 +2486,12 @@ internal sealed partial class AskCopilotService(
             }
         }
 
-        var portfolioAnnualSpendByCurrency = InsightsEndpointExtensions.ComputePortfolioAnnualSpendByCurrency(contracts);
+        var portfolioAnnualSpendByCurrency = ContractInsightsMapper.ComputePortfolioAnnualSpendByCurrency(contracts);
 
         var inputs = contracts
-            .Select(contract => InsightsEndpointExtensions.ToCriticalityInputs(
+            .Select(contract => ContractInsightsMapper.ToCriticalityInputs(
                 contract,
-                InsightsEndpointExtensions.ComputePriority(contract.Header, renewalEngine, priorityScoreCalculator),
+                ContractInsightsMapper.ComputePriority(contract.Header, renewalEngine, priorityScoreCalculator),
                 portfolioAnnualSpendByCurrency,
                 allSavings))
             .ToList();
@@ -2851,7 +2852,7 @@ internal sealed partial class AskCopilotService(
     }
 
     /// <summary>
-    /// The priced lines every Ask pack reads: the same <c>InsightsEndpointExtensions.ToPricedLines</c>
+    /// The priced lines every Ask pack reads: the same <c>ContractInsightsMapper.ToPricedLines</c>
     /// call <c>GET /api/contracts/{id}/strategy</c> makes, including each line's stored market
     /// comparison (<see cref="LineItemMarketPriceService"/>, the figure Contract 360's market column
     /// shows) — so Ask, the strategy endpoint and the product table never state two different
@@ -2870,7 +2871,7 @@ internal sealed partial class AskCopilotService(
                 .GetCurrentAsync(CurrentTenantId, contract360.ContractId, cancellationToken)
                 .ConfigureAwait(false);
 
-        return await InsightsEndpointExtensions
+        return await ContractInsightsMapper
             .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken, storedMarketPrices)
             .ConfigureAwait(false);
     }
@@ -2878,7 +2879,7 @@ internal sealed partial class AskCopilotService(
     /// <summary>
     /// Resolves the (supplier name, geography) key <see cref="BuildRenewalStrategyPackAsync"/>/
     /// <see cref="BuildMarketComparePackAsync"/> need for the async
-    /// <c>InsightsEndpointExtensions.ToPricedLines</c> overload — the same
+    /// <c>ContractInsightsMapper.ToPricedLines</c> overload — the same
     /// <see cref="BenchmarkKeyResolution"/> <c>GET /api/contracts/{id}/strategy</c> already resolves
     /// (ADR-024 w17 clause 7 "one resolution per screen"; task E28/F01/US01/T01, NW-82). An
     /// <see cref="BenchmarkKeyResult.Incomplete"/> key (no <c>SupplierId</c>, an unresolved name, or

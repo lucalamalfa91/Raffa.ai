@@ -330,15 +330,6 @@ builder.Services.AddMarketModule(
 // DTOs (Raffa.Insights' own allow-list is [SharedKernel, Benchmark] — no DbContext of its own).
 builder.Services.AddInsightsModule();
 
-// AskCopilotService is host-composition wiring (this task's own new pack-composition root — see
-// that type's own doc comment: "everything Raffa.Chat's allow-list forbids that module from
-// doing itself happens here"), the same kind of direct registration
-// QuoteExtractionPipeline/NegotiationOutcomePropagationService already use below for the identical
-// "the one place that calls into several modules at once" reason — not a domain module's own
-// AddXxxModule. Scoped: shares this request's own DbContext-backed services (all already Scoped)
-// rather than a second, independently-tracked instance of any of them.
-builder.Services.AddScoped<AskCopilotService>();
-
 // Task E03/F03/US01/T01 (renewal-dashboard, GET /api/renewals): the Renewals module's own
 // AddRenewalsModule(IServiceCollection) (ADR-002) — task E03/F01/US01/T01 registered RenewalEngine
 // here already but nothing called it; this task is that first real caller (same "wiring lands with
@@ -354,14 +345,6 @@ var renewalsConnectionString = BoundPostgres(
         "(set env var ConnectionStrings__Renewals in deployed environments)."));
 
 builder.Services.AddRenewalsModule(renewalsConnectionString);
-
-// Task E21/F01/US01/T01 (benchmark-key-resolver, ADR-002 w17 clause 3, ADR-024 w17 clause 10):
-// BenchmarkKeyResolution is host-composition wiring — the one place that resolves the
-// (supplier name, geography) pair a BenchmarkQuery requires. Two consumers in this wave:
-// E21/F02/US01/T01 (GET /api/renewals market band) and E21/F03/US01/T01 (strategy benchmark).
-// Scoped: reads IdentityWorkspaceDbContext (Scoped) and ISupplierNameLookup (Singleton) — the
-// same lifetime pattern AskCopilotService already uses for its cross-module composition.
-builder.Services.AddScoped<BenchmarkKeyResolution>();
 
 // Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3):
 // RenewalAlertRecomputeService is host-composition wiring, the same kind as

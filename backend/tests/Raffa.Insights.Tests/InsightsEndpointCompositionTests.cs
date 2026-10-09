@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Shared.ContractContext;
 using System.Reflection;
 using Raffa.Api;
 using Raffa.Benchmark;

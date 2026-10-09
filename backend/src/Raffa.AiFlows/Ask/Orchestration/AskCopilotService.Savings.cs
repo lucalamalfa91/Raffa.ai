@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Shared.ContractContext;
 using System.Globalization;
 using Raffa.AiFlows.Negotiation.Verdict;
 using Raffa.AiFlows.Shared.Pack;
@@ -15,7 +16,7 @@ using Raffa.Savings.Application;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.Ask.Orchestration;
 
 /// <summary>
 /// The savings-consultant half of <see cref="AskCopilotService"/>: the evidence packs for
@@ -25,7 +26,7 @@ namespace Raffa.Api;
 /// <see cref="SavingsLeverCalculator"/> / <see cref="PortfolioSavingsTargetCalculator"/> over
 /// validated contract facts, benchmark bands and the market corpus; the model narrates them.
 /// </summary>
-internal sealed partial class AskCopilotService
+public sealed partial class AskCopilotService
 {
     private const int LeverClauseQueriesTopK = 2;
     private const int MarketDealsTopK = 4;
@@ -82,7 +83,7 @@ internal sealed partial class AskCopilotService
             .ConfigureAwait(false);
         var deals = NarrowDealsToContract(allDeals, contract360.Overview.Currency, geography);
 
-        var renewal = InsightsEndpointExtensions.ComputeRenewal(contract360.Header, renewalEngine);
+        var renewal = ContractInsightsMapper.ComputeRenewal(contract360.Header, renewalEngine);
 
         var inputs = new SavingsLeverInputs(
             new EntityId(item.ContractId),
