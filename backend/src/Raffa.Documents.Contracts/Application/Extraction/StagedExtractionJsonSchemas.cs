@@ -45,7 +45,7 @@ internal static class StagedExtractionJsonSchemas
     /// <see cref="StagedExtractionService"/> applies; an unknown name gets a generic gloss.</summary>
     private static readonly IReadOnlyDictionary<string, string> FieldMeanings = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        [StagedExtractionService.SupplierFieldName] =
+        [ExtractionFieldNames.Supplier] =
             "the supplier's (vendor's, provider's, fornitore's) legal name exactly as written in the document - the party that provides the goods or services, never the customer",
         ["currency"] = "ISO 4217 code of the currency the fees are expressed in (EUR, USD, CHF, GBP)",
         ["governingLaw"] = "the governing law as a short English phrase, e.g. 'Italy', 'State of Delaware'",

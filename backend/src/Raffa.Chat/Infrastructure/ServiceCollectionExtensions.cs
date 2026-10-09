@@ -1,3 +1,5 @@
+using Raffa.AiGateway.Configuration;
+using Raffa.AiGateway.Jev;
 using Raffa.Chat.Application;
 using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
@@ -110,16 +112,32 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(new DraftingOptions());
         services.AddScoped<NegotiationDraftingWorkflow>();
 
-        // The capability investigator (Application.Gaps, ADR-031): one analyst-role agent that
-        // decides whether a fresh turn asks for a feature Raffa does not have; the host binds
+        // The capability investigator (Application.Gaps, ADR-031): decides whether a fresh turn asks
+        // for a feature Raffa does not have. The verdict is decided by the Jev classify-role pilot
+        // when it is on (never the LLM -- CapabilityInvestigator's own doc comment); the analyst-role
+        // Foundry call only ever writes a gap's free-text description. The host binds
         // Chat:GapInvestigation (as IOptionsMonitor, so the mode and the kill switch change without
         // a restart) before calling this; absent that, the defaults: Triggered, enabled.
         services.AddOptions<GapInvestigationOptions>();
+        // AiGatewayJevOptions/JevHttpJsonClient are normally registered (config-bound) by
+        // Raffa.AiGateway.ServiceCollectionExtensions.AddAiGatewayModule, called before this one by
+        // every real host (same ordering IAiGateway itself already relies on). TryAdd here is the
+        // same defensive fallback every other option in this method already gets -- a host or test
+        // that calls only AddChatModule still gets a safe, Jev-off default rather than a missing
+        // registration (Raffa.Chat.Tests.ServiceCollectionExtensionsTests never registers
+        // IConfiguration at all, so this cannot be a config-binding factory here).
+        services.TryAddSingleton(new AiGatewayJevOptions());
+        services.TryAddSingleton(sp => new JevHttpJsonClient(
+            new HttpClient { Timeout = TimeSpan.FromSeconds(180) },
+            sp.GetRequiredService<AiGatewayJevOptions>()));
+        services.TryAddSingleton<JevVerdictClient>();
         // A factory, not constructor selection: the investigator has a second, options-instance
         // constructor for tests and tools, and the container must not weigh the two.
         services.AddScoped(sp => new CapabilityInvestigator(
             sp.GetRequiredService<Raffa.AiGateway.IAiGateway>(),
-            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>()));
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>(),
+            sp.GetRequiredService<AiGatewayJevOptions>(),
+            sp.GetRequiredService<JevVerdictClient>()));
 
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
         // GitHub publisher and binds Feedback:* before calling this when a token is configured;
@@ -139,6 +157,9 @@ public static class ServiceCollectionExtensions
         // ADR-030: web research. The options default to Enabled=false (the kill switch), so a host
         // that never binds Chat:WebResearch has no web path at all.
         services.TryAddSingleton(new WebResearchOptions());
+        // The budget (persistence, this module) reads its daily limit through this port; it resolves
+        // the options lazily, so a host that swaps WebResearchOptions after this call is honoured.
+        services.TryAddSingleton<IWebResearchBudgetLimit>(sp => sp.GetRequiredService<WebResearchOptions>());
         services.AddScoped<WebResearchComposer>();
 
         // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration

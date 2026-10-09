@@ -11,8 +11,8 @@ from `jev-pilot-todo.md` (last used: NW-100).
 
 | Item | Status | Where |
 |---|---|---|
-| Document-type classification (`DocumentAdmissionGate`) → Jev | **Coded, not merged** | `backend/src/Raffa.AiGateway/Jev/*`, decorator `JevAiGateway` on the `classify` role only |
-| Capability-investigator verdict (`CapabilityInvestigator`) → Jev | **Coded, not merged** | `backend/src/Raffa.Chat/Application/Gaps/JevVerdictClient.cs`; `question`/`supported`/`known-gap` never call Foundry once Jev decides; `gap` still calls Foundry once, only to write the free-text feature description |
+| Document-type classification (`DocumentAdmissionGate`) → Jev | **Coded, not merged** (PR #242, reworked 2026-10-09 — see §5.1) | `backend/src/Raffa.AiGateway/Jev/*`, decorator `JevAiGateway` on the `classify` role only; Jev first, Foundry on failure or low confidence |
+| Capability-investigator verdict (`CapabilityInvestigator`) → Jev | **Coded, not merged** (PR #242, reworked 2026-10-09 — see §5.1) | `backend/src/Raffa.Chat/Application/Gaps/JevVerdictClient.cs`; one Choice over the operations, verdict derived in code; question / capability / known-gap never call Foundry; `none` (a gap) still calls Foundry once, only to write the free-text feature description |
 | Both behind one switch | `AiGateway:Jev:Enabled`/`AiGateway:Jev:ApiKey`, off everywhere until a real OpenRouter key is supplied and the flag is flipped on `dev` | — |
 | Open from the first evaluation (`jev-pilot-todo.md`) | NW-98/99/100 (shadow-mode harness, data-governance sign-off, go/no-go scorecard) are **superseded** by shipping real code directly instead of a shadow harness — this file's own NW-101+ below carries the "measure before trusting it" discipline forward per item, not as one upfront harness | — |
 
@@ -292,3 +292,150 @@ chain, done specifically to answer this question, found:
 - **Seats:** software-architect, delivery-manager (regression risk on a
   hot, already-productionized path — wants a careful rollout, not a Jev
   question).
+
+## 5. Revisions after reading TypeSafe's cookbooks (2026-10-09)
+
+Source: `docs.typesafe.ai` (API reference, Confidence, Models, Jev 1.13
+jaggedness, the patterns pages) and the cookbooks listed below, plus
+OpenRouter's Jev pages. The earlier passes of this file worked from the cookbook
+*index*, not the pages. **Read closely:** API reference, jaggedness, confidence,
+fan-out / confidence-routing / composite-scoring / intent-routing, *Classifying
+RAG passages*, *Double-checking citations*, *Date extraction*, *Pre-parsed value
+extraction*, *Function calling*, *Skill suggestion*. **Read in part** (overview,
+method and appendices, not every code cell): *SDE cascade*, *Classification using
+confidence*, *Self-consistency: choices*, *Parallel questions*, *Guardrails for
+LLMs*, *Re-ranking*, OpenRouter's *Verified Cascade*, *Gate Agent Tool Calls* and
+*Classify and Tag Text at Scale*. **Not read:** *Self-consistency: nouls*,
+*Line-by-line search*, *Structure recovery*, *Entity alignment*, *Hierarchical
+classification*, *Autoresearch feature discovery*, *Smart home demo*. Every number
+quoted below is TypeSafe's, measured on their datasets (English text, `jev-1.12`
+for most), not on Raffa's.
+
+### 5.1 What changed in the two pilots (PR #242)
+
+- **Wire contract is now documented, not guessed.** `POST /v1/systemone` on
+  `api.typesafe.ai`, identical on OpenRouter at `/api/v1/systemone` (the
+  `/api/alpha/decisions` surface is a different, alpha shape). Answers are flat
+  (`{type, choice, probabilities, confidence}`; a Noul is `{type, noul}` and has no
+  confidence). The `route.choice` nesting the first draft handled is not in the
+  docs. §3 item 1 ("contract unverified") narrows to "documented, never run with a
+  live key".
+- **One operation Choice instead of a four-way verdict.** Jaggedness: avoid
+  "hiding several judgments inside one question", indirection, and a state full of
+  detail the question does not need. The investigator's `state` is now the turn
+  only; the options are `question`, `capability:<key>`, `known-gap:<key>`, `none`;
+  supported / known-gap / gap is derived in code. A second Choice (nearest
+  capability) rides in the same request (the documented "speculative fan-out").
+- **Option-order check.** Jev "leans toward the option that comes first"; both
+  pilots ask the Choice a second time with the options reversed, in the same
+  request, and treat a disagreement as "not sure".
+- **Classify falls back to Foundry** on a Jev failure or an answer under 0.6,
+  instead of surfacing a 503 (the confidence-gated cascade the docs describe).
+- **Evidence for NW-100.** The audit metadata carries the served model version and
+  the token usage; every decision logs its top-2 probabilities (never the text), so
+  thresholds are read off data (TypeSafe: "start conservative, test with your own
+  data"; "thresholds scale with risk"). `529 Overloaded` is retried.
+- **Language.** Jev's primary training language is English; Italian and German are
+  "handled but not equally well". Raffa's contracts are IT/DE first, so accuracy on
+  them is the first thing to measure, ahead of any threshold.
+- **Still open:** the Foundry call that writes a gap's description still runs the
+  full `gaps-v1` prompt and schema and its verdict is discarded. Narrowing that
+  prompt/schema to the free-text fields (Pattern D's second half) needs an agent
+  version bump and is not done.
+
+### 5.2 Changes to the items in §2
+
+- **NW-101 (RAG screening).** *Classifying RAG passages* is the same design, with
+  details this file left open: **one request per passage** (state = query + passage,
+  four Noul), not one batched request per retrieval; run a few in parallel (the
+  cookbook uses four) and mind the rate limit (Models page: 80 requests/s, "adjusting
+  dynamically"). Routing is a fixed-order chain of comparisons in code, injection
+  first (> 0.70 → exclude), then contradiction (> 0.70 → conflict block), then
+  relevance (< 0.45 → exclude), then evidence (> 0.55 → include); every threshold
+  lives in one constants dictionary, none of the four questions asks "include it?",
+  and re-routing after a threshold change costs no API call. **Security caveat:**
+  Jaggedness lists adversarial content as a failure mode ("can move the answer"), so
+  Jev's injection Noul cannot be the only control; the security-architect sign-off
+  must say what else stands behind it.
+- **NW-102 (gates).** Keep the asymmetry: skip the expensive call only when Jev is
+  *confidently* negative; an uncertain answer (Noul near 0.5, or a low-confidence
+  Choice) lets the Foundry call proceed. A gate that is wrong in the skipping
+  direction loses an answer; wrong the other way it only loses the saving.
+- **NW-103 (citation check).** *Double-checking citations* adds a deterministic
+  first step: normalise whitespace and quotes and look for the quote in the source;
+  a missing quote is `fabricated` and Jev is never called. The surviving citations
+  get one Choice over the quote's section (`supports` / `contradicts` /
+  `says_nothing`), auto-accepted at confidence ≥ 0.8, otherwise a person confirms.
+  In their eight-citation example the four planted failures were caught and the two
+  low-confidence ones went to review. This answers part of the open product
+  question: low confidence → review/abstain, not silent redaction.
+- **NW-104 (sequential grounding).** *SDE cascade* is the opposite shape and fits
+  Raffa's cost problem better: a cheaper model extracts, Jev **verifies** per field
+  with narrow Noul questions framed so `true` means "wrong" ("is this value absent
+  from the source?", "was it lifted from unrelated text?"), flags are aggregated with
+  `max` (threshold 0.7 in the example), and only flagged records are re-run on the
+  stronger model. Jev never writes a field, which removes the coherence risk this
+  file's Pattern D had to work around. Their own result: most of the large model's
+  quality at a fraction of its cost, on their data. Treat Pattern D (§1) and this
+  cascade (new NW-107 below) as alternatives and measure one stage under both before
+  choosing.
+- **NW-105 (dates/amounts).** The dependency on a multi-locale date parser is
+  mostly gone. *Date extraction* asks Choices for the **parts** (mode: absolute /
+  relative / none; month; day; year with `none` and `out_of_range` escapes) and code
+  assembles the date; a date's confidence is the lowest of its parts, and under 0.60
+  it goes to review. Jaggedness agrees: extraction is a judgment, date arithmetic
+  stays in code. Amounts still need candidates: *Pre-parsed value extraction* uses a
+  regex tuned to over-find, a Choice over the spans (plus `none`) and Noul/Choice for
+  currency and credit-vs-charge; for `€1.315,50` vs `$1,315.50` it asks a Noul which
+  convention the document uses and branches in code. A Choice holds at most 255
+  options (two-stage narrowing above that). **Untested for IT/DE month names and
+  number formats** — measure before building more.
+- **NW-98 / NW-100 (evaluation).** *Self-consistency: choices* shows Jev flipping
+  labels between repeats of the same request on borderline items (90.8% plurality
+  agreement in their run, 99.2% once answers under a 0.60 top probability are routed
+  to review, with 74.2% still automatic). Add **run-to-run stability** to the quality
+  bar and an explicit `uncertain` band, not just accuracy against the held-out set.
+- **NW-99 (governance).** TypeSafe states Jev is not trained on customer requests,
+  publishes a DPA and privacy policy, and offers zero data retention to enterprise
+  customers (Models → Data handling, `/legal`). The direct endpoint
+  (`api.typesafe.ai`) would avoid OpenRouter as an additional subprocessor;
+  OpenRouter's own data policy was **not** read. Still no sign-off on file.
+
+### 5.3 New candidate items (not yet ranked against §2)
+
+Same discipline as everything above: each needs its own measured validation, and
+none is a wave request.
+
+- **NW-107 — Verified extraction cascade** (alternative to NW-104). Extract
+  with the cheapest adequate `extract` tier, verify per field with Jev Noul, escalate
+  only flagged records. Pairs with the §4 addendum: NW-106 removes avoidable
+  serialisation; this lowers the cost of the calls that remain. Start with one stage
+  (`LegalClauses`).
+- **NW-108 — Re-rank retrieved passages.** *Re-ranking* scores each
+  query–candidate pair with one question on a keyword shortlist (their legal-passage
+  result: top-1 5% → 18%, top-10 38% → 62% on 40 queries; a real gain but absolute
+  numbers are still low). The same request that screens a passage for NW-101 could
+  carry a relevance Score; extend NW-101 rather than add a second pass.
+- **NW-109 — Ask routing in two requests.** *Skill suggestion* ranks a large roster
+  cheaply, then re-reads only the top three with full descriptions and may reject all
+  of them (wrong loads 16.8% → 7.3%, needless loads 9.8% → 4.0% in their test).
+  *Function calling* maps a sentence to a function and its closed-set arguments with
+  one Choice each, uses an optional "does the command state this argument?" Noul,
+  and reports the **lowest** confidence among the judgements. Candidate for the
+  Ask-abilities / capability selection the investigator already approximates.
+- **NW-110 — Verified draft cascade for `AnswerComposer`.** OpenRouter's *Verified
+  Cascade*: a cheap model drafts from the retrieved excerpts, Jev classifies the draft
+  `supported` / `unsupported` / `declined`, the stronger model rewrites only on
+  failure, and anything still unsupported is handed off. Their 50-question benchmark:
+  no wrong answers shipped, at about 7% of the always-frontier cost. Depends on
+  NW-101/103 and on a measured Raffa baseline; the "declined" label maps to
+  Raffa's abstain path.
+- **NW-111 — Input/output guardrails on Ask.** *Guardrails for LLMs*: a Noul battery
+  plus a severity Score in one request, two thresholds per hazard (review, action),
+  applied to the user's message and to the reply. Subject to the same adversarial
+  caveat as NW-101 and therefore additive to, not a replacement for, the existing
+  Ask domain gate.
+- **Audit shape worth copying.** *Gate Agent Tool Calls* stores the whole decision
+  (reason plus per-question probabilities) with the ticket, then reviews which
+  `review` decisions a human approved: if nearly all, the policy text is ambiguous,
+  not the thresholds. Same loop applies to the investigator's low-confidence band.

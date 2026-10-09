@@ -15,4 +15,29 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// </summary>
 /// <param name="PageNumber">1-based page number, matching how a human would cite "page N".</param>
 /// <param name="Text">The page's text content (native-extracted or OCR'd).</param>
-public sealed record DocumentPageText(int PageNumber, string Text);
+public sealed record DocumentPageText(int PageNumber, string Text)
+{
+    /// <summary>Non-whitespace characters across every page — a scanned blank page or an OCR
+    /// placeholder line does not count as "readable contract text" (R-DOC-03 AC-2).</summary>
+    public static int CountReadableChars(IReadOnlyList<DocumentPageText> pages)
+    {
+        var count = 0;
+        foreach (var page in pages)
+        {
+            if (string.IsNullOrEmpty(page.Text))
+            {
+                continue;
+            }
+
+            foreach (var character in page.Text)
+            {
+                if (!char.IsWhiteSpace(character))
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+}

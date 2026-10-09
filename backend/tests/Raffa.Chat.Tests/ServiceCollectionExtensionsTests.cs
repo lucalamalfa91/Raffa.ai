@@ -6,6 +6,7 @@ using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Infrastructure;
 using Raffa.SharedKernel;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Raffa.Chat.Tests;
 
@@ -107,6 +108,37 @@ public sealed class ServiceCollectionExtensionsTests
         // is additive, never a replacement.
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AskRaffaQueryRouter>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Answering.AnswerComposer>());
+    }
+
+    /// <summary>
+    /// The budget reads its daily limit through <c>IWebResearchBudgetLimit</c>, which must resolve to
+    /// the <em>current</em> <c>WebResearchOptions</c> even when a host swaps those options after
+    /// <c>AddChatModule</c> (the API tests do exactly that).
+    /// </summary>
+    [Fact]
+    public void The_budget_limit_follows_the_registered_WebResearchOptions()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IAiGateway, NotExercisedGateway>();
+        services.AddScoped<IAuditWriter, NoOpAuditWriter>();
+        services.AddChatModule();
+
+        using (var defaults = services.BuildServiceProvider())
+        {
+            Assert.Equal(20, defaults.GetRequiredService<Raffa.Chat.Application.WebResearch.IWebResearchBudgetLimit>().DailyCallsPerTenant);
+        }
+
+        services.RemoveAll<Raffa.Chat.Application.WebResearch.WebResearchOptions>();
+        services.AddSingleton(new Raffa.Chat.Application.WebResearch.WebResearchOptions { DailyCallsPerTenant = 3 });
+
+        using var swapped = services.BuildServiceProvider();
+        Assert.Equal(3, swapped.GetRequiredService<Raffa.Chat.Application.WebResearch.IWebResearchBudgetLimit>().DailyCallsPerTenant);
+    }
+
+    [Fact]
+    public void The_closed_limit_closes_the_gate()
+    {
+        Assert.Equal(0, new Raffa.Chat.Application.WebResearch.ClosedWebResearchBudgetLimit().DailyCallsPerTenant);
     }
 
     private sealed class FixedTimeClock : IClock

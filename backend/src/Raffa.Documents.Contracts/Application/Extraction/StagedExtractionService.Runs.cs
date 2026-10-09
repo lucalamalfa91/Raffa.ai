@@ -35,14 +35,6 @@ public sealed partial class StagedExtractionService
     /// change so that an old checkpoint is never reused.</summary>
     private const string PipelineVersion = "staged-v1";
 
-    private const string CancellationDeadlineFieldName = "cancellationDeadline";
-
-    private const string NoticePeriodDaysFieldName = "noticePeriodDays";
-
-    /// <summary>The pipeline's seven stages, in order (the document list and the validator decide
-    /// "partial" from their jobs).</summary>
-    public static IReadOnlyList<ExtractionStage> Stages => PipelineStages;
-
     /// <summary>What one <c>RunAsync</c> call needs while applying stages. The evidence list and the
     /// protection state are appended to as stages are applied.</summary>
     private sealed record RunContext(
@@ -203,10 +195,10 @@ public sealed partial class StagedExtractionService
 
         context.RunEvidence.AddRange(evidence.Select(e => (e.FieldName, e.Confidence)));
 
-        if (!context.Protection.IsProtected(SupplierFieldName))
+        if (!context.Protection.IsProtected(ExtractionFieldNames.Supplier))
         {
             context.AcceptedSupplierName ??= evidence
-                .Where(e => e.FieldName == SupplierFieldName
+                .Where(e => e.FieldName == ExtractionFieldNames.Supplier
                     && !string.IsNullOrWhiteSpace(e.Value)
                     && e.Decision is ExtractionConfidencePolicy.AutoAccepted or ExtractionConfidencePolicy.HumanAccepted)
                 .Select(e => e.Value!.Trim())
@@ -339,7 +331,7 @@ public sealed partial class StagedExtractionService
             // was ever linked defends no choice of the reviewer, so a later confident reading may still
             // link it. Only an existing link, or a supplier the reviewer corrected, is theirs.
             if (latest.Decision == ExtractionConfidencePolicy.HumanAccepted
-                && !(string.Equals(field, SupplierFieldName, StringComparison.OrdinalIgnoreCase) && contract.SupplierId is null))
+                && !(string.Equals(field, ExtractionFieldNames.Supplier, StringComparison.OrdinalIgnoreCase) && contract.SupplierId is null))
             {
                 protection.Protect(field);
             }
@@ -380,11 +372,11 @@ public sealed partial class StagedExtractionService
         "startDate" => FormatDate(contract.StartDate),
         "endDate" => FormatDate(contract.EndDate),
         "effectiveDate" => FormatDate(contract.EffectiveDate),
-        CancellationDeadlineFieldName => FormatDate(contract.CancellationDeadline),
+        ExtractionFieldNames.CancellationDeadline => FormatDate(contract.CancellationDeadline),
         "autoRenewal" => contract.AutoRenewal ? "true" : "false",
         "renewalTermMonths" => contract.RenewalTermMonths?.ToString(CultureInfo.InvariantCulture),
-        NoticePeriodDaysFieldName => contract.NoticePeriodDays?.ToString(CultureInfo.InvariantCulture),
-        TypeFieldName => contract.Type.ToString(),
+        ExtractionFieldNames.NoticePeriodDays => contract.NoticePeriodDays?.ToString(CultureInfo.InvariantCulture),
+        ExtractionFieldNames.Type => contract.Type.ToString(),
         _ => null,
     };
 
@@ -401,13 +393,13 @@ public sealed partial class StagedExtractionService
 
         return field switch
         {
-            "startDate" or "endDate" or "effectiveDate" or CancellationDeadlineFieldName =>
+            "startDate" or "endDate" or "effectiveDate" or ExtractionFieldNames.CancellationDeadline =>
                 TryParseDate(left, out var leftDate) && TryParseDate(right, out var rightDate) && leftDate == rightDate,
             "annualSpend" or "totalContractValue" =>
                 TryParseDecimal(left, out var leftNumber) && TryParseDecimal(right, out var rightNumber) && leftNumber == rightNumber,
             "autoRenewal" =>
                 bool.TryParse(left, out var leftFlag) && bool.TryParse(right, out var rightFlag) && leftFlag == rightFlag,
-            "renewalTermMonths" or NoticePeriodDaysFieldName =>
+            "renewalTermMonths" or ExtractionFieldNames.NoticePeriodDays =>
                 TryParseInt(left, out var leftInt) && TryParseInt(right, out var rightInt) && leftInt == rightInt,
             _ => string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase),
         };
@@ -471,7 +463,7 @@ public sealed partial class StagedExtractionService
         if (contract.EndDate is not { } endDate
             || contract.NoticePeriodDays is not { } noticeDays
             || noticeDays < 0
-            || context.Protection.IsProtected(CancellationDeadlineFieldName))
+            || context.Protection.IsProtected(ExtractionFieldNames.CancellationDeadline))
         {
             return;
         }
@@ -483,7 +475,7 @@ public sealed partial class StagedExtractionService
         }
 
         var latest = await LatestEvidenceAsync(
-                context.TenantId, contract.Id, ["endDate", NoticePeriodDaysFieldName], cancellationToken)
+                context.TenantId, contract.Id, ["endDate", ExtractionFieldNames.NoticePeriodDays], cancellationToken)
             .ConfigureAwait(false);
 
         // A human-set input counts as certain; an input with no evidence row is unknown, and an
@@ -493,11 +485,11 @@ public sealed partial class StagedExtractionService
                 ? ExtractionConfidencePolicy.OfficialConfidence
                 : latest.TryGetValue(field, out var row) ? row.Confidence : null;
 
-        double? confidence = ConfidenceOf("endDate") is { } endConfidence && ConfidenceOf(NoticePeriodDaysFieldName) is { } noticeConfidence
+        double? confidence = ConfidenceOf("endDate") is { } endConfidence && ConfidenceOf(ExtractionFieldNames.NoticePeriodDays) is { } noticeConfidence
             ? Math.Min(endConfidence, noticeConfidence)
             : null;
 
-        latest.TryGetValue(NoticePeriodDaysFieldName, out var noticeEvidence);
+        latest.TryGetValue(ExtractionFieldNames.NoticePeriodDays, out var noticeEvidence);
 
         contract.CancellationDeadline = derived;
 
@@ -505,7 +497,7 @@ public sealed partial class StagedExtractionService
         // cancellationDeadline row ("latest row per field" wins).
         AddEvidence(
             context,
-            CancellationDeadlineFieldName,
+            ExtractionFieldNames.CancellationDeadline,
             FormatDate(derived),
             confidence,
             ExtractionConfidencePolicy.Decide(confidence),

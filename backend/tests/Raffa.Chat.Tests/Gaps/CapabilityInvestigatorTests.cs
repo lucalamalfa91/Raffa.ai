@@ -1,8 +1,11 @@
+using System.Net;
+using System.Text;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
 using Raffa.AiGateway.Fixtures;
 using Raffa.AiGateway.Foundry;
+using Raffa.AiGateway.Jev;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Reply;
@@ -55,8 +58,83 @@ public sealed class CapabilityInvestigatorTests
         descriptionIt: "Generare un report periodico sulla spesa per il management.",
         questions: ["Qual è la spesa annuale totale?", "Quali contratti Splunk scadono? https://evil.example"]);
 
-    private static CapabilityInvestigator Investigator(IAiGateway gateway, GapInvestigationOptions? options = null) =>
-        new(gateway, options ?? new GapInvestigationOptions());
+    /// <summary>Jev off by default (<see cref="AiGatewayJevOptions.Enabled"/> defaults to
+    /// <see langword="false"/>) -- every pre-existing test below keeps exercising exactly the same
+    /// Foundry-only path it always has. <paramref name="jevHandler"/> lets the Jev-specific tests
+    /// script a fake Jev HTTP response without ever touching a real network call.</summary>
+    private static CapabilityInvestigator Investigator(
+        IAiGateway gateway,
+        GapInvestigationOptions? options = null,
+        AiGatewayJevOptions? jevOptions = null,
+        HttpMessageHandler? jevHandler = null)
+    {
+        var resolvedJevOptions = jevOptions ?? new AiGatewayJevOptions();
+        var jevHttpClient = new JevHttpJsonClient(
+            new HttpClient(jevHandler ?? new ScriptedJevHandler(HttpStatusCode.ServiceUnavailable, "{}")),
+            resolvedJevOptions,
+            new FoundryRetryPolicy(new AiGatewayResilienceOptions { MaxRetries = 0 }));
+        var jevVerdictClient = new JevVerdictClient(jevHttpClient, resolvedJevOptions, SystemClock.Instance);
+
+        return new(gateway, options ?? new GapInvestigationOptions(), resolvedJevOptions, jevVerdictClient);
+    }
+
+    /// <summary>Fake handler for the Jev-enabled tests: always answers with the same JSON body and
+    /// keeps every request body -- mirrors <c>Raffa.AiGateway.Tests.TestSupport.FakeHttpMessageHandler</c>'s
+    /// "no live network in unit tests" rule, duplicated locally rather than shared across test
+    /// projects.</summary>
+    private sealed class ScriptedJevHandler(HttpStatusCode statusCode, string json) : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        public List<string> RequestBodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            RequestBodies.Add(request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken));
+            return new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            };
+        }
+
+        /// <summary>A System One response: the operation Choice answered in both option orders
+        /// (<paramref name="reversedOperation"/> differs from <paramref name="operation"/> to script an
+        /// order disagreement), plus the nearest-capability Choice when given.</summary>
+        public static string AnswersJson(
+            string operation, double confidence = 0.95, string? nearestCapabilityKey = null, string? reversedOperation = null)
+        {
+            static object Choice(string choice, double confidence) => new
+            {
+                type = "choice",
+                choice,
+                probabilities = new Dictionary<string, double> { [choice] = confidence },
+                confidence,
+            };
+
+            var answers = new Dictionary<string, object>
+            {
+                ["operation"] = Choice(operation, confidence),
+                ["operationReversed"] = Choice(reversedOperation ?? operation, confidence),
+            };
+
+            if (nearestCapabilityKey is not null)
+            {
+                answers["nearestCapability"] = Choice(nearestCapabilityKey, 0.9);
+            }
+
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                model = "typesafe/jev-1.13-20260917",
+                answers,
+                usage = new { input_tokens = 640, output_tokens = 12 },
+            });
+        }
+    }
+
+    private static readonly string PortfolioOperation = JevVerdictClient.CapabilityPrefix + CapabilityCatalog.PortfolioKey;
+
+    private static readonly string ReminderOperation = JevVerdictClient.KnownGapPrefix + CapabilityGapCatalog.ReminderKey;
 
     [Fact]
     public async Task A_gap_verdict_becomes_a_discovered_gap_with_server_authored_alternative()
@@ -217,6 +295,169 @@ public sealed class CapabilityInvestigatorTests
             .InvestigateAsync(ScreenshotQuestion, Suppliers);
         Assert.Equal("failed", slow.Outcome);
         Assert.Contains("timed out", slow.Failure, StringComparison.Ordinal);
+    }
+
+    private static AiGatewayJevOptions JevOn() => new() { Enabled = true, ApiKey = "fake-key" };
+
+    [Fact]
+    public async Task Jev_enabled_question_operation_never_calls_Foundry()
+    {
+        var foundry = new ScriptedGateway(GapPayload());
+        var jevHandler = new ScriptedJevHandler(HttpStatusCode.OK, ScriptedJevHandler.AnswersJson(JevVerdictClient.OperationQuestion));
+
+        var result = await Investigator(foundry, jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync("Which contracts renew next?", Suppliers);
+
+        Assert.Equal(GapVerdict.Supported, result.Verdict);
+        Assert.Equal("question", result.Outcome);
+        Assert.Equal("high", result.Confidence);
+        Assert.Equal(0, foundry.Calls);
+        Assert.Equal(1, jevHandler.Calls);
+        Assert.Equal("typesafe/jev-1.13", result.Metadata!.ModelId);
+        Assert.Equal("typesafe/jev-1.13-20260917", result.Metadata.ModelVersion);
+        Assert.Equal(640, result.Metadata.Usage?.PromptTokens);
+    }
+
+    [Fact]
+    public async Task Jev_enabled_capability_operation_is_supported_and_never_calls_Foundry()
+    {
+        var foundry = new ScriptedGateway(GapPayload());
+        var jevHandler = new ScriptedJevHandler(HttpStatusCode.OK, ScriptedJevHandler.AnswersJson(PortfolioOperation));
+
+        var result = await Investigator(foundry, jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync("Open the portfolio", Suppliers);
+
+        Assert.Equal(GapVerdict.Supported, result.Verdict);
+        Assert.Equal("supported", result.Outcome);
+        Assert.Equal(0, foundry.Calls);
+    }
+
+    [Fact]
+    public async Task Jev_enabled_known_gap_operation_never_calls_Foundry_and_keeps_its_veto()
+    {
+        var foundry = new ScriptedGateway(GapPayload());
+        var jevHandler = new ScriptedJevHandler(HttpStatusCode.OK, ScriptedJevHandler.AnswersJson(ReminderOperation));
+
+        var result = await Investigator(foundry, jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync("Could you ping me a week ahead of the renewal?", Suppliers);
+
+        Assert.Equal(GapVerdict.KnownGap, result.Verdict);
+        Assert.Same(CapabilityGapCatalog.Find(CapabilityGapCatalog.ReminderKey), result.Gap);
+        Assert.Equal(0, foundry.Calls);
+
+        var vetoedHandler = new ScriptedJevHandler(
+            HttpStatusCode.OK,
+            ScriptedJevHandler.AnswersJson(JevVerdictClient.KnownGapPrefix + CapabilityGapCatalog.SendSupplierKey));
+        var vetoed = await Investigator(foundry, jevOptions: JevOn(), jevHandler: vetoedHandler)
+            .InvestigateAsync("When must we send the notice to the supplier?", Suppliers);
+        Assert.Equal(GapVerdict.None, vetoed.Verdict);
+        Assert.Equal("unusable", vetoed.Outcome);
+    }
+
+    [Fact]
+    public async Task Jev_enabled_none_operation_is_a_gap_and_calls_Foundry_only_to_write_the_feature_description()
+    {
+        var foundry = new ScriptedGateway(GapPayload(nearest: "renewals")); // Foundry's own verdict/nearest are ignored
+        var jevHandler = new ScriptedJevHandler(
+            HttpStatusCode.OK,
+            ScriptedJevHandler.AnswersJson(JevVerdictClient.OperationNone, nearestCapabilityKey: CapabilityCatalog.PortfolioKey));
+
+        var result = await Investigator(foundry, jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync(ScreenshotQuestion, Suppliers);
+
+        Assert.Equal(GapVerdict.Gap, result.Verdict);
+        Assert.Equal(1, foundry.Calls);
+        // Jev's nearest capability wins, not Foundry's own ("renewals") on the same call.
+        Assert.Equal(CapabilityCatalog.PortfolioKey, result.Gap!.NearestCapabilityKey);
+        // The feature text itself still comes from Foundry -- Jev cannot write it.
+        Assert.Equal("Spend reports for management", Assert.IsType<GapDiscovery>(result.Gap.Discovery).TitleEn);
+    }
+
+    [Fact]
+    public async Task A_gap_Foundry_cannot_describe_leaves_no_follow_up_instead_of_an_incoherent_one()
+    {
+        // Jev says "nothing fits"; Foundry reads the turn as an ordinary question and writes no feature.
+        var foundry = new ScriptedGateway(Payload("question"));
+        var jevHandler = new ScriptedJevHandler(HttpStatusCode.OK, ScriptedJevHandler.AnswersJson(JevVerdictClient.OperationNone));
+
+        var result = await Investigator(foundry, jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync(ScreenshotQuestion, Suppliers);
+
+        Assert.Equal(GapVerdict.None, result.Verdict);
+        Assert.Equal("unusable", result.Outcome);
+        Assert.Null(result.Gap);
+    }
+
+    [Fact]
+    public async Task Jev_call_failure_falls_back_to_the_Foundry_only_path_unchanged()
+    {
+        var foundry = new ScriptedGateway(GapPayload());
+        var jevHandler = new ScriptedJevHandler(HttpStatusCode.ServiceUnavailable, "{}");
+
+        var result = await Investigator(foundry, jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync(ScreenshotQuestion, Suppliers);
+
+        Assert.Equal(GapVerdict.Gap, result.Verdict);
+        Assert.Equal(1, foundry.Calls);
+        Assert.Equal("scripted", result.Metadata!.ModelId); // Foundry's own metadata, not Jev's
+    }
+
+    [Fact]
+    public async Task Jev_confidence_below_the_medium_threshold_finds_nothing_without_calling_Foundry()
+    {
+        var foundry = new ScriptedGateway(GapPayload());
+        var jevHandler = new ScriptedJevHandler(
+            HttpStatusCode.OK, ScriptedJevHandler.AnswersJson(JevVerdictClient.OperationNone, confidence: 0.2));
+
+        var result = await Investigator(foundry, jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync(ScreenshotQuestion, Suppliers);
+
+        Assert.Equal(GapVerdict.None, result.Verdict);
+        Assert.Equal("low-confidence", result.Outcome);
+        Assert.Equal("low", result.Confidence);
+        Assert.Equal(0, foundry.Calls);
+    }
+
+    [Fact]
+    public async Task Jev_naming_different_operations_in_the_two_option_orders_finds_nothing()
+    {
+        var foundry = new ScriptedGateway(GapPayload());
+        var jevHandler = new ScriptedJevHandler(
+            HttpStatusCode.OK,
+            ScriptedJevHandler.AnswersJson(JevVerdictClient.OperationNone, reversedOperation: ReminderOperation));
+
+        var result = await Investigator(foundry, jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync(ScreenshotQuestion, Suppliers);
+
+        Assert.Equal(GapVerdict.None, result.Verdict);
+        Assert.Equal("low-confidence", result.Outcome);
+        Assert.Equal(0, foundry.Calls);
+    }
+
+    [Fact]
+    public async Task The_Jev_request_carries_only_the_turn_as_state_and_the_catalog_as_ordered_options()
+    {
+        var jevHandler = new ScriptedJevHandler(HttpStatusCode.OK, ScriptedJevHandler.AnswersJson(JevVerdictClient.OperationQuestion));
+
+        await Investigator(new ScriptedGateway(GapPayload()), jevOptions: JevOn(), jevHandler: jevHandler)
+            .InvestigateAsync(ScreenshotQuestion, Suppliers);
+
+        using var body = System.Text.Json.JsonDocument.Parse(Assert.Single(jevHandler.RequestBodies));
+        var state = body.RootElement.GetProperty("state");
+        Assert.Equal(["question", "language"], state.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(ScreenshotQuestion, state.GetProperty("question").GetString());
+        Assert.DoesNotContain("Splunk", body.RootElement.GetRawText(), StringComparison.Ordinal);
+
+        var questions = body.RootElement.GetProperty("questions");
+        var options = questions.GetProperty("operation").GetProperty("criteria").EnumerateObject().Select(p => p.Name).ToList();
+        Assert.Equal(JevVerdictClient.OperationQuestion, options[0]);
+        Assert.Equal(JevVerdictClient.OperationNone, options[^1]);
+        Assert.Contains(PortfolioOperation, options);
+        Assert.Contains(ReminderOperation, options);
+        Assert.Equal(
+            options.AsEnumerable().Reverse(),
+            questions.GetProperty("operationReversed").GetProperty("criteria").EnumerateObject().Select(p => p.Name));
+        Assert.True(questions.TryGetProperty("nearestCapability", out _));
     }
 
     [Fact]

@@ -27,14 +27,14 @@ public sealed class ExtractionTransientException(string message) : Exception(mes
 /// duplicate is completed. A stale in-flight claim (the original worker died holding it) is
 /// aborted and re-enqueued from scratch by <see cref="HungProcessingRecoveryService"/> so the
 /// document cannot sit on Processing forever.</item>
-/// <item><b>Content gate.</b> <see cref="DocumentAdmissionGate.EvaluateAsync"/> — parse/OCR, the
+/// <item><b>Content gate.</b> <see cref="IDocumentAdmissionEvaluator.EvaluateAsync"/> — parse/OCR, the
 /// readable-text floor, the Foundry <c>classify</c> call and the threshold — is exactly the work
 /// the request used to wait minutes for. A refusal is now a <b>row</b>:
 /// <see cref="DocumentProcessingStatus.Rejected"/> with its reason <em>code</em>, the detected type
 /// and the confidence, the blob deleted, the classification job completed. The gate's own
 /// <c>document.rejected</c> audit row is written where it always was.</item>
 /// <item><b>Pipeline.</b> An admitted document goes through
-/// <see cref="DocumentProcessingPipeline"/>'s pages-and-classification overload — the model is
+/// <see cref="IDocumentProcessingFlow"/> (the pages-and-classification overload of the processing pipeline) — the model is
 /// still called once per upload, the parse and the verdict are reused — which advances the
 /// classification job and the document's status exactly as it did in-request.</item>
 /// </list>
@@ -50,8 +50,8 @@ public sealed class ExtractionTransientException(string message) : Exception(mes
 public sealed class ExtractionRequestedHandler(
     DocumentsContractsDbContext dbContext,
     IDocumentStorage storage,
-    DocumentAdmissionGate admissionGate,
-    DocumentProcessingPipeline processingPipeline,
+    IDocumentAdmissionEvaluator admissionGate,
+    IDocumentProcessingFlow processingPipeline,
     IExtractionJobClaimStore claimStore,
     ITenantContext tenantContext,
     IClock clock,
@@ -307,7 +307,7 @@ public sealed class ExtractionRequestedHandler(
         switch (decision.Outcome)
         {
             case AdmissionOutcome.Failed when decision.Error?.StartsWith(
-                DocumentAdmissionGate.GatewayUnavailablePrefix, StringComparison.Ordinal) == true:
+                AdmissionConstants.GatewayUnavailablePrefix, StringComparison.Ordinal) == true:
                 await ReleaseOrFailAsync(document, job, decision.Error, cancellationToken).ConfigureAwait(false);
                 return ExtractionHandleOutcome.Handled;
 

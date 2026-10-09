@@ -17,9 +17,14 @@ public static class ClassifyPromptTemplate
     /// <see cref="AiCallMetadata.PromptVersion"/> this role produces.</summary>
     public const string Version = "foundry-classify-v3";
 
-    private static readonly string[] Labels = Enum.GetNames<AiDocumentType>();
+    /// <summary>Internal rather than private so the Jev classify pilot
+    /// (<see cref="Jev.JevClassifyClient"/>) can build its own "choice" question over the same
+    /// fixed taxonomy without duplicating it by hand -- this type's own doc comment already rules
+    /// out a hand-duplicated label list for exactly this "single source of truth" reason.</summary>
+    internal static readonly string[] Labels = Enum.GetNames<AiDocumentType>();
 
-    private static readonly IReadOnlyDictionary<AiDocumentType, string> Glosses = new Dictionary<AiDocumentType, string>
+    /// <summary>See <see cref="Labels"/>'s own doc comment for why this is internal, not private.</summary>
+    internal static readonly IReadOnlyDictionary<AiDocumentType, string> Glosses = new Dictionary<AiDocumentType, string>
     {
         [AiDocumentType.Msa] = "master, framework or umbrella agreement that governs a supplier relationship: master services agreement, master subscription agreement, enterprise or software license agreement, cloud services or cloud commitment agreement, SaaS terms, general terms and conditions (contratto quadro, accordo quadro, contratto di licenza, condizioni generali, Rahmenvertrag, Lizenzvertrag)",
         [AiDocumentType.OrderForm] = "order form, order schedule, purchase order or subscription order that buys specific products, quantities or seats, usually under a master agreement (ordine, modulo d'ordine, ordine di acquisto, Bestellung, Bestellschein)",

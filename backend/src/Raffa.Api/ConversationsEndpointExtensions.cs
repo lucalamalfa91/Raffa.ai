@@ -340,7 +340,7 @@ public static class ConversationsEndpointExtensions
         HttpRequest httpRequest,
         ConversationService conversationService,
         Raffa.Api.AskCopilotService askCopilotService,
-        CapabilityCheckDispatcher capabilityCheckDispatcher,
+        CapabilityFollowUpAppender capabilityFollowUpAppender,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -408,7 +408,7 @@ public static class ConversationsEndpointExtensions
         }
 
         var reply = await AskAndAppendAsync(
-                askCopilotService, conversationService, capabilityCheckDispatcher, tenantId, userId, conversationId, conversation,
+                askCopilotService, conversationService, capabilityFollowUpAppender, tenantId, userId, conversationId, conversation,
                 request.Question, effectiveQuestion, hints, youInterviewJson, cancellationToken)
             .ConfigureAwait(false);
 
@@ -448,7 +448,7 @@ public static class ConversationsEndpointExtensions
     /// a check that already found an operation Raffa cannot perform appends its proposal as a
     /// separate Raffa message, returned as <c>followUpMessage</c> (the stored-message shape of
     /// <c>GET /api/conversations/{id}</c>); a check still running is handed to
-    /// <see cref="CapabilityCheckDispatcher.AppendWhenDone"/> and the reply says
+    /// <see cref="CapabilityFollowUpAppender.AppendWhenDone"/> and the reply says
     /// <c>capabilityCheck: "pending"</c>, so the client looks for the follow-up in the
     /// conversation. The answer never waits for the check.
     /// </para>
@@ -456,7 +456,7 @@ public static class ConversationsEndpointExtensions
     internal static async Task<object> AskAndAppendAsync(
         Raffa.Api.AskCopilotService askCopilotService,
         ConversationService conversationService,
-        CapabilityCheckDispatcher capabilityCheckDispatcher,
+        CapabilityFollowUpAppender capabilityFollowUpAppender,
         TenantId tenantId,
         string userId,
         EntityId conversationId,
@@ -504,7 +504,7 @@ public static class ConversationsEndpointExtensions
             {
                 if (await check.ConfigureAwait(false) is { } followUp)
                 {
-                    var appended = await capabilityCheckDispatcher
+                    var appended = await capabilityFollowUpAppender
                         .AppendAsync(tenantId, userId, conversationId, raffaMessage.MessageId, followUp, capabilityCheck.TurnId, cancellationToken)
                         .ConfigureAwait(false);
                     followUpMessage = appended is null ? null : ToMessageResponse(appended, hasLaterTurn: false);
@@ -512,7 +512,7 @@ public static class ConversationsEndpointExtensions
             }
             else
             {
-                capabilityCheckDispatcher.AppendWhenDone(check, tenantId, userId, conversationId, raffaMessage.MessageId, capabilityCheck.TurnId);
+                capabilityFollowUpAppender.AppendWhenDone(check, tenantId, userId, conversationId, raffaMessage.MessageId, capabilityCheck.TurnId);
                 capabilityCheckState = "pending";
             }
         }

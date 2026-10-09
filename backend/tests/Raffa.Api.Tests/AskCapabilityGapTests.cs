@@ -328,7 +328,7 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
         var turn = Assert.Single(audit.Entries, e => e.Action.StartsWith("chat.", StringComparison.Ordinal));
         Assert.Equal("chat.interviewed", turn.Action);
         Assert.Contains("gapInvestigation=started", turn.Detail, StringComparison.Ordinal);
-        var offered = Assert.Single(audit.Entries, e => e.Action == CapabilityCheckDispatcher.AuditAction);
+        var offered = Assert.Single(audit.Entries, e => e.Action == CapabilityCheckRunner.AuditAction);
         Assert.Contains("gapKey=discovered:management-report", offered.Detail, StringComparison.Ordinal);
 
         // Plan T-01: the turn row and the follow-up's row carry the same turn id, and the turn row
@@ -378,7 +378,7 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
         Assert.Equal("pending", reply.RootElement.GetProperty("capabilityCheck").GetString());
         Assert.Equal(JsonValueKind.Null, reply.RootElement.GetProperty("followUpMessage").ValueKind);
 
-        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+        await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
 
         using var getRequest = Request(HttpMethod.Get, $"/api/conversations/{conversationId}", tenantId);
         using var detail = JsonDocument.Parse(await (await client.SendAsync(getRequest)).Content.ReadAsStringAsync());
@@ -415,12 +415,12 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
             new { question = "Did you over all my contract?" });
         Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(secondRequest)).StatusCode);
 
-        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+        await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
 
         using var getRequest = Request(HttpMethod.Get, $"/api/conversations/{conversationId}", tenantId);
         using var detail = JsonDocument.Parse(await (await client.SendAsync(getRequest)).Content.ReadAsStringAsync());
         Assert.Equal(4, detail.RootElement.GetProperty("messages").GetArrayLength());
-        Assert.DoesNotContain(audit.Entries, e => e.Action == CapabilityCheckDispatcher.AuditAction);
+        Assert.DoesNotContain(audit.Entries, e => e.Action == CapabilityCheckRunner.AuditAction);
     }
 
     [Fact]
