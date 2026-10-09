@@ -1,28 +1,16 @@
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Raffa.Chat.Application.Feedback;
 
 /// <summary>
-/// F4-T01: the server-side scrub of the free text a user typed in the feedback card, applied
-/// before it is quoted in a public GitHub issue. The card tells the user what is published, but a
-/// person typing "send the renewal to Mario Rossi at Acme (acme@acme.com, 20.000 euro)" does not
-/// read that notice; the repository is public, so the text is cleaned here instead of trusted.
-///
-/// <para>
-/// What goes, replaced by a neutral marker so the developers still read a sentence: links, e-mail
-/// addresses and @handles, phone numbers, IBANs, tax and VAT codes, ids with digits and GUIDs,
-/// money amounts and any other token with a digit (dates, years, percentages, quantities),
-/// every supplier or person name the tenant is known to have (<c>knownNames</c>: the tenant's
-/// suppliers, the submitting user's own address), and — because a name nobody told us about is
-/// still a name — any capitalised run that is not the first word of a sentence and is not a word
-/// the product itself uses ("Excel", "Raffa", "Portfolio", "CFO"...), plus any run of two capitalised
-/// words even at the start of a sentence ("Mario Rossi chiede..."). The cost of the last rule is a
-/// readable sentence with a few "[name]" markers; the benefit is the plan's bar: zero supplier,
-/// person or identifier in the published text.
-/// </para>
-///
-/// <para>Pure; no I/O.</para>
+/// F4-T01: the server-side scrub of the free text typed in the feedback card, applied before it is
+/// quoted in a public GitHub issue (the user does not read the notice, the repository is public).
+/// Replaced by a neutral marker so developers still read a sentence: links, e-mail addresses and
+/// @handles, phone numbers, IBANs, GUIDs, money amounts and any token with a digit (ids, tax codes,
+/// dates, percentages), every name in <c>knownNames</c> (the tenant's suppliers, the submitting
+/// user), and any capitalised run that is not a sentence's first word or product vocabulary
+/// ("Excel", "CFO"...) -- plus any run of two capitalised words even at the start of a sentence.
+/// Pure; no I/O.
 /// </summary>
 public static class FeatureRequestScrubber
 {
@@ -39,7 +27,6 @@ public static class FeatureRequestScrubber
     private static readonly Regex Handle = new(@"(?<![\w.])@[A-Za-z0-9_.-]{2,}", Options);
     private static readonly Regex Guid = new(@"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", Options);
     private static readonly Regex Iban = new(@"\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){2,7}(?:\s?[A-Z0-9]{1,4})?\b", RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    private static readonly Regex TaxCode = new(@"\b[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // A token carrying a digit: money ("20k", "20.000", "€15"), dates, years, percentages, ids
     // ("CT-2024-0042"), phone numbers. Currency words next to a number go with it.
@@ -58,7 +45,9 @@ public static class FeatureRequestScrubber
     private static readonly Regex Spaces = new(@"[ \t]+", RegexOptions.Compiled);
 
     // A capitalised word (also hyphenated and apostrophised: "Coca-Cola", "D'Angelo", "McDonald").
-    private static readonly Regex CapitalisedWord = new(@"\p{Lu}[\p{L}'’\-]*", RegexOptions.Compiled);
+    private const string CapitalisedPattern = @"\p{Lu}[\p{L}'’\-]*";
+    private static readonly Regex CapitalisedWord = new(CapitalisedPattern, RegexOptions.Compiled);
+    private static readonly Regex CapitalisedRun = new($@"{CapitalisedPattern}(?:[ \t]+{CapitalisedPattern})*", RegexOptions.Compiled);
 
     /// <summary>The product's own vocabulary and generic roles and formats: capitalised, but never a name.</summary>
     private static readonly HashSet<string> SafeWords = new(StringComparer.OrdinalIgnoreCase)
@@ -97,7 +86,6 @@ public static class FeatureRequestScrubber
         scrubbed = Handle.Replace(scrubbed, NameMarker);
         scrubbed = Guid.Replace(scrubbed, IdMarker);
         scrubbed = Iban.Replace(scrubbed, IdMarker);
-        scrubbed = TaxCode.Replace(scrubbed, IdMarker);
         scrubbed = RemoveKnownNames(scrubbed, knownNames);
         scrubbed = Title.Replace(scrubbed, NameMarker);
         scrubbed = PhoneLike.Replace(scrubbed, NumberMarker);
@@ -156,74 +144,31 @@ public static class FeatureRequestScrubber
     }
 
     /// <summary>
-    /// Replaces every capitalised run that is not the sentence's first word and not product
-    /// vocabulary, and any run of two or more capitalised words wherever it stands. A capitalised
-    /// word that is the first of its sentence or line is left alone (it is capitalised because it
-    /// starts one).
+    /// Replaces every capitalised run that is not product vocabulary and is either not the first
+    /// word of its sentence or line (that one is capitalised because it starts one), an acronym or
+    /// CamelCase brand, or two or more words long.
     /// </summary>
-    private static string ReplaceUnknownNames(string text)
-    {
-        var result = new StringBuilder(text.Length);
-        var sentenceStart = true;
-        var index = 0;
-
-        while (index < text.Length)
+    private static string ReplaceUnknownNames(string text) =>
+        CapitalisedRun.Replace(text, run =>
         {
-            var match = CapitalisedWord.Match(text, index);
+            var allSafe = run.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(SafeWords.Contains);
+            var multiWord = CapitalisedWord.Matches(run.Value).Count > 1;
+            return !allSafe && (multiWord || !StartsSentence(text, run.Index) || IsAcronymLike(run.Value))
+                ? NameMarker
+                : run.Value;
+        });
 
-            // Copy everything up to the next capitalised word, tracking sentence boundaries.
-            var plainEnd = match.Success ? match.Index : text.Length;
-            for (; index < plainEnd; index++)
-            {
-                var c = text[index];
-                result.Append(c);
-                if (c is '.' or '!' or '?' or '\n' or ':' or '¿' or '¡')
-                {
-                    sentenceStart = true;
-                }
-                else if (!char.IsWhiteSpace(c) && c is not ('"' or '\'' or '(' or '«' or '“' or '-' or '*' or '•'))
-                {
-                    sentenceStart = false;
-                }
-            }
-
-            if (!match.Success)
-            {
-                break;
-            }
-
-            // A markers' own brackets are not words: "[name]" starts with a lower-case letter, but
-            // a word glued to a preceding marker must not be mistaken for a sentence start.
-            var runEnd = match.Index + match.Length;
-            var words = 1;
-            var next = CapitalisedWord.Match(text, runEnd);
-            while (next.Success && IsOnlySpaces(text, runEnd, next.Index) && next.Index > runEnd)
-            {
-                runEnd = next.Index + next.Length;
-                words++;
-                next = CapitalisedWord.Match(text, runEnd);
-            }
-
-            var run = text[match.Index..runEnd];
-            var safe = words == 1 && SafeWords.Contains(run);
-            var allSafe = run.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(SafeWords.Contains);
-            var isName = words >= 2
-                ? !allSafe
-                : !safe && (!sentenceStart || IsAcronymLike(run));
-
-            result.Append(isName ? NameMarker : run);
-            sentenceStart = false;
-            index = runEnd;
-        }
-
-        return result.ToString();
-    }
-
-    private static bool IsOnlySpaces(string text, int from, int to)
+    private static bool StartsSentence(string text, int index)
     {
-        for (var i = from; i < to; i++)
+        for (var i = index - 1; i >= 0; i--)
         {
-            if (text[i] is not (' ' or '\t'))
+            var c = text[i];
+            if (c is '.' or '!' or '?' or '\n' or ':' or '¿' or '¡')
+            {
+                return true;
+            }
+
+            if (!char.IsWhiteSpace(c) && c is not ('"' or '\'' or '(' or '«' or '“' or '-' or '*' or '•'))
             {
                 return false;
             }

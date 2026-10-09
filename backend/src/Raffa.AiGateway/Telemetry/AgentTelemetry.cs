@@ -24,7 +24,6 @@ public static class AgentTelemetry
 
     // gen_ai.* (OpenTelemetry GenAI semantic conventions).
     public const string OperationName = "gen_ai.operation.name";
-    public const string ProviderName = "gen_ai.provider.name";
     public const string AgentName = "gen_ai.agent.name";
     public const string AgentVersion = "gen_ai.agent.version";
     public const string ResponseModel = "gen_ai.response.model";

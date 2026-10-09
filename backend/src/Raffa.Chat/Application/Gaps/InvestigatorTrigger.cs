@@ -63,16 +63,7 @@ public sealed class InvestigatorTrigger
 
     private readonly InvestigatorTriggerLexicon _lexicon;
 
-    public InvestigatorTrigger()
-        : this(InvestigatorTriggerLexicon.Default)
-    {
-    }
-
-    public InvestigatorTrigger(InvestigatorTriggerLexicon lexicon)
-    {
-        ArgumentNullException.ThrowIfNull(lexicon);
-        _lexicon = lexicon;
-    }
+    public InvestigatorTrigger(InvestigatorTriggerLexicon? lexicon = null) => _lexicon = lexicon ?? InvestigatorTriggerLexicon.Default;
 
     /// <summary>The shared instance over the embedded lexicon.</summary>
     public static InvestigatorTrigger Default { get; } = new();
@@ -98,19 +89,16 @@ public sealed class InvestigatorTrigger
             reasons.Add(ReasonNoIntent);
         }
 
-        var t2 = false;
-        if (replyOutcome is not null)
+        var t2Reason = replyOutcome switch
         {
-            if (replyOutcome.Kind == ReplyKind.Abstain)
-            {
-                t2 = true;
-                reasons.Add(replyOutcome.GuardIntervened ? ReasonGuardDowngrade : ReasonAbstain);
-            }
-            else if (replyOutcome.FallbackUsed)
-            {
-                t2 = true;
-                reasons.Add(ReasonFallbackAnswer);
-            }
+            { Kind: ReplyKind.Abstain, GuardIntervened: true } => ReasonGuardDowngrade,
+            { Kind: ReplyKind.Abstain } => ReasonAbstain,
+            { FallbackUsed: true } => ReasonFallbackAnswer,
+            _ => null,
+        };
+        if (t2Reason is not null)
+        {
+            reasons.Add(t2Reason);
         }
 
         var t3Language = MatchOperationalRequest(question);
@@ -121,12 +109,12 @@ public sealed class InvestigatorTrigger
 
         return reasons.Count == 0
             ? TriggerVerdict.None
-            : new TriggerVerdict(t1, t2, t3Language is not null, string.Join('+', reasons), t3Language);
+            : new TriggerVerdict(t1, t2Reason is not null, t3Language is not null, string.Join('+', reasons), t3Language);
     }
 
     /// <summary>T3 alone, from the question: the language of the first lexicon that reads it as an
     /// operational request, else <see langword="null"/>.</summary>
-    public string? MatchOperationalRequest(string question)
+    private string? MatchOperationalRequest(string question)
     {
         if (string.IsNullOrWhiteSpace(question))
         {
