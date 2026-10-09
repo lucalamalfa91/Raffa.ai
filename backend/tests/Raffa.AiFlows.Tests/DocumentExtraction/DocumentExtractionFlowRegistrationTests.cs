@@ -5,11 +5,6 @@ using Raffa.AiFlows.Shared.Parsing;
 using Raffa.AiFlows.Tests.TestSupport;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Application.Extraction;
-using Raffa.Documents.Contracts.Infrastructure;
-using Raffa.SharedKernel;
-using Raffa.SharedKernel.Storage;
-using Raffa.SharedKernel.Tenancy;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Raffa.AiFlows.Tests.DocumentExtraction;
@@ -23,18 +18,7 @@ namespace Raffa.AiFlows.Tests.DocumentExtraction;
 /// </summary>
 public sealed class DocumentExtractionFlowRegistrationTests
 {
-    private const string ConnectionString =
-        "Host=localhost;Port=5432;Database=raffa_dev;Username=raffa;Password=raffa;Include Error Detail=true";
-
-    private static ServiceCollection ModuleOnly()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection().Build());
-        services.AddSingleton<IAuditWriter, RecordingAuditWriter>();
-        services.AddSingleton<IDocumentStorage, UnusedDocumentStorage>();
-        services.AddDocumentsContractsModule(ConnectionString);
-        return services;
-    }
+    private static ServiceCollection ModuleOnly() => DocumentsModuleServices.Create();
 
     [Fact]
     public void The_module_alone_registers_no_implementation_of_either_port()
@@ -86,28 +70,5 @@ public sealed class DocumentExtractionFlowRegistrationTests
     {
         Assert.Throws<ArgumentNullException>(() =>
             DocumentExtractionFlowServiceCollectionExtensions.AddDocumentExtractionFlow(null!));
-    }
-
-    private sealed class UnusedDocumentStorage : IDocumentStorage
-    {
-        public Task<string> SaveAsync(
-            TenantId tenantId, EntityId documentId, int versionNumber, string fileName, Stream content,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<byte[]?> LoadAsync(
-            TenantId tenantId, string storagePath, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task DeleteAsync(
-            TenantId tenantId, string storagePath, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<string> SavePreviewAsync(
-            TenantId tenantId, EntityId documentId, Stream content, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<string> SavePreviewPageAsync(
-            TenantId tenantId, EntityId documentId, int page, Stream content,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

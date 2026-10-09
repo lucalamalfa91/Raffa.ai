@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Tests.TestSupport;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Raffa.AiFlows.Tests;
@@ -21,7 +22,9 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
     [Fact]
     public void AddAiFlows_is_safe_to_call_twice()
     {
-        var services = new ServiceCollection();
+        // The flows sit on top of the modules, so the container needs the Documents/Contracts module
+        // (and what its host supplies) for ValidateOnBuild to find every dependency.
+        var services = DocumentsModuleServices.Create();
 
         services.AddAiFlows().AddAiFlows();
 
