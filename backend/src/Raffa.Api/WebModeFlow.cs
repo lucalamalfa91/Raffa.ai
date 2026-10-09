@@ -9,8 +9,15 @@ using Raffa.SharedKernel;
 
 namespace Raffa.Api;
 
+/// <summary>The normal contracts-only pipeline for one question, as the orchestrator runs it
+/// (<c>AskCopilotService.BuildInDomainReplyAsync</c>, interview suppressed): the question to answer
+/// and the supplier it names (or <see langword="null"/>). The web-mode flow gets it as a delegate so
+/// it never references the orchestrator.</summary>
+internal delegate Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> InDomainReplyBuilder(
+    string question, string? namedSupplier, CancellationToken cancellationToken);
+
 /// <summary>
-/// The web-mode half of <see cref="AskCopilotService"/> (ADR-032): the composer's web-search
+/// The web-mode half of Ask (ADR-032): the composer's web-search
 /// toggle. Switching it on is the user's consent for every question sent with it, so there is no
 /// per-question consent dialog, and the procurement-only filters are lifted — the domain gate's
 /// off-domain/legal/unknown-supplier redirects, the interview, and the four research purposes of
@@ -21,13 +28,24 @@ namespace Raffa.Api;
 /// the user's own words through <see cref="WebQuerySanitizer"/>, never with a pack.
 ///
 /// <para>
-/// A turn has two halves that never share a pack: the normal contracts-only pipeline
-/// (<see cref="BuildInDomainReplyAsync"/>, interview suppressed, without the "search the web"
+/// A turn has two halves that never share a pack: the normal contracts-only pipeline (the
+/// <see cref="InDomainReplyBuilder"/> delegate, interview suppressed, without the "search the web"
 /// phrase) and one open-mode research call (<see cref="WebResearchComposer"/>). Each is grounded and
 /// guarded on its own; <see cref="WebModeReplyBuilder.Combine"/> only places them side by side.
 /// </para>
+///
+/// <para>
+/// Rewritten from the former <c>AskCopilotService.WebMode.cs</c> partial, bodies unchanged. The gate
+/// replies, the budget handling and the audit rows are <see cref="WebResearchFlow"/>'s, shared with
+/// the consented path.
+/// </para>
 /// </summary>
-internal sealed partial class AskCopilotService
+internal sealed class WebModeFlow(
+    WebResearchOptions webResearchOptions,
+    IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
+    IWebResearchBudget webResearchBudget,
+    WebResearchFlow webResearchFlow,
+    CapabilityRouting capabilityRouting)
 {
     private const string WebModeAuditTag = "mode=toggle";
 
@@ -38,7 +56,7 @@ internal sealed partial class AskCopilotService
     /// <summary>Whether this turn is web mode's: the toggle is on and the question is a search — not
     /// the feature tour, not a capability gap (an operation, not a question), not a bare greeting.
     /// An off-context question is always web mode's, so it gets the search-engine pointer.</summary>
-    private static bool IsWebModeTurn(AskTurnHints hints, DomainGateResult gate, string question)
+    public static bool IsWebModeTurn(AskTurnHints hints, DomainGateResult gate, string question)
     {
         if (!hints.WebMode)
         {
@@ -59,22 +77,21 @@ internal sealed partial class AskCopilotService
         };
     }
 
-    private async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildWebModeReplyAsync(
+    public async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildReplyAsync(
         TenantId tenantId,
         string question,
         DomainGateResult gate,
         PortfolioPage portfolio,
-        IReadOnlyDictionary<EntityId, string> supplierNames,
-        IReadOnlyList<(string Role, string Markdown)> recentTurns,
-        EntityId? scopeContractId,
         PortfolioListItem? scopedContractItem,
         string actor,
+        InDomainReplyBuilder buildInDomainReply,
+        AbstainRecoveryResolver resolveAbstainRecoveryActions,
         CancellationToken cancellationToken)
     {
         // The one content filter left: zero retrieval, zero model calls, two outbound links.
         if (WebModeLexicon.IsOffContext(question))
         {
-            await WriteWebResearchAuditAsync(tenantId, AuditWebResearchRefusedAction, actor, $"gate=OffContext stage=offer {WebModeAuditTag}", cancellationToken)
+            await webResearchFlow.WriteAuditAsync(tenantId, WebResearchFlow.AuditRefusedAction, actor, $"gate=OffContext stage=offer {WebModeAuditTag}", cancellationToken)
                 .ConfigureAwait(false);
             return (WebModeReplyBuilder.OffContext(question), false, false);
         }
@@ -84,12 +101,12 @@ internal sealed partial class AskCopilotService
             CapabilityCallerRole.Standard,
             scopedContractItem is null ? null : new EntityId(scopedContractItem.ContractId));
 
-        var (webGate, query) = await CheckWebModeGatesAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
+        var (webGate, query) = await CheckGatesAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
         if (webGate != WebGate.Open || query is null)
         {
-            await WriteWebResearchAuditAsync(tenantId, AuditWebResearchRefusedAction, actor, $"gate={webGate} stage=offer {WebModeAuditTag}", cancellationToken)
+            await webResearchFlow.WriteAuditAsync(tenantId, WebResearchFlow.AuditRefusedAction, actor, $"gate={webGate} stage=offer {WebModeAuditTag}", cancellationToken)
                 .ConfigureAwait(false);
-            return (BuildWebGateClosedReply(webGate, question, portfolio, routingContext), false, false);
+            return (webResearchFlow.BuildGateClosedReply(webGate, question, portfolio, routingContext, resolveAbstainRecoveryActions), false, false);
         }
 
         // Raffa's own store: the normal pipeline, contracts-only by construction. Skipped for a
@@ -98,23 +115,14 @@ internal sealed partial class AskCopilotService
         (CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)? internalHalf = null;
         if (gate.Label != GateLabel.OffDomain)
         {
-            internalHalf = await BuildInDomainReplyAsync(
-                    tenantId,
+            internalHalf = await buildInDomainReply(
                     WebConsentInterview.DeclinedRewrite(question),
                     gate.Label == GateLabel.NeedsDocument ? null : gate.NamedSupplier,
-                    portfolio,
-                    supplierNames,
-                    recentTurns,
-                    scopeContractId,
-                    scopedContractItem,
-                    actor,
-                    AskTurnHints.None with { SuppressInterview = true },
-                    previousRaffaTurnWasInterview: false,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        var outcome = await RunWebModeResearchAsync(tenantId, question, query, actor, cancellationToken).ConfigureAwait(false);
+        var outcome = await RunResearchAsync(tenantId, question, query, actor, cancellationToken).ConfigureAwait(false);
         var italian = WebModeReplyBuilder.IsItalian(question);
 
         // Only an answer from the store is kept: its abstain, redirect or refusal would only repeat
@@ -138,7 +146,7 @@ internal sealed partial class AskCopilotService
 
         if (outcome is null)
         {
-            return (BuildWebGateClosedReply(WebGate.Budget, question, portfolio, routingContext), false, false);
+            return (webResearchFlow.BuildGateClosedReply(WebGate.Budget, question, portfolio, routingContext, resolveAbstainRecoveryActions), false, false);
         }
 
         // The open persona found nothing work-related to research: the same pointer as the lexicon.
@@ -149,7 +157,7 @@ internal sealed partial class AskCopilotService
 
         var actions = outcome.Kind == WebResearchOutcomeKind.Answered
             ? capabilityRouting.ResolveActions([CapabilityIntent.Benchmark], routingContext)
-            : ResolveAbstainRecoveryActions(portfolio, routingContext);
+            : resolveAbstainRecoveryActions(portfolio, routingContext);
 
         return (
             new CopilotReply(outcome.AsReplyKind, outcome.Markdown, outcome.Citations, actions, outcome.Provenance, []),
@@ -160,7 +168,7 @@ internal sealed partial class AskCopilotService
     /// <summary>The ADR-030 gates in the order a toggle turn meets them; the topic lexicon is not
     /// one of them. <see cref="WebGate.TooShort"/> when fewer than two searchable words survive the
     /// sanitiser.</summary>
-    private async Task<(WebGate Gate, string? Query)> CheckWebModeGatesAsync(
+    private async Task<(WebGate Gate, string? Query)> CheckGatesAsync(
         TenantId tenantId, string question, CancellationToken cancellationToken)
     {
         if (!webResearchOptions.Enabled)
@@ -186,30 +194,30 @@ internal sealed partial class AskCopilotService
     /// <summary>One budgeted research call with the open persona, audited like a consented one
     /// (hashes and counts only, ADR-011). <see langword="null"/> when the day's budget ran out
     /// between the gate check and the spend.</summary>
-    private async Task<WebResearchOutcome?> RunWebModeResearchAsync(
+    private async Task<WebResearchOutcome?> RunResearchAsync(
         TenantId tenantId, string question, string query, string actor, CancellationToken cancellationToken)
     {
-        var queryHash = ComputeHash(query);
+        var queryHash = QueryHasher.ComputeHash(query);
 
-        await WriteWebResearchAuditAsync(
-                tenantId, AuditWebResearchAuthorizedAction, actor,
+        await webResearchFlow.WriteAuditAsync(
+                tenantId, WebResearchFlow.AuditAuthorizedAction, actor,
                 $"queryHash={queryHash} purpose={WebModeLexicon.Purpose} queryLength={query.Length} {WebModeAuditTag}", cancellationToken)
             .ConfigureAwait(false);
 
         var reservation = await webResearchBudget.TryReserveAsync(tenantId, cancellationToken).ConfigureAwait(false);
         if (reservation is not { } reserved)
         {
-            await WriteWebResearchAuditAsync(tenantId, AuditWebResearchRefusedAction, actor, $"gate={WebGate.Budget} stage=run queryHash={queryHash} {WebModeAuditTag}", cancellationToken)
+            await webResearchFlow.WriteAuditAsync(tenantId, WebResearchFlow.AuditRefusedAction, actor, $"gate={WebGate.Budget} stage=run queryHash={queryHash} {WebModeAuditTag}", cancellationToken)
                 .ConfigureAwait(false);
             return null;
         }
 
-        var (outcome, released) = await ComposeReservedAsync(
+        var (outcome, released) = await webResearchFlow.ComposeReservedAsync(
                 reserved, query, WebModeLexicon.Purpose, WebModeReplyBuilder.IsItalian(question) ? "it" : "en", cancellationToken)
             .ConfigureAwait(false);
 
-        await WriteWebResearchAuditAsync(
-                tenantId, AuditWebResearchedAction, actor,
+        await webResearchFlow.WriteAuditAsync(
+                tenantId, WebResearchFlow.AuditResearchedAction, actor,
                 $"queryHash={queryHash} outcome={outcome.Kind} sourceCount={outcome.SourceCount} " +
                 $"guardIntervened={outcome.GuardIntervened} promptVersion={outcome.Provenance.PromptVersion} " +
                 $"budgetReleased={released} {WebModeAuditTag}",

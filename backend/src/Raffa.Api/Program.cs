@@ -338,6 +338,9 @@ builder.Services.AddInsightsModule();
 // AddXxxModule. Scoped: shares this request's own DbContext-backed services (all already Scoped)
 // rather than a second, independently-tracked instance of any of them.
 builder.Services.AddScoped<AskCopilotService>();
+// The web-research and web-mode halves of Ask (ADR-030 / ADR-032), ex partials of AskCopilotService.
+builder.Services.AddScoped<WebResearchFlow>();
+builder.Services.AddScoped<WebModeFlow>();
 
 // Ask's agentic flow: the market researcher's tool over the Market module's RAG (Raffa.Chat
 // depends on neither; the flow skips the researcher when this is not registered).
