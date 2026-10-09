@@ -101,8 +101,8 @@ public static class ServiceCollectionExtensions
 
         // Ask's agentic flow (Application.Council.AskAgentFlow): the market data check (supplied per
         // turn by the composition root), the market researcher and the council above. The
-        // researcher's market RAG (IMarketRagSearch) is registered by the host that owns the Market
-        // module; without it the researcher step is skipped.
+        // researcher's market RAG (IMarketRagSearch) is registered by the host's AI flows layer
+        // (the MarketKnowledge flow, via AddAiFlows); without it the researcher step is skipped.
         services.AddScoped<MarketResearcher>();
         services.AddScoped<AskAgentFlow>();
 

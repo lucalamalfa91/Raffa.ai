@@ -1464,7 +1464,7 @@ gate → planner → pack → answer → guards pipeline, with four additions:
       question, the contract items, step 1's findings and the missing fields,
       and writes up to three keyword queries for the market RAG — the same
       supplier first, then similar or related contracts; the flow runs them
-      through `IMarketRagSearch` (`Raffa.Api.MarketRagSearch` over
+      through `IMarketRagSearch` (`Raffa.AiFlows.MarketKnowledge.Retrieval.MarketRagSearch` over
       `IMarketKnowledgeRetrieval`) and adds the notes, de-duplicated, capped
       and labelled "similar contract" when they come from another supplier.
       Market notes now carry the deal's annual contract value

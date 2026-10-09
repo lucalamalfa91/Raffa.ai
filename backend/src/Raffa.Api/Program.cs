@@ -343,10 +343,6 @@ builder.Services.AddScoped<AskCopilotService>();
 builder.Services.AddScoped<WebResearchFlow>();
 builder.Services.AddScoped<WebModeFlow>();
 
-// Ask's agentic flow: the market researcher's tool over the Market module's RAG (Raffa.Chat
-// depends on neither; the flow skips the researcher when this is not registered).
-builder.Services.AddScoped<Raffa.Chat.Application.Council.IMarketRagSearch, MarketRagSearch>();
-
 // Task E03/F03/US01/T01 (renewal-dashboard, GET /api/renewals): the Renewals module's own
 // AddRenewalsModule(IServiceCollection) (ADR-002) — task E03/F01/US01/T01 registered RenewalEngine
 // here already but nothing called it; this task is that first real caller (same "wiring lands with
@@ -430,7 +426,8 @@ builder.Services.AddScoped<NegotiationOutcomePropagationService>();
 // AI flows layer (ADR-002 amendment): Raffa.AiFlows holds the AI orchestration and logic above the
 // domain modules and is referenced only by the hosts. Registered after every module so a flow can
 // replace a module's default. So far it registers the quote-extraction flow (QuoteExtractionPipeline,
-// QuoteLineExtractionService), which needs AddQuotesModule above to have run.
+// QuoteLineExtractionService), which needs AddQuotesModule above to have run, and the MarketKnowledge
+// flow (IMarketPriceEstimator and the market researcher's IMarketRagSearch).
 builder.Services.AddAiFlows();
 
 builder.Services.AddHealthChecks();

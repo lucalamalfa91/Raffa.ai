@@ -5,9 +5,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Market.Contracts;
+using Raffa.Market.Retrieval;
 using Raffa.SharedKernel.Market;
 
-namespace Raffa.Market.Retrieval;
+namespace Raffa.AiFlows.MarketKnowledge.Estimation;
 
 /// <summary>
 /// <see cref="IMarketPriceEstimator"/>: the last resort behind the market column, asked only for the

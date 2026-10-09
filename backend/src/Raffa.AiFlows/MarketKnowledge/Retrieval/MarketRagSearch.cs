@@ -4,7 +4,7 @@ using Raffa.Insights.Contracts;
 using Raffa.Market.Retrieval;
 using Raffa.SharedKernel;
 
-namespace Raffa.Api;
+namespace Raffa.AiFlows.MarketKnowledge.Retrieval;
 
 /// <summary>
 /// The market researcher's tool (<see cref="IMarketRagSearch"/>) over the Market module's RAG

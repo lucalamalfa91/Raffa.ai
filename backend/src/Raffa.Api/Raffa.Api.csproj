@@ -34,8 +34,8 @@
          Raffa.Storage does. -->
     <ProjectReference Include="..\Raffa.Storage\Raffa.Storage.csproj" />
     <!-- ADR-002 amendment (AI flows layer): Raffa.AiFlows holds the AI orchestration and logic and
-         is referenced only by the hosts. Program.cs calls AddAiFlows(); so far the quote-extraction
-         flow lives there. -->
+         is referenced only by the hosts. Program.cs calls AddAiFlows(); the flows move in one at a
+         time. -->
     <ProjectReference Include="..\Raffa.AiFlows\Raffa.AiFlows.csproj" />
   </ItemGroup>
 

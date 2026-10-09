@@ -2,28 +2,32 @@ using Microsoft.Extensions.DependencyInjection;
 using Raffa.AiFlows.QuoteExtraction;
 using Raffa.AiFlows.QuoteExtraction.Agents;
 using Raffa.AiFlows.QuoteExtraction.Orchestration;
+using Raffa.Market;
 using Raffa.Quotes.Infrastructure;
+using Raffa.SharedKernel.Market;
 
 namespace Raffa.AiFlows.Tests;
 
 /// <summary>
-/// <c>AddAiFlows</c> is the stable entry point the hosts call. So far it wires one flow (quote
-/// extraction); a host that has not composed the module that flow sits on gets nothing, so its
-/// container still validates.
+/// <c>AddAiFlows</c> is the stable entry point the hosts call. So far it wires two flows: quote
+/// extraction and MarketKnowledge (F7). A host that has not composed the module a flow sits on gets
+/// nothing for that flow, so its container still validates.
 /// </summary>
 public sealed class AiFlowsServiceCollectionExtensionsTests
 {
     private const string ConnectionString = "Host=localhost;Database=never-opened";
 
     [Fact]
-    public void AddAiFlows_returns_the_same_collection_and_registers_nothing_without_the_quotes_module()
+    public void AddAiFlows_returns_the_same_collection_and_registers_only_the_market_flow_without_the_quotes_module()
     {
         var services = new ServiceCollection();
 
         var returned = services.AddAiFlows();
 
         Assert.Same(services, returned);
-        Assert.Empty(services);
+        Assert.Contains(services, d => d.ServiceType == typeof(IMarketPriceEstimator));
+        Assert.Contains(services, d => d.ServiceType == typeof(Raffa.Chat.Application.Council.IMarketRagSearch));
+        Assert.Equal(2, services.Count);
     }
 
     [Fact]
@@ -31,6 +35,8 @@ public sealed class AiFlowsServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
 
+        // The market researcher's tool reads the Market module's retrieval, which a host supplies.
+        services.AddMarketModule();
         services.AddAiFlows().AddAiFlows();
 
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions

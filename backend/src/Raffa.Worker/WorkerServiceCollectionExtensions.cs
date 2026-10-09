@@ -78,7 +78,9 @@ public static class WorkerServiceCollectionExtensions
         services.AddSuppliersProductsModule(documentsContractsConnectionString);
         // AI flows layer (ADR-002 amendment): after every module so a flow can replace a module
         // default. The quote-extraction flow is skipped here (this host does not compose the Quotes
-        // module); no other flow has moved in yet.
+        // module); the MarketKnowledge flow registers IMarketPriceEstimator, which the extraction
+        // handler's LineItemMarketPriceService takes as an optional dependency (the host's own
+        // AddMarketModule supplies the data layer under it).
         services.AddAiFlows();
 
         // TryAdd: Raffa.Worker.Tests pre-registers a fake IActiveRenewalContractsSource /
