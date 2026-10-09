@@ -7,7 +7,7 @@ namespace Raffa.Quotes.Domain;
 /// quote-extraction; parent story us-01-quote-line-extraction AC-1 "...and creates an extraction
 /// job"). Mirrors <c>Raffa.Documents.Contracts.Domain.ExtractionJob</c>'s own shape and purpose
 /// — the durable row a caller can poll/audit while the AI Gateway `extract` role (behind
-/// <c>Raffa.Api.QuoteExtractionPipeline</c>, the one project allowed to see both
+/// <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c>, the one project allowed to see both
 /// <c>Raffa.AiGateway</c> and this module — see that type's own doc comment) does the actual
 /// work.
 ///

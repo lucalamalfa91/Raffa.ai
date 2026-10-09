@@ -35,7 +35,7 @@ internal static class QuoteExtractionScriptedPayloads
 
     /// <summary>
     /// Scripted `extract` payload for the `QuoteLineItems` stage (<c>AiExtractionRequest.StageName</c>
-    /// — see <c>Raffa.Api.QuoteExtractionPipeline</c>'s own constant) — same shape
+    /// — see <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c>'s own constant) — same shape
     /// <see cref="R1ExtractionFixtures.PayloadsByStage"/> uses for the sibling contract pipeline.
     /// Never states a total/extended price anywhere (AC-3): <c>QuoteLineExtractionService</c> must
     /// derive <c>ExtendedPrice</c> = 1000 (10 × 100) itself for this end-to-end proof to pass.

@@ -4,7 +4,7 @@ namespace Raffa.Quotes.Application.Normalization;
 /// AC-1's "normalize SKU/edition" (task E05/F01/US02/T01, sku-normalization) made concrete as an
 /// isolated, dependency-free pure function — the same "directly unit-testable, no JSON parsing, no
 /// database" shape as
-/// <c>Raffa.Quotes.Application.Extraction.QuoteLineExtractionService.ComputePricing</c> (that
+/// <c>Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionService.ComputePricing</c> (that
 /// type's own doc comment).
 ///
 /// Deliberately conservative: only whitespace/case noise is collapsed — <see cref="Normalize"/>
