@@ -38,6 +38,7 @@ public sealed class ExtractionJobConfiguration : IEntityTypeConfiguration<Extrac
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.DocumentId);
         builder.HasIndex(e => e.Status);
+        builder.HasIndex(e => e.ExtractionRunId);
 
         // Owned by the document: a job is meaningless once its document is gone.
         builder.HasOne<Document>()
