@@ -30,7 +30,8 @@ public sealed class WebResearchIsolationTests
     [Fact]
     public void Only_the_composer_calls_the_research_role_outside_the_gateway()
     {
-        var callers = SourceFiles("Raffa.Chat").Concat(SourceFiles("Raffa.Api"))
+        // Raffa.AiFlows is scanned too: the flows are moving there, and the guarantee must follow them.
+        var callers = SourceFiles("Raffa.Chat").Concat(SourceFiles("Raffa.Api")).Concat(SourceFiles("Raffa.AiFlows"))
             .Where(path => Regex.IsMatch(File.ReadAllText(path), @"\.ResearchAsync\s*\("))
             .Select(path => Path.GetFileName(path))
             .OrderBy(name => name, StringComparer.Ordinal)

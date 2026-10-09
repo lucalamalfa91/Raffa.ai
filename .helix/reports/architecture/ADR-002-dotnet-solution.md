@@ -323,3 +323,62 @@ NW-62's geography is resolved in the host and passed into `StrategyInputs`.
 allow-list clauses, and the w16 clauses in full. **No ADR is superseded.**
 
 `waves/w17.md` records this under NW-73, NW-22, NW-20 and NW-62.
+
+## Amendment (2026-10-09, AI flows reorganisation — a layer above the domain modules, referenced only by the hosts)
+
+The **Decision outcome is unchanged and still in force**: one class-library
+project per bounded context, a thin API host, a thin Worker host, no microservices
+split. The product spec's module map (§5.1) does not change. This footer adds one
+project and one rule to the dependency direction; it moves no endpoint, table or
+module boundary and changes no behaviour. The design is the `Raffa.AiFlows`
+reorganisation (one subfolder per AI flow); this step (P0) only creates the empty
+project and the architecture rules, so that the flows can then move in one at a
+time with the guard rails already on.
+
+**1. One new project: `Raffa.AiFlows`.** It holds the *orchestration and logic of
+the AI flows* — orchestrators, agents, prompts, JSON schemas, guards, lexicons,
+flow telemetry — one subfolder per flow plus `Shared`. **Data and persistence
+(entities, `DbContext`s, migrations, repositories, the queue) stay in the domain
+modules.** It is not a bounded context and has no table, endpoint or host.
+
+**2. Dependency direction, stated so the architecture tests can enforce it.**
+`Raffa.AiFlows` sits **above** the domain modules:
+
+- It may reference only `Raffa.SharedKernel`, `Raffa.AiGateway` and the domain
+  modules it orchestrates (`Chat`, `Documents.Contracts`, `Quotes`, `Market`,
+  `Insights`, `Benchmark`, `Renewals`, `Savings`, `Suppliers.Products`,
+  `Identity.Workspace`). Never `Api`, `Worker`, `Tools`, `Messaging` or `Storage`.
+- It is referenced **only by the two hosts**, `Raffa.Api` and `Raffa.Worker`.
+  **No domain module, and no other project, references it.** This is what keeps
+  the graph acyclic: every project `Raffa.AiFlows` depends on is, by this rule,
+  unable to depend back on it. Where a module needs to call a flow it defines a
+  **port** (an interface in the module or the kernel) that the flow implements and
+  the host registers.
+- It holds **no provider SDK and no persistence package** of its own: the
+  `ForbiddenSdkPrefixes` of the domain modules apply, plus
+  `Microsoft.EntityFrameworkCore*`, `EFCore.*`, `Npgsql*` and `Pgvector*`.
+  Provider access stays behind `Raffa.AiGateway`; a `DbContext` is reached only
+  transitively through a module.
+
+**3. How it is enforced** (`Raffa.ArchitectureTests`).
+`DependencyDirectionTests.AllRaffaProjects` lists `Raffa.AiFlows` (without it the
+direction filter drops the reference and a module referencing the layer would go
+unseen), while `DomainModules` and `AllowedReferences` deliberately do not.
+New rules: `AiFlows_references_only_modules_and_kernel`,
+`Only_hosts_reference_AiFlows` (a scan of every `src/*/*.csproj`, so it also
+covers projects outside the domain-module list) and
+`AiFlows_must_not_reference_provider_sdks_or_persistence_packages`;
+`All_domain_modules_exist_in_solution` requires the project.
+`ArchitectureRuleEnforcementTests` proves each rule fails on a synthetic
+violation, including a domain module and a non-host project referencing
+`Raffa.AiFlows`. `Host_must_not_contain_domain_types` is **not** extended to it:
+its public flow types are legitimate.
+
+**4. What does not change.** `SdkAllowListTests` scans every `*.csproj` and
+covers the new project without edits. `Raffa.AiFlows` is a composition-time
+library: the hosts call its single `AddAiFlows()` entry point after the module
+registrations, and the flows register themselves there as they move in.
+`InternalsVisibleTo` for `Raffa.AiFlows.Tests` and `Raffa.Api.Tests` is granted
+on the new assembly.
+
+**No ADR is superseded.**
