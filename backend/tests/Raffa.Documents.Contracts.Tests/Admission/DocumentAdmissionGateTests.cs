@@ -281,7 +281,7 @@ public sealed class DocumentAdmissionGateTests
             Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
 
         Assert.Equal(AdmissionOutcome.Failed, decision.Outcome);
-        Assert.StartsWith(DocumentAdmissionGate.GatewayUnavailablePrefix, decision.Error);
+        Assert.StartsWith(AdmissionConstants.GatewayUnavailablePrefix, decision.Error);
         Assert.Contains("classify", decision.Error);
         Assert.Empty(harness.Audit.Entries);
     }
@@ -295,7 +295,7 @@ public sealed class DocumentAdmissionGateTests
             Tenant, Actor, "scan.png", "image/png", new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01 });
 
         Assert.Equal(AdmissionOutcome.Failed, decision.Outcome);
-        Assert.StartsWith(DocumentAdmissionGate.GatewayUnavailablePrefix, decision.Error);
+        Assert.StartsWith(AdmissionConstants.GatewayUnavailablePrefix, decision.Error);
         Assert.Contains("read", decision.Error);
     }
 
@@ -315,7 +315,7 @@ public sealed class DocumentAdmissionGateTests
             Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
 
         Assert.Equal(AdmissionOutcome.Failed, decision.Outcome);
-        Assert.StartsWith(DocumentAdmissionGate.GatewayUnavailablePrefix, decision.Error);
+        Assert.StartsWith(AdmissionConstants.GatewayUnavailablePrefix, decision.Error);
         Assert.Contains("classify", decision.Error);
         Assert.Contains("429", decision.Error);
         Assert.Empty(harness.Audit.Entries);
@@ -363,7 +363,7 @@ public sealed class DocumentAdmissionGateTests
             Tenant, Actor, "msa.pdf", "application/pdf", BuildPdf(MsaText));
 
         Assert.Equal(AdmissionOutcome.Failed, decision.Outcome);
-        Assert.StartsWith(DocumentAdmissionGate.GatewayUnavailablePrefix, decision.Error);
+        Assert.StartsWith(AdmissionConstants.GatewayUnavailablePrefix, decision.Error);
         Assert.Contains("classify", decision.Error);
         Assert.Contains("transient failure", decision.Error);
         Assert.Equal(DocumentAdmissionGate.ClassifyTransientRetries + 1, harness.Gateway.ClassifyCalls);
@@ -389,8 +389,8 @@ public sealed class DocumentAdmissionGateTests
             new(4, "efg"),
         };
 
-        Assert.Equal(7, DocumentAdmissionGate.CountReadableChars(pages));
-        Assert.Equal(0, DocumentAdmissionGate.CountReadableChars([]));
+        Assert.Equal(7, DocumentPageText.CountReadableChars(pages));
+        Assert.Equal(0, DocumentPageText.CountReadableChars([]));
     }
 
     /// <summary>The same hand-built PDF shape <c>R1ExtractionFixtures.BuildBornDigitalPdfBytes</c> and

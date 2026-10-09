@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Raffa.Chat.Application.WebResearch;
 
 /// <summary>
-/// Gate 3 of ADR-030: at most <see cref="WebResearchOptions.DailyCallsPerTenant"/> research calls
+/// Gate 3 of ADR-030: at most <see cref="IWebResearchBudgetLimit.DailyCallsPerTenant"/> research calls
 /// per tenant per UTC day. <see cref="TryReserveAsync"/> is one atomic conditional upsert
 /// (<c>INSERT … ON CONFLICT DO UPDATE … WHERE calls &lt; limit</c>), so two concurrent turns can
 /// never both take the last call; it runs inside the tenant's RLS scope like every other write in
@@ -33,11 +33,11 @@ public interface IWebResearchBudget
 public readonly record struct WebResearchReservation(TenantId TenantId, DateOnly Day);
 
 public sealed class WebResearchBudget(
-    ChatDbContext dbContext, ITenantContext tenantContext, WebResearchOptions options, IClock clock) : IWebResearchBudget
+    ChatDbContext dbContext, ITenantContext tenantContext, IWebResearchBudgetLimit limitSource, IClock clock) : IWebResearchBudget
 {
     public async Task<bool> HasRemainingAsync(TenantId tenantId, CancellationToken cancellationToken = default)
     {
-        var limit = options.DailyCallsPerTenant;
+        var limit = limitSource.DailyCallsPerTenant;
         if (limit <= 0)
         {
             return false;
@@ -60,7 +60,7 @@ public sealed class WebResearchBudget(
     /// (nothing is written in that case).</summary>
     public async Task<WebResearchReservation?> TryReserveAsync(TenantId tenantId, CancellationToken cancellationToken = default)
     {
-        var limit = options.DailyCallsPerTenant;
+        var limit = limitSource.DailyCallsPerTenant;
         if (limit <= 0)
         {
             return null;

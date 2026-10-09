@@ -48,7 +48,7 @@ public static class CapabilityGapReplyBuilder
     /// action - or the Documents upload (<see cref="CapabilityIntent.UnknownSupplier"/>) when nothing
     /// is on file. The one component behind both the in-turn reply
     /// (<c>Raffa.Api.AskCopilotService</c>) and the investigator's follow-up message
-    /// (<c>Raffa.Api.CapabilityCheckDispatcher</c>), which differ only in what they hand it.
+    /// (<c>Raffa.Api.CapabilityCheckRunner</c>), which differ only in what they hand it.
     /// </summary>
     /// <param name="opening">Optional lead-in sentence put before the question (the follow-up
     /// message's "I checked what Raffa.ai can do..."); <see langword="null"/> for the in-turn reply.</param>

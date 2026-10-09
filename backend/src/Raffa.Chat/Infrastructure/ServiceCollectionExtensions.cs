@@ -139,6 +139,9 @@ public static class ServiceCollectionExtensions
         // ADR-030: web research. The options default to Enabled=false (the kill switch), so a host
         // that never binds Chat:WebResearch has no web path at all.
         services.TryAddSingleton(new WebResearchOptions());
+        // The budget (persistence, this module) reads its daily limit through this port; it resolves
+        // the options lazily, so a host that swaps WebResearchOptions after this call is honoured.
+        services.TryAddSingleton<IWebResearchBudgetLimit>(sp => sp.GetRequiredService<WebResearchOptions>());
         services.AddScoped<WebResearchComposer>();
 
         // TryAdd: always-usable default (PackBudget.DefaultMaxTokens) with no IConfiguration

@@ -228,352 +228,68 @@ public static class InsightsEndpointExtensions
         return Results.Ok(ToStrategyResponse(pack));
     }
 
-    // ----- Composition / mapping (public: unit-tested directly with fakes, Raffa.Insights.Tests) -----
+    // ----- Composition / mapping (public: the bodies live in ContractInsightsMapper; these keep the
+    // ----- original entry points for Ask's packs and for Raffa.Insights.Tests) -----
 
-    /// <summary>
-    /// Composes one <see cref="Contract360Result"/> plus its already-computed
-    /// <paramref name="priority"/> into <see cref="ContractCriticalityInputs"/> — the one mapping
-    /// only this composition root can do (<c>Raffa.Insights</c> cannot reference
-    /// <c>Raffa.Documents.Contracts</c>/<c>Raffa.Renewals</c>/<c>Raffa.Savings</c>). 1:1 field
-    /// copy plus the savings-opportunity aggregation below; no scoring decision is made here (that
-    /// is <see cref="CriticalityScoreCalculator"/>'s own job).
-    /// </summary>
+    /// <inheritdoc cref="ContractInsightsMapper.ToCriticalityInputs"/>
     public static ContractCriticalityInputs ToCriticalityInputs(
         Contract360Result contract,
         PriorityScoreResult priority,
         IReadOnlyDictionary<string, decimal> portfolioAnnualSpendByCurrency,
-        IReadOnlyList<SavingsOpportunityResult> allSavingsOpportunities)
-    {
-        ArgumentNullException.ThrowIfNull(contract);
-        ArgumentNullException.ThrowIfNull(priority);
-        ArgumentNullException.ThrowIfNull(portfolioAnnualSpendByCurrency);
-        ArgumentNullException.ThrowIfNull(allSavingsOpportunities);
+        IReadOnlyList<SavingsOpportunityResult> allSavingsOpportunities) =>
+        ContractInsightsMapper.ToCriticalityInputs(contract, priority, portfolioAnnualSpendByCurrency, allSavingsOpportunities);
 
-        // AboveBandLineFraction stays null — see this type's own doc comment ("Benchmark matching
-        // is honestly not wired for contract priced lines yet"); the calculator falls back to the
-        // savings-opportunity range below.
-        var contractSavings = allSavingsOpportunities.Where(o => o.ContractId == contract.ContractId).ToList();
-        var savingsPotential = contractSavings.Count == 0
-            ? new SavingsPotentialInputs(AboveBandLineFraction: null, SavingsOpportunityRangeLow: null, SavingsOpportunityRangeHigh: null)
-            : new SavingsPotentialInputs(
-                AboveBandLineFraction: null,
-                SavingsOpportunityRangeLow: contractSavings.Sum(o => o.EstimatedSavingsLow),
-                SavingsOpportunityRangeHigh: contractSavings.Sum(o => o.EstimatedSavingsHigh));
-
-        var portfolioAnnualSpend = portfolioAnnualSpendByCurrency.GetValueOrDefault(contract.Overview.Currency, 0m);
-
-        return new ContractCriticalityInputs(
-            contract.ContractId,
-            new RenewalUrgencyInputs(priority.TotalScore),
-            ToCriticalityRiskSeverity(contract.Header.Risk),
-            contract.Header.AnnualSpend,
-            portfolioAnnualSpend,
-            savingsPotential,
-            ToCriticalFacts(contract));
-    }
-
-    /// <summary>
-    /// This tenant's total annual spend, grouped by currency (never summed across currencies — no
-    /// FX-conversion service exists anywhere in this codebase, the same rule
-    /// <c>PortfolioAnalysisCalculator.Summarize</c>/<c>SavingsKpiCalculator</c> already enforce for
-    /// the identical reason) — the spend-weight component's per-currency denominator.
-    /// </summary>
+    /// <inheritdoc cref="ContractInsightsMapper.ComputePortfolioAnnualSpendByCurrency"/>
     public static IReadOnlyDictionary<string, decimal> ComputePortfolioAnnualSpendByCurrency(
-        IReadOnlyList<Contract360Result> contracts)
-    {
-        ArgumentNullException.ThrowIfNull(contracts);
+        IReadOnlyList<Contract360Result> contracts) =>
+        ContractInsightsMapper.ComputePortfolioAnnualSpendByCurrency(contracts);
 
-        return contracts
-            .Where(c => c.Header.AnnualSpend is not null)
-            .GroupBy(c => c.Overview.Currency, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Sum(c => c.Header.AnnualSpend!.Value),
-                StringComparer.OrdinalIgnoreCase);
-    }
+    /// <inheritdoc cref="ContractInsightsMapper.ToCriticalFacts"/>
+    public static IReadOnlyList<CriticalFactConfidence> ToCriticalFacts(Contract360Result contract) =>
+        ContractInsightsMapper.ToCriticalFacts(contract);
 
-    /// <summary>
-    /// This contract's tracked critical facts — recorded risks (a risk is inherently critical) plus
-    /// priced lines that carry a unit price (the commercial facts a negotiation actually leans on) —
-    /// each keyed by <see cref="CriticalFactConfidence.FieldKey"/> and carrying its own recorded
-    /// <see cref="Contract360Risk.Confidence"/>/<see cref="Contract360ProductLineItem.Confidence"/>
-    /// (Appendix C rule 2). A fact with no recorded confidence is omitted, not assumed strong or weak
-    /// (Appendix C rule 10) — <see cref="CriticalityScoreCalculator"/>'s own "no critical facts
-    /// tracked" default then applies honestly if every candidate fact lacks one.
-    /// </summary>
-    public static IReadOnlyList<CriticalFactConfidence> ToCriticalFacts(Contract360Result contract)
-    {
-        ArgumentNullException.ThrowIfNull(contract);
-
-        var facts = new List<CriticalFactConfidence>();
-
-        for (var i = 0; i < contract.Risks.Count; i++)
-        {
-            if (contract.Risks[i].Confidence is { } confidence)
-            {
-                facts.Add(new CriticalFactConfidence($"risk[{i}]", confidence));
-            }
-        }
-
-        for (var i = 0; i < contract.Products.Count; i++)
-        {
-            var product = contract.Products[i];
-            if (product.UnitPrice is not null && product.Confidence is { } confidence)
-            {
-                facts.Add(new CriticalFactConfidence($"priced-line[{i}].unitPrice", confidence));
-            }
-        }
-
-        return facts;
-    }
-
-    /// <summary>
-    /// This contract's priced lines without a benchmark lookup — used by callers that compose their
-    /// own adapter call (Ask's market-compare pack). <see cref="PricedLine.TermMonths"/> is the
-    /// contract's own <see cref="Contract360Overview.RenewalTermMonths"/> when recorded;
-    /// <c>ContractLineItem.BillingPeriod</c> stays free text. The band itself is left unset so the
-    /// pack states "insufficient market data" rather than fabricating one.
-    /// </summary>
+    /// <inheritdoc cref="ContractInsightsMapper.ToPricedLines(Contract360Result)"/>
     public static IReadOnlyList<PricedLine> ToPricedLines(Contract360Result contract) =>
-        MapPricedLines(contract, static _ => default);
+        ContractInsightsMapper.ToPricedLines(contract);
 
-    /// <summary>
-    /// This contract's priced lines, generalized from <see cref="Contract360ProductLineItem"/> into
-    /// <see cref="PricedLine"/> (parent story AC-3; task E21/F03/US01/T01). When
-    /// <paramref name="supplierName"/> and <paramref name="geography"/> are both present — the
-    /// complete key <see cref="BenchmarkKeyResolution"/> resolved in the host — calls
-    /// <see cref="IBenchmarkService.GetBenchmarkAsync"/> per line and fills the distribution, term,
-    /// sample size, adapter name and as-of date from a sufficient result. An incomplete key or an
-    /// adapter abstention leaves the band unset so the pack states "insufficient market data"
-    /// (ADR-001 w17 clause 4). Never fabricates a number.
-    ///
-    /// <para>
-    /// <paramref name="storedMarketPrices"/> — each line's stored market comparison
-    /// (<see cref="LineItemMarketPriceService"/>, the one Contract 360's market column shows) —
-    /// wins for a line it matched, so the strategy and the product table never disagree about the
-    /// same line; the benchmark call above remains the fallback for every other line.
-    /// </para>
-    /// </summary>
-    public static async Task<IReadOnlyList<PricedLine>> ToPricedLines(
+    /// <inheritdoc cref="ContractInsightsMapper.ToPricedLines(Contract360Result, IBenchmarkService, string?, string?, DateOnly, CancellationToken, IReadOnlyDictionary{EntityId, LineItemMarketPrice}?)"/>
+    public static Task<IReadOnlyList<PricedLine>> ToPricedLines(
         Contract360Result contract,
         IBenchmarkService benchmarkService,
         string? supplierName,
         string? geography,
         DateOnly asOfDate,
         CancellationToken cancellationToken,
-        IReadOnlyDictionary<EntityId, LineItemMarketPrice>? storedMarketPrices = null)
-    {
-        ArgumentNullException.ThrowIfNull(contract);
-        ArgumentNullException.ThrowIfNull(benchmarkService);
+        IReadOnlyDictionary<EntityId, LineItemMarketPrice>? storedMarketPrices = null) =>
+        ContractInsightsMapper.ToPricedLines(
+            contract, benchmarkService, supplierName, geography, asOfDate, cancellationToken, storedMarketPrices);
 
-        var keyIsComplete = !string.IsNullOrWhiteSpace(supplierName)
-            && !string.IsNullOrWhiteSpace(geography);
-        var bands = new LineBenchmark[contract.Products.Count];
-
-        for (var i = 0; i < contract.Products.Count; i++)
-        {
-            var product = contract.Products[i];
-            if (storedMarketPrices is not null
-                && storedMarketPrices.TryGetValue(product.LineItemId, out var stored)
-                && stored is { Matched: true, UnitPriceP25: { } p25, UnitPriceP50: { } p50, UnitPriceP75: { } p75 })
-            {
-                bands[i] = new LineBenchmark(
-                    new BenchmarkDistribution(p25, p50, p75), stored.SampleSize, StoredMarketSourceFor(stored), stored.MarketUpdatedAt);
-                continue;
-            }
-
-            if (keyIsComplete)
-            {
-                var termMonths = contract.Overview.RenewalTermMonths;
-                var query = new BenchmarkQuery(
-                    Supplier: supplierName!,
-                    Product: product.Description,
-                    Sku: product.Sku,
-                    Geography: geography!,
-                    Quantity: product.Quantity ?? 1m,
-                    Term: termMonths is { } months ? $"{months} months" : "unknown",
-                    Currency: contract.Overview.Currency,
-                    PurchaseDate: contract.Overview.EffectiveDate ?? asOfDate);
-
-                var benchmarkResult = await benchmarkService
-                    .GetBenchmarkAsync(query, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (benchmarkResult.IsSuccess && benchmarkResult.Value.HasSufficientData)
-                {
-                    var value = benchmarkResult.Value;
-                    bands[i] = new LineBenchmark(
-                        value.Distribution, value.SampleSize, value.Source, value.UpdatedAt);
-                }
-            }
-        }
-
-        return MapPricedLines(contract, i => bands[i]);
-    }
-
-    /// <summary>The adapter label a stored comparison carries into the strategy pack — the same
-    /// corpus, and the same wording, <c>MarketFeedBenchmarkAdapter</c> reports as its source.</summary>
-    private const string StoredMarketSource = "market-feed (representative, mock)";
-
-    /// <summary>The source a stored band carries into the pack: a band that is not the line's own
-    /// product says what it is, so neither the strategy nor Ask ever narrates a similar product's
-    /// price, or a bundle's summed price, as the line's own market price.</summary>
-    private static string StoredMarketSourceFor(LineItemMarketPrice stored) => stored.Kind switch
-    {
-        MarketMatchKind.Similar => $"market-feed, similar product {stored.Product} (representative, mock)",
-        MarketMatchKind.Bundle => $"market-feed, bundle {stored.Product} summed (representative, mock)",
-        _ => StoredMarketSource,
-    };
-
-    private readonly record struct LineBenchmark(
-        BenchmarkDistribution? Distribution,
-        int? SampleSize,
-        string? AdapterName,
-        DateTimeOffset? AsOf);
-
-    private static IReadOnlyList<PricedLine> MapPricedLines(
-        Contract360Result contract,
-        Func<int, LineBenchmark> resolveBand)
-    {
-        ArgumentNullException.ThrowIfNull(contract);
-        ArgumentNullException.ThrowIfNull(resolveBand);
-
-        var termMonths = contract.Overview.RenewalTermMonths;
-        var lines = new List<PricedLine>(contract.Products.Count);
-        for (var i = 0; i < contract.Products.Count; i++)
-        {
-            var product = contract.Products[i];
-            var band = resolveBand(i);
-            lines.Add(new PricedLine(
-                product.Sku,
-                product.Description,
-                product.Quantity,
-                product.UnitPrice,
-                contract.Overview.Currency,
-                termMonths,
-                band.Distribution,
-                band.SampleSize,
-                band.AdapterName,
-                band.AsOf));
-        }
-
-        return lines;
-    }
-
-    /// <summary>
-    /// Composes <see cref="Contract360Result"/> plus its already-computed <paramref name="renewal"/>
-    /// into <see cref="StrategyInputs"/>. <paramref name="supplierName"/> is the host-resolved half
-    /// of the (supplier name, geography) pair <see cref="BenchmarkKeyResolution"/> produced — the
-    /// module cannot look the name up itself (allow-list <c>[SharedKernel, Benchmark]</c>). Null
-    /// when the key was incomplete; the builder then falls back to generic phrasing.
-    ///
-    /// <para>
-    /// <b>The cancellation deadline comes from two places, in order.</b> The renewal engine derives
-    /// one from <c>EndDate</c> minus the contract's notice period; nothing persists a notice period
-    /// today (<see cref="ContractRenewalTerms.CancellationNoticeDays"/> is always null here), so
-    /// that derivation is always empty and the strategy pack used to open with "when you must move"
-    /// and no deadline at all — on the one question the requirements themselves use as the worked
-    /// example. The extracted <c>CancellationDeadline</c> on the contract header is a real, cited
-    /// fact a human can correct; it is used whenever the engine has nothing, with the days-left
-    /// count derived from <paramref name="asOfDate"/> the same way the engine would. Found by the
-    /// golden set (task E13/F06/US01/T02, GAP-ASK-STRATEGY-NO-NOTICE-DEADLINE).
-    /// </para>
-    /// </summary>
+    /// <inheritdoc cref="ContractInsightsMapper.ToStrategyInputs"/>
     public static StrategyInputs ToStrategyInputs(
         Contract360Result contract,
         RenewalCalculationResult renewal,
         IReadOnlyList<PricedLine> pricedLines,
         IReadOnlyList<CriticalFactConfidence> criticalFacts,
         DateOnly asOfDate,
-        string? supplierName = null)
-    {
-        ArgumentNullException.ThrowIfNull(contract);
-        ArgumentNullException.ThrowIfNull(renewal);
-        ArgumentNullException.ThrowIfNull(pricedLines);
-        ArgumentNullException.ThrowIfNull(criticalFacts);
+        string? supplierName = null) =>
+        ContractInsightsMapper.ToStrategyInputs(contract, renewal, pricedLines, criticalFacts, asOfDate, supplierName);
 
-        var cancellationDeadline = renewal.CancellationDeadline ?? contract.Header.CancellationDeadline;
-        var daysUntilCancellationDeadline = renewal.DaysUntilCancellationDeadline
-            ?? (cancellationDeadline is { } deadline ? deadline.DayNumber - asOfDate.DayNumber : null);
+    /// <inheritdoc cref="ContractInsightsMapper.ComputeRenewal"/>
+    public static RenewalCalculationResult ComputeRenewal(Contract360Header header, RenewalEngine renewalEngine) =>
+        ContractInsightsMapper.ComputeRenewal(header, renewalEngine);
 
-        return new StrategyInputs(
-            contract.ContractId,
-            supplierName,
-            renewal.RenewalDate,
-            cancellationDeadline,
-            renewal.DaysUntilRenewal,
-            daysUntilCancellationDeadline,
-            contract.Header.AutoRenewal,
-            pricedLines,
-            criticalFacts,
-            asOfDate);
-    }
-
-    /// <summary>
-    /// Runs <see cref="RenewalEngine.Calculate"/> for one contract — the same
-    /// <c>Contract360Header</c> → <c>ContractRenewalTerms</c> mapping
-    /// <c>RenewalsEndpointExtensions.ComputePriority</c> already performs (duplicated here, not
-    /// referenced: that method is private to its own file — same "each composition file owns its own
-    /// copy" shape this host already accepts, mirrors how <c>Raffa.Quotes</c>/<c>Raffa.Savings</c>
-    /// duplicate a formula rather than cross-reference when architecture forbids the reference).
-    /// </summary>
-    public static RenewalCalculationResult ComputeRenewal(Contract360Header header, RenewalEngine renewalEngine)
-    {
-        ArgumentNullException.ThrowIfNull(header);
-        ArgumentNullException.ThrowIfNull(renewalEngine);
-
-        var terms = new ContractRenewalTerms(
-            header.ContractId, header.EndDate, header.AutoRenewal, header.NoticePeriodDays);
-        return renewalEngine.Calculate(terms);
-    }
-
-    /// <summary>Runs <see cref="RenewalEngine.Calculate"/> then
-    /// <see cref="PriorityScoreCalculator.Calculate"/> for one contract — see
-    /// <see cref="ComputeRenewal"/>'s own doc comment for why this is its own copy of
-    /// <c>RenewalsEndpointExtensions.ComputePriority</c>'s identical composition.</summary>
+    /// <inheritdoc cref="ContractInsightsMapper.ComputePriority"/>
     public static PriorityScoreResult ComputePriority(
-        Contract360Header header, RenewalEngine renewalEngine, PriorityScoreCalculator priorityScoreCalculator)
-    {
-        ArgumentNullException.ThrowIfNull(header);
-        ArgumentNullException.ThrowIfNull(priorityScoreCalculator);
+        Contract360Header header, RenewalEngine renewalEngine, PriorityScoreCalculator priorityScoreCalculator) =>
+        ContractInsightsMapper.ComputePriority(header, renewalEngine, priorityScoreCalculator);
 
-        var renewal = ComputeRenewal(header, renewalEngine);
-        var inputs = new RenewalPriorityInputs(
-            header.AnnualSpend,
-            AnnualUpliftPercent: null,
-            ToContractRiskLevel(header.Risk),
-            BenchmarkMarketPositionPercent: null);
+    /// <inheritdoc cref="ContractInsightsMapper.ToCriticalityRiskSeverity"/>
+    public static CriticalityRiskSeverity? ToCriticalityRiskSeverity(RiskSeverity? risk) =>
+        ContractInsightsMapper.ToCriticalityRiskSeverity(risk);
 
-        return priorityScoreCalculator.Calculate(renewal, inputs);
-    }
-
-    /// <summary>Maps Documents/Contracts' <see cref="RiskSeverity"/> onto Insights' own
-    /// <see cref="CriticalityRiskSeverity"/>, 1:1 by name plus an explicit
-    /// <see cref="CriticalityRiskSeverity.None"/> for "not assessed" (<paramref name="risk"/>
-    /// <see langword="null"/>) — only <c>Raffa.Api</c> may perform this mapping (ADR-002).</summary>
-    public static CriticalityRiskSeverity? ToCriticalityRiskSeverity(RiskSeverity? risk) => risk switch
-    {
-        null => null,
-        RiskSeverity.Low => CriticalityRiskSeverity.Low,
-        RiskSeverity.Medium => CriticalityRiskSeverity.Medium,
-        RiskSeverity.High => CriticalityRiskSeverity.High,
-        RiskSeverity.Critical => CriticalityRiskSeverity.Critical,
-        _ => throw new ArgumentOutOfRangeException(nameof(risk), risk, "Unknown RiskSeverity."),
-    };
-
-    /// <summary>Maps Documents/Contracts' <see cref="RiskSeverity"/> onto Renewals' own
-    /// <see cref="ContractRiskLevel"/> — the identical mapping
-    /// <c>RenewalsEndpointExtensions.MapRiskLevel</c> already performs (duplicated, not referenced:
-    /// that method is private to its own file).</summary>
-    public static ContractRiskLevel? ToContractRiskLevel(RiskSeverity? risk) => risk switch
-    {
-        null => null,
-        RiskSeverity.Low => ContractRiskLevel.Low,
-        RiskSeverity.Medium => ContractRiskLevel.Medium,
-        RiskSeverity.High => ContractRiskLevel.High,
-        RiskSeverity.Critical => ContractRiskLevel.Critical,
-        _ => throw new ArgumentOutOfRangeException(nameof(risk), risk, "Unknown RiskSeverity."),
-    };
+    /// <inheritdoc cref="ContractInsightsMapper.ToContractRiskLevel"/>
+    public static ContractRiskLevel? ToContractRiskLevel(RiskSeverity? risk) =>
+        ContractInsightsMapper.ToContractRiskLevel(risk);
 
     // ----- Response wire-shaping -----
 

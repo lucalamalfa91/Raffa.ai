@@ -161,14 +161,14 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         Assert.Equal(JsonValueKind.Null, reply.RootElement.GetProperty("capabilityCheck").ValueKind);
         Assert.Equal(0, gateway.CapabilityChecks);
 
-        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction));
+        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction));
         Assert.Equal("Triggered", Field(trigger, "mode"));
         Assert.Equal("False", Field(trigger, "t1"));
         Assert.Equal("False", Field(trigger, "t2"));
         Assert.Equal("False", Field(trigger, "t3"));
         Assert.Equal("False", Field(trigger, "ran"));
         Assert.Equal("none", Field(trigger, "reason"));
-        Assert.Empty(CapabilityRows(audit, CapabilityCheckDispatcher.OutcomeAuditAction));
+        Assert.Empty(CapabilityRows(audit, CapabilityCheckRunner.OutcomeAuditAction));
 
         var turn = Assert.Single(audit.Entries, e => e.Action.StartsWith("chat.", StringComparison.Ordinal));
         Assert.Contains("gapInvestigation=not-triggered", turn.Detail, StringComparison.Ordinal);
@@ -190,19 +190,19 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         var followUp = reply.RootElement.GetProperty("followUpMessage");
         Assert.Equal("discovered:management-report", followUp.GetProperty("payload").GetProperty("gap").GetProperty("key").GetString());
 
-        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction));
+        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction));
         Assert.Equal("True", Field(trigger, "t3"));
         Assert.Equal("True", Field(trigger, "ran"));
         Assert.Equal("it", Field(trigger, "t3Language"));
         Assert.Contains(InvestigatorTrigger.ReasonOperationalRequest, Field(trigger, "reason"), StringComparison.Ordinal);
         Assert.Matches(@"^\d+\.\d+\.\d+$", Field(trigger, "lexicon"));
 
-        var outcome = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.OutcomeAuditAction));
+        var outcome = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.OutcomeAuditAction));
         Assert.Equal("gap", Field(outcome, "outcome"));
         Assert.Equal("high", Field(outcome, "confidence"));
         Assert.Equal("discovered:management-report", Field(outcome, "gapKey"));
 
-        var offered = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.AuditAction));
+        var offered = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.AuditAction));
         var turnId = Field(trigger, "turnId");
         Assert.Matches("^[0-9a-f]{16}$", turnId);
         Assert.Equal(turnId, Field(outcome, "turnId"));
@@ -234,13 +234,13 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         Assert.Equal(JsonValueKind.Null, reply.RootElement.GetProperty("followUpMessage").ValueKind);
 
         // The decision was made after the reply: the trigger row says T2, not T3.
-        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction));
+        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction));
         Assert.Equal("True", Field(trigger, "t2"));
         Assert.Equal("False", Field(trigger, "t3"));
         Assert.Equal("True", Field(trigger, "ran"));
         Assert.Equal(InvestigatorTrigger.ReasonAbstain, Field(trigger, "reason"));
 
-        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+        await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
 
         using var getRequest = Request(HttpMethod.Get, $"/api/conversations/{conversationId}", tenantId);
         using var detail = JsonDocument.Parse(await (await client.SendAsync(getRequest)).Content.ReadAsStringAsync());
@@ -251,7 +251,7 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
             messages[2].GetProperty("payload").GetProperty("capabilityCheckFor").GetString());
         Assert.Equal(1, gateway.CapabilityChecks);
 
-        var outcome = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.OutcomeAuditAction));
+        var outcome = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.OutcomeAuditAction));
         Assert.Equal("gap", Field(outcome, "outcome"));
         Assert.Equal(Field(trigger, "turnId"), Field(outcome, "turnId"));
     }
@@ -268,12 +268,12 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         Assert.Equal("interview", reply.RootElement.GetProperty("kind").GetString());
         Assert.Equal(1, gateway.CapabilityChecks);
 
-        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction));
+        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction));
         Assert.Equal("True", Field(trigger, "t1"));
         Assert.Equal("False", Field(trigger, "t3"));
         Assert.Equal(InvestigatorTrigger.ReasonNoIntent, Field(trigger, "reason"));
-        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
-        Assert.Equal("question", Field(Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.OutcomeAuditAction)), "outcome"));
+        await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
+        Assert.Equal("question", Field(Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.OutcomeAuditAction)), "outcome"));
     }
 
     // ----- Always, kill switch, live reconfiguration -----
@@ -286,18 +286,18 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         var contract = await SeedAsync(host, tenantId);
 
         var (_, reply, _) = await AskAsync(host.CreateClient(), tenantId, OrdinaryQuestion, contract.Id.Value);
-        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+        await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
 
         Assert.Equal("answer", reply.RootElement.GetProperty("kind").GetString());
         Assert.Equal(1, gateway.CapabilityChecks);
 
-        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction));
+        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction));
         Assert.Equal("Always", Field(trigger, "mode"));
         Assert.Equal("True", Field(trigger, "ran"));
         Assert.Equal("False", Field(trigger, "t1"));
         Assert.Equal("False", Field(trigger, "t2"));
         Assert.Equal("False", Field(trigger, "t3"));
-        Assert.Equal("question", Field(Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.OutcomeAuditAction)), "outcome"));
+        Assert.Equal("question", Field(Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.OutcomeAuditAction)), "outcome"));
         Assert.Contains("gapInvestigation=started", Assert.Single(audit.Entries, e => e.Action.StartsWith("chat.", StringComparison.Ordinal)).Detail, StringComparison.Ordinal);
     }
 
@@ -312,11 +312,11 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
 
         Assert.Equal(0, gateway.CapabilityChecks);
         Assert.Equal(JsonValueKind.Null, reply.RootElement.GetProperty("followUpMessage").ValueKind);
-        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction));
+        var trigger = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction));
         Assert.Equal("off", Field(trigger, "mode"));
         Assert.Equal("False", Field(trigger, "ran"));
         Assert.Equal(InvestigatorTrigger.ReasonKillSwitch, Field(trigger, "reason"));
-        Assert.Empty(CapabilityRows(audit, CapabilityCheckDispatcher.OutcomeAuditAction));
+        Assert.Empty(CapabilityRows(audit, CapabilityCheckRunner.OutcomeAuditAction));
     }
 
     [Fact]
@@ -326,19 +326,19 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         var (host, gateway, audit, options) = Host();
         var contract = await SeedAsync(host, tenantId);
         var client = host.CreateClient();
-        var dispatcher = host.Services.GetRequiredService<CapabilityCheckDispatcher>();
+        var appender = host.Services.GetRequiredService<CapabilityFollowUpAppender>();
 
         await AskAsync(client, tenantId, OrdinaryQuestion, contract.Id.Value);
         Assert.Equal(0, gateway.CapabilityChecks);
 
         options.Set(new GapInvestigationOptions { Mode = GapInvestigationMode.Always });
         await AskAsync(client, tenantId, OrdinaryQuestion, contract.Id.Value);
-        await dispatcher.WhenIdleAsync();
+        await appender.WhenIdleAsync();
         Assert.Equal(1, gateway.CapabilityChecks);
 
         options.Set(new GapInvestigationOptions { Mode = GapInvestigationMode.Always, Enabled = false });
         await AskAsync(client, tenantId, OrdinaryQuestion, contract.Id.Value);
-        await dispatcher.WhenIdleAsync();
+        await appender.WhenIdleAsync();
         Assert.Equal(1, gateway.CapabilityChecks);
 
         options.Set(new GapInvestigationOptions());
@@ -347,7 +347,7 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
 
         Assert.Equal(
             ["Triggered", "Always", "off", "Triggered"],
-            CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction).Select(e => Field(e, "mode")).ToList());
+            CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction).Select(e => Field(e, "mode")).ToList());
     }
 
     // ----- INV-05: every outcome in the audit -----
@@ -388,13 +388,13 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         await SeedAsync(host, tenantId);
 
         await AskAsync(host.CreateClient(), tenantId, ReportRequest);
-        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+        await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
 
-        var outcome = Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.OutcomeAuditAction));
+        var outcome = Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.OutcomeAuditAction));
         Assert.Equal(outcomeWanted, Field(outcome, "outcome"));
         Assert.Equal(confidenceWanted, Field(outcome, "confidence"));
         Assert.Equal(gapKeyWanted, Field(outcome, "gapKey"));
-        Assert.Equal(Field(Assert.Single(CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction)), "turnId"), Field(outcome, "turnId"));
+        Assert.Equal(Field(Assert.Single(CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction)), "turnId"), Field(outcome, "turnId"));
         AssertNoQuestionTextInAudit(audit, "CFO", "anamento", "2026", "puoi", "scrivere", "periodic");
     }
 
@@ -410,21 +410,21 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         Assert.Equal("pending", first.RootElement.GetProperty("capabilityCheck").GetString());
 
         await AskAsync(client, tenantId, "Did you over all my contract?", conversationId: conversationId);
-        await host.Services.GetRequiredService<CapabilityCheckDispatcher>().WhenIdleAsync();
+        await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
 
         // The first turn's check found a gap (outcome row) and then dropped it (second row), both
         // on that turn's id; no follow-up was appended after the first answer.
-        var firstTurnId = Field(CapabilityRows(audit, CapabilityCheckDispatcher.TriggerAuditAction)[0], "turnId");
-        var firstOutcomes = CapabilityRows(audit, CapabilityCheckDispatcher.OutcomeAuditAction)
+        var firstTurnId = Field(CapabilityRows(audit, CapabilityCheckRunner.TriggerAuditAction)[0], "turnId");
+        var firstOutcomes = CapabilityRows(audit, CapabilityCheckRunner.OutcomeAuditAction)
             .Where(e => Field(e, "turnId") == firstTurnId)
             .Select(e => Field(e, "outcome"))
             .ToList();
-        Assert.Contains(CapabilityCheckDispatcher.OutcomeDrop, firstOutcomes);
+        Assert.Contains(CapabilityCheckRunner.OutcomeDrop, firstOutcomes);
         Assert.Contains("gap", firstOutcomes);
 
         var firstAnswerId = first.RootElement.GetProperty("messageId").GetGuid().ToString();
         Assert.DoesNotContain(
-            CapabilityRows(audit, CapabilityCheckDispatcher.AuditAction),
+            CapabilityRows(audit, CapabilityCheckRunner.AuditAction),
             e => (e.Detail ?? string.Empty).Contains($"answeredMessageId={firstAnswerId}", StringComparison.Ordinal));
     }
 

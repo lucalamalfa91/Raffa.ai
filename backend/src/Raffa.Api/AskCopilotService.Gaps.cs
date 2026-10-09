@@ -25,7 +25,7 @@ namespace Raffa.Api;
 /// market data check, the market researcher's notes and the council plays) by
 /// <see cref="NegotiationDraftingWorkflow"/>; for the other gaps it is a deep link into the screen
 /// that already holds the answer. (A gap the capability investigator finds, ADR-031, is never this
-/// turn's reply: it follows the answer as a separate message — <see cref="CapabilityCheckDispatcher"/>.)
+/// turn's reply: it follows the answer as a separate message — <see cref="CapabilityCheckRunner"/>.)
 /// </summary>
 internal sealed partial class AskCopilotService
 {
@@ -106,7 +106,7 @@ internal sealed partial class AskCopilotService
     /// check ran and why. Written for every fresh in-domain turn the check could look at (also when
     /// the kill switch is off, and in Always mode, where the flags say what Triggered would have
     /// done). Never the question, never any text; the matching <c>ask.capability_outcome</c> row
-    /// carries the verdict once the check finishes (<see cref="CapabilityCheckDispatcher"/>). Telemetry
+    /// carries the verdict once the check finishes (<see cref="CapabilityCheckRunner"/>). Telemetry
     /// never fails a turn.
     /// </summary>
     private async Task WriteTriggerAuditAsync(
@@ -124,8 +124,8 @@ internal sealed partial class AskCopilotService
                 new AuditEntry(
                     tenantId,
                     actor,
-                    CapabilityCheckDispatcher.TriggerAuditAction,
-                    CapabilityCheckDispatcher.TriggerAuditResourceType,
+                    CapabilityCheckRunner.TriggerAuditAction,
+                    CapabilityCheckRunner.TriggerAuditResourceType,
                     turnId,
                     clock.UtcNow,
                     $"turnId={turnId} mode={mode} t1={verdict.T1} t2={verdict.T2} t3={verdict.T3} " +
