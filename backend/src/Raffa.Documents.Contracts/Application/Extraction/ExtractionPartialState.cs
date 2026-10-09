@@ -51,7 +51,7 @@ public static class ExtractionPartialState
         foreach (var document in jobs.GroupBy(j => j.DocumentId))
         {
             var failed = new List<FailedStage>();
-            foreach (var stage in StagedExtractionService.Stages)
+            foreach (var stage in ExtractionPipeline.Stages)
             {
                 var ofStage = document.Where(j => j.Stage == stage).ToList();
                 var newest = ofStage

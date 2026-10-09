@@ -104,6 +104,9 @@ public static class ServiceCollectionExtensions
         // Scoped for the same reason every service above is: it shares this registration's own
         // DbContext instance, not a second one.
         services.AddScoped<DocumentProcessingPipeline>();
+        // The extraction handler depends on the port; the concrete type stays resolvable for callers
+        // that ask for it directly. Both names resolve to the same scoped instance.
+        services.AddScoped<IDocumentProcessingFlow>(sp => sp.GetRequiredService<DocumentProcessingPipeline>());
 
         // Per-line market comparison, written at extraction and refreshed when stale on read.
         // Its IMarketPriceMatcher / ISupplierNameLookup ports are optional constructor parameters:
@@ -125,6 +128,7 @@ public static class ServiceCollectionExtensions
             return options;
         });
         services.AddScoped<DocumentAdmissionGate>();
+        services.AddScoped<IDocumentAdmissionEvaluator>(sp => sp.GetRequiredService<DocumentAdmissionGate>());
 
         // Task E13/F04/US01/T02 (documents-v2-api): preview rendering + the reprocess/delete units
         // of work. Task E22/F02/US01/T01: PdfPageDocumentPreviewRenderer (Docnet.Core/pdfium) is

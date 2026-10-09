@@ -67,7 +67,7 @@ public sealed class DocumentAdmissionGate(
     IClock clock,
     IExtractionHangWatch? hangWatch = null,
     ExtractionProgressHeartbeat? progressHeartbeat = null,
-    Func<TimeSpan, CancellationToken, Task>? delay = null)
+    Func<TimeSpan, CancellationToken, Task>? delay = null) : IDocumentAdmissionEvaluator
 {
     /// <summary>Audit action for a rejected upload (R-DOC-03).</summary>
     public const string RejectedAuditAction = "document.rejected";
@@ -139,7 +139,7 @@ public sealed class DocumentAdmissionGate(
         }
 
         var pages = parseResult.Value;
-        var readableChars = CountReadableChars(pages);
+        var readableChars = DocumentPageText.CountReadableChars(pages);
         if (readableChars < options.MinReadableChars)
         {
             var noText = AdmissionDecision.RejectNoReadableText(pages, readableChars);
@@ -182,11 +182,11 @@ public sealed class DocumentAdmissionGate(
     /// The message an unreachable AI provider produces. Names the role that could not run and the
     /// exception type, so an operator reading the response (or the audit trail) can tell "the model
     /// endpoint is down/mis-configured" from "this document is not a contract" without opening the
-    /// container logs. Marked with <see cref="GatewayUnavailablePrefix"/> so the endpoint can map
+    /// container logs. Marked with <see cref="AdmissionConstants.GatewayUnavailablePrefix"/> so the endpoint can map
     /// it to 503 rather than 400.
     /// </summary>
     private static string GatewayUnavailable(string role, Exception exception) =>
-        $"{GatewayUnavailablePrefix} the '{role}' role could not be reached " +
+        $"{AdmissionConstants.GatewayUnavailablePrefix} the '{role}' role could not be reached " +
         $"({exception.GetType().Name}: {exception.Message}). Nothing was stored.";
 
     /// <summary>
@@ -194,41 +194,13 @@ public sealed class DocumentAdmissionGate(
     /// exhausted on throttling, server errors, connection failures or timeouts —
     /// <see cref="AiGatewayErrors.UnavailablePrefix"/>) is the same situation as a thrown credential
     /// or network exception: nothing about the document was judged, so it maps to the retryable
-    /// <see cref="GatewayUnavailablePrefix"/> outcome (HTTP 503) rather than a 400. Any other failure
+    /// <see cref="AdmissionConstants.GatewayUnavailablePrefix"/> outcome (HTTP 503) rather than a 400. Any other failure
     /// text is passed through unchanged.
     /// </summary>
     private static string MapUnavailable(string role, string error) =>
         error.StartsWith(AiGatewayErrors.UnavailablePrefix, StringComparison.Ordinal)
-            ? $"{GatewayUnavailablePrefix} the '{role}' role could not be reached ({error}). Nothing was stored."
+            ? $"{AdmissionConstants.GatewayUnavailablePrefix} the '{role}' role could not be reached ({error}). Nothing was stored."
             : error;
-
-    /// <summary>Prefix that marks a <see cref="AdmissionOutcome.Failed"/> error as "the provider is
-    /// unavailable" rather than "this document could not be read".</summary>
-    public const string GatewayUnavailablePrefix = "The document could not be assessed:";
-
-    /// <summary>Non-whitespace characters across every page — a scanned blank page or an OCR
-    /// placeholder line does not count as "readable contract text" (R-DOC-03 AC-2).</summary>
-    public static int CountReadableChars(IReadOnlyList<DocumentPageText> pages)
-    {
-        var count = 0;
-        foreach (var page in pages)
-        {
-            if (string.IsNullOrEmpty(page.Text))
-            {
-                continue;
-            }
-
-            foreach (var character in page.Text)
-            {
-                if (!char.IsWhiteSpace(character))
-                {
-                    count++;
-                }
-            }
-        }
-
-        return count;
-    }
 
     /// <summary>Same representative text <see cref="DocumentProcessingPipeline"/> hands the classify
     /// role: every page, in order, separated by a blank line.</summary>

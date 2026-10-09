@@ -65,43 +65,15 @@ public sealed partial class StagedExtractionService(
     IExtractionHangWatch? hangWatch = null,
     ExtractionProgressHeartbeat? progressHeartbeat = null)
 {
-    /// <summary>AC-1's seven stages, in pipeline order. <see cref="ExtractionStage.Classification"/>
-    /// is deliberately excluded — it is queued and (eventually) consumed elsewhere, before this
-    /// pipeline ever runs (see the type doc comment).</summary>
-    private static readonly ExtractionStage[] PipelineStages =
-    [
-        ExtractionStage.Metadata,
-        ExtractionStage.CommercialTerms,
-        ExtractionStage.DatesAndRenewalTerms,
-        ExtractionStage.LineItems,
-        ExtractionStage.LegalClauses,
-        ExtractionStage.Obligations,
-        ExtractionStage.Risk,
-    ];
-
-    /// <summary>Field name of the `supplier` fact (requirements R-SUP-01): the supplier's legal
-    /// name exactly as written in the document. Public because
-    /// <see cref="DocumentProcessingPipeline"/> and the review surfaces address the resulting
-    /// <see cref="ExtractionEvidence.FieldName"/> by this literal, and
-    /// <c>ContractCorrectionService</c> accepts a human correction under the same name.</summary>
-    public const string SupplierFieldName = "supplier";
-
-    /// <summary>Field name of the classification's own evidence row (<see cref="Contract.Type"/>).
-    /// Classification is the one extracted fact this pipeline does not produce itself — the
-    /// admission gate / <see cref="DocumentProcessingPipeline"/> run the `classify` role — yet the
-    /// review screen shows "Contract type" next to every other field and needs the same real
-    /// confidence behind it. <see cref="RunAsync(TenantId, EntityId, IReadOnlyList{DocumentPageText}, double?, CancellationToken)"/>
-    /// records it as an <see cref="ExtractionEvidence"/> row under this name, keyed exactly as
-    /// <c>ContractCorrectionService</c> accepts a <c>type</c> correction.</summary>
-    public const string TypeFieldName = "type";
+    private static IReadOnlyList<ExtractionStage> PipelineStages => ExtractionPipeline.Stages;
 
     /// <summary><see cref="Contract"/> fields the `metadata` stage may propose (allow-listed
     /// both here and in the JSON Schema's <c>enum</c> — see <see cref="StagedExtractionJsonSchemas.Facts"/>).
     /// Deliberately excludes <see cref="Contract.Type"/>: that is Classification's field
     /// (<see cref="Document.DocumentType"/>), not this pipeline's.
-    /// <see cref="SupplierFieldName"/> is here even though it maps to no <see cref="Contract"/>
+    /// <see cref="ExtractionFieldNames.Supplier"/> is here even though it maps to no <see cref="Contract"/>
     /// scalar — see <see cref="ApplyMetadataFact"/>.</summary>
-    private static readonly string[] MetadataFields = [SupplierFieldName, "currency", "governingLaw", "status"];
+    private static readonly string[] MetadataFields = [ExtractionFieldNames.Supplier, "currency", "governingLaw", "status"];
 
     private static readonly string[] CommercialTermsFields =
         ["annualSpend", "totalContractValue", "paymentTerms"];
@@ -142,7 +114,7 @@ public sealed partial class StagedExtractionService(
     /// <summary>
     /// Runs the seven stages; <paramref name="classificationConfidence"/>, when the caller has one
     /// (the admission gate's or <see cref="DocumentProcessingPipeline"/>'s own `classify` verdict for
-    /// this document), is recorded as the <see cref="TypeFieldName"/> evidence row so the review
+    /// this document), is recorded as the <see cref="ExtractionFieldNames.Type"/> evidence row so the review
     /// screen can show a real confidence for "Contract type" — and a classification below
     /// <see cref="ExtractionConfidencePolicy.AutoAcceptThreshold"/> routes the document to review like any other weak fact.
     /// </summary>
@@ -208,7 +180,7 @@ public sealed partial class StagedExtractionService(
         // started together (StartStagesAsync) while every dbContext write below stays sequential.
         // F5-T02: on a resume only the stages without a finished checkpoint get a job and a call.
         var pending = await StartStagesAsync(context, documentText, cancellationToken).ConfigureAwait(false);
-        var stageResults = new List<StagedExtractionStageResult>(PipelineStages.Length);
+        var stageResults = new List<StagedExtractionStageResult>(PipelineStages.Count);
 
         using (progressHeartbeat?.BeginMemoryPulses())
         {
@@ -554,7 +526,7 @@ public sealed partial class StagedExtractionService(
             {
                 anyBelowThreshold = true;
             }
-            else if (fact.Field == SupplierFieldName)
+            else if (fact.Field == ExtractionFieldNames.Supplier)
             {
                 acceptedSupplierName = fact.Value.Trim();
             }
@@ -572,7 +544,7 @@ public sealed partial class StagedExtractionService(
     {
         switch (field)
         {
-            case SupplierFieldName:
+            case ExtractionFieldNames.Supplier:
                 // Deliberately writes nothing onto Contract. `supplier` is a legal *name*;
                 // Contract.SupplierId is a cross-module reference this module may not resolve
                 // itself (ADR-002 — Documents/Contracts never references Raffa.Suppliers.Products),
@@ -670,7 +642,7 @@ public sealed partial class StagedExtractionService(
                 }
 
                 break;
-            case NoticePeriodDaysFieldName:
+            case ExtractionFieldNames.NoticePeriodDays:
                 if (TryParseInt(value, out var noticeDays) && noticeDays >= 0)
                 {
                     contract.NoticePeriodDays = noticeDays;
@@ -946,7 +918,7 @@ public sealed partial class StagedExtractionService(
             return DocumentProcessingStatus.NeedsReview;
         }
 
-        // The classification is a fact like any other (see TypeFieldName): a weak one means a
+        // The classification is a fact like any other (see ExtractionFieldNames.Type): a weak one means a
         // human should confirm the contract type before the document counts as validated.
         if (ExtractionConfidencePolicy.RequiresReview(classificationConfidence)
             && classificationConfidence is not null)
@@ -998,7 +970,7 @@ public sealed partial class StagedExtractionService(
     }
 
     /// <summary>
-    /// Writes the <see cref="TypeFieldName"/> evidence row for this run's classification verdict:
+    /// Writes the <see cref="ExtractionFieldNames.Type"/> evidence row for this run's classification verdict:
     /// the proposed type is the document's (what the `classify` role said), never the contract's
     /// current one (which a human may already have corrected), so the row records the proposal
     /// exactly as every other <see cref="ExtractionEvidence"/> row does. Linked to the most recent
@@ -1026,9 +998,9 @@ public sealed partial class StagedExtractionService(
 
         // F5-T01: a contract type a human set or confirmed is theirs. A verdict that agrees with it (or
         // repeats what was proposed last time) adds nothing; one that disagrees is a proposal to review.
-        if (context.Protection.IsProtected(TypeFieldName))
+        if (context.Protection.IsProtected(ExtractionFieldNames.Type))
         {
-            if (ProposalAddsNothing(contract, context.Protection, TypeFieldName, document.DocumentType.ToString()))
+            if (ProposalAddsNothing(contract, context.Protection, ExtractionFieldNames.Type, document.DocumentType.ToString()))
             {
                 return;
             }
@@ -1037,7 +1009,7 @@ public sealed partial class StagedExtractionService(
         }
 
         AddEvidence(
-            context, TypeFieldName, document.DocumentType.ToString(), confidence, decision, now, classificationJobId);
+            context, ExtractionFieldNames.Type, document.DocumentType.ToString(), confidence, decision, now, classificationJobId);
     }
 
     /// <summary>
