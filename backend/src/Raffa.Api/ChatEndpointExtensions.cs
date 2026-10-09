@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Ask.Interview;
 using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Interview;
@@ -20,7 +21,7 @@ namespace Raffa.Api;
 ///
 /// <para>
 /// <b>Superseded by this task</b>: the old `Structured`/`Semantic`
-/// <c>Raffa.Chat.Application.AskRaffaQueryRouter</c> + <c>EmbeddingRetrievalService</c> +
+/// <c>Raffa.AiFlows.Ask.Routing.AskRaffaQueryRouter</c> + <c>EmbeddingRetrievalService</c> +
 /// <c>RagAnswerService</c> pipeline this file used to run directly (task E02/F04/US02/T01) is now
 /// composed *inside* <see cref="AskCopilotService"/>'s own intent handling instead (the legacy
 /// router/planner/handler trio is reused there — see that type's own doc comment). The

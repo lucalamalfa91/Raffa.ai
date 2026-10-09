@@ -30,7 +30,7 @@ internal static class AiEvalOptions
     /// The instant every fixture host's <c>IClock</c> is pinned to. Every relative-date expectation
     /// in <c>golden/*.json</c> (a renewal window, a notice deadline, "days left") is computed from
     /// this exact instant, so the set never races a wall clock or a midnight rollover — the same
-    /// determinism convention <c>Raffa.Chat.Application.DeterministicQueryHandler</c>'s own
+    /// determinism convention <c>Raffa.AiFlows.Ask.Routing.DeterministicQueryHandler</c>'s own
     /// <c>IClock</c> dependency exists for (Appendix C rule 6).
     /// </summary>
     public static readonly DateTimeOffset EvaluationInstant =

@@ -240,15 +240,15 @@ builder.Services.AddSingleton(draftingOptions);
 // ADR-031 / INV-03: Chat:GapInvestigation — the capability investigator's mode (Triggered by
 // default, Always for diagnosis), kill switch, confidence threshold and time budget. Read through
 // IOptionsMonitor, so a configuration change applies without a restart.
-builder.Services.Configure<Raffa.Chat.Application.Gaps.GapInvestigationOptions>(
-    builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName));
+builder.Services.Configure<Raffa.AiFlows.CapabilityGaps.Investigation.GapInvestigationOptions>(
+    builder.Configuration.GetSection(Raffa.AiFlows.CapabilityGaps.Investigation.GapInvestigationOptions.SectionName));
 builder.Services.AddSingleton<Raffa.Api.CapabilityCheckRunner>();
 builder.Services.AddSingleton<Raffa.Api.CapabilityFollowUpAppender>();
 
 // ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
 // council/drafting options above so a configured value wins over the module's TryAdd default.
-var interviewOptions = new Raffa.Chat.Application.Interview.InterviewOptions();
-builder.Configuration.GetSection(Raffa.Chat.Application.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
+var interviewOptions = new Raffa.AiFlows.Ask.Interview.InterviewOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.Ask.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
 builder.Services.AddSingleton(interviewOptions);
 
 // ADR-030: Chat:WebResearch — the kill switch (default OFF), the workspace opt-in requirement,

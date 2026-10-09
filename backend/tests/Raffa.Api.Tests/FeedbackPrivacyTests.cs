@@ -7,7 +7,6 @@ using Raffa.Api.Tests.TestSupport;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Fixtures;
 using Raffa.Chat.Application.Feedback;
-using Raffa.Chat.Application.Gaps;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Suppliers;

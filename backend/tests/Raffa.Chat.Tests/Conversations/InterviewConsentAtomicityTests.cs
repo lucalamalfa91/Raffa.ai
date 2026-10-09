@@ -1,6 +1,7 @@
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.WebResearch;
+using Raffa.Chat.Domain;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.Chat.Tests.TestSupport;
 using Raffa.SharedKernel;
@@ -40,9 +41,24 @@ public sealed class InterviewConsentAtomicityTests : IAsyncLifetime
         await using var _ = db;
 
         var conversation = await service.CreateAsync(tenant, User, null);
-        var turn = WebConsentInterview.Build(
-            "search the web for typical uplift caps on saas renewals",
-            new WebResearchRequest("typical uplift caps saas renewals", "MarketPractice"));
+        // Built by hand, the shape the web-research flow's consent turn has: Chat owns the stored
+        // interview contract and must not depend on the flow that authors it.
+        var offer = new WebResearchRequest("typical uplift caps saas renewals", "MarketPractice");
+        var prompt = $"Raffa will search the public web for: “{offer.Query}”. Nothing from your contracts leaves Raffa. The results are not verified. Allow?";
+        var turn = new InterviewTurn(prompt,
+        [
+            new InterviewQuestion(
+                "web-consent",
+                prompt,
+                InterviewPresentation.Consent,
+                AllowFreeText: false,
+                [
+                    new InterviewOption("allow", "Yes, search the web", "One search, for this question only.",
+                        new InterviewResolution(AskIntent.WebResearch, null, null, "search the web for typical uplift caps on saas renewals", offer)),
+                    new InterviewOption("decline", "No, stay in Raffa", "I answer from your contracts only.",
+                        new InterviewResolution(null, null, null, "typical uplift caps on saas renewals")),
+                ]),
+        ]);
         var message = await service.AppendMessageAsync(
             tenant,
             User,

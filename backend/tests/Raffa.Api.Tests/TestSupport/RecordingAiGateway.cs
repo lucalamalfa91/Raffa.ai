@@ -22,7 +22,7 @@ namespace Raffa.Api.Tests.TestSupport;
 /// so "no <see cref="EmbedAsync"/> call recorded" already proves "no retrieval call happened" —
 /// recording every method (not just that one) additionally proves the stronger claim the greeting
 /// gate label's own doc comment makes: zero AI Gateway calls of <em>any</em> kind
-/// (<c>Raffa.Chat.Application.Reply.RedirectReplyBuilder.GreetingOrOffDomain</c>'s own doc
+/// (<c>Raffa.AiFlows.Ask.Reply.RedirectReplyBuilder.GreetingOrOffDomain</c>'s own doc
 /// comment: "No Raffa.AiGateway call happens for any of these").
 /// </para>
 /// </summary>
@@ -66,7 +66,7 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
     }
 
     /// <summary>The agent name ADR-031's capability investigator calls
-    /// <see cref="AnalyzeAsync"/> with (<c>Raffa.Chat.Application.Gaps.CapabilityInvestigatorAgent.Name</c>).</summary>
+    /// <see cref="AnalyzeAsync"/> with (<c>Raffa.AiFlows.CapabilityGaps.Agents.CapabilityInvestigatorAgent.Name</c>).</summary>
     public const string CapabilityInvestigatorAgent = "capability-investigator";
 
     /// <summary>How many capability checks ran (ADR-031: at most one per fresh typed turn).</summary>

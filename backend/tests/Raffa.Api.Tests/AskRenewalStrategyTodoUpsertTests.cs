@@ -61,7 +61,7 @@ public sealed class AskRenewalStrategyTodoUpsertTests : IClassFixture<RaffaApiFa
     /// Proven here as an observable outcome — the row exists once <see cref="AskCopilotService
     /// .AskAsync"/> returns — rather than by instrumenting the call order directly, since the upsert
     /// is a durable write awaited inside pack composition, strictly before
-    /// <see cref="Raffa.Chat.Application.Answering.AnswerComposer.AnswerAsync"/> is ever invoked (see
+    /// <see cref="Raffa.AiFlows.Ask.Answering.AnswerComposer.AnswerAsync"/> is ever invoked (see
     /// the implementation's own doc comment on <c>BuildRenewalStrategyAndNegotiationTodosPackAsync</c>).</summary>
     [Fact]
     public async Task A_live_Q3_turn_upserts_todos_before_the_answer()

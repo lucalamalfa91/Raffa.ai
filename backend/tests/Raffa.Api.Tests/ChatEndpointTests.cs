@@ -118,7 +118,7 @@ public sealed class ChatEndpointTests : IClassFixture<RaffaApiFactory>
 
     /// <summary>
     /// R-ASK-02/ADR-011 "off-domain never reaches retrieval", made concrete: the greeting gate
-    /// label is answered entirely by <c>Raffa.Chat.Application.Reply.RedirectReplyBuilder
+    /// label is answered entirely by <c>Raffa.AiFlows.Ask.Reply.RedirectReplyBuilder
     /// .GreetingOrOffDomain</c> (that method's own doc comment: "No Raffa.AiGateway call happens
     /// for any of these"), so a <see cref="RecordingAiGateway"/> standing in for the host's own
     /// gateway must see zero calls of any kind for "ciao" — strictly stronger than, and therefore
@@ -196,8 +196,8 @@ public sealed class ChatEndpointTests : IClassFixture<RaffaApiFactory>
     /// This task's own Definition of Done line, verbatim: "120-day renewal question answered with
     /// per-contract citations; no `Document:` guid and no 'Structured query' substring in any
     /// reply" — the spec §8.3 worked example
-    /// (<c>Raffa.Chat.Application.AskRaffaQueryRouter</c>'s own "renew"/"next N days" keyword
-    /// match), routed by <c>Raffa.Chat.Application.Planning.IntentPlanner</c> to
+    /// (<c>Raffa.AiFlows.Ask.Routing.AskRaffaQueryRouter</c>'s own "renew"/"next N days" keyword
+    /// match), routed by <c>Raffa.AiFlows.Ask.Planning.IntentPlanner</c> to
     /// <c>AskIntent.StructuredFact</c> and answered by
     /// <c>Raffa.Api.AskCopilotService.BuildStructuredFactPackAsync</c> — the exact method this
     /// review pass fixed (it used to title its own aggregate pack item "Structured query result",

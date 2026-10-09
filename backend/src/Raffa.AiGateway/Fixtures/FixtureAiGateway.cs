@@ -327,7 +327,7 @@ public sealed class FixtureAiGateway(
     private const int MaxCitedPackItems = 5;
 
     /// <summary>Same camelCase-plus-string-enum shape
-    /// <c>Raffa.Chat.Application.Answering.AnswerComposer</c> serializes
+    /// <c>Raffa.AiFlows.Ask.Answering.AnswerComposer</c> serializes
     /// <c>Raffa.Chat.Application.Pack.PackItem</c> with — see this type's own <c>PackJsonOptions</c>
     /// doc comment for why both sides must agree on this exact convention despite neither
     /// referencing the other's type.</summary>

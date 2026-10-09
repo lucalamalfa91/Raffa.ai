@@ -13,7 +13,7 @@ namespace Raffa.Renewals.Domain;
 /// (<c>Raffa.ArchitectureTests.DependencyDirectionTests</c>'s allow-list for this module; see
 /// <c>backend/README.md</c>'s "Dependency direction" table) — the same shape decision
 /// <see cref="Raffa.Renewals.Application.ContractRenewalTerms"/> and
-/// <c>Raffa.Chat.Application.ContractFact</c> already made for the same reason. A composition
+/// <c>Raffa.AiFlows.Ask.Routing.ContractFact</c> already made for the same reason. A composition
 /// root maps <c>PortfolioListItem.Risk</c> (the highest <c>RiskSeverity</c> across a contract's
 /// <c>Risk</c> rows) onto this enum 1:1; no task in this wave wires that composition yet — the
 /// same "caller supplies it however it likes today, a real mapping lands later" gap

@@ -14,7 +14,7 @@ namespace Raffa.Renewals.Application;
 /// "calculate renewal date, calculate cancellation deadline, calculate days remaining"). Takes
 /// <see cref="IClock"/> (not <see cref="DateTimeOffset.UtcNow"/> directly) for "today", the same
 /// determinism convention every other date-sensitive service in this solution already follows
-/// (for example <c>Raffa.Chat.Application.DeterministicQueryHandler</c>), so a test can fix "now"
+/// (for example <c>Raffa.AiFlows.Ask.Routing.DeterministicQueryHandler</c>), so a test can fix "now"
 /// instead of racing the wall clock.
 ///
 /// <para>

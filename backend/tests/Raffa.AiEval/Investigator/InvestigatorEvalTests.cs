@@ -1,4 +1,5 @@
-using Raffa.Chat.Application.Gaps;
+
+using Raffa.AiFlows.CapabilityGaps.Investigation;
 
 namespace Raffa.AiEval.Investigator;
 

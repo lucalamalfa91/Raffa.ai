@@ -1,0 +1,32 @@
+using Raffa.Chat.Domain;
+
+namespace Raffa.AiFlows.Ask.Routing;
+
+/// <summary>
+/// The outcome of <see cref="AskRaffaQueryRouter.Route"/>: which of the two spec §8.3 branches
+/// a question was assigned to, and why — so a caller (or a test) never has to re-derive the
+/// classification reason from the raw question text.
+/// </summary>
+/// <param name="Question">The question as routed (trimmed).</param>
+/// <param name="Intent">The assigned branch.</param>
+/// <param name="Reason">Human-readable explanation of which signal drove the classification —
+/// useful for debugging a misroute and for asserting *why* in tests, not just the outcome.</param>
+/// <param name="IsDefault"><see langword="true"/> when no keyword or date-window pattern matched and
+/// the router fell back to its own default (semantic retrieval rather than a false deterministic
+/// answer) — the one signal the interview planner treats as "the planner has nothing to go on".</param>
+public sealed record QueryRouteDecision(string Question, QueryIntent Intent, string Reason, bool IsDefault = false)
+{
+    /// <summary>
+    /// True when this question must be answered by a deterministic query/filter and must never
+    /// reach an LLM (parent story us-01-query-router AC-2). The concrete handlers are task
+    /// E02/F04/US01/T02's scope.
+    /// </summary>
+    public bool RequiresDeterministicQuery => Intent == QueryIntent.Structured;
+
+    /// <summary>
+    /// True when this question must be answered by RAG retrieval over contract sections/clauses
+    /// (parent story us-01-query-router AC-3). The retrieval pipeline is task
+    /// E02/F04/US02/T01's scope.
+    /// </summary>
+    public bool RequiresRagRetrieval => Intent == QueryIntent.Semantic;
+}

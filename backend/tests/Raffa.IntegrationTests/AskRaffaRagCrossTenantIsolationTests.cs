@@ -28,7 +28,7 @@ namespace Raffa.IntegrationTests;
 ///
 /// <b>Question choice</b>: every question below deliberately names no capitalized supplier token
 /// ("what liability coverage do we have on file" — lower-case, matching this suite's own house
-/// style) so <c>Raffa.Chat.Application.Gate.DomainGate</c>'s own supplier-name check never fires
+/// style) so <c>Raffa.AiFlows.Ask.Gate.DomainGate</c>'s own supplier-name check never fires
 /// — this test seeds raw tenant-scoped embedding chunks directly (the same shape
 /// <c>Raffa.Documents.Contracts.Tests.EmbeddingRetrievalServiceTests</c> already covers on its
 /// own), not a full Contract/Supplier row, so a named-supplier question would incorrectly resolve
@@ -166,7 +166,7 @@ public sealed class AskRaffaRagCrossTenantIsolationTests : IClassFixture<R0Integ
     /// Parent story AC-7: "regenerated once, then downgraded to abstain with the pack's own facts;
     /// audit records <c>abstainGuardIntervened=true</c>" — the one gap the review of this task's
     /// first pass found unproven: <c>Raffa.Api.AskCopilotService.WriteAuditAsync</c> computed
-    /// <c>Raffa.Chat.Application.Answering.AnswerComposerResult.GuardIntervened</c> correctly but
+    /// <c>Raffa.AiFlows.Ask.Answering.AnswerComposerResult.GuardIntervened</c> correctly but
     /// never read it, so every <c>chat.abstained</c> row was indistinguishable from an empty-pack or
     /// gateway-failure abstain. No test elsewhere in this task's own file set could have caught
     /// this: every other in-domain answer here (and every <c>Raffa.Chat.Tests/Guards/*</c> unit

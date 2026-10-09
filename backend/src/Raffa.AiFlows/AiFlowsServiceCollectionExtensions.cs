@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Raffa.AiFlows.Ask;
 using Raffa.AiFlows.CapabilityGaps;
 using Raffa.AiFlows.DocumentExtraction;
 using Raffa.AiFlows.MarketKnowledge;
@@ -27,6 +28,7 @@ public static class AiFlowsServiceCollectionExtensions
         services.AddMarketKnowledgeFlow();
         services.AddNegotiationFlow();
         services.AddCapabilityGapsFlow();
+        services.AddAskFlow();
         services.AddQuoteExtractionFlow();
 
         return services;

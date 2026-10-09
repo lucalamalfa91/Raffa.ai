@@ -1,15 +1,8 @@
-using Raffa.AiGateway.Configuration;
-using Raffa.AiGateway.Jev;
 using Raffa.Chat.Application;
-using Raffa.Chat.Application.Answering;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Feedback;
-using Raffa.Chat.Application.Gaps;
-using Raffa.Chat.Application.Interview;
-using Raffa.Chat.Application.Gate;
 using Raffa.Chat.Application.Pack;
-using Raffa.Chat.Application.Planning;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
@@ -78,45 +71,8 @@ public static class ServiceCollectionExtensions
         // .AddDocumentsContractsModule.
         services.TryAddSingleton<IClock, SystemClock>();
 
-        services.AddScoped<AskRaffaQueryRouter>();
-        services.AddScoped<DeterministicQueryPlanner>();
-        services.AddScoped<DeterministicQueryHandler>();
         services.AddScoped<AbstainGuard>();
         services.AddScoped<CapabilityRouting>();
-
-        // Task E13/F06/US01/T01 (ask-engine): the V2 gate/planner/answer engine. Each of these is
-        // stateless (no database, no per-request field), registered the same uniform
-        // per-request/job lifetime as every sibling service above.
-        services.AddScoped<DomainGate>();
-        services.AddScoped<IntentPlanner>();
-        services.AddScoped<AnswerComposer>();
-
-        // The capability investigator (Application.Gaps, ADR-031): decides whether a fresh turn asks
-        // for a feature Raffa does not have. The verdict is decided by the Jev classify-role pilot
-        // when it is on (never the LLM -- CapabilityInvestigator's own doc comment); the analyst-role
-        // Foundry call only ever writes a gap's free-text description. The host binds
-        // Chat:GapInvestigation (as IOptionsMonitor, so the mode and the kill switch change without
-        // a restart) before calling this; absent that, the defaults: Triggered, enabled.
-        services.AddOptions<GapInvestigationOptions>();
-        // AiGatewayJevOptions/JevHttpJsonClient are normally registered (config-bound) by
-        // Raffa.AiGateway.ServiceCollectionExtensions.AddAiGatewayModule, called before this one by
-        // every real host (same ordering IAiGateway itself already relies on). TryAdd here is the
-        // same defensive fallback every other option in this method already gets -- a host or test
-        // that calls only AddChatModule still gets a safe, Jev-off default rather than a missing
-        // registration (Raffa.Chat.Tests.ServiceCollectionExtensionsTests never registers
-        // IConfiguration at all, so this cannot be a config-binding factory here).
-        services.TryAddSingleton(new AiGatewayJevOptions());
-        services.TryAddSingleton(sp => new JevHttpJsonClient(
-            new HttpClient { Timeout = TimeSpan.FromSeconds(180) },
-            sp.GetRequiredService<AiGatewayJevOptions>()));
-        services.TryAddSingleton<JevVerdictClient>();
-        // A factory, not constructor selection: the investigator has a second, options-instance
-        // constructor for tests and tools, and the container must not weigh the two.
-        services.AddScoped(sp => new CapabilityInvestigator(
-            sp.GetRequiredService<Raffa.AiGateway.IAiGateway>(),
-            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<GapInvestigationOptions>>(),
-            sp.GetRequiredService<AiGatewayJevOptions>(),
-            sp.GetRequiredService<JevVerdictClient>()));
 
         // The feedback loop's seam (Application.Feedback, ADR-030 D5): the host registers the
         // GitHub publisher and binds Feedback:* before calling this when a token is configured;
@@ -127,11 +83,6 @@ public static class ServiceCollectionExtensions
         // F4-T01: the host supplies the tenant's supplier names so the free text of a feedback
         // answer is scrubbed of them before it is published; without a host source none are known.
         services.TryAddScoped<IFeedbackNameSource, NullFeedbackNameSource>();
-
-        // ADR-030: the interview (kill switch + bounds) — a configured value registered before
-        // this call wins, same TryAdd contract as CouncilOptions above.
-        services.TryAddSingleton(new InterviewOptions());
-        services.AddScoped<InterviewPlanner>();
 
         // ADR-030: web research. The options default to Enabled=false (the kill switch), so a host
         // that never binds Chat:WebResearch has no web path at all.

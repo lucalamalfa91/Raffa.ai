@@ -1,6 +1,7 @@
+using Raffa.AiFlows.CapabilityGaps.Catalog;
+using Raffa.AiFlows.CapabilityGaps.Copy;
 using Raffa.AiFlows.CapabilityGaps.Replies;
 using Raffa.Chat.Application.Capabilities;
-using Raffa.Chat.Application.Gaps;
 using Raffa.Chat.Application.Reply;
 
 namespace Raffa.AiFlows.Tests.CapabilityGaps.Replies;

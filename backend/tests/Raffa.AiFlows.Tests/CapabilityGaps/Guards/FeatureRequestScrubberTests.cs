@@ -2,7 +2,6 @@ using System.Text.RegularExpressions;
 using Raffa.AiFlows.CapabilityGaps.Guards;
 using Raffa.AiFlows.CapabilityGaps.Replies;
 using Raffa.Chat.Application.Feedback;
-using Raffa.Chat.Application.Gaps;
 
 namespace Raffa.AiFlows.Tests.CapabilityGaps.Guards;
 

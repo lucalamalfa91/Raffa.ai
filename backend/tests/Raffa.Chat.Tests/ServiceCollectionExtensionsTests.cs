@@ -14,7 +14,7 @@ namespace Raffa.Chat.Tests;
 /// <c>Raffa.AiGateway.Tests.ServiceCollectionExtensionsTests</c>): <see cref="AskRaffaQueryRouter"/>,
 /// <see cref="DeterministicQueryPlanner"/>, <see cref="DeterministicQueryHandler"/>,
 /// <see cref="AbstainGuard"/> (task E02/F04/US02/T02) and the ask engine's
-/// <see cref="Raffa.Chat.Application.Answering.AnswerComposer"/> are all
+/// <c>AnswerComposer</c> are all
 /// resolvable from a container that has
 /// <see cref="AddChatModule"/> plus this module's two external dependencies
 /// (<see cref="IAiGateway"/>, <see cref="IAuditWriter"/>) registered — the shape
@@ -43,11 +43,7 @@ public sealed class ServiceCollectionExtensionsTests
             new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
         using var scope = provider.CreateScope();
 
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AskRaffaQueryRouter>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<DeterministicQueryPlanner>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<DeterministicQueryHandler>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<AbstainGuard>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Answering.AnswerComposer>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IClock>());
 
         Assert.IsType<NullFeatureRequestPublisher>(scope.ServiceProvider.GetRequiredService<IFeatureRequestPublisher>());
@@ -102,10 +98,6 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Infrastructure.ChatDbContext>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Conversations.ConversationService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.WebResearch.WebResearchBudget>());
-        // The zero-argument surface from the other test above still resolves too -- the overload
-        // is additive, never a replacement.
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<AskRaffaQueryRouter>());
-        Assert.NotNull(scope.ServiceProvider.GetRequiredService<Raffa.Chat.Application.Answering.AnswerComposer>());
     }
 
     /// <summary>
