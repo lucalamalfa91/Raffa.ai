@@ -7,7 +7,7 @@ namespace Raffa.Chat.Application.WebResearch;
 /// offering it, and an explicit "cerca sul web" gets a redirect explaining why. Bound by the host
 /// before <c>AddChatModule</c>, the same TryAdd override contract as <c>Chat:Interview</c>.
 /// </summary>
-public sealed class WebResearchOptions
+public sealed class WebResearchOptions : IWebResearchBudgetLimit
 {
     public const string SectionName = "Chat:WebResearch";
 

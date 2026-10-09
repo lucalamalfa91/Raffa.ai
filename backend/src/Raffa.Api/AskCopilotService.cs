@@ -199,13 +199,11 @@ internal sealed partial class AskCopilotService(
     IMarketDealLookup marketDealLookup,
     AskAgentFlow askAgentFlow,
     NegotiationDraftingWorkflow negotiationDraftingWorkflow,
-    CapabilityCheckDispatcher capabilityCheckDispatcher,
+    CapabilityCheckRunner capabilityCheckRunner,
     InterviewPlanner interviewPlanner,
     InterviewOptions interviewOptions,
-    WebResearchOptions webResearchOptions,
-    WebResearchComposer webResearchComposer,
-    IWebResearchBudget webResearchBudget,
-    IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
+    WebResearchFlow webResearchFlow,
+    WebModeFlow webModeFlow,
     IAuditWriter auditWriter,
     ITenantContext tenantContext,
     IClock clock,
@@ -240,7 +238,7 @@ internal sealed partial class AskCopilotService(
     private const string AuditRefusedAction = "chat.refused";
     private const string AuditAbstainedAction = "chat.abstained";
     private const string AuditInterviewedAction = "chat.interviewed";
-    private const string AuditResourceType = "ask_raffa_v2";
+    private const string AuditResourceType = AskAuditResourceType.Value;
 
     /// <summary>The tenant scope <see cref="AskAsync"/> already opened for this call
     /// (<see cref="ITenantContext.BeginScope"/>) — every private helper below reads this instead
@@ -389,7 +387,7 @@ internal sealed partial class AskCopilotService(
         //   - T1 (no intent recognised) and T2 (Raffa could not answer) need the planner and the
         //     composer, so they are decided right after the reply below, and the check starts then:
         //     the answer is never delayed, and the follow-up still lands as a separate message
-        //     through CapabilityCheckDispatcher.AppendWhenDone.
+        //     through CapabilityCheckRunner.AppendWhenDone.
         // Only a fresh, typed InDomain turn is eligible: the fixed catalog already had its say in
         // the gate; Greeting/OffDomain/Legal/Capability/NeedsDocument make no AI Gateway call and
         // stay that way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an
@@ -412,7 +410,7 @@ internal sealed partial class AskCopilotService(
                     ? namedSupplierName
                     : null;
 
-            capabilityCheck!.FollowUp = capabilityCheckDispatcher.Start(new CapabilityCheckRequest(
+            capabilityCheck!.FollowUp = capabilityCheckRunner.Start(new CapabilityCheckRequest(
                 tenantId,
                 question,
                 supplierNames.Values.ToList(),
@@ -430,7 +428,7 @@ internal sealed partial class AskCopilotService(
         {
             capabilityCheck!.TurnId = turnId;
 
-            if (!capabilityCheckDispatcher.Enabled)
+            if (!capabilityCheckRunner.Enabled)
             {
                 gapInvestigation = "off";
                 triggerVerdict = new TriggerVerdict(false, false, false, InvestigatorTrigger.ReasonKillSwitch);
@@ -438,7 +436,7 @@ internal sealed partial class AskCopilotService(
             else
             {
                 investigatorEligible = true;
-                investigatorMode = capabilityCheckDispatcher.Mode;
+                investigatorMode = capabilityCheckRunner.Mode;
 
                 // T3 reads the question alone: it (and Always mode) starts the check now, in
                 // parallel with the answer. T1/T2 are decided after the reply, below.
@@ -457,9 +455,24 @@ internal sealed partial class AskCopilotService(
         // BuildInDomainReplyAsync's own doc comment on its tuple return).
         // ADR-032: the composer's web-search toggle takes every question that is a search (see
         // IsWebModeTurn) to the web and to the store, the procurement-only filters lifted.
-        var (reply, guardIntervened, fallbackUsed) = IsWebModeTurn(turnHints, gate, question)
-            ? await BuildWebModeReplyAsync(
-                tenantId, question, gate, portfolio, supplierNames, recentTurns, scopeContractId, scopedContractItem, actor, cancellationToken)
+        var (reply, guardIntervened, fallbackUsed) = WebModeFlow.IsWebModeTurn(turnHints, gate, question)
+            ? await webModeFlow.BuildReplyAsync(
+                tenantId, question, gate, portfolio, scopedContractItem, actor,
+                (webQuestion, namedSupplier, ct) => BuildInDomainReplyAsync(
+                    tenantId,
+                    webQuestion,
+                    namedSupplier,
+                    portfolio,
+                    supplierNames,
+                    recentTurns,
+                    scopeContractId,
+                    scopedContractItem,
+                    actor,
+                    AskTurnHints.None with { SuppressInterview = true },
+                    previousRaffaTurnWasInterview: false,
+                    ct),
+                ResolveAbstainRecovery,
+                cancellationToken)
                 .ConfigureAwait(false)
             : gate.Label switch
             {
@@ -517,7 +530,7 @@ internal sealed partial class AskCopilotService(
         // answer above), so "asked, said no" is visible without the query ever being logged.
         if (turnHints.DeclinedWebResearch)
         {
-            await WriteWebResearchAuditAsync(tenantId, AuditWebResearchDeclinedAction, actor, "outcome=declined", cancellationToken)
+            await webResearchFlow.WriteDeclinedAuditAsync(tenantId, actor, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -693,7 +706,7 @@ internal sealed partial class AskCopilotService(
         // the closed gate. There is no path from here to the search without a consumed consent.
         if (hints.AuthorizedWebResearch is { } authorizedWebResearch && plan.Intent == AskIntent.WebResearch)
         {
-            var reply = await RunWebResearchAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, cancellationToken)
+            var reply = await webResearchFlow.RunAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, ResolveAbstainRecovery, cancellationToken)
                 .ConfigureAwait(false);
             return (reply.Reply, reply.GuardIntervened, false);
         }
@@ -701,7 +714,7 @@ internal sealed partial class AskCopilotService(
         if (plan.Intent == AskIntent.WebResearch)
         {
             return (
-                await BuildWebResearchEntryReplyAsync(tenantId, question, portfolio, routingContext, actor, cancellationToken)
+                await webResearchFlow.BuildEntryReplyAsync(tenantId, question, portfolio, routingContext, actor, ResolveAbstainRecovery, cancellationToken)
                     .ConfigureAwait(false),
                 false,
                 false);
@@ -730,7 +743,7 @@ internal sealed partial class AskCopilotService(
                 // The web option rides the interpretation menu only when every ADR-030 gate is
                 // open and the question is a procurement topic; picking it asks consent, never
                 // searches.
-                var webOffer = await BuildWebOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
+                var webOffer = await webResearchFlow.BuildOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
                 var interview = interviewPlanner.Plan(
                     question, plan, signals, BuildInterviewInputs(supplierMatches, portfolio, supplierNames), webOffer);
                 if (interview is not null)
@@ -906,7 +919,7 @@ internal sealed partial class AskCopilotService(
         // block with its dead "Open Ask Raffa" button.
         if (!result.CanDetermine && !composed.Value.GuardIntervened && KeepDecline(result.AbstainReason))
         {
-            var webOffer = await BuildWebOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
+            var webOffer = await webResearchFlow.BuildOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
             var interview = interviewPlanner.PlanInterpretationMenu(question, plan, webOffer);
             if (interview is not null)
             {
@@ -2985,6 +2998,10 @@ internal sealed partial class AskCopilotService(
         return list;
     }
 
-    private static string ComputeHash(string input) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
+    private static string ComputeHash(string input) => QueryHasher.ComputeHash(input);
+
+    /// <summary>The two-argument form of <see cref="ResolveAbstainRecoveryActions"/> the web flows
+    /// receive as a delegate (<see cref="AbstainRecoveryResolver"/>): they never reference this class.</summary>
+    private IReadOnlyList<CopilotAction> ResolveAbstainRecovery(PortfolioPage portfolio, RoutingContext routingContext) =>
+        ResolveAbstainRecoveryActions(portfolio, routingContext);
 }

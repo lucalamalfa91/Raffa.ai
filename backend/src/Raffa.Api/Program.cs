@@ -242,7 +242,8 @@ builder.Services.AddSingleton(draftingOptions);
 // IOptionsMonitor, so a configuration change applies without a restart.
 builder.Services.Configure<Raffa.Chat.Application.Gaps.GapInvestigationOptions>(
     builder.Configuration.GetSection(Raffa.Chat.Application.Gaps.GapInvestigationOptions.SectionName));
-builder.Services.AddSingleton<Raffa.Api.CapabilityCheckDispatcher>();
+builder.Services.AddSingleton<Raffa.Api.CapabilityCheckRunner>();
+builder.Services.AddSingleton<Raffa.Api.CapabilityFollowUpAppender>();
 
 // ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
 // council/drafting options above so a configured value wins over the module's TryAdd default.
@@ -338,6 +339,9 @@ builder.Services.AddInsightsModule();
 // AddXxxModule. Scoped: shares this request's own DbContext-backed services (all already Scoped)
 // rather than a second, independently-tracked instance of any of them.
 builder.Services.AddScoped<AskCopilotService>();
+// The web-research and web-mode halves of Ask (ADR-030 / ADR-032), ex partials of AskCopilotService.
+builder.Services.AddScoped<WebResearchFlow>();
+builder.Services.AddScoped<WebModeFlow>();
 
 // Task E03/F03/US01/T01 (renewal-dashboard, GET /api/renewals): the Renewals module's own
 // AddRenewalsModule(IServiceCollection) (ADR-002) — task E03/F01/US01/T01 registered RenewalEngine

@@ -74,6 +74,19 @@ resource "azurerm_container_app" "api" {
     }
   }
 
+  # Jev classify-role pilot: present only when this environment has a key
+  # (modules/keyvault count-gates the secret) -- API app only, same shape as
+  # gh-feedback immediately above.
+  dynamic "secret" {
+    for_each = var.jev_api_key_secret_id == null ? [] : [1]
+
+    content {
+      name                = "jev-api-key"
+      key_vault_secret_id = var.jev_api_key_secret_id
+      identity            = var.workload_identity_id
+    }
+  }
+
   template {
     min_replicas = 0
     # ADR-005 w15 footer §2: default 3, up from 1 -- not cosmetic. A15-1
@@ -290,6 +303,18 @@ resource "azurerm_container_app" "api" {
         name        = "Feedback__GitHub__Token"
         secret_name = var.github_feedback_token_secret_id == null ? null : "gh-feedback"
         value       = var.github_feedback_token_secret_id == null ? "" : null
+      }
+
+      # Jev classify-role pilot: same "one static env block, value from the
+      # secret handle when one exists, an empty literal otherwise" shape as
+      # Feedback__GitHub__Token immediately above. AiGateway:Jev:Enabled
+      # (this pilot's own kill switch, AiGatewayJevOptions) is published
+      # through extra_gateway_env (infra/environments/dev/main.tf), not a
+      # dedicated variable here -- it needs no Key Vault secret of its own.
+      env {
+        name        = "AiGateway__Jev__ApiKey"
+        secret_name = var.jev_api_key_secret_id == null ? null : "jev-api-key"
+        value       = var.jev_api_key_secret_id == null ? "" : null
       }
 
       # Task E16/F01/US01/T01 (NW-05, ADR-016 w15 footer clause 15):

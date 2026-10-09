@@ -90,7 +90,7 @@ public sealed class HungProcessingRecoveryService(
             return false;
         }
 
-        return errorDetail.Contains(DocumentAdmissionGate.GatewayUnavailablePrefix, StringComparison.Ordinal)
+        return errorDetail.Contains(AdmissionConstants.GatewayUnavailablePrefix, StringComparison.Ordinal)
             && errorDetail.Contains("classify", StringComparison.OrdinalIgnoreCase)
             && errorDetail.Contains(NothingWasStoredPhrase, StringComparison.Ordinal)
             && errorDetail.Contains(TransientFailurePhrase, StringComparison.OrdinalIgnoreCase);

@@ -82,7 +82,7 @@ public sealed class NativeDocumentTextExtractor : INativeDocumentTextExtractor
                 }
             }
 
-            var sufficient = DocumentAdmissionGate.CountReadableChars(pages) >= PdfSufficientCharFloor;
+            var sufficient = DocumentPageText.CountReadableChars(pages) >= PdfSufficientCharFloor;
             return new NativeTextExtractionResult(pages, sufficient);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

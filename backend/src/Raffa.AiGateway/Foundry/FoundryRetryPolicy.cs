@@ -107,13 +107,18 @@ public sealed class FoundryRetryPolicy(
         }
     }
 
-    /// <summary>The statuses Azure documents as retryable: throttling and server-side failures.</summary>
+    /// <summary>The non-standard <c>529 Overloaded</c> TypeSafe documents for Jev ("retry after a
+    /// short delay", https://docs.typesafe.ai/api#errors); Azure never sends it.</summary>
+    private const HttpStatusCode Overloaded = (HttpStatusCode)529;
+
+    /// <summary>The statuses documented as retryable: throttling, overload and server-side failures.</summary>
     public static bool IsTransient(HttpStatusCode statusCode) => statusCode is
         HttpStatusCode.TooManyRequests or
         HttpStatusCode.InternalServerError or
         HttpStatusCode.BadGateway or
         HttpStatusCode.ServiceUnavailable or
-        HttpStatusCode.GatewayTimeout;
+        HttpStatusCode.GatewayTimeout or
+        Overloaded;
 
     /// <summary><c>Retry-After</c> as a delay (delta seconds or an HTTP date), capped at
     /// <see cref="MaxRetryAfter"/>; <see langword="null"/> when absent or unparseable.</summary>

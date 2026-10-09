@@ -102,7 +102,7 @@ public sealed class DocumentProcessingPipeline(
     IClock clock,
     DocumentPreviewService? previewService = null,
     ISupplierResolver? supplierResolver = null,
-    LineItemMarketPriceService? marketPriceService = null)
+    LineItemMarketPriceService? marketPriceService = null) : IDocumentProcessingFlow
 {
     /// <summary>Discriminator this pipeline indexes every chunk under (<see cref="Domain.Embedding.SourceType"/>),
     /// matching <c>Raffa.Api.ChatEndpointExtensions.ToEvidenceSnippet</c>'s own
@@ -264,7 +264,7 @@ public sealed class DocumentProcessingPipeline(
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // The classification verdict travels into the run so it is recorded as the contract's
-        // `type` evidence row with its real confidence (StagedExtractionService.TypeFieldName) —
+        // `type` evidence row with its real confidence (ExtractionFieldNames.Type) —
         // the review screen shows "Contract type" next to every other extracted field.
         var extractionResult = await extractionService
             .RunAsync(tenantId, document.Id, pages, classificationConfidence, cancellationToken)

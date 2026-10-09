@@ -53,8 +53,8 @@ public sealed class HybridDocumentParsingService(
                 .ToList();
 
             if (native?.Pages is { Count: > 0 } nativePages
-                && DocumentAdmissionGate.CountReadableChars(nativePages)
-                   > DocumentAdmissionGate.CountReadableChars(ocrPages))
+                && DocumentPageText.CountReadableChars(nativePages)
+                   > DocumentPageText.CountReadableChars(ocrPages))
             {
                 // Fixture placeholder / empty DI span map on a text PDF: keep the richer native layer.
                 return Result<IReadOnlyList<DocumentPageText>>.Success(nativePages);
