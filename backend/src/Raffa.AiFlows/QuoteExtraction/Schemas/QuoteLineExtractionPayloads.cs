@@ -1,15 +1,15 @@
 using System.Text.Json.Serialization;
 
-namespace Raffa.Quotes.Application.Extraction;
+namespace Raffa.AiFlows.QuoteExtraction.Schemas;
 
 /// <summary>
-/// Raw structured-output shape <see cref="QuoteLineExtractionService"/> deserializes the AI
+/// Raw structured-output shape <c>QuoteLineExtractionService</c> deserializes the AI
 /// Gateway `extract` role's <c>AiExtractionResult.PayloadJson</c> into, mirroring
 /// <see cref="QuoteLineJsonSchema"/>'s shape exactly. Every property is nullable (even ones the
 /// JSON Schema marks <c>required</c>): a structured-output model is not guaranteed to honour the
 /// schema perfectly, and <c>Raffa.AiGateway.Fixtures.FixtureAiGateway.ExtractAsync</c> today
 /// always returns an empty <c>{}</c> object (no live model behind it yet) — deserializing that
-/// into this type must produce nulls, not throw. <see cref="QuoteLineExtractionService"/> is
+/// into this type must produce nulls, not throw. <c>QuoteLineExtractionService</c> is
 /// responsible for validating required fields are actually present before persisting, and for
 /// skipping (not crashing on) an item that is missing one. Deliberately does <b>not</b> include a
 /// computed total/extended-price field: AC-3 ("separate arithmetic from LLM language") means the

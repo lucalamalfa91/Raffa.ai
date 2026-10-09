@@ -1,8 +1,9 @@
 using System.Text.Json;
+using Raffa.AiFlows.QuoteExtraction.Agents;
+using Raffa.AiFlows.QuoteExtraction.Schemas;
 using Raffa.AiGateway.Foundry;
-using Raffa.Quotes.Application.Extraction;
 
-namespace Raffa.Quotes.Tests;
+namespace Raffa.AiFlows.Tests.QuoteExtraction;
 
 /// <summary>
 /// Proves <see cref="QuoteLineJsonSchema.LineItems"/> is well-formed and shapes AC-2/AC-3 (task

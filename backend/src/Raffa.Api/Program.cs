@@ -408,17 +408,15 @@ var quotesConnectionString = BoundPostgres(
 
 builder.Services.AddQuotesModule(quotesConnectionString);
 
-// QuoteExtractionPipeline is host-composition wiring (Raffa.Api.QuoteExtractionPipeline's own
-// doc comment: "the one place in the solution that calls both Raffa.AiGateway and
-// Raffa.Quotes"), not a domain module's own AddXxxModule — so, unlike every registration above,
-// it is registered directly here rather than inside AddQuotesModule (mirrors
-// Raffa.Worker's own host-only wiring of the extraction consumer for the identical reason). Scoped:
-// shares this request's own QuotesDbContext/DocumentsContractsDbContext instances (both Scoped)
-// rather than a second, independently-tracked context of either.
-builder.Services.AddScoped<QuoteExtractionPipeline>();
+// QuoteExtractionPipeline and QuoteLineExtractionService live in Raffa.AiFlows
+// (QuoteExtraction/) and are registered by AddAiFlows below (AddQuoteExtractionFlow): the pipeline
+// calls both Raffa.AiGateway and Raffa.Quotes, so it is not a domain module's own AddXxxModule
+// registration. Scoped there too: it shares this request's own QuotesDbContext/
+// DocumentsContractsDbContext instances (both Scoped) rather than a second, independently-tracked
+// context of either.
 
 // Task E05/F03/US02/T02 (outcome-propagation): NegotiationOutcomePropagationService is the same
-// kind of host-composition wiring as QuoteExtractionPipeline above ("the one place... that calls
+// kind of host-composition wiring as QuoteExtractionPipeline (Raffa.AiFlows) ("the one place... that calls
 // both Raffa.Quotes and Raffa.Savings" — see that type's own doc comment), registered directly
 // here for the identical reason. Scoped: shares this request's own QuotesDbContext (already Scoped
 // via AddQuotesModule above) and resolves the already-Scoped SavingsOpportunityService (registered
@@ -427,7 +425,8 @@ builder.Services.AddScoped<NegotiationOutcomePropagationService>();
 
 // AI flows layer (ADR-002 amendment): Raffa.AiFlows holds the AI orchestration and logic above the
 // domain modules and is referenced only by the hosts. Registered after every module so a flow can
-// replace a module's default. Empty for now -- no flow has moved in yet, so this registers nothing.
+// replace a module's default. So far it registers the quote-extraction flow (QuoteExtractionPipeline,
+// QuoteLineExtractionService), which needs AddQuotesModule above to have run.
 builder.Services.AddAiFlows();
 
 builder.Services.AddHealthChecks();

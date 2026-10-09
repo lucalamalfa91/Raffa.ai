@@ -1,7 +1,6 @@
 using Raffa.Benchmark;
 using Raffa.Quotes.Application;
 using Raffa.Quotes.Application.Assessment;
-using Raffa.Quotes.Application.Extraction;
 using Raffa.Quotes.Application.Normalization;
 using Raffa.Quotes.Application.Outcome;
 using Raffa.Quotes.Application.Strategy;
@@ -17,7 +16,7 @@ namespace Raffa.Quotes.Infrastructure;
 /// Composition-root wiring for the Quotes module (ADR-002: "each module exposes an
 /// AddXxx(IServiceCollection) extension method"). Task E05/F01/US01/T01 (quote-extraction) gives
 /// this module its first <c>DbContext</c> (<see cref="QuotesDbContext"/>, backing
-/// <see cref="QuoteUploadService"/> and <see cref="QuoteLineExtractionService"/>) — mirrors
+/// <see cref="QuoteUploadService"/> and <c>Raffa.AiFlows.QuoteExtraction.Agents.QuoteLineExtractionService</c>) — mirrors
 /// <c>Raffa.Savings.Infrastructure.ServiceCollectionExtensions.AddSavingsModule</c>'s own shape.
 /// Task E05/F01/US01/T02 (quote-normalization) later adds
 /// <see cref="QuoteLineNormalizationService"/> to this same registration, sharing this module's one
@@ -71,7 +70,8 @@ public static class ServiceCollectionExtensions
         // Scoped: shares the request's own QuotesDbContext instance (also Scoped, via AddDbContext
         // above) rather than a second, independently-tracked context.
         services.AddScoped<QuoteUploadService>();
-        services.AddScoped<QuoteLineExtractionService>();
+        // QuoteLineExtractionService (the AI-flow half of the extraction) is registered by
+        // Raffa.AiFlows' AddQuoteExtractionFlow, not by this module (ADR-002 amendment).
         // Task E05/F01/US01/T02 (quote-normalization): shares this request's own QuotesDbContext
         // (also Scoped, registered above) with QuoteLineExtractionService — see
         // QuoteLineNormalizationService's own doc comment for why that matters.
