@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Text;
-
 namespace Raffa.Chat.Application.Guards;
 
 /// <summary>
@@ -102,24 +99,25 @@ internal static class NumberWords
     /// <c>treinta y cinco</c>, <c>vingt et un</c>).</summary>
     public static bool IsConnector(string word) => Connectors.Contains(Normalize(word));
 
-    /// <summary>The first piece's value, or a large number for a hundred: lets a caller tell "tens or
-    /// more" from "units" when deciding whether a connector joins two parts of one number.</summary>
-    public static int LeadValue(string word)
-    {
-        var normalized = Normalize(word);
-        return TrySegment(normalized.Split('-', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty, out var segment) && segment.Count > 0
-            ? (segment[0] == Hundred ? 100 : segment[0])
-            : -1;
-    }
+    /// <summary>The value of the first piece of <paramref name="word"/> (a hundred counts as 100), or -1:
+    /// lets a caller tell "tens or more" from "units" when deciding whether a connector joins two parts
+    /// of one number.</summary>
+    public static int LeadValue(string word) => EdgeValue(word, tail: false);
 
-    /// <summary>The last piece's value of <paramref name="word"/>.</summary>
-    public static int TailValue(string word)
+    /// <summary>The value of the last piece of <paramref name="word"/> (a hundred counts as 100), or -1.</summary>
+    public static int TailValue(string word) => EdgeValue(word, tail: true);
+
+    private static int EdgeValue(string word, bool tail)
     {
-        var normalized = Normalize(word);
-        var last = normalized.Split('-', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? string.Empty;
-        return TrySegment(last, out var segment) && segment.Count > 0
-            ? (segment[^1] == Hundred ? 100 : segment[^1])
-            : -1;
+        var parts = Normalize(word).Split('-', StringSplitOptions.RemoveEmptyEntries);
+        var part = parts.Length == 0 ? string.Empty : tail ? parts[^1] : parts[0];
+        if (!TrySegment(part, out var segment) || segment.Count == 0)
+        {
+            return -1;
+        }
+
+        var piece = tail ? segment[^1] : segment[0];
+        return piece == Hundred ? 100 : piece;
     }
 
     // Segments one unhyphenated word into pieces by longest-first search with backtracking; German
@@ -176,22 +174,8 @@ internal static class NumberWords
         return null;
     }
 
-    private static string Normalize(string word)
-    {
-        var decomposed = word.Trim().Trim('.', ',', ';', ':', '(', ')', '"', '\'', '«', '»').Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(decomposed.Length);
-        foreach (var c in decomposed)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark)
-            {
-                continue;
-            }
-
-            builder.Append(c == 'ß' ? "ss" : char.ToLowerInvariant(c).ToString());
-        }
-
-        return builder.ToString();
-    }
+    private static string Normalize(string word) =>
+        NumericTokenExtractor.Fold(word.Trim().Trim('.', ',', ';', ':', '(', ')', '"', '\'', '«', '»'));
 
     private static Dictionary<string, int> BuildPieces()
     {

@@ -4,16 +4,19 @@ using System.Text.RegularExpressions;
 
 namespace Raffa.Chat.Application.Guards;
 
+/// <summary>A figure found in text; <see cref="Raw"/> is the match as written.</summary>
+public abstract record NumericToken(string Raw);
+
 /// <summary>A currency amount found in text. <see cref="Tolerance"/> is a cent for an exact figure and
 /// half the last shown step for a shorthand ("40k" is 40,000 give or take 500).</summary>
-public sealed record MoneyToken(string Raw, decimal Value, string Currency, decimal Tolerance);
+public sealed record MoneyToken(string Raw, decimal Value, string Currency, decimal Tolerance) : NumericToken(Raw);
 
 /// <summary>A percentage found in text.</summary>
-public sealed record PercentToken(string Raw, decimal Value, decimal Tolerance);
+public sealed record PercentToken(string Raw, decimal Value, decimal Tolerance) : NumericToken(Raw);
 
 /// <summary>A calendar date found in text; more than one candidate when the day/month order is
 /// ambiguous (<c>03/04/2027</c> without a language).</summary>
-public sealed record DateToken(string Raw, IReadOnlyList<DateOnly> Candidates);
+public sealed record DateToken(string Raw, IReadOnlyList<DateOnly> Candidates) : NumericToken(Raw);
 
 /// <summary>
 /// Finds the three shapes <see cref="NumericGuard"/> checks (currency amount, percentage, calendar date)
@@ -53,7 +56,7 @@ public static class NumericTokenExtractor
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex IsoDatePattern = new(
-        @"(?<![\d-])(\d{4})-(\d{2})-(\d{2})(?!\d)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        @"(?<![\d-])(?<y>\d{4})-(?<m>\d{2})-(?<d>\d{2})(?!\d)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NumericDatePattern = new(
         @"(?<![\d.,/-])(?<a>\d{1,2})(?<s>[./-])(?<b>\d{1,2})\k<s>(?<y>\d{4})(?!\d)",
@@ -76,30 +79,18 @@ public static class NumericTokenExtractor
     public static IReadOnlyList<MoneyToken> Money(string? text, DecimalConvention convention = DecimalConvention.Unknown)
     {
         var found = new List<MoneyToken>();
-        if (string.IsNullOrEmpty(text))
-        {
-            return found;
-        }
-
-        foreach (Match match in MoneyPattern.Matches(text))
+        foreach (Match match in MoneyPattern.Matches(text ?? string.Empty))
         {
             var prefix = match.Groups["cur1"].Success;
             var amountText = match.Groups[prefix ? "amt1" : "amt2"].Value;
             var magnitudeGroup = match.Groups[prefix ? "mag1" : "mag2"];
-            var currency = CurrencyOf(match.Groups[prefix ? "cur1" : "cur2"].Value);
-            if (currency is null)
-            {
-                continue;
-            }
-
             var multiplier = magnitudeGroup.Success ? MultiplierOf(magnitudeGroup.Value) : 1m;
-            if (!LocaleNumberParser.TryParse(amountText, convention, preferDecimal: multiplier != 1m, out var baseValue))
+            if (CurrencyOf(match.Groups[prefix ? "cur1" : "cur2"].Value) is { } currency &&
+                LocaleNumberParser.TryParse(amountText, convention, preferDecimal: multiplier != 1m, out var baseValue))
             {
-                continue;
+                found.Add(new MoneyToken(
+                    match.Value.Trim(), baseValue * multiplier, currency, ToleranceOf(amountText, multiplier)));
             }
-
-            found.Add(new MoneyToken(
-                match.Value.Trim(), baseValue * multiplier, currency, ToleranceOf(amountText, multiplier)));
         }
 
         return found;
@@ -110,12 +101,7 @@ public static class NumericTokenExtractor
     public static IReadOnlyList<PercentToken> Percentages(string? text, DecimalConvention convention = DecimalConvention.Unknown)
     {
         var found = new List<PercentToken>();
-        if (string.IsNullOrEmpty(text))
-        {
-            return found;
-        }
-
-        foreach (Match match in PercentPattern.Matches(text))
+        foreach (Match match in PercentPattern.Matches(text ?? string.Empty))
         {
             if (LocaleNumberParser.TryParse(match.Groups["amt"].Value, convention, preferDecimal: true, out var value))
             {
@@ -131,15 +117,12 @@ public static class NumericTokenExtractor
     /// reported, so prose this extractor cannot read is never a violation.</summary>
     public static IReadOnlyList<DateToken> Dates(string? text, DecimalConvention convention = DecimalConvention.Unknown)
     {
+        text ??= string.Empty;
         var found = new List<DateToken>();
-        if (string.IsNullOrEmpty(text))
-        {
-            return found;
-        }
 
         foreach (Match match in IsoDatePattern.Matches(text))
         {
-            if (TryDate(match.Groups[1].Value, match.Groups[2].Value, match.Groups[3].Value, out var iso))
+            if (TryDate(Int(match, "y"), Int(match, "m"), Int(match, "d"), out var iso))
             {
                 found.Add(new DateToken(match.Value, [iso]));
             }
@@ -147,9 +130,9 @@ public static class NumericTokenExtractor
 
         foreach (Match match in NumericDatePattern.Matches(text))
         {
-            var a = int.Parse(match.Groups["a"].Value, CultureInfo.InvariantCulture);
-            var b = int.Parse(match.Groups["b"].Value, CultureInfo.InvariantCulture);
-            var year = int.Parse(match.Groups["y"].Value, CultureInfo.InvariantCulture);
+            var a = Int(match, "a");
+            var b = Int(match, "b");
+            var year = Int(match, "y");
             var candidates = new List<DateOnly>();
             if (TryDate(year, b, a, out var dayFirst))
             {
@@ -169,35 +152,23 @@ public static class NumericTokenExtractor
             }
         }
 
-        foreach (Match match in DayFirstDatePattern.Matches(text))
+        foreach (var pattern in (Regex[])[DayFirstDatePattern, MonthFirstDatePattern])
         {
-            if (MonthOf(match.Groups["m"].Value) is { } month &&
-                TryDate(int.Parse(match.Groups["y"].Value, CultureInfo.InvariantCulture), month,
-                    int.Parse(match.Groups["d"].Value, CultureInfo.InvariantCulture), out var date))
+            foreach (Match match in pattern.Matches(text))
             {
-                found.Add(new DateToken(match.Value, [date]));
-            }
-        }
-
-        foreach (Match match in MonthFirstDatePattern.Matches(text))
-        {
-            if (MonthOf(match.Groups["m"].Value) is { } month &&
-                TryDate(int.Parse(match.Groups["y"].Value, CultureInfo.InvariantCulture), month,
-                    int.Parse(match.Groups["d"].Value, CultureInfo.InvariantCulture), out var date))
-            {
-                found.Add(new DateToken(match.Value, [date]));
+                if (MonthNumber(match.Groups["m"].Value) is { } month &&
+                    TryDate(Int(match, "y"), month, Int(match, "d"), out var date))
+                {
+                    found.Add(new DateToken(match.Value, [date]));
+                }
             }
         }
 
         return found;
     }
 
-    private static bool TryDate(string year, string month, string day, out DateOnly date) =>
-        TryDate(
-            int.Parse(year, CultureInfo.InvariantCulture),
-            int.Parse(month, CultureInfo.InvariantCulture),
-            int.Parse(day, CultureInfo.InvariantCulture),
-            out date);
+    private static int Int(Match match, string group) =>
+        int.Parse(match.Groups[group].Value, CultureInfo.InvariantCulture);
 
     private static bool TryDate(int year, int month, int day, out DateOnly date)
     {
@@ -211,42 +182,24 @@ public static class NumericTokenExtractor
         return true;
     }
 
+    // Longest-meaning prefixes of the currency words and symbols (diacritics folded). A word the table
+    // does not know ("dólares" folds to "dolares") is not a currency this guard checks.
+    private static readonly (string Prefix, string Code)[] Currencies =
+    [
+        ("€", "EUR"), ("eur", "EUR"), ("$", "USD"), ("usd", "USD"), ("dollar", "USD"), ("£", "GBP"), ("gbp", "GBP"),
+        ("pound", "GBP"), ("sterlin", "GBP"), ("libra", "GBP"), ("pfund", "GBP"),
+        ("chf", "CHF"), ("franc", "CHF"), ("franken", "CHF"),
+    ];
+
     private static string? CurrencyOf(string token)
     {
-        var t = token.Trim();
-        switch (t)
+        var word = Fold(token.Trim());
+        foreach (var (prefix, code) in Currencies)
         {
-            case "€": return "EUR";
-            case "$": return "USD";
-            case "£": return "GBP";
-        }
-
-        var upper = t.ToUpperInvariant();
-        if (upper is "CHF" or "EUR" or "USD" or "GBP")
-        {
-            return upper;
-        }
-
-        var lower = RemoveDiacritics(t);
-        if (lower.StartsWith("euro", StringComparison.Ordinal))
-        {
-            return "EUR";
-        }
-
-        if (lower.StartsWith("dollar", StringComparison.Ordinal))
-        {
-            return "USD";
-        }
-
-        if (lower.StartsWith("pound", StringComparison.Ordinal) || lower.StartsWith("sterlin", StringComparison.Ordinal) ||
-            lower.StartsWith("libra", StringComparison.Ordinal) || lower.StartsWith("pfund", StringComparison.Ordinal))
-        {
-            return "GBP";
-        }
-
-        if (lower.StartsWith("franc", StringComparison.Ordinal) || lower.StartsWith("franken", StringComparison.Ordinal))
-        {
-            return "CHF";
+            if (word.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return code;
+            }
         }
 
         return null;
@@ -255,25 +208,22 @@ public static class NumericTokenExtractor
     private static decimal MultiplierOf(string magnitude)
     {
         var m = magnitude.Trim().TrimEnd('.');
+        var lower = Fold(m);
         if (m == "M")
         {
             return 1_000_000m;
         }
 
-        var lower = RemoveDiacritics(m);
-        if (lower == "k" || lower is "thousand" or "tausend" or "tsd" or "mila" or "mille" or "mil")
+        if (lower is "k" or "thousand" or "tausend" or "tsd" or "mila" or "mille" or "mil")
         {
             return 1_000m;
         }
 
-        if (lower is "bn" or "mrd" or "mld" || lower.StartsWith("miliard", StringComparison.Ordinal) ||
-            lower.StartsWith("milliard", StringComparison.Ordinal) || lower.StartsWith("billion", StringComparison.Ordinal))
-        {
-            return 1_000_000_000m;
-        }
-
-        // million(s), milione/milioni, millon/millones, millionen, mio, mln, mn
-        return 1_000_000m;
+        // million(s), milione/milioni, millon/millones, millionen, mio, mln, mn are the default.
+        return lower is "bn" or "mrd" or "mld" || lower.StartsWith("miliard", StringComparison.Ordinal) ||
+            lower.StartsWith("milliard", StringComparison.Ordinal) || lower.StartsWith("billion", StringComparison.Ordinal)
+            ? 1_000_000_000m
+            : 1_000_000m;
     }
 
     // Half of the last digit the shorthand shows: "40k" is exact to 1,000 (so 500 either way), "1,5M" to
@@ -310,23 +260,18 @@ public static class NumericTokenExtractor
 
     /// <summary>The month number (1-12) a word names in any of the five languages (full name or common
     /// abbreviation, diacritics ignored), or <see langword="null"/> when it is not a month word.</summary>
-    public static int? MonthNumber(string? word) => string.IsNullOrWhiteSpace(word) ? null : MonthOf(word);
+    public static int? MonthNumber(string? word) =>
+        Months.TryGetValue(Fold((word ?? string.Empty).Trim().TrimEnd('.')), out var month) ? month : null;
 
-    private static int? MonthOf(string word)
+    /// <summary>Lower case with diacritics removed and ß as ss, to compare words across the five languages.</summary>
+    internal static string Fold(string text)
     {
-        var key = RemoveDiacritics(word.Trim().TrimEnd('.'));
-        return Months.TryGetValue(key, out var month) ? month : null;
-    }
-
-    private static string RemoveDiacritics(string text)
-    {
-        var decomposed = text.Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(decomposed.Length);
-        foreach (var c in decomposed)
+        var builder = new StringBuilder(text.Length);
+        foreach (var c in text.Normalize(NormalizationForm.FormD))
         {
             if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
             {
-                builder.Append(char.ToLowerInvariant(c));
+                builder.Append(c == 'ß' ? "ss" : char.ToLowerInvariant(c).ToString());
             }
         }
 

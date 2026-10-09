@@ -38,9 +38,7 @@ public enum WebFigureState
 /// <param name="Kind">See <see cref="WebFigureKind"/>.</param>
 /// <param name="State">See <see cref="WebFigureState"/>.</param>
 /// <param name="Reason">Diagnostics only, never shown: why the figure got its state.</param>
-/// <param name="Markers">The <c>[n]</c> markers of the figure's sentence.</param>
-public sealed record WebFigureFinding(
-    string Raw, WebFigureKind Kind, WebFigureState State, string Reason, IReadOnlyList<int> Markers);
+public sealed record WebFigureFinding(string Raw, WebFigureKind Kind, WebFigureState State, string Reason);
 
 /// <summary>The result of <see cref="WebFigureGuard.Verify"/>.</summary>
 /// <param name="Markdown">The summary with the sentences that stated a rejected figure removed (equal to
@@ -49,20 +47,18 @@ public sealed record WebFigureFinding(
 /// <param name="SentencesRemoved">How many sentences were removed.</param>
 /// <param name="HasCitedClaim">Whether at least one sentence of <see cref="Markdown"/> carries a marker, i.e.
 /// the answer still says something a source backs.</param>
+/// <param name="FirstRemovalReason">The diagnostic of the first figure that cost a sentence, or
+/// <see langword="null"/>.</param>
 public sealed record WebFigureReport(
     string Markdown,
     IReadOnlyList<WebFigureFinding> Findings,
     int SentencesRemoved,
-    bool HasCitedClaim)
+    bool HasCitedClaim,
+    string? FirstRemovalReason = null)
 {
     public int Verified => Findings.Count(f => f.State == WebFigureState.Verified);
 
     public int Reported => Findings.Count(f => f.State == WebFigureState.Reported);
-
-    public int Rejected => Findings.Count(f => f.State == WebFigureState.Rejected);
-
-    /// <summary>The diagnostic of the first figure that cost a sentence, or <see langword="null"/>.</summary>
-    public string? FirstRemovalReason { get; init; }
 }
 
 /// <summary>
@@ -76,19 +72,14 @@ public sealed record WebFigureReport(
 /// <c>40k</c> / <c>1,5M</c>, full date in any of the five languages or US order, month and year, a
 /// percentage spelled out, both bounds of a range) must share its sentence with a <c>[n]</c> marker.</item>
 /// <item>It is <see cref="WebFigureState.Verified"/> when the quote (or title or snippet) of a source that
-/// sentence cites carries the same value: numbers are read with the locale-aware
-/// <see cref="NumericTokenExtractor"/>, so <c>EUR 1.200,00</c> in the summary matches <c>€1,200</c> in the
-/// quote, and a currency never matches another's.</item>
+/// sentence cites carries the same value, read locale-aware (<see cref="FigureEvidence"/>): <c>EUR 1.200,00</c>
+/// in the summary matches <c>€1,200</c> in the quote, and a currency never matches another's.</item>
 /// <item>It is <see cref="WebFigureState.Reported"/> only when no cited source gave a passage at all and
 /// the figure is explicit (percentage, ISO-coded amount, full date) — never a symbol, a word or a shorthand.</item>
 /// <item>Otherwise it is <see cref="WebFigureState.Rejected"/> and the sentence that states it is removed,
 /// not the whole answer; when no cited claim is left the caller abstains.</item>
 /// </list>
-///
-/// Stricter than the old whole-pack snippet search on every point but one: the evidence is the sources the
-/// sentence cites, not any source, and the amount in the symbol form (<c>$36</c>, <c>€12</c>) that the old
-/// grammar skipped is now checked. The one thing it does that the old check could not is read a
-/// verbatim quote when the snippet is empty — which is every production source. Pure, no I/O.
+/// Pure, no I/O.
 /// </summary>
 public static class WebFigureGuard
 {
@@ -119,7 +110,7 @@ public static class WebFigureGuard
 
         var markdown = summaryMarkdown ?? string.Empty;
         var convention = NumericLocale.ConventionFor(language);
-        var evidence = sources.Select(Evidence.From).ToList();
+        var evidence = sources.Select(SourceEvidence.From).ToList();
         var lines = WebSentenceSplitter.Split(markdown);
 
         var findings = new List<WebFigureFinding>();
@@ -138,15 +129,16 @@ public static class WebFigureGuard
                 var cited = markers.Select(n => evidence[n - 1]).ToList();
 
                 var drop = false;
-                foreach (var figure in FigureTokens.In(sentence.Text, convention))
+                foreach (var figure in FiguresIn(sentence.Text, convention))
                 {
                     var (state, reason) = Judge(figure, markers.Count > 0, cited);
-                    findings.Add(new WebFigureFinding(figure.Raw, figure.Kind, state, reason, markers));
+                    var kind = KindOf(figure);
+                    findings.Add(new WebFigureFinding(figure.Raw, kind, state, reason));
 
                     if (state == WebFigureState.Rejected || (state == WebFigureState.Reported && !allowReported))
                     {
                         drop = true;
-                        firstReason ??= $"{DescribeKind(figure.Kind)} '{figure.Raw}' {reason}.";
+                        firstReason ??= $"{DescribeKind(kind)} '{figure.Raw}' {reason}.";
                     }
                 }
 
@@ -160,17 +152,17 @@ public static class WebFigureGuard
         var cleaned = removed.Count == 0 ? markdown : Rebuild(markdown, lines, removed);
         var hasClaim = WebSentenceSplitter.Split(cleaned).Any(l => l.Sentences.Any(s => MarkerPattern.IsMatch(s.Text)));
 
-        return new WebFigureReport(cleaned, findings, removed.Count, hasClaim) { FirstRemovalReason = firstReason };
+        return new WebFigureReport(cleaned, findings, removed.Count, hasClaim, firstReason);
     }
 
-    private static (WebFigureState State, string Reason) Judge(Figure figure, bool hasMarker, IReadOnlyList<Evidence> cited)
+    private static (WebFigureState State, string Reason) Judge(NumericToken figure, bool hasMarker, IReadOnlyList<SourceEvidence> cited)
     {
         if (!hasMarker || cited.Count == 0)
         {
             return (WebFigureState.Rejected, "has no [n] marker in its sentence, so no source stands behind it");
         }
 
-        if (cited.Any(e => e.Supports(figure)))
+        if (cited.Any(e => e.Text.Supports(figure)))
         {
             return (WebFigureState.Verified, "appears in the quote of a cited source");
         }
@@ -186,12 +178,19 @@ public static class WebFigureGuard
     }
 
     // Explicit: stated so it cannot be misread. A percentage, an amount with its ISO currency code, a full date.
-    private static bool IsExplicit(Figure figure) => figure.Kind switch
+    private static bool IsExplicit(NumericToken figure) => figure switch
     {
-        WebFigureKind.Percentage => true,
-        WebFigureKind.Date => true,
-        WebFigureKind.Amount => IsoCurrencyPattern.IsMatch(figure.Raw),
+        PercentToken or DateToken => true,
+        MoneyToken => IsoCurrencyPattern.IsMatch(figure.Raw),
         _ => false,
+    };
+
+    private static WebFigureKind KindOf(NumericToken figure) => figure switch
+    {
+        PercentToken => WebFigureKind.Percentage,
+        MoneyToken => WebFigureKind.Amount,
+        DateToken => WebFigureKind.Date,
+        _ => WebFigureKind.MonthYear,
     };
 
     private static string DescribeKind(WebFigureKind kind) => kind switch
@@ -237,166 +236,38 @@ public static class WebFigureGuard
         return text;
     }
 
-    // ------------------------------------------------------------------------------------------------
-    // Figures
-    // ------------------------------------------------------------------------------------------------
-
-    private sealed record Figure(
-        WebFigureKind Kind,
-        string Raw,
-        PercentToken? Percent = null,
-        MoneyToken? Money = null,
-        DateToken? Date = null,
-        MonthYearToken? MonthYear = null);
-
-    private static class FigureTokens
+    // Every figure of a sentence, each once (same shape, text and value).
+    private static IEnumerable<NumericToken> FiguresIn(string sentence, DecimalConvention convention)
     {
-        public static IEnumerable<Figure> In(string sentence, DecimalConvention convention)
+        List<NumericToken> all =
+        [
+            .. NumericTokenExtractor.Percentages(sentence, convention),
+            .. WebFigureTokens.SpelledPercentages(sentence),
+            .. NumericTokenExtractor.Money(sentence, convention),
+            .. NumericTokenExtractor.Dates(sentence, convention),
+            .. WebFigureTokens.MonthYears(sentence),
+        ];
+
+        // The lower bound of "5-10%" or "$10-15" is a figure too; it carries the range as its raw text.
+        foreach (var range in WebFigureTokens.RangeBounds(sentence))
         {
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            var all = new List<Figure>();
-
-            foreach (var p in NumericTokenExtractor.Percentages(sentence, convention))
-            {
-                all.Add(new Figure(WebFigureKind.Percentage, p.Raw, Percent: p));
-            }
-
-            foreach (var p in WebFigureTokens.SpelledPercentages(sentence))
-            {
-                all.Add(new Figure(WebFigureKind.Percentage, p.Raw, Percent: p));
-            }
-
-            foreach (var m in NumericTokenExtractor.Money(sentence, convention))
-            {
-                all.Add(new Figure(WebFigureKind.Amount, m.Raw, Money: m));
-            }
-
-            foreach (var d in NumericTokenExtractor.Dates(sentence, convention))
-            {
-                all.Add(new Figure(WebFigureKind.Date, d.Raw, Date: d));
-            }
-
-            foreach (var my in WebFigureTokens.MonthYears(sentence))
-            {
-                all.Add(new Figure(WebFigureKind.MonthYear, my.Raw, MonthYear: my));
-            }
-
-            // The lower bound of "5-10%" or "$10-15" is a figure too; it carries the range as its raw text.
-            foreach (var range in WebFigureTokens.RangeBounds(sentence))
-            {
-                foreach (var p in NumericTokenExtractor.Percentages(range.Synthetic, convention))
-                {
-                    all.Add(new Figure(WebFigureKind.Percentage, range.Raw, Percent: p));
-                }
-
-                foreach (var m in NumericTokenExtractor.Money(range.Synthetic, convention))
-                {
-                    all.Add(new Figure(WebFigureKind.Amount, range.Raw, Money: m));
-                }
-            }
-
-            foreach (var figure in all)
-            {
-                var key = figure.Kind + "|" + figure.Raw + "|" +
-                    (figure.Percent?.Value.ToString(CultureInfo.InvariantCulture) ?? figure.Money?.Value.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
-                if (seen.Add(key))
-                {
-                    yield return figure;
-                }
-            }
+            all.AddRange(NumericTokenExtractor.Percentages(range.Synthetic, convention).Select(p => p with { Raw = range.Raw }));
+            all.AddRange(NumericTokenExtractor.Money(range.Synthetic, convention).Select(m => m with { Raw = range.Raw }));
         }
+
+        return all.DistinctBy(f => (f.GetType(), f.Raw, (f as PercentToken)?.Value ?? (f as MoneyToken)?.Value));
     }
 
-    // ------------------------------------------------------------------------------------------------
-    // Evidence
-    // ------------------------------------------------------------------------------------------------
-
     /// <summary>What one source lets a figure be checked against: its quote, snippet and title, read once.</summary>
-    private sealed class Evidence
+    private sealed record SourceEvidence(FigureEvidence Text, bool HasPassage)
     {
-        private readonly string _text;
-        private readonly IReadOnlyList<PercentToken> _percentages;
-        private readonly IReadOnlyList<MoneyToken> _money;
-        private readonly IReadOnlyList<DateToken> _dates;
-        private readonly IReadOnlyList<MonthYearToken> _monthYears;
-
-        private Evidence(string text, bool hasPassage)
-        {
-            _text = text;
-            HasPassage = hasPassage;
-
-            // A range written once ("5-10%", "$10-15") states both bounds.
-            var expanded = text + "\n" + string.Join("\n", WebFigureTokens.RangeBounds(text).Select(r => r.Synthetic));
-            _percentages = NumericTokenExtractor.Percentages(expanded)
-                .Concat(WebFigureTokens.SpelledPercentages(expanded))
-                .ToList();
-            _money = NumericTokenExtractor.Money(expanded);
-            _dates = NumericTokenExtractor.Dates(expanded);
-            _monthYears = WebFigureTokens.MonthYears(expanded);
-        }
-
-        /// <summary>Whether the source gave text to check a figure against beyond its title.</summary>
-        public bool HasPassage { get; }
-
-        public static Evidence From(AiWebSource source)
+        public static SourceEvidence From(AiWebSource source)
         {
             var quote = source.Quote?.Trim() ?? string.Empty;
             var snippet = source.Snippet?.Trim() ?? string.Empty;
             var title = source.Title?.Trim() ?? string.Empty;
             var text = string.Join("\n", new[] { title, quote, snippet }.Where(t => t.Length > 0));
-            return new Evidence(text, quote.Length > 0 || snippet.Length > 0);
-        }
-
-        public bool Supports(Figure figure) => figure.Kind switch
-        {
-            WebFigureKind.Percentage => figure.Percent is { } p && (_percentages.Any(o => Close(o.Value, p.Value, o.Tolerance, p.Tolerance)) || ContainsToken(p.Raw)),
-            WebFigureKind.Amount => figure.Money is { } m && (_money.Any(o => string.Equals(o.Currency, m.Currency, StringComparison.Ordinal) && Close(o.Value, m.Value, o.Tolerance, m.Tolerance)) || ContainsToken(m.Raw)),
-            WebFigureKind.Date => figure.Date is { } d && (_dates.Any(o => o.Candidates.Intersect(d.Candidates).Any()) || ContainsToken(d.Raw)),
-            WebFigureKind.MonthYear => figure.MonthYear is { } my && SupportsMonthYear(my),
-            _ => false,
-        };
-
-        private bool SupportsMonthYear(MonthYearToken token) =>
-            _monthYears.Any(o => o.Month == token.Month && o.Year == token.Year) ||
-            _dates.Any(o => o.Candidates.Any(c => c.Month == token.Month && c.Year == token.Year));
-
-        private static bool Close(decimal a, decimal b, decimal toleranceA, decimal toleranceB) =>
-            Math.Abs(a - b) <= Math.Max(toleranceA, toleranceB);
-
-        // The verbatim fallback the old guard had, but never inside a longer number ("5%" is not in "15%").
-        private bool ContainsToken(string raw)
-        {
-            var token = raw.Trim();
-            if (token.Length == 0)
-            {
-                return false;
-            }
-
-            var from = 0;
-            while (from <= _text.Length - token.Length)
-            {
-                var index = _text.IndexOf(token, from, StringComparison.Ordinal);
-                if (index < 0)
-                {
-                    return false;
-                }
-
-                var before = index == 0 ? ' ' : _text[index - 1];
-                var afterIndex = index + token.Length;
-                var after = afterIndex >= _text.Length ? ' ' : _text[afterIndex];
-                var startsWithDigit = char.IsDigit(token[0]);
-                var endsWithDigit = char.IsDigit(token[^1]);
-                var leftOk = !startsWithDigit || !(char.IsDigit(before) || before is '.' or ',');
-                var rightOk = !endsWithDigit || !(char.IsDigit(after) || (after is '.' or ',' && afterIndex + 1 < _text.Length && char.IsDigit(_text[afterIndex + 1])));
-                if (leftOk && rightOk)
-                {
-                    return true;
-                }
-
-                from = index + 1;
-            }
-
-            return false;
+            return new SourceEvidence(new FigureEvidence(text, web: true), quote.Length > 0 || snippet.Length > 0);
         }
     }
 }

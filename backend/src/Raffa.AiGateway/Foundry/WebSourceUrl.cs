@@ -31,32 +31,17 @@ public static class WebSourceUrl
             builder.Append(':').Append(uri.Port);
         }
 
-        var path = uri.AbsolutePath.TrimEnd('/');
-        builder.Append(path);
+        builder.Append(uri.AbsolutePath.TrimEnd('/'));
 
-        var query = CleanQuery(uri.Query);
+        var query = string.Join('&', uri.Query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Where(pair => !IsTracking(pair)));
         if (query.Length > 0)
         {
             builder.Append('?').Append(query);
         }
 
         return builder.ToString();
-    }
-
-    private static string CleanQuery(string rawQuery)
-    {
-        var query = rawQuery.TrimStart('?');
-        if (query.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        var kept = query
-            .Split('&', StringSplitOptions.RemoveEmptyEntries)
-            .Where(pair => !IsTracking(pair))
-            .ToList();
-
-        return string.Join('&', kept);
     }
 
     private static bool IsTracking(string pair)
