@@ -140,12 +140,32 @@ public sealed class FeedbackService(
         var issue = new FeatureRequestIssue(
             gap.Key, gap.Title, gap.Language, options.Environment, request.WorkspaceHash, answers, gap.Discovery,
             await KnownNamesAsync(tenantId, userId, cancellationToken).ConfigureAwait(false));
+        // F4-T04: the stored row is the outbox entry; the publish is idempotent per (tenant, gapKey).
+        // While a publisher is configured, a gap this tenant already has an open issue for is not
+        // published a second time: the request is linked to the existing issue. The check, the
+        // publish and the save run under one per-(tenant, gapKey) lock, so two concurrent
+        // submissions of the same gap cannot both see "no issue yet". Not configured: untouched.
+        using var gate = publisher.IsConfigured
+            ? await PublishGate.EnterAsync(tenantId, gap.Key, cancellationToken).ConfigureAwait(false)
+            : null;
+
+        var deduplicated = false;
         FeatureRequestPublishResult publish;
         try
         {
-            publish = publisher.IsConfigured
-                ? await publisher.TryPublishAsync(issue, cancellationToken).ConfigureAwait(false)
-                : FeatureRequestPublishResult.Failed("no feature-request publisher is configured.");
+            if (!publisher.IsConfigured)
+            {
+                publish = FeatureRequestPublishResult.Failed("no feature-request publisher is configured.");
+            }
+            else if (await FindOpenIssueAsync(tenantId, gap.Key, request.Id, cancellationToken).ConfigureAwait(false) is { } existingIssue)
+            {
+                deduplicated = true;
+                publish = FeatureRequestPublishResult.Opened(existingIssue.Number, existingIssue.Url);
+            }
+            else
+            {
+                publish = await publisher.TryPublishAsync(issue, cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -175,10 +195,48 @@ public sealed class FeedbackService(
                 request.Id.Value.ToString(),
                 now,
                 $"conversationId={conversationId} messageId={messageId} gapKey={gap.Key} status={request.Status} " +
-                $"issueNumber={(request.IssueNumber?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none")}"),
+                $"issueNumber={(request.IssueNumber?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none")}" +
+                (deduplicated ? " deduplicated=true" : string.Empty)),
             cancellationToken).ConfigureAwait(false);
 
         return new FeedbackSubmitResult(FeedbackSubmitStatus.Success, ToResult(request), BuildConfirmation(request, messageId));
+    }
+
+    /// <summary>The oldest issue already opened for this tenant's earlier request about the same
+    /// gap, if any (F4-T04).</summary>
+    private async Task<(int Number, string Url)?> FindOpenIssueAsync(
+        TenantId tenantId, string gapKey, EntityId excludingRequestId, CancellationToken cancellationToken)
+    {
+        var existing = await dbContext.FeatureRequests
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.GapKey == gapKey && r.Id != excludingRequestId
+                && r.Status == FeatureRequestStatus.IssueOpened && r.IssueNumber != null && r.IssueUrl != null)
+            .OrderBy(r => r.CreatedAt)
+            .Select(r => new { r.IssueNumber, r.IssueUrl })
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return existing is { IssueNumber: { } number, IssueUrl: { } url } ? (number, url) : null;
+    }
+
+    /// <summary>A per-(tenant, gapKey) async lock held across check-publish-save (F4-T04). In
+    /// process only: a second API instance is not covered (a partial unique index on opened issues
+    /// would be the next step).</summary>
+    private static class PublishGate
+    {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Locks = new();
+
+        public static async Task<IDisposable> EnterAsync(TenantId tenantId, string gapKey, CancellationToken cancellationToken)
+        {
+            var gate = Locks.GetOrAdd(tenantId.Value + "|" + gapKey, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return new Releaser(gate);
+        }
+
+        private sealed class Releaser(SemaphoreSlim gate) : IDisposable
+        {
+            public void Dispose() => gate.Release();
+        }
     }
 
     /// <summary>The tenant's supplier names (best effort: a source that fails knows none) and the
