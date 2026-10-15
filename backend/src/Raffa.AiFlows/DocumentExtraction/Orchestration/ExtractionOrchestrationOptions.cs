@@ -38,4 +38,14 @@ public sealed class ExtractionOrchestrationOptions
 
     /// <summary>Minimum similarity (1 - edit distance / span length) for an approximate span match.</summary>
     public double SpanFuzzyThreshold { get; set; } = SpanVerifier.DefaultThreshold;
+
+    /// <summary>F5-T10: provider quota in tokens per minute the stage calls are paced to (token bucket over
+    /// estimated tokens, shared by every run of the process). 0 = off = no pacing, today's behaviour.</summary>
+    public int TokensPerMinuteLimit { get; set; }
+
+    /// <summary>F5-T10: characters per token used to estimate a call's input (document + schema).</summary>
+    public double TpmCharsPerToken { get; set; } = 3.0;
+
+    /// <summary>F5-T10: output tokens reserved per call on top of the input estimate.</summary>
+    public int TpmEstimatedOutputTokens { get; set; } = 2000;
 }

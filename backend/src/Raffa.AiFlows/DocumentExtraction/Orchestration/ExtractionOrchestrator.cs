@@ -62,7 +62,8 @@ public sealed class ExtractionOrchestrator
         ExtractionOrchestrationOptions? options = null,
         IExtractionHangWatch? hangWatch = null,
         ExtractionProgressHeartbeat? progressHeartbeat = null,
-        ILogger<ExtractionOrchestrator>? logger = null)
+        ILogger<ExtractionOrchestrator>? logger = null,
+        StageTpmLimit? tpmLimit = null)
     {
         ArgumentNullException.ThrowIfNull(runStore);
         ArgumentNullException.ThrowIfNull(aiGateway);
@@ -95,7 +96,10 @@ public sealed class ExtractionOrchestrator
         }
 
         _stages = byStage;
-        _scheduler = new StageScheduler(aiGateway, byStage, Options);
+        _scheduler = new StageScheduler(
+            aiGateway, byStage, Options,
+            tpmLimit?.Limiter
+            ?? (Options.TokensPerMinuteLimit > 0 ? new TpmRateLimiter(Options.TokensPerMinuteLimit) : null));
     }
 
     /// <summary>The effective options (defaults when none were supplied).</summary>

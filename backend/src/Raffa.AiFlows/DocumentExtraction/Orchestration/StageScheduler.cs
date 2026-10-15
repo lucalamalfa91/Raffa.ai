@@ -36,7 +36,8 @@ internal sealed record StageCall(Result<AiExtractionResult> Result, string Reque
 internal sealed class StageScheduler(
     IAiGateway aiGateway,
     IReadOnlyDictionary<ExtractionStage, IExtractionStage> stages,
-    ExtractionOrchestrationOptions options)
+    ExtractionOrchestrationOptions options,
+    TpmRateLimiter? tpmLimiter = null)
 {
     private static readonly IReadOnlyDictionary<ExtractionStage, StageFacts> NoContext =
         new Dictionary<ExtractionStage, StageFacts>();
@@ -153,18 +154,37 @@ internal sealed class StageScheduler(
             }
 
             Result<AiExtractionResult> result;
+            var reserved = 0;
+            var used = -1; // -1 = keep the estimate
             try
             {
                 request ??= stage.BuildRequest(input);
+
+                // F5-T10: wait for the TPM bucket (off by default = no wait at all).
+                if (tpmLimiter is not null)
+                {
+                    reserved = await tpmLimiter.AcquireAsync(EstimateTokens(request), cancellationToken).ConfigureAwait(false);
+                }
+
                 result = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
+                if (result.IsSuccess && result.Value.Metadata.Usage is { } usage)
+                {
+                    used = usage.PromptTokens + usage.CompletionTokens;
+                }
             }
             catch (Exception exception) when (ExtractionOrchestrator.IsTransientTransportFault(exception, cancellationToken))
             {
+                used = 0; // never reached the provider's accounting
                 result = Result<AiExtractionResult>.Failure(
                     $"{AiGatewayErrors.UnavailablePrefix} {exception.GetType().Name}: {exception.Message}");
             }
             finally
             {
+                if (tpmLimiter is not null && reserved > 0)
+                {
+                    tpmLimiter.Settle(reserved, used < 0 ? reserved : used);
+                }
+
                 gate?.Release();
             }
 
@@ -175,5 +195,13 @@ internal sealed class StageScheduler(
                 return new StageCall(result, request?.DocumentText ?? input.DocumentText);
             }
         }
+    }
+
+    /// <summary>Rough input + reserved output tokens of one stage call, for the TPM bucket.</summary>
+    private int EstimateTokens(AiExtractionRequest request)
+    {
+        var chars = request.DocumentText.Length + request.JsonSchema.Length;
+        var perToken = Math.Max(1.0, options.TpmCharsPerToken);
+        return (int)Math.Min(int.MaxValue / 2, Math.Ceiling(chars / perToken) + options.TpmEstimatedOutputTokens);
     }
 }

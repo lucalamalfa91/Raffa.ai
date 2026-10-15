@@ -59,6 +59,10 @@ public static class DocumentExtractionFlowServiceCollectionExtensions
             sp.GetService<IConfiguration>()?.GetSection(ExtractionOrchestrationOptions.SectionName).Bind(options);
             return options;
         });
+        // F5-T10: one TPM bucket per process (the quota is global), null when the limit is 0 (off).
+        services.TryAddSingleton(sp => new StageTpmLimit(
+            sp.GetRequiredService<ExtractionOrchestrationOptions>().TokensPerMinuteLimit,
+            sp.GetService<TimeProvider>()));
         services.AddScoped<ExtractionOrchestrator>();
 
         // The extraction handler depends on the port; the concrete type stays resolvable for callers
