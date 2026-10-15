@@ -20,7 +20,7 @@ namespace Raffa.Api;
 internal sealed class CapabilityFollowUpAppender(
     IServiceScopeFactory scopeFactory,
     CapabilityCheckRunner runner,
-    ILogger<CapabilityFollowUpAppender> logger)
+    ILogger<CapabilityFollowUpAppender> logger) : IHostedService
 {
     private readonly ConcurrentDictionary<Task, byte> _background = new();
 
@@ -122,4 +122,54 @@ internal sealed class CapabilityFollowUpAppender(
     /// <summary>Completes when every background append started so far has finished — for tests
     /// and a graceful shutdown.</summary>
     public Task WhenIdleAsync() => Task.WhenAll(_background.Keys.ToList());
+
+    /// <summary>F4-T02: <see cref="WhenIdleAsync"/> that gives up when <paramref name="cancellationToken"/>
+    /// is cancelled (the host's shutdown budget). Loops, because an append that finishes can leave a
+    /// task registered meanwhile; a background append never fails (it logs), so waiting is safe.</summary>
+    public async Task WhenIdleAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var pending = _background.Keys.ToList();
+            if (pending.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                await Task.WhenAll(pending).WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // Each task already logged its own failure; keep draining.
+            }
+        }
+    }
+
+    /// <summary>Nothing to start: background appends are registered as turns complete.</summary>
+    Task IHostedService.StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>F4-T02: graceful shutdown. The host calls this after <c>ApplicationStopping</c>; the
+    /// follow-ups still being appended are awaited (within the host's shutdown budget) so a deploy
+    /// does not lose a proposal the user is about to see. Registered as a hosted service in Program.cs.</summary>
+    async Task IHostedService.StopAsync(CancellationToken cancellationToken)
+    {
+        var pending = _background.Count;
+        if (pending > 0)
+        {
+            logger.LogInformation("Shutting down: waiting for {Count} capability follow-up(s) to finish", pending);
+        }
+
+        await WhenIdleAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!_background.IsEmpty)
+        {
+            logger.LogWarning("Shutdown budget elapsed with {Count} capability follow-up(s) still running", _background.Count);
+        }
+    }
 }
