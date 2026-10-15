@@ -157,7 +157,7 @@ internal static class ContractResolution
     /// <summary>
     /// The name a contract is shown under everywhere in a pack (R-SUP-04): the resolved supplier
     /// name from the per-turn map <see cref="AskCopilotService.AskAsync"/> builds, else the contract type -- never a
-    /// guid. Synchronous twin of <see cref="AskCopilotService.ResolveDisplayNameAsync(PortfolioListItem, CancellationToken)"/>
+    /// guid. Synchronous twin of <see cref="ContractContextReader.ResolveDisplayNameAsync(PortfolioListItem, CancellationToken)"/>
     /// for the multi-contract paths that already hold the whole map.
     /// </summary>
     internal static string DisplayNameFor(PortfolioListItem item, IReadOnlyDictionary<EntityId, string> supplierNames) =>

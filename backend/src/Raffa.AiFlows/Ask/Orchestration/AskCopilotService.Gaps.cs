@@ -247,7 +247,7 @@ public sealed partial class AskCopilotService
         }
 
         var boundedPack = packBudget.Apply(packItems);
-        var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
+        var supplierName = await context.ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
 
         var draft = await negotiationDraftingWorkflow
             .DraftAsync(new DraftRequest(question, language, supplierName, boundedPack, goal), cancellationToken)

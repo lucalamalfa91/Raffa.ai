@@ -91,14 +91,14 @@ public sealed partial class AskCopilotService
             return MarketSafetyNetResult.None;
         }
 
-        var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
+        var supplierName = await context.ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
         var currency = contract360.Overview.Currency;
         var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
-        var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
+        var (benchmarkSupplierName, geography) = await context.ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
             .ConfigureAwait(false);
         // The same priced lines (stored market comparison included) every other Ask pack reads.
-        var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+        var pricedLines = await context.ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
         var allDeals = await marketDealLookup
             .GetBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
@@ -148,19 +148,5 @@ public sealed partial class AskCopilotService
         return new MarketSafetyNetResult(
             items,
             new MarketSafetyNet.ContractCheck(supplierName, missing, estimate, typicalNotice, estimatedNoticeDeadline));
-    }
-
-    /// <summary>The typical notice period comparable customers of this contract's supplier have,
-    /// for the deterministic "no notice date on file" reply; <see langword="null"/> when the market
-    /// records none.</summary>
-    private async Task<int?> TypicalNoticeDaysAsync(Contract360Result contract360, string supplierName, CancellationToken cancellationToken)
-    {
-        var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
-            .ConfigureAwait(false);
-        var allDeals = await marketDealLookup
-            .GetBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
-            .ConfigureAwait(false);
-
-        return MarketSafetyNet.TypicalNoticeDays(NarrowDealsToContract(allDeals, contract360.Overview.Currency, geography));
     }
 }
