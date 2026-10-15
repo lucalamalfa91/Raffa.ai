@@ -161,8 +161,9 @@ public sealed partial class ExtractionRunStore
 
             var confidence = fact.Confidence;
             string decision;
-            if (fact.SpanVerified == false)
+            if (fact.SpanVerified == false || fact.ReviewReason is not null)
             {
+                // F5-D19 (Gate mode only) sets ReviewReason: a cross-stage rule involves this field.
                 // F5-T07 (Gate mode only): the evidence span could not be found where the model said it is.
                 // Never auto-accepted, never dropped: the value stays and the field goes to review.
                 decision = ExtractionConfidencePolicy.ReviewRequired;

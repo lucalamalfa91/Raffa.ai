@@ -1,3 +1,4 @@
+using Raffa.AiFlows.DocumentExtraction.Validation;
 using Raffa.AiFlows.DocumentExtraction.Verification;
 
 namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
@@ -28,6 +29,12 @@ public sealed class ExtractionOrchestrationOptions
     /// <c>Gate</c> routes a fact whose span is not found (or only on another page) to review. <c>Off</c>
     /// does not run the verifier.</summary>
     public SpanVerificationMode SpanVerification { get; set; } = SpanVerificationMode.Shadow;
+
+    /// <summary>F5-D19: what to do with the cross-stage consistency rules (date order, deadline consistency,
+    /// TCV vs annual spend). <c>Shadow</c> (default) evaluates and records counts, a log line and metrics and
+    /// changes nothing. <c>Gate</c> routes the involved fields to review with the rule id as the named reason,
+    /// never editing a value. <c>Off</c> does not run the rules. Gate is configurable only.</summary>
+    public ValidationMode CrossStageValidation { get; set; } = ValidationMode.Shadow;
 
     /// <summary>Minimum similarity (1 - edit distance / span length) for an approximate span match.</summary>
     public double SpanFuzzyThreshold { get; set; } = SpanVerifier.DefaultThreshold;

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Raffa.AiFlows.DocumentExtraction.Stages;
+using Raffa.AiFlows.DocumentExtraction.Validation;
 using Raffa.AiFlows.DocumentExtraction.Verification;
 using Raffa.AiFlows.Shared.Parsing;
 using Raffa.AiGateway;
@@ -184,6 +185,14 @@ public sealed class ExtractionOrchestrator
         var pending = _scheduler.Start(run.StagesToRun, documentText, pages.Count, resumeContext, cancellationToken);
         var stageResults = new List<StagedExtractionStageResult>(ExtractionPipeline.Stages.Count);
 
+        // F5-D19: with the cross-stage rules on, the scalar stages are awaited and parsed up front (nothing is
+        // applied yet) so the rules see them all before the store applies any. Off: untouched, today's flow.
+        var resolved = new Dictionary<ExtractionStage, ResolvedStage>();
+        if (Options.CrossStageValidation != ValidationMode.Off)
+        {
+            await ValidateScalarStagesAsync(run, pending, resolved, spanVerifier).ConfigureAwait(false);
+        }
+
         using (_progressHeartbeat?.BeginMemoryPulses())
         {
             foreach (var stage in ExtractionPipeline.Stages)
@@ -191,7 +200,7 @@ public sealed class ExtractionOrchestrator
                 stageResults.Add(
                     run.ReusedStages.Contains(stage)
                         ? await _runStore.ReuseCheckpointAsync(run, stage, cancellationToken).ConfigureAwait(false)
-                        : await ApplyStageResultAsync(run, _stages[stage], pending[stage], spanVerifier, cancellationToken).ConfigureAwait(false));
+                        : await ApplyStageResultAsync(run, _stages[stage], pending[stage], resolved.GetValueOrDefault(stage), spanVerifier, cancellationToken).ConfigureAwait(false));
             }
         }
 
@@ -208,9 +217,15 @@ public sealed class ExtractionOrchestrator
     /// partial document.
     /// </summary>
     private async Task<StagedExtractionStageResult> ApplyStageResultAsync(
-        ExtractionRun run, IExtractionStage stage, Task<StageCall> call, Lazy<SpanVerifier>? spanVerifier, CancellationToken cancellationToken)
+        ExtractionRun run,
+        IExtractionStage stage,
+        Task<StageCall> call,
+        ResolvedStage? alreadyResolved,
+        Lazy<SpanVerifier>? spanVerifier,
+        CancellationToken cancellationToken)
     {
-        var stageCall = await call.ConfigureAwait(false);
+        var resolved = alreadyResolved ?? await ResolveStageAsync(stage, call, spanVerifier).ConfigureAwait(false);
+        var stageCall = resolved.Call;
         var extractResult = stageCall.Result;
 
         // F5-T05 (Q2): with context dependencies on, the stage's input hash is that of the request text it
@@ -232,29 +247,101 @@ public sealed class ExtractionOrchestrator
                 .ConfigureAwait(false);
         }
 
-        var modelId = extractResult.Value.Metadata.ModelId;
+        if (resolved.Facts is null)
+        {
+            return await _runStore
+                .FailAsync(
+                    run, stage.Stage, resolved.MalformedMessage!, ExtractionStageFailureKind.Permanent,
+                    cancellationToken, resolved.ModelId)
+                .ConfigureAwait(false);
+        }
 
-        StageFacts facts;
+        return await _runStore
+            .ApplyAsync(run, stage.Stage, resolved.Facts, resolved.ModelId, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
+    private sealed record ResolvedStage(StageCall Call, StageFacts? Facts, string? ModelId, string? MalformedMessage);
+
+    private static readonly ExtractionStage[] ScalarStages =
+        [ExtractionStage.Metadata, ExtractionStage.CommercialTerms, ExtractionStage.DatesAndRenewalTerms];
+
+    /// <summary>
+    /// Awaits one stage's call, parses its payload and span-verifies the facts. Touches no store state, so it
+    /// can run ahead of the apply loop.
+    /// </summary>
+    private async Task<ResolvedStage> ResolveStageAsync(IExtractionStage stage, Task<StageCall> call, Lazy<SpanVerifier>? spanVerifier)
+    {
+        var stageCall = await call.ConfigureAwait(false);
+        if (stageCall.Result.IsFailure)
+        {
+            return new ResolvedStage(stageCall, null, null, null);
+        }
+
+        var modelId = stageCall.Result.Value.Metadata.ModelId;
         try
         {
-            facts = stage.Parse(extractResult.Value.PayloadJson);
+            var facts = stage.Parse(stageCall.Result.Value.PayloadJson);
+            return new ResolvedStage(stageCall, VerifySpans(stage.Stage, facts, spanVerifier), modelId, null);
         }
         catch (System.Text.Json.JsonException ex)
         {
             // The gateway does not validate the model's output against the schema it was given
             // (IAiGateway.ExtractAsync's own doc comment): a real model can still return invalid JSON.
             // One malformed stage must not crash the others. Parsing happens before anything is staged.
-            return await _runStore
-                .FailAsync(
-                    run, stage.Stage, $"Malformed extraction payload: {ex.Message}", ExtractionStageFailureKind.Permanent,
-                    cancellationToken, modelId)
-                .ConfigureAwait(false);
+            return new ResolvedStage(stageCall, null, modelId, $"Malformed extraction payload: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// F5-D19: resolves the scalar stages this run executes, evaluates the cross-stage rules over what parsed,
+    /// and, in Gate only, flags the involved facts for review. Shadow records counts, a log line and metrics
+    /// and leaves the facts as they are. A fault in a rule never fails the run.
+    /// </summary>
+    private async Task ValidateScalarStagesAsync(
+        ExtractionRun run,
+        IReadOnlyDictionary<ExtractionStage, Task<StageCall>> pending,
+        Dictionary<ExtractionStage, ResolvedStage> resolved,
+        Lazy<SpanVerifier>? spanVerifier)
+    {
+        foreach (var stage in ScalarStages)
+        {
+            if (!run.ReusedStages.Contains(stage) && pending.TryGetValue(stage, out var call))
+            {
+                resolved[stage] = await ResolveStageAsync(_stages[stage], call, spanVerifier).ConfigureAwait(false);
+            }
         }
 
-        facts = VerifySpans(stage.Stage, facts, spanVerifier);
+        var mode = Options.CrossStageValidation;
+        try
+        {
+            var scalars = resolved.Values.Select(r => r.Facts).OfType<StageFacts.Scalars>().ToList();
+            var report = CrossStageValidator.Evaluate(scalars);
+            CrossStageValidator.Record(report, mode);
 
-        return await _runStore.ApplyAsync(run, stage.Stage, facts, modelId, cancellationToken).ConfigureAwait(false);
+            _logger?.LogInformation(
+                "Cross-stage validation ({Mode}): {Outcomes}",
+                mode,
+                string.Join(", ", report.Rules.Select(r => $"{r.RuleId}={r.Evaluation.Status}")));
+            foreach (var violation in report.Violations)
+            {
+                _logger?.LogInformation(
+                    "Cross-stage violation {RuleId} on {Fields} ({Mode}): {Message}",
+                    violation.RuleId, string.Join(",", violation.Fields), mode, violation.Message);
+            }
+
+            if (mode == ValidationMode.Gate && report.Violations.Count > 0)
+            {
+                foreach (var flagged in CrossStageValidator.ApplyGate(scalars, report))
+                {
+                    resolved[flagged.Stage] = resolved[flagged.Stage] with { Facts = flagged };
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Cross-stage validation failed for run {RunId}; the facts are applied unvalidated.", run.RunId);
+        }
     }
 
     /// <summary>
