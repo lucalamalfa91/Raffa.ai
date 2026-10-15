@@ -15,6 +15,17 @@ public static class ExtractionInputHash
     /// checkpoint is never reused.</summary>
     public const string PipelineVersion = "staged-v1";
 
+    /// <summary>F5-T03: mixed into the hash instead of <see cref="PipelineVersion"/> when the document-first
+    /// prompt layout is on, so a checkpoint is never reused across the two layouts.</summary>
+    public const string DocumentFirstPipelineVersion = "staged-v2-docfirst";
+
     public static string Compute(string documentText) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(PipelineVersion + "\n" + documentText)));
+
+    /// <summary>The hash of the effective text of a call: with <paramref name="documentFirst"/> off exactly
+    /// <see cref="Compute(string)"/>; on, the same construction with <see cref="DocumentFirstPipelineVersion"/>.</summary>
+    public static string Compute(string effectiveText, bool documentFirst) =>
+        documentFirst
+            ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(DocumentFirstPipelineVersion + "\n" + effectiveText)))
+            : Compute(effectiveText);
 }

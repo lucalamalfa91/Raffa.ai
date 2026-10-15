@@ -77,7 +77,7 @@ public sealed class FoundryChatCompletionsClient(
         }
 
         var choice = result.Value.Choices is { Count: > 0 } choices ? choices[0] : null;
-        var usage = result.Value.Usage is { } u ? new AiTokenUsage(u.PromptTokens, u.CompletionTokens) : null;
+        var usage = result.Value.Usage is { } u ? new AiTokenUsage(u.PromptTokens, u.CompletionTokens, u.PromptTokensDetails?.CachedTokens ?? 0) : null;
 
         if (choice is null)
         {
