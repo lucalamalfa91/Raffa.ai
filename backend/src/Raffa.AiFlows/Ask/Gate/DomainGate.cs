@@ -78,10 +78,13 @@ public readonly record struct KnownSupplierName(string DisplayName, string Norma
 /// </summary>
 public sealed class DomainGate
 {
-    // R-ASK-02 greeting lexicon, it/en. Word-boundary matched so "hi" does not fire inside
-    // "history" and "ciao" does not fire inside a longer word.
+    // R-ASK-02 greeting lexicon, it/en (+ fr/es/de, LANG-03). Word-boundary matched so "hi" does not
+    // fire inside "history" and "ciao" does not fire inside a longer word. Accent-insensitive the
+    // way it/en already are: an accented letter is a character class, never a normalization pass.
     private static readonly Regex GreetingPattern = new(
-        @"\b(ciao|salve|buongiorno|buonasera|buond[iì]|hello|hi|hey|good\s+(morning|afternoon|evening))\b",
+        @"\b(ciao|salve|buongiorno|buonasera|buond[iì]|hello|hi|hey|good\s+(morning|afternoon|evening)|" +
+        @"bonjour|bonsoir|salut|hola|buenos\s+d[ií]as|buenas\s+(tardes|noches|d[ií]as)|buen\s+d[ií]a|" +
+        @"hallo|moin|servus|gr[uü](ß|ss)\s+gott|guten\s+(morgen|tag|abend))\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Off-domain small-talk/topic lexicon (recipes, personal photos, weather, sport, jokes) — the
@@ -91,7 +94,16 @@ public sealed class DomainGate
         @"\b(ricetta|carbonara|cucin\w*|pasta|pizza|torta|dolce|recipe|cook\w*|" +
         @"foto|photo|picture|selfie|nonna|nonno|grandma|grandpa|" +
         @"meteo|weather|calcio|football|partita|" +
-        @"barzelletta|joke|come\s+stai|how\s+are\s+you)\b",
+        @"barzelletta|joke|come\s+stai|how\s+are\s+you|" +
+        // fr/es/de (LANG-03): only unambiguous leisure words; a bare "recette"/"receta"/"Rezept"
+        // is also revenue / a prescription / a recipe for anything, so those need a dish after them.
+        @"recettes?\s+de\s+cuisine|recettes?\s+(de|du|des)\s+(la\s+)?(p[aâ]tes|pizza|g[aâ]teaux?|tartes?|cr[eê]pes?|lasagnes?|tiramisu)|" +
+        @"cuisiner|m[eé]t[eé]o|blague|grand-?m[eè]re|grand-?p[eè]re|match\s+de\s+foot(ball)?|" +
+        @"comment\s+(vas-?tu|allez-?vous)|" +
+        @"recetas?\s+de\s+(cocina|paella|tortilla|pasta|pizza|postres?|lasa[nñ]a|tiramis[uú]|pollo)|" +
+        @"cocinar|chiste|f[uú]tbol|c[oó]mo\s+est[aá]s|abuela|abuelo|meteorolog[ií]a|pron[oó]stico\s+del\s+tiempo|" +
+        @"kochrezept\w*|rezepte?\s+f[uü]r\s+(spaghetti|pasta|pizza|kuchen|torte|lasagne|tiramisu|carbonara|gulasch)|" +
+        @"kochen|witz|fu(ß|ss)ball|wetter|oma|opa|wie\s+geht(\s+es\s+(dir|ihnen)|'?s))\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Task text, verbatim: "legal lexicon 'sue / causa / tribunale / valid under law /
@@ -99,14 +111,31 @@ public sealed class DomainGate
     // first paraphrase it sees.
     private static readonly Regex LegalPattern = new(
         @"\b(sue|causa|tribunale|enforceable|valid\s+under\s+law|lawsuit|avvocat\w*|lawyer|" +
-        @"legal\s+advice|azione\s+legale|denuncia|citare\s+in\s+giudizio)\b",
+        @"legal\s+advice|azione\s+legale|denuncia|citare\s+in\s+giudizio|" +
+        // fr/es/de (LANG-03). "demanda" (ES: demand) and "Gericht" (DE: also a dish) are left out.
+        @"avocat\w*|poursuivre\s+en\s+justice|assigner\s+en\s+justice|action\s+en\s+justice|" +
+        @"porter\s+plainte|conseil\s+juridique|avis\s+juridique|valable\s+en\s+droit|" +
+        @"juridiquement\s+(valable|valide|contraignant|exigible)|" +
+        @"abogad\w*|demandar|demandarlo|asesor[ií]a\s+(legal|jur[ií]dica)|asesoramiento\s+(legal|jur[ií]dico)|" +
+        @"consejo\s+legal|acci[oó]n\s+legal|acciones\s+legales|tribunal(es)?|juzgado|" +
+        @"legalmente\s+(v[aá]lid\w*|exigible|vinculante)|" +
+        @"(rechts)?anw[aä]lt\w*|verklagen|klage\s+einreichen|rechtsberatung|vor\s+gericht|" +
+        @"rechtlich\s+(bindend|durchsetzbar|zul[aä]ssig|g[uü]ltig)|rechtsg[uü]ltig)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // R-SYS-01/02's own vocabulary and the prototype's capabilities branch
     // ("what can you"/"cosa puoi"/"cosa sai fare"/"help"/"aiuto"/"how do i"/"come faccio").
     private static readonly Regex CapabilityPattern = new(
         @"\b(what\s+can\s+you|cosa\s+puoi|cosa\s+sai\s+fare|come\s+faccio|how\s+do\s+i|" +
-        @"aiuto|help)\b",
+        @"aiuto|help|" +
+        // fr/es/de (LANG-03). A bare "aide"/"ayuda"/"Hilfe" is also "à l'aide de" / "con la ayuda de" /
+        // "mit Hilfe von", so only the request forms are listed.
+        @"que\s+(peux|sais)-?tu(\s+faire)?|que\s+(pouvez|savez)-?vous(\s+faire)?|" +
+        @"qu['’]est-?ce\s+que\s+tu\s+(peux|sais)|comment\s+(faire|puis-?je|fais-?je)|" +
+        @"aide-?moi|aidez-?moi|besoin\s+d['’]aide|" +
+        @"qu[eé]\s+(puedes|sabes|puede)\s+hacer|c[oó]mo\s+(hago|puedo)|ay[uú]dame|necesito\s+ayuda|" +
+        @"was\s+(kannst\s+du|k[oö]nnen\s+sie)|wie\s+(mache|kann)\s+ich|hilf\s+mir|helfen\s+sie\s+mir|" +
+        @"ich\s+brauche\s+hilfe)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Same heuristic Raffa.AiFlows.Ask.Routing.DeterministicQueryPlanner.CapitalizedSupplierNamePattern
@@ -115,7 +144,7 @@ public sealed class DomainGate
     // known suppliers): "AWS", "Salesforce", "Databricks" all match; a lower-cased mention does
     // not — this is a heuristic gate, not a name extractor.
     private static readonly Regex CapitalizedNamePattern = new(
-        @"(?<!^)[A-Z][A-Za-z0-9&'-]*(?:\s+[A-Z][A-Za-z0-9&'-]*)*",
+        @"(?<!^)(?<![¿¡])[A-Z][A-Za-z0-9&'äöüß-]*(?:\s+[A-Z][A-Za-z0-9&'äöüß-]*)*",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -129,7 +158,11 @@ public sealed class DomainGate
     // A money or savings signal that turns a how-to phrasing into a real savings question.
     private static readonly Regex SavingsSignalPattern = new(
         @"\b(risparm\w*|saving\w*|sav(e|es|ed)|salv\w*|tagli\w*|ridurr\w*|riduzione|cost\w*|budget|spend\w*|spesa|" +
-        @"rinnov\w*|renew\w*|negozia\w*|negotiat\w*|contratt\w*|contract\w*|lev[ae]|lever\w*)\b|\d",
+        @"rinnov\w*|renew\w*|negozia\w*|negotiat\w*|contratt\w*|contract\w*|lev[ae]|lever\w*|" +
+        // fr/es/de (LANG-03). Broad on purpose: a hit only keeps a how-to question in domain.
+        @"[eé]conomi\w*|r[eé]duire|r[eé]duction|d[eé]pens\w*|co[uû]ts?|renouvel\w*|n[eé]goci\w*|contrat\w*|levier\w*|" +
+        @"ahorr\w*|reduc\w*|coste\w*|costo\w*|gast\w*|renov\w*|negoci\w*|presupuesto|palanca\w*|" +
+        @"spar\w*|einspar\w*|kosten|senk\w*|ausgaben|verl[aä]nger\w*|verhandel\w*|vertr[aä]g\w*|hebel|rabatt\w*)\b|\d",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly HashSet<string> NeverSupplierNames = new(StringComparer.OrdinalIgnoreCase)
@@ -141,6 +174,19 @@ public sealed class DomainGate
         // per il CFO" was answered "No CFO contract has been uploaded and validated".
         "CFO", "CEO", "CTO", "CIO", "CPO", "COO", "CMO", "CISO", "CDO", "CRO", "HR", "Board", "CdA",
         "KPI", "KPIs", "ROI", "YTD",
+
+        // LANG-03: German capitalizes every noun and the formal "Sie", so the proper-noun heuristic
+        // would read "Wann endet die Kündigungsfrist?" as a supplier called "Kündigungsfrist".
+        "Sie", "Ihnen", "Ihr", "Ihre", "Ihrem", "Ihren", "Ihrer", "Ihres",
+        "Vertrag", "Vertrags", "Vertrages", "Verträge", "Vertraege", "Verträgen", "Vertraegen",
+        "Kündigung", "Kuendigung", "Kündigungen", "Kündigungsfrist", "Kuendigungsfrist",
+        "Kündigungsfristen", "Kündigungstermin", "Verlängerung", "Verlaengerung", "Verlängerungen",
+        "Laufzeit", "Preis", "Preise", "Preisen", "Preiserhöhung", "Kosten", "Rabatt", "Rabatte",
+        "Klausel", "Klauseln", "Lieferant", "Lieferanten", "Anbieter", "Angebot", "Angebote",
+        "Dokument", "Dokumente", "Rechnung", "Rechnungen", "Zahlung", "Zahlungen", "Haftung",
+        "Einsparung", "Einsparungen", "Einsparpotenzial", "Hebel", "Verhandlung", "Verhandlungen",
+        "Markt", "Marktpreis", "Einkauf", "Beschaffung", "Frist", "Fristen", "Datum", "Ende",
+        "Unternehmen", "Portfolio", "Datenschutz", "Versicherung", "Wartung", "Lizenz", "Lizenzen",
     };
 
     // Money shorthand and currency codes are never supplier names: "40K", "20 k", "1.5M", "€ 20k",

@@ -70,7 +70,14 @@ public static class AmbiguityDetector
     private static readonly Regex VaguePattern = new(
         @"\b(all\s+my\s+contract\w*|over\s?all|everything|in\s+general|overview|summary|summari[sz]e|" +
         @"tutt[oi](\s+i)?(\s+miei)?\s+contratt\w*|in\s+generale|panoramica|riassunt\w*|riassumi|" +
-        @"sintesi|complessiv\w*)\b|^(this|that|it|these|those|questo|quello|questi|quelli)\b",
+        @"sintesi|complessiv\w*|" +
+        // fr/es/de (LANG-03)
+        @"tous\s+mes\s+contrats|en\s+g[eé]n[eé]ral|vue\s+d['’]ensemble|r[eé]sum[eé]\w*|r[eé]sumer|synth[eè]se|globalement|" +
+        @"todos\s+mis\s+contratos|en\s+general|resumen|resumir|panor[aá]mica|visi[oó]n\s+general|en\s+conjunto|" +
+        @"alle\s+(meine\s+)?vertr[aä]ge|allgemein|[uü]berblick|zusammenfass\w*|insgesamt|[uü]bersicht)\b|" +
+        // Sentence-initial deictic. German "das"/"diese" are articles and are left out; so are the
+        // plural Spanish determiners.
+        @"^(this|that|it|these|those|questo|quello|questi|quelli|ceci|cela|[cç]a|esto|eso|aquello|dies|jenes)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // A noun the clause index or a structured pack can serve even without a lexicon match — RAG on
@@ -86,7 +93,17 @@ public static class AmbiguityDetector
         @"agreement\w*|msa|nda|dpa|sow|statement\s+of\s+work|order\s+forms?|" +
         @"responsabilit\w*|obblig\w*|clausol\w*|prezz\w*|scont\w*|penal\w*|pagament\w*|fattur\w*|" +
         @"licenz\w*|utent\w*|assicura\w*|copertur\w*|garanz\w*|preavviso|disdetta|recesso|canone|canoni|" +
-        @"rinnov\w*|scadenz\w*|scad[eo]\w*|accord[oi])\b",
+        @"rinnov\w*|scadenz\w*|scad[eo]\w*|accord[oi]|" +
+        // fr/es/de (LANG-03): a hit only ever means "answer as usual", never an interview.
+        @"responsabilit[eé]\w*|garantie\w*|pr[eé]avis|prix|frais|remise\w*|p[eé]nalit[eé]\w*|paiement\w*|facture\w*|" +
+        @"utilisateur\w*|assurance\w*|couverture|redevance\w*|abonnement\w*|renouvellement\w*|[eé]ch[eé]ance\w*|" +
+        @"r[eé]siliation|contrat-cadre|donn[eé]es|" +
+        @"responsabilidad\w*|garant[ií]a\w*|cl[aá]usula\w*|precio\w*|tarifa\w*|descuento\w*|penalizaci\w*|pago\w*|" +
+        @"factura\w*|usuario\w*|seguro\w*|cobertura|cuota\w*|renovaci[oó]n|vencimiento\w*|rescisi[oó]n|acuerdo\s+marco|" +
+        @"preaviso|datos|" +
+        @"haftung\w*|freistellung|gew[aä]hrleistung\w*|klausel\w*|preis\w*|geb[uü]hr\w*|rabatt\w*|vertragsstrafe\w*|" +
+        @"zahlung\w*|rechnung\w*|lizenz\w*|nutzer\w*|versicherung\w*|k(ue|[uü])ndigung\w*|laufzeit|verl[aä]ngerung\w*|" +
+        @"datenschutz|rahmenvertrag|verg[uü]tung|entgelt\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static AmbiguitySignals Detect(
@@ -185,7 +202,11 @@ public static class AmbiguousAbstainDetector
     private static readonly Regex AmbiguousReasonPattern = new(
         @"ambigu\w*|unclear|not\s+clear|non\s+(è\s+|e\s+)?chiar\w*|what\s+you\s+mean|cosa\s+intend\w*|" +
         @"could\s+mean|several\s+(possible\s+)?(interpretations|meanings|readings)|pi[uù]\s+interpretazioni|" +
-        @"too\s+vague|troppo\s+vag\w*|reliably\s+determine\s+what\s+you",
+        @"too\s+vague|troppo\s+vag\w*|reliably\s+determine\s+what\s+you|" +
+        // fr/es/de (LANG-03); the French/Spanish "ambig\w*" is already covered by the first alternative.
+        @"pas\s+clair\w*|trop\s+vague|plusieurs\s+interpr[eé]tations|ce\s+que\s+vous\s+voulez\s+dire|" +
+        @"no\s+(est[aá]\s+)?claro|poco\s+clar\w*|demasiado\s+vag\w*|varias\s+interpretaciones|qu[eé]\s+quiere\s+decir|" +
+        @"mehrdeutig\w*|unklar|nicht\s+eindeutig|zu\s+vage|mehrere\s+(m[oö]gliche\s+)?(interpretationen|deutungen)|was\s+sie\s+meinen",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static bool IsAmbiguous(string? abstainReason) =>
