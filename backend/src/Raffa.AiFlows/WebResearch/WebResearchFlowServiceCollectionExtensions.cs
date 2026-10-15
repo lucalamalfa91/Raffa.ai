@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Raffa.AiFlows.WebResearch.Configuration;
 using Raffa.AiFlows.WebResearch.Orchestration;
 using Raffa.AiGateway;
+using Raffa.AiGateway.Logging;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.SharedKernel;
 
@@ -51,6 +53,15 @@ internal static class WebResearchFlowServiceCollectionExtensions
             sp.GetRequiredService<IClock>()));
 
         // The web-research and web-mode halves of Ask (ADR-030 / ADR-032), consumed by AskCopilotService.
+        // F3-T11: the same keyed query hasher the AI gateway registers (TryAdd: whichever module runs
+        // first registers the one config-bound instance), so the flow's audit rows and the gateway's
+        // ai_call row carry the same queryHash.
+        services.TryAddSingleton<IQueryHasher>(sp => new KeyedQueryHasher(
+            sp.GetService<IConfiguration>() is { } configuration
+                ? () => configuration[KeyedQueryHasher.KeyConfigurationPath]
+                : () => null,
+            sp.GetService<ILogger<KeyedQueryHasher>>()));
+        services.AddScoped<WebGatekeeper>();
         services.AddScoped<WebResearchFlow>();
         services.AddScoped<WebModeFlow>();
 

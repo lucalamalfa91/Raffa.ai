@@ -60,6 +60,12 @@ public sealed record WebResearchOutcome(
     int FiguresReported = 0,
     int SentencesRemoved = 0)
 {
+    /// <summary>F3-T03: whether the budget unit reserved before the call goes back. Always for a
+    /// transport or configuration failure (<see cref="ReleaseBudget"/>); with
+    /// <paramref name="chargeOnlyWhenSourcesFound"/> also for an outcome that found no source.</summary>
+    public bool ShouldReleaseBudget(bool chargeOnlyWhenSourcesFound) =>
+        ReleaseBudget || (chargeOnlyWhenSourcesFound && SourceCount == 0);
+
     public ReplyKind AsReplyKind => Kind switch
     {
         WebResearchOutcomeKind.Answered => ReplyKind.Answer,

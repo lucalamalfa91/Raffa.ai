@@ -70,6 +70,9 @@ public sealed class LoggingAiGateway : IAiGateway
     private readonly ITenantContext _tenantContext;
     private readonly AiGatewayComplianceOptions _complianceOptions;
 
+    /// <summary>F3-T11: keyed hash of the web query; null (tests, tools) keeps the unkeyed SHA-256.</summary>
+    private readonly IQueryHasher? _queryHasher;
+
     /// <summary>
     /// Serialises the audit writes of one decorator instance. The decorator is Scoped and its
     /// <see cref="IAuditWriter"/> wraps a Scoped DbContext, which is not thread-safe; callers that
@@ -82,8 +85,10 @@ public sealed class LoggingAiGateway : IAiGateway
         IAiGateway inner,
         IAuditWriter auditWriter,
         ITenantContext tenantContext,
-        AiGatewayComplianceOptions complianceOptions)
+        AiGatewayComplianceOptions complianceOptions,
+        IQueryHasher? queryHasher = null)
     {
+        _queryHasher = queryHasher;
         ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(auditWriter);
         ArgumentNullException.ThrowIfNull(tenantContext);
@@ -156,7 +161,7 @@ public sealed class LoggingAiGateway : IAiGateway
             () => _inner.ResearchAsync(request, cancellationToken),
             r => r.Metadata,
             r => $"sourceCount={r.Sources.Count} offTopic={r.OffTopic} " +
-                 $"queryHash={Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.Query)))}",
+                 $"queryHash={(_queryHasher?.Compute(request.Query) ?? KeyedQueryHasher.Unkeyed(request.Query))}",
             cancellationToken);
 
     public Task<Result<AiOcrResult>> OcrAsync(

@@ -36,6 +36,30 @@ public sealed class WebResearchOptions : IWebResearchBudgetLimit
     /// (<c>$36</c>, <c>ten euros</c>, <c>40k</c>) is never kept without a quote.</summary>
     public bool AllowReportedFigures { get; set; }
 
+    /// <summary>F3-T03: charge the daily budget only for an outcome that found sources. On: a research
+    /// call that ends with no source at all (an off-topic refusal, an abstain with an empty source list)
+    /// hands its reserved unit back, as a transport failure always has. Off by default: only a transport or
+    /// configuration failure is refunded, as it always was. Note that with it on an off-topic refusal costs
+    /// nothing, so it can be repeated until the model-side cost, not the budget, is the limit.</summary>
+    public bool ChargeOnlyWhenSourcesFound { get; set; }
+
+    /// <summary>F3-T08: domains whose sources are dropped before the summary is checked (a host equal to
+    /// the entry or a subdomain of it). Empty by default: no source is dropped.</summary>
+    public string[] DeniedDomains { get; set; } = [];
+
+    /// <summary>F3-T08: strip tracking parameters (<c>utm_*</c>, <c>gclid</c>, <c>fbclid</c>, ...) from
+    /// the source URLs shown as citations, and merge sources that become the same URL. Off by default:
+    /// the URLs stay exactly as the search tool returned them.</summary>
+    public bool StripTrackingParameters { get; set; }
+
+    /// <summary>F3-T08: trust tier (1 = best) per domain (the entry or a subdomain of it), the data of the
+    /// F3-D08 source policy. Only read when <see cref="MaxSourceTier"/> is above zero.</summary>
+    public Dictionary<string, int> DomainTiers { get; set; } = [];
+
+    /// <summary>F3-T08: drop a source whose tier is above this (a domain not in <see cref="DomainTiers"/>
+    /// is tier <see cref="WebSourcePolicy.UnlistedTier"/>). Zero (default) switches the tier policy off.</summary>
+    public int MaxSourceTier { get; set; }
+
     /// <summary>The source cap, clamped to the range the research role accepts.</summary>
     public int EffectiveMaxSources => Math.Clamp(MaxSources, 1, 10);
 
@@ -50,5 +74,10 @@ public sealed class WebResearchOptions : IWebResearchBudgetLimit
         MaxSources = other.MaxSources;
         MaxQueryChars = other.MaxQueryChars;
         AllowReportedFigures = other.AllowReportedFigures;
+        ChargeOnlyWhenSourcesFound = other.ChargeOnlyWhenSourcesFound;
+        DeniedDomains = other.DeniedDomains;
+        StripTrackingParameters = other.StripTrackingParameters;
+        DomainTiers = other.DomainTiers;
+        MaxSourceTier = other.MaxSourceTier;
     }
 }

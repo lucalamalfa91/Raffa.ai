@@ -8,6 +8,7 @@ using Raffa.AiFlows.WebResearch.Lexicons;
 using Raffa.AiFlows.WebResearch.Orchestration;
 using Raffa.AiFlows.WebResearch.Ports;
 using Raffa.AiFlows.WebResearch.Query;
+using Raffa.AiGateway.Logging;
 using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;
@@ -53,10 +54,11 @@ public sealed class WebResearchFlow(
     IOptionsMonitor<WebResearchOptions> webResearchOptionsMonitor,
     WebResearchComposer webResearchComposer,
     IWebResearchBudget webResearchBudget,
-    IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
+    WebGatekeeper gatekeeper,
     IAuditWriter auditWriter,
     IClock clock,
-    CapabilityRouting capabilityRouting)
+    CapabilityRouting capabilityRouting,
+    IQueryHasher queryHasher)
 {
     /// <summary>F3-T10: read on every use, so the kill switch applies without a restart.</summary>
     private WebResearchOptions webResearchOptions => webResearchOptionsMonitor.CurrentValue;
@@ -77,34 +79,9 @@ public sealed class WebResearchFlow(
         return gate == WebGate.Open ? offer : null;
     }
 
-    private async Task<(WebGate Gate, WebResearchRequest? Offer)> CheckGatesAsync(
-        TenantId tenantId, string question, CancellationToken cancellationToken)
-    {
-        if (!webResearchOptions.Enabled)
-        {
-            return (WebGate.KillSwitch, null);
-        }
-
-        var purpose = WebResearchTopicLexicon.Classify(question);
-        var query = WebQuerySanitizer.Sanitize(question, webResearchOptions.MaxQueryChars);
-        if (purpose is null || query is null)
-        {
-            return (WebGate.NoTopic, null);
-        }
-
-        if (webResearchOptions.RequireWorkspaceOptIn
-            && !await workspaceWebResearchPolicy.IsEnabledAsync(tenantId, cancellationToken).ConfigureAwait(false))
-        {
-            return (WebGate.WorkspaceOptIn, null);
-        }
-
-        if (!await webResearchBudget.HasRemainingAsync(tenantId, cancellationToken).ConfigureAwait(false))
-        {
-            return (WebGate.Budget, null);
-        }
-
-        return (WebGate.Open, new WebResearchRequest(query, purpose));
-    }
+    private Task<(WebGate Gate, WebResearchRequest? Offer)> CheckGatesAsync(
+        TenantId tenantId, string question, CancellationToken cancellationToken) =>
+        gatekeeper.CheckConsentedAsync(tenantId, question, cancellationToken);
 
     /// <summary>An explicit or forced <see cref="Raffa.Chat.Domain.AskIntent.WebResearch"/> turn:
     /// the consent question when every gate is open, otherwise a redirect that names the closed
@@ -142,22 +119,15 @@ public sealed class WebResearchFlow(
         AbstainRecoveryResolver resolveAbstainRecoveryActions,
         CancellationToken cancellationToken)
     {
-        var queryHash = QueryHasher.ComputeHash(authorized.Query);
+        var queryHash = queryHasher.Compute(authorized.Query);
 
         // A consent authorises one question; the gates still decide at execution time.
-        if (!webResearchOptions.Enabled)
+        var recheck = await gatekeeper.RecheckBeforeRunAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        if (recheck != WebGate.Open)
         {
-            await WriteAuditAsync(tenantId, AuditRefusedAction, actor, $"gate={WebGate.KillSwitch} stage=run queryHash={queryHash}", cancellationToken)
+            await WriteAuditAsync(tenantId, AuditRefusedAction, actor, $"gate={recheck} stage=run queryHash={queryHash}", cancellationToken)
                 .ConfigureAwait(false);
-            return (BuildGateClosedReply(WebGate.KillSwitch, question, portfolio, routingContext, resolveAbstainRecoveryActions), false);
-        }
-
-        if (webResearchOptions.RequireWorkspaceOptIn
-            && !await workspaceWebResearchPolicy.IsEnabledAsync(tenantId, cancellationToken).ConfigureAwait(false))
-        {
-            await WriteAuditAsync(tenantId, AuditRefusedAction, actor, $"gate={WebGate.WorkspaceOptIn} stage=run queryHash={queryHash}", cancellationToken)
-                .ConfigureAwait(false);
-            return (BuildGateClosedReply(WebGate.WorkspaceOptIn, question, portfolio, routingContext, resolveAbstainRecoveryActions), false);
+            return (BuildGateClosedReply(recheck, question, portfolio, routingContext, resolveAbstainRecoveryActions), false);
         }
 
         await WriteAuditAsync(
@@ -201,7 +171,8 @@ public sealed class WebResearchFlow(
     /// transport or configuration reasons (<see cref="WebResearchOutcome.ReleaseBudget"/> — never a
     /// content-filter verdict, never unusable output), or throws, the reserved unit is handed back, so
     /// an outage never costs the tenant a call. A cancelled caller keeps the unit spent: the provider
-    /// may well have run the search. Shared by the consented and the toggle entry. The release is
+    /// may well have run the search. With <see cref="WebResearchOptions.ChargeOnlyWhenSourcesFound"/> an
+    /// outcome with no source is refunded too. Shared by the consented and the toggle entry. The release is
     /// best effort (never cancelled with the request, never fatal to the reply).
     /// </summary>
     internal async Task<(WebResearchOutcome Outcome, bool Released)> ComposeReservedAsync(
@@ -224,7 +195,7 @@ public sealed class WebResearchFlow(
             throw;
         }
 
-        var released = outcome.ReleaseBudget && await TryReleaseBudgetAsync(reservation).ConfigureAwait(false);
+        var released = outcome.ShouldReleaseBudget(webResearchOptions.ChargeOnlyWhenSourcesFound) && await TryReleaseBudgetAsync(reservation).ConfigureAwait(false);
         return (outcome, released);
     }
 
