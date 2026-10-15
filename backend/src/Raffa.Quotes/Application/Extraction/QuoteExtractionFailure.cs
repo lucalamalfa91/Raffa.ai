@@ -27,6 +27,9 @@ public enum QuoteExtractionFailureKind
     /// <summary>The caller's request was cancelled (client disconnect, host shutdown) mid-run.</summary>
     Cancelled,
 
+    /// <summary>The stored file the job points at could not be read back from object storage (task F6-T01).</summary>
+    SourceMissing,
+
     /// <summary>Anything else that threw outside the stages above.</summary>
     Unexpected,
 }

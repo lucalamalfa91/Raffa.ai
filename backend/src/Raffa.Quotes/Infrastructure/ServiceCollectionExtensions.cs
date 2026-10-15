@@ -1,6 +1,7 @@
 using Raffa.Benchmark;
 using Raffa.Quotes.Application;
 using Raffa.Quotes.Application.Assessment;
+using Raffa.Quotes.Application.Extraction;
 using Raffa.Quotes.Application.Normalization;
 using Raffa.Quotes.Application.Outcome;
 using Raffa.Quotes.Application.Strategy;
@@ -72,6 +73,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<QuoteUploadService>();
         // Task F6-T03 (reprocess): same dependencies as QuoteUploadService (storage, audit).
         services.AddScoped<QuoteReprocessService>();
+        // Task F6-T01: the claim the queue handler takes on a quote's extraction job.
+        services.AddScoped<IQuoteExtractionJobClaimStore, QuoteExtractionJobClaimStore>();
         // QuoteLineExtractionService (the AI-flow half of the extraction) is registered by
         // Raffa.AiFlows' AddQuoteExtractionFlow, not by this module (ADR-002 amendment).
         // Task E05/F01/US01/T02 (quote-normalization): shares this request's own QuotesDbContext

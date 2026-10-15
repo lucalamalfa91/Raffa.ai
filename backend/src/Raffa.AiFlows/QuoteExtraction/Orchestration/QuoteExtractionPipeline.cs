@@ -106,14 +106,15 @@ public sealed class QuoteExtractionPipeline(
         string fileName,
         string mimeType,
         ReadOnlyMemory<byte> content,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        EntityId? claimedJobId = null)
     {
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
         var run = new RunState();
         try
         {
-            return await RunAsync(run, tenantId, quoteId, fileName, mimeType, content, cancellationToken)
+            return await RunAsync(run, tenantId, quoteId, fileName, mimeType, content, claimedJobId, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (!run.StatusCommitted)
@@ -136,6 +137,18 @@ public sealed class QuoteExtractionPipeline(
         }
     }
 
+    /// <summary>
+    /// Ends a claimed job in <c>Failed</c> without running anything, for a failure the caller found
+    /// before it could call <see cref="ProcessAsync"/> (the stored file is gone). Same terminal-state
+    /// guarantee and typed error as a failure inside a run.
+    /// </summary>
+    public async Task FailAsync(
+        TenantId tenantId, EntityId quoteId, QuoteExtractionFailureKind kind, string detail)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        await FailAsync(new RunState(), tenantId, quoteId, kind, detail).ConfigureAwait(false);
+    }
+
     private async Task<Result<QuoteProcessingSummary>> RunAsync(
         RunState run,
         TenantId tenantId,
@@ -143,6 +156,7 @@ public sealed class QuoteExtractionPipeline(
         string fileName,
         string mimeType,
         ReadOnlyMemory<byte> content,
+        EntityId? claimedJobId,
         CancellationToken cancellationToken)
     {
         var quote = await dbContext.Quotes
@@ -151,22 +165,35 @@ public sealed class QuoteExtractionPipeline(
 
         if (quote is null)
         {
-            return Result<QuoteProcessingSummary>.Failure($"Quote {quoteId} was not found for this tenant.");
+            // A claimed job must still end terminal (never Running for ever); an unclaimed call has
+            // nothing to close.
+            return claimedJobId is null
+                ? Result<QuoteProcessingSummary>.Failure($"Quote {quoteId} was not found for this tenant.")
+                : await FailAsync(
+                    run, tenantId, quoteId, QuoteExtractionFailureKind.SourceMissing,
+                    $"Quote {quoteId} was not found for this tenant.").ConfigureAwait(false);
         }
 
-        // The row QuoteUploadService queued at upload — advanced to completion here, the same
+        // The row QuoteUploadService queued at upload -- advanced to completion here, the same
         // "advance the queued row, never insert a second one" shape
-        // DocumentProcessingPipeline.ClassifyAsync already uses for ExtractionJob.
-        var job = await dbContext.QuoteExtractionJobs
-            .Where(j => j.TenantId == tenantId
-                && j.QuoteId == quoteId
-                && j.Status == QuoteExtractionJobStatus.Queued)
-            .OrderBy(j => j.QueuedAt)
-            .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false);
+        // DocumentProcessingPipeline.ClassifyAsync already uses for ExtractionJob. When the durable
+        // queue's handler claimed a specific job (task F6-T01) it is already Running and is the one
+        // to advance; otherwise the oldest Queued job of the quote is picked up and started here.
+        var job = claimedJobId is { } claimedId
+            ? await dbContext.QuoteExtractionJobs
+                .Where(j => j.TenantId == tenantId && j.QuoteId == quoteId && j.Id == claimedId)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false)
+            : await dbContext.QuoteExtractionJobs
+                .Where(j => j.TenantId == tenantId
+                    && j.QuoteId == quoteId
+                    && j.Status == QuoteExtractionJobStatus.Queued)
+                .OrderBy(j => j.QueuedAt)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
 
         var startedAt = clock.UtcNow;
-        if (job is not null)
+        if (job is not null && claimedJobId is null)
         {
             job.Status = QuoteExtractionJobStatus.Running;
             job.StartedAt = startedAt;
@@ -369,8 +396,9 @@ public sealed class QuoteExtractionPipeline(
                 .ConfigureAwait(false);
 
             // Never downgrade a quote that already reached a successful terminal state.
-            if (quote is not null
-                && quote.ProcessingStatus is not (QuoteProcessingStatus.Completed or QuoteProcessingStatus.NeedsReview))
+            var alreadyDone = quote is not null
+                && quote.ProcessingStatus is QuoteProcessingStatus.Completed or QuoteProcessingStatus.NeedsReview;
+            if (!alreadyDone)
             {
                 var openJobs = await dbContext.QuoteExtractionJobs
                     .Where(j => j.TenantId == tenantId
@@ -395,7 +423,11 @@ public sealed class QuoteExtractionPipeline(
                         .ToListAsync(CancellationToken.None)
                         .ConfigureAwait(false));
 
-                quote.ProcessingStatus = QuoteProcessingStatus.Failed;
+                if (quote is not null)
+                {
+                    quote.ProcessingStatus = QuoteProcessingStatus.Failed;
+                }
+
                 await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
             }
         }
