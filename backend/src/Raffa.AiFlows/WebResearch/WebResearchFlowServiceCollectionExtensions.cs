@@ -1,8 +1,12 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Raffa.AiFlows.WebResearch.Configuration;
 using Raffa.AiFlows.WebResearch.Orchestration;
+using Raffa.AiGateway;
 using Raffa.Chat.Application.WebResearch;
+using Raffa.SharedKernel;
 
 namespace Raffa.AiFlows.WebResearch;
 
@@ -32,7 +36,19 @@ internal static class WebResearchFlowServiceCollectionExtensions
         services.Replace(ServiceDescriptor.Singleton<IWebResearchBudgetLimit>(
             sp => sp.GetRequiredService<WebResearchOptions>()));
 
-        services.AddScoped<WebResearchComposer>();
+        // F3-T10: the kill switch and the other settings are read through IOptionsMonitor, so a
+        // configuration change applies without a restart. A closed registration of the monitor over the
+        // registered options singleton (resolved lazily, so a swapped instance is honoured); TryAdd so a
+        // host that registered its own monitor wins.
+        services.TryAddSingleton<IOptionsMonitor<WebResearchOptions>>(sp => new WebResearchOptionsMonitor(
+            sp.GetRequiredService<WebResearchOptions>(), sp.GetService<IConfiguration>()));
+
+        // A factory, not constructor selection: the composer has a second, options-instance constructor
+        // for tests and tools, and the container must not weigh the two.
+        services.AddScoped(sp => new WebResearchComposer(
+            sp.GetRequiredService<IAiGateway>(),
+            sp.GetRequiredService<IOptionsMonitor<WebResearchOptions>>(),
+            sp.GetRequiredService<IClock>()));
 
         // The web-research and web-mode halves of Ask (ADR-030 / ADR-032), consumed by AskCopilotService.
         services.AddScoped<WebResearchFlow>();

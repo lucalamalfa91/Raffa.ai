@@ -1,27 +1,62 @@
-using Raffa.AiFlows.Negotiation.DataCheck;
+using Raffa.AiFlows.Shared.ContractContext;
+using static Raffa.AiFlows.Ask.Interview.InterviewInputsFactory;
 using static Raffa.AiFlows.Ask.Packs.ContractResolution;
 using static Raffa.AiFlows.Ask.Packs.PackItemFactory;
+using Raffa.AiFlows.Shared.Audit;
+using Raffa.AiFlows.CapabilityGaps.Investigation;
+using Raffa.AiFlows.Negotiation.DataCheck;
+using Raffa.AiFlows.WebResearch.Orchestration;
+using System.Diagnostics;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using Raffa.AiFlows.Ask.Answering;
+using Raffa.AiFlows.Ask.Gate;
+using Raffa.AiFlows.Ask.Interview;
+using Raffa.AiFlows.Ask.Planning;
+using Raffa.AiFlows.Ask.Reply;
+using Raffa.AiFlows.Ask.Routing;
+using Raffa.AiFlows.CapabilityGaps.Drafting;
 using Raffa.AiFlows.Negotiation.Orchestration;
 using Raffa.AiFlows.Shared.Pack;
+using Raffa.AiFlows.Shared.Planning;
+using Raffa.AiFlows.Shared.Reply;
+using Raffa.AiFlows.Shared.Routing;
+using Raffa.AiGateway.Telemetry;
+using Raffa.Benchmark;
+using Raffa.Benchmark.Contracts;
+using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Interview;
+using Raffa.Chat.Application.Reply;
+using Raffa.Chat.Application.WebResearch;
+using Raffa.Chat.Domain;
 using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Domain;
+using Raffa.Insights.Application;
+using Raffa.Insights.Contracts;
+using Raffa.Insights.Criticality;
+using Raffa.Insights.Strategy;
+using Raffa.Market.Contracts;
+using Raffa.Market.Retrieval;
+using Raffa.Renewals.Application;
+using Raffa.Savings.Application;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Suppliers;
+using Raffa.SharedKernel.Tenancy;
+using Raffa.Suppliers.Products.Application;
+using Raffa.AiFlows.Ask.Packs;
+using Raffa.AiFlows.Ask.Orchestration;
 
-namespace Raffa.AiFlows.Ask.Orchestration;
+namespace Raffa.AiFlows.Ask.Packs;
 
 /// <summary>
-/// Step 1 of Ask's agentic flow (<see cref="AskAgentFlow"/>), the deterministic market data check,
-/// as <see cref="AskCopilotService"/> runs it (it alone can read the contracts, their benchmarks
-/// and the market deals). For each contract the turn is about — the named one, or on a
-/// multi-contract turn (a quarter, savings across contracts) the ones the pack is about — it
-/// finds which fields the contract is missing and what the market data says in their place: a
-/// narrow annual-value estimate, the notice deadline comparable customers' notice implies, the
-/// terms comparable customers negotiated, the closest comparable deals. Which of those gaps the
-/// question needs is for the market researcher and the answer to judge; the figures are
-/// <see cref="MarketSafetyNet"/>'s, computed in code, and the answer narrates them as market
-/// estimates, never as the contract's own data. Querying the market RAG is the researcher's job
-/// (step 2), not this step's.
+/// Step 1 of Ask's agentic flow (AskAgentFlow), the deterministic market data check. Moved verbatim from
+/// <see cref="Raffa.AiFlows.Ask.Orchestration.AskCopilotService"/> (F1 Ask split, PR-3).
 /// </summary>
-public sealed partial class AskCopilotService
+public sealed class MarketDataCheck(
+    ContractContextReader context,
+    IClock clock)
 {
     private const int SafetyNetDealsTopK = 2;
 
@@ -39,7 +74,7 @@ public sealed partial class AskCopilotService
     /// collects each contract's check for the deterministic lead. On more than one contract a
     /// coverage item says which contracts lack which data and what the market covers.
     /// </summary>
-    private async Task<MarketDataCheckResult> RunMarketDataCheckAsync(
+    internal async Task<MarketDataCheckResult> RunAsync(
         IReadOnlyList<PortfolioListItem> contracts,
         List<MarketSafetyNet.ContractCheck> checks,
         CancellationToken cancellationToken)
@@ -69,7 +104,7 @@ public sealed partial class AskCopilotService
     /// <summary>The contracts a multi-contract turn's data check covers: the ones the pack's items
     /// are about, in pack order (a quarter's candidates, the contracts a savings target ranks) —
     /// never contracts the turn is not about.</summary>
-    private static IReadOnlyList<PortfolioListItem> ContractsForDataCheck(IReadOnlyList<PackItem> pack, PortfolioPage portfolio)
+    internal static IReadOnlyList<PortfolioListItem> ContractsForDataCheck(IReadOnlyList<PackItem> pack, PortfolioPage portfolio)
     {
         var byId = portfolio.Items.ToDictionary(i => i.ContractId);
         return pack
@@ -83,25 +118,24 @@ public sealed partial class AskCopilotService
     private async Task<MarketSafetyNetResult> BuildMarketSafetyNetAsync(
         PortfolioListItem namedContractItem, CancellationToken cancellationToken)
     {
-        var contract360 = await contract360QueryService
-            .GetByIdAsync(CurrentTenantId, new EntityId(namedContractItem.ContractId), cancellationToken)
+        var contract360 = await context.GetContract360Async(namedContractItem.ContractId, cancellationToken)
             .ConfigureAwait(false);
         if (contract360 is null)
         {
             return MarketSafetyNetResult.None;
         }
 
-        var supplierName = await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
+        var supplierName = await context.ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
         var currency = contract360.Overview.Currency;
         var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
-        var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
+        var (benchmarkSupplierName, geography) = await context.ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
             .ConfigureAwait(false);
         // The same priced lines (stored market comparison included) every other Ask pack reads.
-        var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+        var pricedLines = await context.ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
-        var allDeals = await marketDealLookup
-            .GetBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
+        var allDeals = await context
+            .GetDealsBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
             .ConfigureAwait(false);
         var deals = MarketSafetyNet.MatchingProducts(NarrowDealsToContract(allDeals, currency, geography), pricedLines);
 
@@ -148,19 +182,5 @@ public sealed partial class AskCopilotService
         return new MarketSafetyNetResult(
             items,
             new MarketSafetyNet.ContractCheck(supplierName, missing, estimate, typicalNotice, estimatedNoticeDeadline));
-    }
-
-    /// <summary>The typical notice period comparable customers of this contract's supplier have,
-    /// for the deterministic "no notice date on file" reply; <see langword="null"/> when the market
-    /// records none.</summary>
-    private async Task<int?> TypicalNoticeDaysAsync(Contract360Result contract360, string supplierName, CancellationToken cancellationToken)
-    {
-        var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
-            .ConfigureAwait(false);
-        var allDeals = await marketDealLookup
-            .GetBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
-            .ConfigureAwait(false);
-
-        return MarketSafetyNet.TypicalNoticeDays(NarrowDealsToContract(allDeals, contract360.Overview.Currency, geography));
     }
 }

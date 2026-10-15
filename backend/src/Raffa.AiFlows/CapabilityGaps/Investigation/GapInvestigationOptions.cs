@@ -51,6 +51,13 @@ public sealed class GapInvestigationOptions
     /// <c>IOptionsMonitor</c> like the rest.</summary>
     public int ContextTurns { get; set; }
 
+    /// <summary>F4-T02 bulkhead: the most capability checks that may run at once in this process.
+    /// A check is optional and fail-open, so past this a new turn's check is shed (audited as
+    /// <c>busy</c>, no follow-up) instead of queueing model calls behind a slow deployment. 8 is far
+    /// above what one instance sees in practice (each turn runs at most one check, 12 s at most);
+    /// zero or negative disables the bound.</summary>
+    public int MaxConcurrentChecks { get; set; } = 8;
+
     /// <summary>
     /// Jev classify-role pilot (see <c>Raffa.AiGateway.Configuration.AiGatewayJevOptions</c>):
     /// when that pilot's own <c>Enabled</c> flag is on, <see cref="CapabilityInvestigator"/> asks

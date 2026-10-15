@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Raffa.AiFlows.Shared.Audit;
 using Raffa.AiFlows.Ask.Gate;
 using Raffa.AiFlows.Ask.Interview;
@@ -52,12 +53,15 @@ public delegate Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUse
 /// </para>
 /// </summary>
 public sealed class WebModeFlow(
-    WebResearchOptions webResearchOptions,
+    IOptionsMonitor<WebResearchOptions> webResearchOptionsMonitor,
     IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
     IWebResearchBudget webResearchBudget,
     WebResearchFlow webResearchFlow,
     CapabilityRouting capabilityRouting)
 {
+    /// <summary>F3-T10: read on every use, so the kill switch applies without a restart.</summary>
+    private WebResearchOptions webResearchOptions => webResearchOptionsMonitor.CurrentValue;
+
     private const string WebModeAuditTag = "mode=toggle";
 
     /// <summary>A greeting or small talk this short ("ciao", "come stai?") is still answered as one

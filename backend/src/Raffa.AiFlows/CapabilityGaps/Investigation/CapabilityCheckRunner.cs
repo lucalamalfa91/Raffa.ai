@@ -104,10 +104,14 @@ public sealed class CapabilityCheckRunner(
     /// <summary>INV-05: the check ended on its time budget.</summary>
     public const string OutcomeTimeout = "timeout";
 
+    /// <summary>F4-T02: the check was shed because <see cref="GapInvestigationOptions.MaxConcurrentChecks"/> were already running.</summary>
+    public const string OutcomeBusy = "busy";
+
     /// <summary>How many validated suppliers an email follow-up offers as chips.</summary>
     private const int MaxDraftSupplierFollowUps = 5;
 
     private GapInvestigationOptions _lastGood = new();
+    private int _active;
 
     /// <summary>The live options. A configuration reload that no longer binds (an unknown
     /// <c>Mode</c> word) must never take Ask down: the last good value stays in force.</summary>
@@ -137,7 +141,46 @@ public sealed class CapabilityCheckRunner(
     public Task<CopilotReply?> Start(CapabilityCheckRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return RunAsync(request);
+
+        // F4-T02 bulkhead: bounded concurrency, shed (not queued) beyond the bound.
+        var limit = Current.MaxConcurrentChecks;
+        if (limit > 0 && Interlocked.Increment(ref _active) > limit)
+        {
+            Interlocked.Decrement(ref _active);
+            logger.LogWarning("Capability check shed: {Limit} checks already running", limit);
+            return ShedAsync(request);
+        }
+
+        return limit > 0 ? RunBoundedAsync(request) : RunAsync(request);
+    }
+
+    private async Task<CopilotReply?> RunBoundedAsync(CapabilityCheckRequest request)
+    {
+        try
+        {
+            return await RunAsync(request).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _active);
+        }
+    }
+
+    private async Task<CopilotReply?> ShedAsync(CapabilityCheckRequest request)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            using var tenantScope = scope.ServiceProvider.GetRequiredService<ITenantContext>().BeginScope(request.TenantId);
+            await TryAuditOutcomeAsync(scope.ServiceProvider, request.TenantId, request.Actor, request.TurnId, OutcomeBusy, null, null)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "A shed capability check could not be audited");
+        }
+
+        return null;
     }
 
     private async Task<CopilotReply?> RunAsync(CapabilityCheckRequest request)
