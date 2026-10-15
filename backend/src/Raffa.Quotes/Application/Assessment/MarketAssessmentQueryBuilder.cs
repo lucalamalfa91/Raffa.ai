@@ -1,4 +1,5 @@
 using Raffa.Benchmark.Contracts;
+using Raffa.Quotes.Application.Normalization;
 using Raffa.Quotes.Domain;
 using Raffa.SharedKernel;
 
@@ -25,7 +26,9 @@ namespace Raffa.Quotes.Application.Assessment;
 /// </para>
 ///
 /// <para>
-/// <b>Term is passed through verbatim, never re-derived</b>: <see cref="QuoteLine.Term"/> is free
+/// <b>Term is passed through verbatim, except a stated duration</b> (task F6-T08: a number and a
+/// month/year unit is spelled <c>"{n} months"</c> by <c>QuoteTermParser</c>, so "36 months (3 years)"
+/// is not misread as 363 by a matcher that concatenates digits). Otherwise it is never re-derived: <see cref="QuoteLine.Term"/> is free
 /// text with no ADR/spec-fixed vocabulary, so this builder does not attempt to normalize it against
 /// <c>Raffa.Quotes.Application.Normalization.QuoteBillingCadence</c>'s own small recognized-word
 /// vocabulary ("annual", "monthly", ...) — that vocabulary exists to *annualize a unit price*
@@ -131,7 +134,10 @@ public static class MarketAssessmentQueryBuilder
             Sku: line.NormalizedSku ?? line.Sku,
             Geography: quote.Geography,
             Quantity: line.Quantity.Value,
-            Term: line.Term,
+            // Task F6-T08: a duration the quote states in months or years reaches the benchmark in its one
+            // canonical spelling ("36 months (3 years)" -> "36 months"); any other text goes through as
+            // written, as before. See QuoteTermParser.
+            Term: QuoteTermParser.Canonicalize(line.Term),
             Currency: quote.Currency,
             PurchaseDate: purchaseDate));
     }
