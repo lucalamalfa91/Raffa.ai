@@ -142,6 +142,17 @@ public static class ServiceCollectionExtensions
                     sp.GetRequiredService<IDbContextFactory<MarketDbContext>>(),
                     sp.GetRequiredService<IClock>())));
 
+            // T-05: batch size / TPM budget / per-batch checkpoint of the ingestion job
+            // (Market:Ingestion). Defaults are the pre-batching behaviour.
+            services.TryAddSingleton(sp =>
+            {
+                var ingestionOptions = new MarketIngestionOptions();
+                sp.GetService<IConfiguration>()
+                    ?.GetSection(MarketIngestionOptions.SectionName)
+                    .Bind(ingestionOptions);
+                return ingestionOptions;
+            });
+
             services.AddScoped<MarketIngestionService>();
             services.AddScoped<MarketRecordQueryService>();
             services.Replace(ServiceDescriptor.Scoped<IMarketDealLookup>(sp => sp.GetRequiredService<MarketRecordQueryService>()));

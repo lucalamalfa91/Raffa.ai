@@ -22,6 +22,12 @@ namespace Raffa.Market.Ingestion;
 /// replacing that record's <c>market_embedding</c> row(s) — idempotent: a second run with the same
 /// feed version and payload changes zero rows and issues zero embed calls (parent story AC-4).
 ///
+/// <para>
+/// T-05 / F7-T03: changed records are embedded in batches (<see cref="MarketIngestionOptions"/>),
+/// optionally behind a TPM limiter (<see cref="EmbeddingRateLimiter"/>) and optionally committed
+/// per batch. The defaults (batch size 1, no limiter, one commit) are the original behaviour.
+/// </para>
+///
 /// Never registered unless <c>ServiceCollectionExtensions.AddMarketModule</c> is called with a
 /// non-null connection string (there is nothing to ingest into otherwise) — the Worker's
 /// `ingest-market` command (<c>Raffa.Worker.Commands.IngestMarketCommand</c>) is its only caller
@@ -32,7 +38,9 @@ public sealed class MarketIngestionService(
     IMarketIntelligenceProvider provider,
     IAiGateway aiGateway,
     ITenantContext tenantContext,
-    IClock clock)
+    IClock clock,
+    MarketIngestionOptions? options = null,
+    EmbeddingRateLimiter? limiter = null)
 {
     /// <summary>
     /// Every AI Gateway call — including this job's own <see cref="IAiGateway.EmbedAsync"/> calls
@@ -51,6 +59,11 @@ public sealed class MarketIngestionService(
     public static readonly TenantId SystemTenantId = new(Guid.Empty);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly MarketIngestionOptions _options = options ?? new MarketIngestionOptions();
+
+    private readonly EmbeddingRateLimiter _limiter =
+        limiter ?? new EmbeddingRateLimiter((options ?? new MarketIngestionOptions()).EmbedTokensPerMinute);
 
     /// <summary>
     /// Runs one ingestion pass. <paramref name="feedVersion"/> is forwarded to
@@ -81,7 +94,7 @@ public sealed class MarketIngestionService(
         var existingEmbeddings = (await dbContext.MarketEmbeddings
                 .AsNoTracking()
                 .Where(e => e.ChunkIndex == 0)
-                .Select(e => new { e.RecordId, e.ChunkText, e.Model, e.IsFixture })
+                .Select(e => new EmbeddingSource(e.RecordId, e.ChunkText, e.Model, e.IsFixture))
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false))
             .GroupBy(e => e.RecordId, StringComparer.Ordinal)
@@ -89,12 +102,15 @@ public sealed class MarketIngestionService(
 
         // The embedding identity (model, fixture-or-not) this run actually embeds with, learnt from
         // the first embed call of the run. Until it is known nothing can be reused, so the first
-        // changed record always embeds.
+        // changed record (or, batched, the first batch) always embeds.
         MarketEmbeddingIdentity? runIdentity = null;
 
         var inserted = 0;
         var updated = 0;
         var unchanged = 0;
+
+        var batchSize = Math.Max(1, _options.EmbedBatchSize);
+        var pending = new List<PendingRecord>(batchSize);
 
         // See SystemTenantId's own doc comment: opened once for the whole run, before the first
         // embed call, and disposed only after every record has been considered.
@@ -132,63 +148,175 @@ public sealed class MarketIngestionService(
                 continue;
             }
 
-            var provenanceLabel = MarketProvenance.Label(deal);
-            var note = MarketNoteComposer.Compose(deal);
-
-            // Keep the embedding when the narrative it was made from is unchanged, and it was made by
-            // the same model and kind this run embeds with: only a payload field outside the note
-            // moved, so a new vector would be identical. Never for a new record, and never before this
-            // run has embedded once (the run's identity is unknown until then).
-            var reuseEmbedding = existing is not null
-                && runIdentity is { } known
-                && existingEmbeddings.TryGetValue(deal.RecordId, out var previous)
-                && string.Equals(previous.ChunkText, note.Snippet, StringComparison.Ordinal)
-                && previous.IsFixture == known.IsFixture
-                && string.Equals(previous.Model, known.Model, StringComparison.Ordinal);
-
-            IReadOnlyList<float>? vectorValues = null;
-            var identity = default(MarketEmbeddingIdentity);
-
-            if (!reuseEmbedding)
+            pending.Add(new PendingRecord(deal, payloadJson, existing, MarketNoteComposer.Compose(deal)));
+            if (pending.Count < batchSize)
             {
-                var embedResult = await aiGateway
-                    .EmbedAsync(new AiEmbeddingRequest(note.Snippet), cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (embedResult.IsFailure)
-                {
-                    return Result<IngestionSummary>.Failure(
-                        $"Ingestion failed embedding record '{deal.RecordId}': {embedResult.Error}");
-                }
-
-                vectorValues = embedResult.Value.Vector;
-
-                // Defensive, not redundant -- same "two independently-maintained constants that MUST
-                // agree, never a shared reference" reasoning
-                // Raffa.Documents.Contracts.Application.EmbeddingRetrievalService.IndexChunkAsync's
-                // own identical check already documents for ADR-004.
-                if (vectorValues.Count != MarketEmbeddingEntity.VectorDimensions)
-                {
-                    return Result<IngestionSummary>.Failure(
-                        $"Embed model returned a {vectorValues.Count}-dimension vector for record " +
-                        $"'{deal.RecordId}'; expected {MarketEmbeddingEntity.VectorDimensions} " +
-                        "(MarketEmbeddingEntity.VectorDimensions, ADR-004).");
-                }
-
-                // F7-T06: record who produced the vector (model + fixture-or-not) so query time can
-                // refuse an index built with something the query is not comparable with.
-                identity = MarketEmbeddingIdentity.From(embedResult.Value.Metadata);
-                runIdentity = identity;
+                continue;
             }
 
-            var now = clock.UtcNow;
+            var flushed = await FlushAsync(
+                    pending, snapshot.FeedVersion, existingEmbeddings, runIdentity, cancellationToken)
+                .ConfigureAwait(false);
+            if (flushed.IsFailure)
+            {
+                return Result<IngestionSummary>.Failure(flushed.Error);
+            }
+
+            runIdentity = flushed.Value.RunIdentity;
+            inserted += flushed.Value.Inserted;
+            updated += flushed.Value.Updated;
+            pending.Clear();
+        }
+
+        if (pending.Count > 0)
+        {
+            var flushed = await FlushAsync(
+                    pending, snapshot.FeedVersion, existingEmbeddings, runIdentity, cancellationToken)
+                .ConfigureAwait(false);
+            if (flushed.IsFailure)
+            {
+                return Result<IngestionSummary>.Failure(flushed.Error);
+            }
+
+            inserted += flushed.Value.Inserted;
+            updated += flushed.Value.Updated;
+        }
+
+        // One SaveChangesAsync for the whole run (unless CheckpointPerBatch committed each batch
+        // already): when every record was unchanged, the change tracker holds nothing
+        // added/modified/removed, so this issues zero SQL and returns 0 -- the literal "changes zero
+        // rows" the idempotency proof asserts.
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return Result<IngestionSummary>.Success(
+            new IngestionSummary(snapshot.FeedVersion, inserted, updated, unchanged));
+    }
+
+    private sealed record EmbeddingSource(string RecordId, string ChunkText, string Model, bool? IsFixture);
+
+    private sealed record PendingRecord(
+        MarketDeal Deal, string PayloadJson, MarketRecordEntity? Existing, MarketNote Note);
+
+    private sealed record FlushOutcome(int Inserted, int Updated, MarketEmbeddingIdentity? RunIdentity);
+
+    /// <summary>
+    /// Embeds the records of one batch (those that cannot keep their previous embedding) with a
+    /// single gateway call, then stages their rows. With <c>EmbedBatchSize = 1</c> this is the
+    /// original one-record-one-<c>EmbedAsync</c> path.
+    /// </summary>
+    private async Task<Result<FlushOutcome>> FlushAsync(
+        List<PendingRecord> batch,
+        string feedVersion,
+        IReadOnlyDictionary<string, EmbeddingSource> existingEmbeddings,
+        MarketEmbeddingIdentity? runIdentity,
+        CancellationToken cancellationToken)
+    {
+        // Keep the embedding when the narrative it was made from is unchanged, and it was made by
+        // the same model and kind this run embeds with: only a payload field outside the note
+        // moved, so a new vector would be identical. Never for a new record, and never before this
+        // run has embedded once (the run's identity is unknown until then).
+        var reuse = new bool[batch.Count];
+        var toEmbed = new List<int>(batch.Count);
+        for (var i = 0; i < batch.Count; i++)
+        {
+            var item = batch[i];
+            reuse[i] = item.Existing is not null
+                && runIdentity is { } known
+                && existingEmbeddings.TryGetValue(item.Deal.RecordId, out var previous)
+                && string.Equals(previous.ChunkText, item.Note.Snippet, StringComparison.Ordinal)
+                && previous.IsFixture == known.IsFixture
+                && string.Equals(previous.Model, known.Model, StringComparison.Ordinal);
+            if (!reuse[i])
+            {
+                toEmbed.Add(i);
+            }
+        }
+
+        IReadOnlyList<IReadOnlyList<float>> vectors = [];
+        var identity = default(MarketEmbeddingIdentity);
+        var newRunIdentity = runIdentity;
+
+        if (toEmbed.Count > 0)
+        {
+            var texts = toEmbed.Select(i => batch[i].Note.Snippet).ToList();
+            var label = toEmbed.Count == 1
+                ? $"record '{batch[toEmbed[0]].Deal.RecordId}'"
+                : $"records '{batch[toEmbed[0]].Deal.RecordId}'..'{batch[toEmbed[^1]].Deal.RecordId}'";
+
+            if (_limiter.Enabled)
+            {
+                await _limiter.WaitAsync(texts.Sum(EmbeddingRateLimiter.EstimateTokens), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (_options.EmbedBatchSize <= 1)
+            {
+                var embedResult = await aiGateway
+                    .EmbedAsync(new AiEmbeddingRequest(texts[0]), cancellationToken)
+                    .ConfigureAwait(false);
+                if (embedResult.IsFailure)
+                {
+                    return Result<FlushOutcome>.Failure($"Ingestion failed embedding {label}: {embedResult.Error}");
+                }
+
+                vectors = [embedResult.Value.Vector];
+                identity = MarketEmbeddingIdentity.From(embedResult.Value.Metadata);
+            }
+            else
+            {
+                var embedResult = await aiGateway.EmbedBatchAsync(texts, cancellationToken).ConfigureAwait(false);
+                if (embedResult.IsFailure)
+                {
+                    return Result<FlushOutcome>.Failure($"Ingestion failed embedding {label}: {embedResult.Error}");
+                }
+
+                if (embedResult.Value.Vectors.Count != texts.Count)
+                {
+                    return Result<FlushOutcome>.Failure(
+                        $"Ingestion failed embedding {label}: the gateway returned " +
+                        $"{embedResult.Value.Vectors.Count} vectors for {texts.Count} texts.");
+                }
+
+                vectors = embedResult.Value.Vectors;
+                identity = MarketEmbeddingIdentity.From(embedResult.Value.Metadata);
+            }
+
+            // Defensive, not redundant -- same "two independently-maintained constants that MUST
+            // agree, never a shared reference" reasoning
+            // Raffa.Documents.Contracts.Application.EmbeddingRetrievalService.IndexChunkAsync's
+            // own identical check already documents for ADR-004.
+            for (var k = 0; k < vectors.Count; k++)
+            {
+                if (vectors[k].Count != MarketEmbeddingEntity.VectorDimensions)
+                {
+                    return Result<FlushOutcome>.Failure(
+                        $"Embed model returned a {vectors[k].Count}-dimension vector for record " +
+                        $"'{batch[toEmbed[k]].Deal.RecordId}'; expected {MarketEmbeddingEntity.VectorDimensions} " +
+                        "(MarketEmbeddingEntity.VectorDimensions, ADR-004).");
+                }
+            }
+
+            // F7-T06: record who produced the vector (model + fixture-or-not) so query time can
+            // refuse an index built with something the query is not comparable with.
+            newRunIdentity = identity;
+        }
+
+        var inserted = 0;
+        var updated = 0;
+        var now = clock.UtcNow;
+        var vectorIndex = 0;
+
+        for (var i = 0; i < batch.Count; i++)
+        {
+            var (deal, payloadJson, existing, note) = batch[i];
+            var provenanceLabel = MarketProvenance.Label(deal);
 
             if (existing is null)
             {
                 dbContext.MarketRecords.Add(new MarketRecordEntity
                 {
                     RecordId = deal.RecordId,
-                    FeedVersion = snapshot.FeedVersion,
+                    FeedVersion = feedVersion,
                     Provider = deal.Provider,
                     PayloadJson = payloadJson,
                     ProvenanceLabel = provenanceLabel,
@@ -198,7 +326,7 @@ public sealed class MarketIngestionService(
             }
             else
             {
-                existing.FeedVersion = snapshot.FeedVersion;
+                existing.FeedVersion = feedVersion;
                 existing.Provider = deal.Provider;
                 existing.PayloadJson = payloadJson;
                 existing.ProvenanceLabel = provenanceLabel;
@@ -208,7 +336,7 @@ public sealed class MarketIngestionService(
                 // chunk(s) never linger next to the freshly-embedded one added below. Never reached
                 // for a brand-new record (existing is null there), so this never queries against a
                 // record that cannot yet own any embedding rows.
-                if (!reuseEmbedding)
+                if (!reuse[i])
                 {
                     var staleEmbeddings = await dbContext.MarketEmbeddings
                         .Where(e => e.RecordId == deal.RecordId)
@@ -220,7 +348,7 @@ public sealed class MarketIngestionService(
                 updated++;
             }
 
-            if (!reuseEmbedding)
+            if (!reuse[i])
             {
                 dbContext.MarketEmbeddings.Add(new MarketEmbeddingEntity
                 {
@@ -228,7 +356,7 @@ public sealed class MarketIngestionService(
                     RecordId = deal.RecordId,
                     ChunkIndex = 0,
                     ChunkText = note.Snippet,
-                    Vector = new Vector(vectorValues!.ToArray()),
+                    Vector = new Vector(vectors[vectorIndex++].ToArray()),
                     Model = identity.Model,
                     IsFixture = identity.IsFixture,
                     CreatedAt = now,
@@ -236,12 +364,12 @@ public sealed class MarketIngestionService(
             }
         }
 
-        // One SaveChangesAsync for the whole run: when every record was unchanged, the change
-        // tracker holds nothing added/modified/removed, so this issues zero SQL and returns 0 --
-        // the literal "changes zero rows" the idempotency proof asserts.
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        // Checkpoint per lot (T-05): what this batch embedded is committed before the next call.
+        if (_options.CheckpointPerBatch)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
 
-        return Result<IngestionSummary>.Success(
-            new IngestionSummary(snapshot.FeedVersion, inserted, updated, unchanged));
+        return Result<FlushOutcome>.Success(new FlushOutcome(inserted, updated, newRunIdentity));
     }
 }

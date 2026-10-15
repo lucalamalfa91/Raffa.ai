@@ -44,6 +44,11 @@ public sealed class FoundryAiGateway(
         embedClient.EmbedAsync(request, cancellationToken);
 
     /// <inheritdoc/>
+    public Task<Result<AiEmbeddingBatchResult>> EmbedBatchAsync(
+        IReadOnlyList<string> texts, CancellationToken cancellationToken = default) =>
+        embedClient.EmbedBatchAsync(texts, cancellationToken);
+
+    /// <inheritdoc/>
     public Task<Result<AiAnswerResult>> AnswerAsync(
         AiAnswerRequest request, CancellationToken cancellationToken = default) =>
         answerClient.AnswerAsync(request, cancellationToken);

@@ -64,6 +64,40 @@ public interface IAiGateway
     /// an explicit "cannot determine" (<see cref="AiAnswerResult.CanDetermine"/>) rather than
     /// fabricating (spec §8.4 "no evidence, no claim"; Appendix C rule 10).
     /// </summary>
+    /// <summary>
+    /// T-05 / F7-T03: embeds <paramref name="texts"/> in one call (Azure OpenAI accepts an array
+    /// <c>input</c>); the result holds one vector per text, in order, and one metadata/usage record
+    /// for the whole batch. The default implementation embeds the texts one by one through
+    /// <see cref="EmbedAsync"/> so a gateway that has no batch endpoint (the fixture gateway, test
+    /// stubs) keeps working unchanged; the Foundry gateway overrides it with a real batched call and
+    /// the logging decorator with a single audit row per batch.
+    /// </summary>
+    async Task<Result<AiEmbeddingBatchResult>> EmbedBatchAsync(
+        IReadOnlyList<string> texts, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(texts);
+        if (texts.Count == 0)
+        {
+            return Result<AiEmbeddingBatchResult>.Failure("Embedding requires at least one text.");
+        }
+
+        var vectors = new List<IReadOnlyList<float>>(texts.Count);
+        AiCallMetadata? metadata = null;
+        foreach (var text in texts)
+        {
+            var single = await EmbedAsync(new AiEmbeddingRequest(text), cancellationToken).ConfigureAwait(false);
+            if (single.IsFailure)
+            {
+                return Result<AiEmbeddingBatchResult>.Failure(single.Error);
+            }
+
+            vectors.Add(single.Value.Vector);
+            metadata ??= single.Value.Metadata;
+        }
+
+        return Result<AiEmbeddingBatchResult>.Success(new AiEmbeddingBatchResult(vectors, metadata!));
+    }
+
     Task<Result<AiAnswerResult>> AnswerAsync(
         AiAnswerRequest request, CancellationToken cancellationToken = default);
 
