@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Logging;
 using Raffa.AiFlows.DocumentExtraction.Stages;
+using Raffa.AiFlows.DocumentExtraction.Verification;
 using Raffa.AiFlows.Shared.Parsing;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
@@ -49,6 +51,7 @@ public sealed class ExtractionOrchestrator
     private readonly StageScheduler _scheduler;
     private readonly IExtractionHangWatch? _hangWatch;
     private readonly ExtractionProgressHeartbeat? _progressHeartbeat;
+    private readonly ILogger<ExtractionOrchestrator>? _logger;
 
     public ExtractionOrchestrator(
         IExtractionRunStore runStore,
@@ -57,7 +60,8 @@ public sealed class ExtractionOrchestrator
         ITenantContext tenantContext,
         ExtractionOrchestrationOptions? options = null,
         IExtractionHangWatch? hangWatch = null,
-        ExtractionProgressHeartbeat? progressHeartbeat = null)
+        ExtractionProgressHeartbeat? progressHeartbeat = null,
+        ILogger<ExtractionOrchestrator>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(runStore);
         ArgumentNullException.ThrowIfNull(aiGateway);
@@ -69,6 +73,7 @@ public sealed class ExtractionOrchestrator
         _tenantContext = tenantContext;
         _hangWatch = hangWatch;
         _progressHeartbeat = progressHeartbeat;
+        _logger = logger;
         Options = options ?? new ExtractionOrchestrationOptions();
 
         var byStage = new Dictionary<ExtractionStage, IExtractionStage>();
@@ -171,6 +176,11 @@ public sealed class ExtractionOrchestrator
             }
         }
 
+        // F5-T07: built at most once per run, on first use, from the same pages the model read.
+        var spanVerifier = Options.SpanVerification == SpanVerificationMode.Off
+            ? null
+            : new Lazy<SpanVerifier>(() => new SpanVerifier(pages, Options.SpanFuzzyThreshold));
+
         var pending = _scheduler.Start(run.StagesToRun, documentText, pages.Count, resumeContext, cancellationToken);
         var stageResults = new List<StagedExtractionStageResult>(ExtractionPipeline.Stages.Count);
 
@@ -181,7 +191,7 @@ public sealed class ExtractionOrchestrator
                 stageResults.Add(
                     run.ReusedStages.Contains(stage)
                         ? await _runStore.ReuseCheckpointAsync(run, stage, cancellationToken).ConfigureAwait(false)
-                        : await ApplyStageResultAsync(run, _stages[stage], pending[stage], cancellationToken).ConfigureAwait(false));
+                        : await ApplyStageResultAsync(run, _stages[stage], pending[stage], spanVerifier, cancellationToken).ConfigureAwait(false));
             }
         }
 
@@ -198,7 +208,7 @@ public sealed class ExtractionOrchestrator
     /// partial document.
     /// </summary>
     private async Task<StagedExtractionStageResult> ApplyStageResultAsync(
-        ExtractionRun run, IExtractionStage stage, Task<StageCall> call, CancellationToken cancellationToken)
+        ExtractionRun run, IExtractionStage stage, Task<StageCall> call, Lazy<SpanVerifier>? spanVerifier, CancellationToken cancellationToken)
     {
         var stageCall = await call.ConfigureAwait(false);
         var extractResult = stageCall.Result;
@@ -242,7 +252,35 @@ public sealed class ExtractionOrchestrator
                 .ConfigureAwait(false);
         }
 
+        facts = VerifySpans(stage.Stage, facts, spanVerifier);
+
         return await _runStore.ApplyAsync(run, stage.Stage, facts, modelId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// F5-T07: checks each fact's span against the document. Shadow counts and logs and hands back the very
+    /// same facts; Gate hands back copies flagged <c>SpanVerified</c>. A verifier fault never fails the stage.
+    /// </summary>
+    private StageFacts VerifySpans(ExtractionStage stage, StageFacts facts, Lazy<SpanVerifier>? spanVerifier)
+    {
+        if (spanVerifier is null)
+        {
+            return facts;
+        }
+
+        try
+        {
+            var (verified, counts) = StageSpanCheck.Run(facts, spanVerifier.Value, Options.SpanVerification);
+            _logger?.LogInformation(
+                "Span verification ({Mode}) for stage {Stage}: found={Found} otherPage={OtherPage} notFound={NotFound} noSpan={NoSpan}",
+                Options.SpanVerification, stage, counts.Found, counts.FoundOnOtherPage, counts.NotFound, counts.NoSpan);
+            return verified;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger?.LogWarning(ex, "Span verification failed for stage {Stage}; the facts are applied unverified.", stage);
+            return facts;
+        }
     }
 
     /// <summary>A gateway failure meaning "the provider could not be reached or kept throttling"

@@ -1,3 +1,5 @@
+using Raffa.AiFlows.DocumentExtraction.Verification;
+
 namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
 
 /// <summary>
@@ -20,4 +22,13 @@ public sealed class ExtractionOrchestrationOptions
     /// <summary>In-run immediate retries of a transient stage failure before it is recorded (today: 0; the
     /// durable, cooled-down retry stays in the hung-processing recovery).</summary>
     public int TransientRetriesPerStage { get; set; }
+
+    /// <summary>F5-T07: what to do with the span verifier's verdicts. <c>Shadow</c> (default) verifies and
+    /// records metrics and a log line, and changes nothing: no field status, value, request or persisted row.
+    /// <c>Gate</c> routes a fact whose span is not found (or only on another page) to review. <c>Off</c>
+    /// does not run the verifier.</summary>
+    public SpanVerificationMode SpanVerification { get; set; } = SpanVerificationMode.Shadow;
+
+    /// <summary>Minimum similarity (1 - edit distance / span length) for an approximate span match.</summary>
+    public double SpanFuzzyThreshold { get; set; } = SpanVerifier.DefaultThreshold;
 }
