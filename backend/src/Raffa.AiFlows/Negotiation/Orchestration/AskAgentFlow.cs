@@ -27,13 +27,18 @@ public sealed record MarketDataCheckResult(IReadOnlyList<PackItem> Items, IReadO
 /// and the market deals. <see langword="null"/> skips the step.</param>
 /// <param name="RunMarketResearch">Whether step 2, the market researcher, runs this turn.</param>
 /// <param name="ConveneCouncil">Whether step 3, the negotiation council, convenes this turn.</param>
+/// <param name="CancellationIsDeadline">A-04: asked when the flow's token is cancelled mid-step.
+/// <see langword="true"/> means the turn's own phase deadline fired (not the caller giving up): the
+/// flow returns what it has with a <c>deadline:</c> failure instead of rethrowing. <see langword="null"/>
+/// (the default) keeps today's behaviour: the cancellation propagates.</param>
 public sealed record AskFlowRequest(
     string Question,
     IReadOnlyList<PackItem> Pack,
     SavingsGoal? Goal,
     Func<CancellationToken, Task<MarketDataCheckResult>>? MarketDataCheck,
     bool RunMarketResearch,
-    bool ConveneCouncil);
+    bool ConveneCouncil,
+    Func<bool>? CancellationIsDeadline = null);
 
 /// <summary>What the flow produced: the market items to append to the pack (steps 1 and 2), the
 /// council's plays and verdict to insert (step 3), every step that ran, in order, and every failure
@@ -46,8 +51,15 @@ public sealed record AskFlowOutcome(
     IReadOnlyList<string> Failures,
     IReadOnlyList<string> MarketQueries,
     string? RunId = null,
-    int PlaysDropped = 0)
+    int PlaysDropped = 0,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? PlayCitations = null)
 {
+    /// <summary>The failure prefix of a flow cut short by the turn's own deadline (A-04).</summary>
+    public const string DeadlineFailureStep = "deadline";
+
+    /// <summary>Whether the flow stopped early because the phase deadline fired (not a step failure).</summary>
+    public bool CutByDeadline => Failures.Any(f => f.StartsWith(DeadlineFailureStep + ":", StringComparison.Ordinal));
+
     private static readonly Regex StepNamePattern = new("^[a-z][a-z0-9-]{0,39}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -115,60 +127,79 @@ public sealed class AskAgentFlow(MarketResearcher marketResearcher, NegotiationC
 
         void AddNew(IEnumerable<PackItem> items) => marketItems.AddRange(items.Where(i => seen.Add(i.CitationKey)));
 
-        // ----- Step 1: the deterministic market data check -----
         var check = MarketDataCheckResult.None;
-        if (request.MarketDataCheck is { } dataCheck)
-        {
-            using (RunContext.BeginStep(MarketDataCheckStepName))
-            {
-                check = await dataCheck(cancellationToken).ConfigureAwait(false);
-            }
-
-            steps.Add(MarketDataCheckStepName);
-            AddNew(check.Items);
-        }
-
-        // ----- Step 2: the market researcher, over the pack plus step 1's findings -----
         IReadOnlyList<string> queries = [];
-        if (request.RunMarketResearch)
-        {
-            MarketResearchOutcome research;
-            using (RunContext.BeginStep(CouncilAgents.MarketResearcherName))
-            {
-                research = await marketResearcher
-                    .QueryMarketRagAsync(request.Question, request.Goal, [.. request.Pack, .. marketItems], check.MissingFields, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (research.Ran)
-            {
-                steps.Add(CouncilAgents.MarketResearcherName);
-                queries = research.Queries;
-            }
-
-            if (research.Failure is not null)
-            {
-                failures.Add($"{CouncilAgents.MarketResearcherName}: {research.Failure}");
-            }
-
-            AddNew(research.Items);
-        }
-
-        // ----- Step 3: the negotiation council, over everything the market steps found -----
         var councilItems = (IReadOnlyList<PackItem>)[];
         var playsDropped = 0;
-        if (request.ConveneCouncil)
-        {
-            var council = await negotiationCouncil
-                .RunAsync(request.Question, [.. request.Pack, .. marketItems], request.Goal, cancellationToken)
-                .ConfigureAwait(false);
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? playCitations = null;
+        var currentStep = MarketDataCheckStepName;
 
-            steps.AddRange(council.AgentsRun);
-            failures.AddRange(council.Failures);
-            councilItems = council.Items;
-            playsDropped = council.PlaysDropped;
+        try
+        {
+            // ----- Step 1: the deterministic market data check -----
+            if (request.MarketDataCheck is { } dataCheck)
+            {
+                using (RunContext.BeginStep(MarketDataCheckStepName))
+                {
+                    check = await dataCheck(cancellationToken).ConfigureAwait(false);
+                }
+
+                steps.Add(MarketDataCheckStepName);
+                AddNew(check.Items);
+            }
+
+            // ----- Step 2: the market researcher, over the pack plus step 1's findings -----
+            if (request.RunMarketResearch)
+            {
+                currentStep = CouncilAgents.MarketResearcherName;
+                MarketResearchOutcome research;
+                using (RunContext.BeginStep(CouncilAgents.MarketResearcherName))
+                {
+                    research = await marketResearcher
+                        .QueryMarketRagAsync(request.Question, request.Goal, [.. request.Pack, .. marketItems], check.MissingFields, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                if (research.Ran)
+                {
+                    steps.Add(CouncilAgents.MarketResearcherName);
+                    queries = research.Queries;
+                }
+
+                if (research.Failure is not null)
+                {
+                    failures.Add($"{CouncilAgents.MarketResearcherName}: {research.Failure}");
+                }
+
+                AddNew(research.Items);
+            }
+
+            // ----- Step 3: the negotiation council, over everything the market steps found -----
+            if (request.ConveneCouncil)
+            {
+                currentStep = "negotiation-council";
+                var council = await negotiationCouncil
+                    .RunAsync(request.Question, [.. request.Pack, .. marketItems], request.Goal, cancellationToken)
+                    .ConfigureAwait(false);
+
+                steps.AddRange(council.AgentsRun);
+                failures.AddRange(council.Failures);
+                councilItems = council.Items;
+                playsDropped = council.PlaysDropped;
+                playCitations = council.PlayCitations;
+            }
+        }
+        catch (OperationCanceledException) when (request.CancellationIsDeadline?.Invoke() == true)
+        {
+            // A-04: the phase deadline fired mid-step (the caller did not cancel). The flow degrades
+            // explicitly: what the earlier steps found stays, the cut step is named, the council (which
+            // either completes or yields nothing) contributes nothing.
+            failures.Add($"{AskFlowOutcome.DeadlineFailureStep}: {currentStep} skipped");
+            councilItems = [];
+            playsDropped = 0;
+            playCitations = null;
         }
 
-        return new AskFlowOutcome(marketItems, councilItems, steps, failures, queries, runId, playsDropped);
+        return new AskFlowOutcome(marketItems, councilItems, steps, failures, queries, runId, playsDropped, playCitations);
     }
 }

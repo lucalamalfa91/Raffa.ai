@@ -12,12 +12,15 @@ namespace Raffa.AiFlows.Negotiation.Orchestration;
 /// <summary>What the council produced for one turn: the pack items to insert, which agents ran,
 /// and which failed (a failed agent degrades the council, never the turn).
 /// <paramref name="PlaysDropped"/> counts the strategist's plays the council discarded (a blank
-/// lever or ask, no citation in the pack, a figure the numeric guard rejects): telemetry only.</summary>
+/// lever or ask, no citation in the pack, a figure the numeric guard rejects): telemetry only.
+/// <paramref name="PlayCitations"/> maps each play item's citation key to the pack keys it is grounded
+/// in, so a later pack budget can tell which plays lost their evidence (F1-T03).</summary>
 public sealed record CouncilOutcome(
     IReadOnlyList<PackItem> Items,
     IReadOnlyList<string> AgentsRun,
     IReadOnlyList<string> Failures,
-    int PlaysDropped = 0)
+    int PlaysDropped = 0,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? PlayCitations = null)
 {
     public static CouncilOutcome Empty { get; } = new([], [], []);
 }
@@ -162,7 +165,7 @@ public sealed class NegotiationCouncil
             return new CouncilOutcome([], agentsRun, failures);
         }
 
-        var items = BuildPlayItems(payload, pack, packKeys, out var playsDropped);
+        var items = BuildPlayItems(payload, pack, packKeys, out var playsDropped, out var playCitations);
 
         // One owner of the verdict (plan F2-D03): the strategist returns plays only; the verdict is
         // computed from the calculators' own items, so it cannot contradict them.
@@ -171,7 +174,7 @@ public sealed class NegotiationCouncil
             items.Add(verdictItem);
         }
 
-        return new CouncilOutcome(items, agentsRun, failures, playsDropped);
+        return new CouncilOutcome(items, agentsRun, failures, playsDropped, playCitations);
     }
 
     /// <summary>One round-one analyst on the runner. A failed analyst is a skipped step, never an
@@ -199,9 +202,12 @@ public sealed class NegotiationCouncil
             .Take(5)
             .ToList();
 
-    private List<PackItem> BuildPlayItems(CouncilPlaysPayload payload, IReadOnlyList<PackItem> pack, HashSet<string> packKeys, out int playsDropped)
+    private List<PackItem> BuildPlayItems(CouncilPlaysPayload payload, IReadOnlyList<PackItem> pack, HashSet<string> packKeys, out int playsDropped,
+        out IReadOnlyDictionary<string, IReadOnlyList<string>> playCitations)
     {
         playsDropped = 0;
+        var citationsByPlay = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        playCitations = citationsByPlay;
         var itemsByKey = pack.ToDictionary(i => i.CitationKey, StringComparer.Ordinal);
         var items = new List<PackItem>();
         var rank = 0;
@@ -243,6 +249,7 @@ public sealed class NegotiationCouncil
                           (string.IsNullOrWhiteSpace(play.Fallback) ? string.Empty : $" Fallback: {play.Fallback.Trim()}") +
                           $" Grounded in: {string.Join(", ", citationKeys)}.";
 
+            citationsByPlay[$"calc:council:play[{rank}]"] = citationKeys;
             items.Add(new PackItem(
                 $"calc:council:play[{rank}]",
                 PackCorpus.Calc,
