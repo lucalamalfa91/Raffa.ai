@@ -313,4 +313,24 @@ internal static class PackItemFactory
     internal static string Amount2(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
     internal static string Pct(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero).ToString("0.##", CultureInfo.InvariantCulture);
+
+    /// <summary>The supplier's deals that speak to this contract: same currency and geography
+    /// when the corpus has them, else same currency, else everything — a wide corpus must
+    /// benchmark a CHF contract against CHF peers, not against the cheapest region.</summary>
+    internal static IReadOnlyList<MarketDeal> NarrowDealsToContract(IReadOnlyList<MarketDeal> deals, string currency, string? geography)
+    {
+        var sameCurrency = deals.Where(d => string.Equals(d.Currency, currency, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (sameCurrency.Count == 0)
+        {
+            return deals;
+        }
+
+        if (geography is null)
+        {
+            return sameCurrency;
+        }
+
+        var sameGeography = sameCurrency.Where(d => string.Equals(d.Geography, geography, StringComparison.OrdinalIgnoreCase)).ToList();
+        return sameGeography.Count > 0 ? sameGeography : sameCurrency;
+    }
 }
