@@ -1477,7 +1477,12 @@ gate → planner → pack → answer → guards pipeline, with four additions:
       steps 1–2.
    `Chat:Council` carries the researcher's switch and bounds
    (`MarketResearchEnabled`, `MarketResearchMaxQueries`,
-   `MarketResearchTopK`, `MarketResearchMaxItems`). The deterministic
+   `MarketResearchTopK`, `MarketResearchMaxItems`) and three opt-in
+   refinements, all off by default: `MarketResearchParallelQueries` (the
+   researcher's queries run concurrently, merged in query order),
+   `SemanticPlayRetry` (a strategist answer with no usable play is sent back
+   once with the violations named) and `MarketNoteValues` (a market note
+   carries its sample size and as-of date as pack values). The deterministic
    proposal opens with the same gaps and estimates ("Sul contratto Oracle
    mancano gli importi annuali. Dai dati di mercato, per aziende di 50-500
    dipendenti il valore annuo tipico è tra EUR 250,000 e EUR 500,000: è una

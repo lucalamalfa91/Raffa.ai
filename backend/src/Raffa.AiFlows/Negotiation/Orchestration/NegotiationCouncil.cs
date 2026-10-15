@@ -158,7 +158,10 @@ public sealed class NegotiationCouncil
 
         // The one required step: it cannot deliver (gateway failure, unusable payload, deadline) and
         // there is no council for the turn.
-        var strategistResult = await runner.RunAsync(leverStrategist, strategistInput, cancellationToken).ConfigureAwait(false);
+        var strategist = options.SemanticPlayRetry
+            ? new LeverStrategistStep(options.AgentDeadline, PlaysVerifier(pack, packKeys))
+            : leverStrategist;
+        var strategistResult = await runner.RunAsync(strategist, strategistInput, cancellationToken).ConfigureAwait(false);
         if (strategistResult.Value is not { } payload)
         {
             failures.Add(strategistResult.Describe()!);
@@ -175,6 +178,42 @@ public sealed class NegotiationCouncil
         }
 
         return new CouncilOutcome(items, agentsRun, failures, playsDropped, playCitations);
+    }
+
+    /// <summary>F2-T09: the strategist's semantic check. It rejects an answer only when <em>none</em> of its
+    /// plays survives the local validation (so a partly valid answer is never lost to a retry that could
+    /// come back worse), and names why each play fell, so the one retry can fix the keys and figures.</summary>
+    private static IStepVerifier<CouncilStrategistInput, CouncilPlaysPayload> PlaysVerifier(
+        IReadOnlyList<PackItem> pack, HashSet<string> packKeys) =>
+        Verifier.From<CouncilStrategistInput, CouncilPlaysPayload>(
+            "council-plays",
+            (_, payload) =>
+            {
+                var plays = payload.Plays ?? [];
+                var violations = plays.Select(p => PlayViolation(p, packKeys, pack)).ToList();
+                return plays.Count > 0 && violations.All(v => v is not null)
+                    ? StepVerdict.Reject(violations.Select((v, i) => $"play {plays[i].Rank}: {v}").ToArray())
+                    : StepVerdict.Pass;
+            },
+            verdict => "Your previous answer was rejected because none of its plays could be used: " +
+                       string.Join(' ', verdict.Violations) +
+                       " Return plays that cite only citationKeys that appear in the input items and state no figure that is not in them.");
+
+    /// <summary>Why a play cannot enter the pack, or <see langword="null"/> when it can.</summary>
+    private static string? PlayViolation(CouncilPlay play, HashSet<string> packKeys, IReadOnlyList<PackItem> pack)
+    {
+        if (string.IsNullOrWhiteSpace(play.Lever) || string.IsNullOrWhiteSpace(play.Ask))
+        {
+            return "it has no lever or no ask.";
+        }
+
+        if (!(play.CitationKeys ?? []).Any(packKeys.Contains))
+        {
+            return "it cites no key that is in the input items.";
+        }
+
+        var text = string.Join(" ", new[] { play.Ask, play.Timing, play.Fallback }.Where(t => !string.IsNullOrWhiteSpace(t)));
+        return NumericGuard.Validate(text, pack).Passed ? null : "it states a figure that is not in the input items.";
     }
 
     /// <summary>One round-one analyst on the runner. A failed analyst is a skipped step, never an
@@ -214,25 +253,13 @@ public sealed class NegotiationCouncil
 
         foreach (var play in (payload.Plays ?? []).OrderBy(p => p.Rank))
         {
-            if (string.IsNullOrWhiteSpace(play.Lever) || string.IsNullOrWhiteSpace(play.Ask))
+            if (PlayViolation(play, packKeys, pack) is not null)
             {
                 playsDropped++;
                 continue;
             }
 
-            var citationKeys = (play.CitationKeys ?? []).Where(packKeys.Contains).Distinct(StringComparer.Ordinal).ToList();
-            if (citationKeys.Count == 0)
-            {
-                playsDropped++;
-                continue;
-            }
-
-            var text = string.Join(" ", new[] { play.Ask, play.Timing, play.Fallback }.Where(t => !string.IsNullOrWhiteSpace(t)));
-            if (!NumericGuard.Validate(text, pack).Passed)
-            {
-                playsDropped++;
-                continue;
-            }
+            var citationKeys = play.CitationKeys!.Where(packKeys.Contains).Distinct(StringComparer.Ordinal).ToList();
 
             var wantedValueKeys = (play.ExpectedValueKeys ?? []).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var citedItems = citationKeys.Select(k => itemsByKey[k]).ToList();

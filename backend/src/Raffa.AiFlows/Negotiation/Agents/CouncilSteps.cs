@@ -96,7 +96,14 @@ internal sealed class MarketAnalystStep(TimeSpan deadline) : IAgentStep<CouncilA
 }
 
 /// <summary>Round two: the lever strategist, over both analysts' findings.</summary>
-internal sealed class LeverStrategistStep(TimeSpan deadline) : IAgentStep<CouncilStrategistInput, CouncilPlaysPayload>
+/// <param name="deadline">The council's per-agent backstop.</param>
+/// <param name="verifier">F2-T09: the check on the plays before they are accepted (one semantic retry
+/// with the violations named); <see langword="null"/> accepts whatever the model returned, as always.</param>
+internal sealed class LeverStrategistStep(
+    TimeSpan deadline, IStepVerifier<CouncilStrategistInput, CouncilPlaysPayload>? verifier = null)
+    : IAgentStep<CouncilStrategistInput, CouncilPlaysPayload>
 {
     public AgentDefinition Definition { get; } = CouncilStepDefinitions.LeverStrategist(deadline);
+
+    public IStepVerifier<CouncilStrategistInput, CouncilPlaysPayload>? Verifier { get; } = verifier;
 }
