@@ -54,15 +54,12 @@ public delegate Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUse
 /// </para>
 /// </summary>
 public sealed class WebModeFlow(
-    IOptionsMonitor<WebResearchOptions> webResearchOptionsMonitor,
-    IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
+    WebGatekeeper gatekeeper,
     IWebResearchBudget webResearchBudget,
     WebResearchFlow webResearchFlow,
     CapabilityRouting capabilityRouting,
     IQueryHasher queryHasher)
 {
-    /// <summary>F3-T10: read on every use, so the kill switch applies without a restart.</summary>
-    private WebResearchOptions webResearchOptions => webResearchOptionsMonitor.CurrentValue;
 
     private const string WebModeAuditTag = "mode=toggle";
 
@@ -182,31 +179,11 @@ public sealed class WebModeFlow(
             false);
     }
 
-    /// <summary>The ADR-030 gates in the order a toggle turn meets them; the topic lexicon is not
-    /// one of them. <see cref="WebGate.TooShort"/> when fewer than two searchable words survive the
-    /// sanitiser.</summary>
-    private async Task<(WebGate Gate, string? Query)> CheckGatesAsync(
-        TenantId tenantId, string question, CancellationToken cancellationToken)
-    {
-        if (!webResearchOptions.Enabled)
-        {
-            return (WebGate.KillSwitch, null);
-        }
-
-        if (webResearchOptions.RequireWorkspaceOptIn
-            && !await workspaceWebResearchPolicy.IsEnabledAsync(tenantId, cancellationToken).ConfigureAwait(false))
-        {
-            return (WebGate.WorkspaceOptIn, null);
-        }
-
-        if (!await webResearchBudget.HasRemainingAsync(tenantId, cancellationToken).ConfigureAwait(false))
-        {
-            return (WebGate.Budget, null);
-        }
-
-        var query = WebQuerySanitizer.Sanitize(question, webResearchOptions.MaxQueryChars);
-        return query is null ? (WebGate.TooShort, null) : (WebGate.Open, query);
-    }
+    /// <summary>The ADR-030 gates in the order a toggle turn meets them (<see cref="WebGatekeeper"/>); the
+    /// topic lexicon is not one of them.</summary>
+    private Task<(WebGate Gate, string? Query)> CheckGatesAsync(
+        TenantId tenantId, string question, CancellationToken cancellationToken) =>
+        gatekeeper.CheckToggleAsync(tenantId, question, cancellationToken);
 
     /// <summary>One budgeted research call with the open persona, audited like a consented one
     /// (hashes and counts only, ADR-011). <see langword="null"/> when the day's budget ran out

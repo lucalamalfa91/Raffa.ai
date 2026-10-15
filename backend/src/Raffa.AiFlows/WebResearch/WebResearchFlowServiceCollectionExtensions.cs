@@ -61,6 +61,7 @@ internal static class WebResearchFlowServiceCollectionExtensions
                 ? () => configuration[KeyedQueryHasher.KeyConfigurationPath]
                 : () => null,
             sp.GetService<ILogger<KeyedQueryHasher>>()));
+        services.AddScoped<WebGatekeeper>();
         services.AddScoped<WebResearchFlow>();
         services.AddScoped<WebModeFlow>();
 

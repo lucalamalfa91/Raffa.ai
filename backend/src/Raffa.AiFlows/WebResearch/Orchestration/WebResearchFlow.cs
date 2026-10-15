@@ -54,7 +54,7 @@ public sealed class WebResearchFlow(
     IOptionsMonitor<WebResearchOptions> webResearchOptionsMonitor,
     WebResearchComposer webResearchComposer,
     IWebResearchBudget webResearchBudget,
-    IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
+    WebGatekeeper gatekeeper,
     IAuditWriter auditWriter,
     IClock clock,
     CapabilityRouting capabilityRouting,
@@ -79,34 +79,9 @@ public sealed class WebResearchFlow(
         return gate == WebGate.Open ? offer : null;
     }
 
-    private async Task<(WebGate Gate, WebResearchRequest? Offer)> CheckGatesAsync(
-        TenantId tenantId, string question, CancellationToken cancellationToken)
-    {
-        if (!webResearchOptions.Enabled)
-        {
-            return (WebGate.KillSwitch, null);
-        }
-
-        var purpose = WebResearchTopicLexicon.Classify(question);
-        var query = WebQuerySanitizer.Sanitize(question, webResearchOptions.MaxQueryChars);
-        if (purpose is null || query is null)
-        {
-            return (WebGate.NoTopic, null);
-        }
-
-        if (webResearchOptions.RequireWorkspaceOptIn
-            && !await workspaceWebResearchPolicy.IsEnabledAsync(tenantId, cancellationToken).ConfigureAwait(false))
-        {
-            return (WebGate.WorkspaceOptIn, null);
-        }
-
-        if (!await webResearchBudget.HasRemainingAsync(tenantId, cancellationToken).ConfigureAwait(false))
-        {
-            return (WebGate.Budget, null);
-        }
-
-        return (WebGate.Open, new WebResearchRequest(query, purpose));
-    }
+    private Task<(WebGate Gate, WebResearchRequest? Offer)> CheckGatesAsync(
+        TenantId tenantId, string question, CancellationToken cancellationToken) =>
+        gatekeeper.CheckConsentedAsync(tenantId, question, cancellationToken);
 
     /// <summary>An explicit or forced <see cref="Raffa.Chat.Domain.AskIntent.WebResearch"/> turn:
     /// the consent question when every gate is open, otherwise a redirect that names the closed
@@ -147,19 +122,12 @@ public sealed class WebResearchFlow(
         var queryHash = queryHasher.Compute(authorized.Query);
 
         // A consent authorises one question; the gates still decide at execution time.
-        if (!webResearchOptions.Enabled)
+        var recheck = await gatekeeper.RecheckBeforeRunAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        if (recheck != WebGate.Open)
         {
-            await WriteAuditAsync(tenantId, AuditRefusedAction, actor, $"gate={WebGate.KillSwitch} stage=run queryHash={queryHash}", cancellationToken)
+            await WriteAuditAsync(tenantId, AuditRefusedAction, actor, $"gate={recheck} stage=run queryHash={queryHash}", cancellationToken)
                 .ConfigureAwait(false);
-            return (BuildGateClosedReply(WebGate.KillSwitch, question, portfolio, routingContext, resolveAbstainRecoveryActions), false);
-        }
-
-        if (webResearchOptions.RequireWorkspaceOptIn
-            && !await workspaceWebResearchPolicy.IsEnabledAsync(tenantId, cancellationToken).ConfigureAwait(false))
-        {
-            await WriteAuditAsync(tenantId, AuditRefusedAction, actor, $"gate={WebGate.WorkspaceOptIn} stage=run queryHash={queryHash}", cancellationToken)
-                .ConfigureAwait(false);
-            return (BuildGateClosedReply(WebGate.WorkspaceOptIn, question, portfolio, routingContext, resolveAbstainRecoveryActions), false);
+            return (BuildGateClosedReply(recheck, question, portfolio, routingContext, resolveAbstainRecoveryActions), false);
         }
 
         await WriteAuditAsync(
