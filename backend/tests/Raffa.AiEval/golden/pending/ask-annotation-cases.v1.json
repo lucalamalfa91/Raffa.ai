@@ -1,0 +1,1294 @@
+{
+  "$comment": "F1-D09 / LANG-06 / F1-D14 DRAFT Ask annotation material for FR/ES/DE (IT/EN already in golden/*.json) plus obligation-question templates in 5 languages. Schema: Ask GoldenCase fields + translationOf; NOT loaded (GoldenSet loads golden/*.json top level only, and GoldenCase.Language is it|en). Needs native-speaker review.",
+  "version": "0.1.0",
+  "status": "draft-pending-review",
+  "provenance": {
+    "authorship": "Questions are model translations (Claude) of existing it/en cases in golden/0*.json; the user explicitly delegated translation to the model. Expectations are copied from the base case, not re-derived.",
+    "notRealUserData": true,
+    "sources": [
+      "backend/tests/Raffa.AiEval/golden/01..03-*.json (repo)",
+      "golden/pending/GLOSSARY.md terms used for domain words"
+    ],
+    "licence": "Repo content; no external text copied."
+  },
+  "loaderNeeds": "GoldenCase.Language must accept fr/es/de and the evaluator must tolerate non-IT/EN lexicons (IntentPlanner/DomainGate are IT/EN regexes: LANG-03). Until then these cases are expected to fail routing and serve as the baseline gap.",
+  "cases": [
+    {
+      "id": "seeded-greeting-ciao-fr",
+      "translationOf": "seeded-greeting-ciao-it",
+      "tenantFixture": "seeded",
+      "intent": "greeting",
+      "language": "fr",
+      "question": "Bonjour",
+      "expectedKind": "redirect",
+      "expectedNumbers": [
+        "2026-10-31"
+      ],
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-greeting-ciao-es",
+      "translationOf": "seeded-greeting-ciao-it",
+      "tenantFixture": "seeded",
+      "intent": "greeting",
+      "language": "es",
+      "question": "Hola",
+      "expectedKind": "redirect",
+      "expectedNumbers": [
+        "2026-10-31"
+      ],
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-greeting-ciao-de",
+      "translationOf": "seeded-greeting-ciao-it",
+      "tenantFixture": "seeded",
+      "intent": "greeting",
+      "language": "de",
+      "question": "Hallo",
+      "expectedKind": "redirect",
+      "expectedNumbers": [
+        "2026-10-31"
+      ],
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-off_domain-football-fr",
+      "translationOf": "seeded-off_domain-football-en",
+      "tenantFixture": "seeded",
+      "intent": "off_domain",
+      "language": "fr",
+      "question": "Qui a gagné le match de football hier ?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-off_domain-football-es",
+      "translationOf": "seeded-off_domain-football-en",
+      "tenantFixture": "seeded",
+      "intent": "off_domain",
+      "language": "es",
+      "question": "¿Quién ganó el partido de fútbol de ayer?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-off_domain-football-de",
+      "translationOf": "seeded-off_domain-football-en",
+      "tenantFixture": "seeded",
+      "intent": "off_domain",
+      "language": "de",
+      "question": "Wer hat gestern das Fußballspiel gewonnen?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "empty-off_domain-carbonara-fr",
+      "translationOf": "empty-off_domain-carbonara-it",
+      "tenantFixture": "empty",
+      "intent": "off_domain",
+      "language": "fr",
+      "question": "Peux-tu me donner la recette de la carbonara ?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "empty-off_domain-carbonara-es",
+      "translationOf": "empty-off_domain-carbonara-it",
+      "tenantFixture": "empty",
+      "intent": "off_domain",
+      "language": "es",
+      "question": "¿Me das la receta de la carbonara?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "empty-off_domain-carbonara-de",
+      "translationOf": "empty-off_domain-carbonara-it",
+      "tenantFixture": "empty",
+      "intent": "off_domain",
+      "language": "de",
+      "question": "Kannst du mir das Rezept für Carbonara geben?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "empty-legal-enforceable-fr",
+      "translationOf": "empty-legal-enforceable-en",
+      "tenantFixture": "empty",
+      "intent": "legal",
+      "language": "fr",
+      "question": "Cette clause est-elle opposable devant un tribunal ?",
+      "expectedKind": "refusal",
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "empty-legal-enforceable-es",
+      "translationOf": "empty-legal-enforceable-en",
+      "tenantFixture": "empty",
+      "intent": "legal",
+      "language": "es",
+      "question": "¿Es exigible esta cláusula ante un tribunal?",
+      "expectedKind": "refusal",
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "empty-legal-enforceable-de",
+      "translationOf": "empty-legal-enforceable-en",
+      "tenantFixture": "empty",
+      "intent": "legal",
+      "language": "de",
+      "question": "Ist diese Klausel vor Gericht durchsetzbar?",
+      "expectedKind": "refusal",
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-legal-sue-fr",
+      "translationOf": "seeded-legal-sue-en",
+      "tenantFixture": "seeded",
+      "intent": "legal",
+      "language": "fr",
+      "question": "Pouvons-nous les poursuivre en justice à cause de cette clause ?",
+      "expectedKind": "refusal",
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-legal-sue-es",
+      "translationOf": "seeded-legal-sue-en",
+      "tenantFixture": "seeded",
+      "intent": "legal",
+      "language": "es",
+      "question": "¿Podemos demandarles por esta cláusula?",
+      "expectedKind": "refusal",
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-legal-sue-de",
+      "translationOf": "seeded-legal-sue-en",
+      "tenantFixture": "seeded",
+      "intent": "legal",
+      "language": "de",
+      "question": "Können wir sie wegen dieser Klausel verklagen?",
+      "expectedKind": "refusal",
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability-what-can-you-do-fr",
+      "translationOf": "seeded-capability-what-can-you-do-en",
+      "tenantFixture": "seeded",
+      "intent": "capability",
+      "language": "fr",
+      "question": "Que sais-tu faire ?",
+      "expectedKind": "answer",
+      "expectedCitationCorpora": [
+        "raffa"
+      ],
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability-what-can-you-do-es",
+      "translationOf": "seeded-capability-what-can-you-do-en",
+      "tenantFixture": "seeded",
+      "intent": "capability",
+      "language": "es",
+      "question": "¿Qué sabes hacer?",
+      "expectedKind": "answer",
+      "expectedCitationCorpora": [
+        "raffa"
+      ],
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability-what-can-you-do-de",
+      "translationOf": "seeded-capability-what-can-you-do-en",
+      "tenantFixture": "seeded",
+      "intent": "capability",
+      "language": "de",
+      "question": "Was kannst du?",
+      "expectedKind": "answer",
+      "expectedCitationCorpora": [
+        "raffa"
+      ],
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-needs_document-databricks-fr",
+      "translationOf": "seeded-needs_document-databricks-it",
+      "tenantFixture": "seeded",
+      "intent": "needs_document",
+      "language": "fr",
+      "question": "Quand expire le contrat Databricks ?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-needs_document-databricks-es",
+      "translationOf": "seeded-needs_document-databricks-it",
+      "tenantFixture": "seeded",
+      "intent": "needs_document",
+      "language": "es",
+      "question": "¿Cuándo vence el contrato de Databricks?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-needs_document-databricks-de",
+      "translationOf": "seeded-needs_document-databricks-it",
+      "tenantFixture": "seeded",
+      "intent": "needs_document",
+      "language": "de",
+      "question": "Wann läuft der Databricks-Vertrag aus?",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-salesforce-expire-fr",
+      "translationOf": "seeded-structured_fact-salesforce-expire-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "fr",
+      "question": "Quand expire le contrat Salesforce ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "2026-10-18"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-salesforce-expire-es",
+      "translationOf": "seeded-structured_fact-salesforce-expire-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "es",
+      "question": "¿Cuándo vence el contrato de Salesforce?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "2026-10-18"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-salesforce-expire-de",
+      "translationOf": "seeded-structured_fact-salesforce-expire-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "de",
+      "question": "Wann läuft der Salesforce-Vertrag aus?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "2026-10-18"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-docusign-notice-fr",
+      "translationOf": "seeded-structured_fact-docusign-notice-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "fr",
+      "question": "Quelle est la date limite de préavis pour DocuSign ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-docusign-notice-es",
+      "translationOf": "seeded-structured_fact-docusign-notice-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "es",
+      "question": "¿Cuál es la fecha límite de preaviso de DocuSign?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-docusign-notice-de",
+      "translationOf": "seeded-structured_fact-docusign-notice-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "de",
+      "question": "Wann ist die Kündigungsfrist für DocuSign abgelaufen?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-microsoft-end-fr",
+      "translationOf": "seeded-structured_fact-microsoft-end-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "fr",
+      "question": "Quelle est la date de fin de l'accord Microsoft ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-06-30",
+        "2027-03-31"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-microsoft-end-es",
+      "translationOf": "seeded-structured_fact-microsoft-end-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "es",
+      "question": "¿Cuál es la fecha de finalización del acuerdo con Microsoft?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-06-30",
+        "2027-03-31"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-microsoft-end-de",
+      "translationOf": "seeded-structured_fact-microsoft-end-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "de",
+      "question": "Was ist das Enddatum des Microsoft-Vertrags?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-06-30",
+        "2027-03-31"
+      ],
+      "expectedCitationCorpora": [
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-120-days-fr",
+      "translationOf": "seeded-structured_fact-120-days-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "fr",
+      "question": "Quels contrats se renouvellent dans les 120 prochains jours ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-31",
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-120-days-es",
+      "translationOf": "seeded-structured_fact-120-days-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "es",
+      "question": "¿Qué contratos se renuevan en los próximos 120 días?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-31",
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-120-days-de",
+      "translationOf": "seeded-structured_fact-120-days-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "de",
+      "question": "Welche Verträge verlängern sich in den nächsten 120 Tagen?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-31",
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-annual-spend-fr",
+      "translationOf": "seeded-structured_fact-annual-spend-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "fr",
+      "question": "Quelle est notre dépense annuelle totale ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "4298000"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-annual-spend-es",
+      "translationOf": "seeded-structured_fact-annual-spend-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "es",
+      "question": "¿Cuál es nuestro gasto anual total?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "4298000"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-annual-spend-de",
+      "translationOf": "seeded-structured_fact-annual-spend-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "de",
+      "question": "Wie hoch sind unsere jährlichen Gesamtausgaben?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "4298000"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-off-topic-spend-fr",
+      "translationOf": "seeded-structured_fact-off-topic-spend-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "fr",
+      "question": "Combien avons-nous dépensé en traiteur de bureau ?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-off-topic-spend-es",
+      "translationOf": "seeded-structured_fact-off-topic-spend-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "es",
+      "question": "¿Cuánto gastamos en catering de oficina?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-structured_fact-off-topic-spend-de",
+      "translationOf": "seeded-structured_fact-off-topic-spend-en",
+      "tenantFixture": "seeded",
+      "intent": "structured_fact",
+      "language": "de",
+      "question": "Wie viel haben wir für Büro-Catering ausgegeben?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-clause-liability-aws-fr",
+      "translationOf": "seeded-clause-liability-aws-en",
+      "tenantFixture": "seeded",
+      "intent": "clause",
+      "language": "fr",
+      "question": "Quelle responsabilité avons-nous avec AWS ?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-clause-liability-aws-es",
+      "translationOf": "seeded-clause-liability-aws-en",
+      "tenantFixture": "seeded",
+      "intent": "clause",
+      "language": "es",
+      "question": "¿Qué responsabilidad tenemos con AWS?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-clause-liability-aws-de",
+      "translationOf": "seeded-clause-liability-aws-en",
+      "tenantFixture": "seeded",
+      "intent": "clause",
+      "language": "de",
+      "question": "Welche Haftung haben wir bei AWS?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-clause-uncapped-fr",
+      "translationOf": "seeded-clause-uncapped-en",
+      "tenantFixture": "seeded",
+      "intent": "clause",
+      "language": "fr",
+      "question": "Quels contrats contiennent une responsabilité illimitée ?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-clause-uncapped-es",
+      "translationOf": "seeded-clause-uncapped-en",
+      "tenantFixture": "seeded",
+      "intent": "clause",
+      "language": "es",
+      "question": "¿Qué contratos contienen responsabilidad ilimitada?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-clause-uncapped-de",
+      "translationOf": "seeded-clause-uncapped-en",
+      "tenantFixture": "seeded",
+      "intent": "clause",
+      "language": "de",
+      "question": "Welche Verträge enthalten unbeschränkte Haftung?",
+      "expectedKind": "abstain",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-market_compare-salesforce-fr",
+      "translationOf": "seeded-market_compare-salesforce-en",
+      "tenantFixture": "seeded",
+      "intent": "market_compare",
+      "language": "fr",
+      "question": "Mon contrat Salesforce est-il au-dessus du marché ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "CHF 132"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "market"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-market_compare-salesforce-es",
+      "translationOf": "seeded-market_compare-salesforce-en",
+      "tenantFixture": "seeded",
+      "intent": "market_compare",
+      "language": "es",
+      "question": "¿Mi contrato de Salesforce está por encima del mercado?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "CHF 132"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "market"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-market_compare-salesforce-de",
+      "translationOf": "seeded-market_compare-salesforce-en",
+      "tenantFixture": "seeded",
+      "intent": "market_compare",
+      "language": "de",
+      "question": "Liegt mein Salesforce-Vertrag über dem Markt?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "CHF 132"
+      ],
+      "expectedCitationCorpora": [
+        "tenant",
+        "market"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-renewal_strategy-approach-fr",
+      "translationOf": "seeded-renewal_strategy-approach-en",
+      "tenantFixture": "seeded",
+      "intent": "renewal_strategy",
+      "language": "fr",
+      "question": "Comment aborder le renouvellement de Salesforce ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "2026-10-18"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-renewal_strategy-approach-es",
+      "translationOf": "seeded-renewal_strategy-approach-en",
+      "tenantFixture": "seeded",
+      "intent": "renewal_strategy",
+      "language": "es",
+      "question": "¿Cómo debería abordar la renovación de Salesforce?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "2026-10-18"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-renewal_strategy-approach-de",
+      "translationOf": "seeded-renewal_strategy-approach-en",
+      "tenantFixture": "seeded",
+      "intent": "renewal_strategy",
+      "language": "de",
+      "question": "Wie sollte ich die Salesforce-Verlängerung angehen?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2027-01-15",
+        "2026-10-18"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-renewal_strategy-negoziare-docusign-fr",
+      "translationOf": "seeded-renewal_strategy-negoziare-docusign-it",
+      "tenantFixture": "seeded",
+      "intent": "renewal_strategy",
+      "language": "fr",
+      "question": "Comment mieux négocier le contrat DocuSign ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-31",
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-renewal_strategy-negoziare-docusign-es",
+      "translationOf": "seeded-renewal_strategy-negoziare-docusign-it",
+      "tenantFixture": "seeded",
+      "intent": "renewal_strategy",
+      "language": "es",
+      "question": "¿Cómo negociar mejor el contrato de DocuSign?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-31",
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-renewal_strategy-negoziare-docusign-de",
+      "translationOf": "seeded-renewal_strategy-negoziare-docusign-it",
+      "tenantFixture": "seeded",
+      "intent": "renewal_strategy",
+      "language": "de",
+      "question": "Wie kann ich den DocuSign-Vertrag besser verhandeln?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "2026-10-31",
+        "2026-10-02"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_strategy-critical-fr",
+      "translationOf": "seeded-portfolio_strategy-critical-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_strategy",
+      "language": "fr",
+      "question": "Quels sont les contrats les plus critiques ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20.2",
+        "15.5",
+        "14.7",
+        "10.8"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_strategy-critical-es",
+      "translationOf": "seeded-portfolio_strategy-critical-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_strategy",
+      "language": "es",
+      "question": "¿Cuáles son los contratos más críticos?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20.2",
+        "15.5",
+        "14.7",
+        "10.8"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_strategy-critical-de",
+      "translationOf": "seeded-portfolio_strategy-critical-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_strategy",
+      "language": "de",
+      "question": "Welche Verträge sind am kritischsten?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20.2",
+        "15.5",
+        "14.7",
+        "10.8"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_strategy-largest-saving-fr",
+      "translationOf": "seeded-portfolio_strategy-largest-saving-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_strategy",
+      "language": "fr",
+      "question": "Où se trouve la plus grande économie en ce moment ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20.2"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_strategy-largest-saving-es",
+      "translationOf": "seeded-portfolio_strategy-largest-saving-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_strategy",
+      "language": "es",
+      "question": "¿Dónde está el mayor ahorro ahora mismo?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20.2"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_strategy-largest-saving-de",
+      "translationOf": "seeded-portfolio_strategy-largest-saving-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_strategy",
+      "language": "de",
+      "question": "Wo liegt aktuell die größte Einsparung?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20.2"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-savings-levers-20k-salesforce-fr",
+      "translationOf": "seeded-savings-levers-20k-salesforce-en",
+      "tenantFixture": "seeded",
+      "intent": "savings",
+      "language": "fr",
+      "question": "Quels leviers puis-je utiliser pour économiser 20 k sur le renouvellement de Salesforce ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20000"
+      ],
+      "expectedCitationCorpora": [
+        "calc",
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-savings-levers-20k-salesforce-es",
+      "translationOf": "seeded-savings-levers-20k-salesforce-en",
+      "tenantFixture": "seeded",
+      "intent": "savings",
+      "language": "es",
+      "question": "¿Qué palancas puedo usar para ahorrar 20 k en la renovación de Salesforce?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20000"
+      ],
+      "expectedCitationCorpora": [
+        "calc",
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-savings-levers-20k-salesforce-de",
+      "translationOf": "seeded-savings-levers-20k-salesforce-en",
+      "tenantFixture": "seeded",
+      "intent": "savings",
+      "language": "de",
+      "question": "Welche Hebel kann ich nutzen, um bei der Salesforce-Verlängerung 20 Tsd. einzusparen?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "20000"
+      ],
+      "expectedCitationCorpora": [
+        "calc",
+        "tenant"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_savings_target-cut-costs-fr",
+      "translationOf": "seeded-portfolio_savings_target-cut-costs-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_savings_target",
+      "language": "fr",
+      "question": "Comment réduire les coûts de 40 k ce trimestre sur mes contrats actifs ?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "40000"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_savings_target-cut-costs-es",
+      "translationOf": "seeded-portfolio_savings_target-cut-costs-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_savings_target",
+      "language": "es",
+      "question": "¿Cómo reduzco los costes en 40 k este trimestre con mis contratos activos?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "40000"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-portfolio_savings_target-cut-costs-de",
+      "translationOf": "seeded-portfolio_savings_target-cut-costs-en",
+      "tenantFixture": "seeded",
+      "intent": "portfolio_savings_target",
+      "language": "de",
+      "question": "Wie senke ich die Kosten in diesem Quartal um 40 Tsd. über meine aktiven Verträge?",
+      "expectedKind": "answer",
+      "expectedNumbers": [
+        "40000"
+      ],
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-document_status-askable-fr",
+      "translationOf": "seeded-document_status-askable-en",
+      "tenantFixture": "seeded",
+      "intent": "document_status",
+      "language": "fr",
+      "question": "Quels documents ne sont pas encore interrogeables ?",
+      "expectedKind": "answer",
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-document_status-askable-es",
+      "translationOf": "seeded-document_status-askable-en",
+      "tenantFixture": "seeded",
+      "intent": "document_status",
+      "language": "es",
+      "question": "¿Qué documentos aún no se pueden consultar?",
+      "expectedKind": "answer",
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-document_status-askable-de",
+      "translationOf": "seeded-document_status-askable-en",
+      "tenantFixture": "seeded",
+      "intent": "document_status",
+      "language": "de",
+      "question": "Welche Dokumente sind noch nicht abfragbar?",
+      "expectedKind": "answer",
+      "expectedCitationCorpora": [
+        "calc"
+      ],
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-quote_route-compare-fr",
+      "translationOf": "seeded-quote_route-compare-en",
+      "tenantFixture": "seeded",
+      "intent": "quote_route",
+      "language": "fr",
+      "question": "Ce devis est-il conforme au marché ?",
+      "expectedKind": "answer",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-quote_route-compare-es",
+      "translationOf": "seeded-quote_route-compare-en",
+      "tenantFixture": "seeded",
+      "intent": "quote_route",
+      "language": "es",
+      "question": "¿Este presupuesto está en línea con el mercado?",
+      "expectedKind": "answer",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-quote_route-compare-de",
+      "translationOf": "seeded-quote_route-compare-en",
+      "tenantFixture": "seeded",
+      "intent": "quote_route",
+      "language": "de",
+      "question": "Liegt dieses Angebot im Rahmen des Marktes?",
+      "expectedKind": "answer",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-navigate-open-documents-fr",
+      "translationOf": "seeded-navigate-open-documents-en",
+      "tenantFixture": "seeded",
+      "intent": "navigate",
+      "language": "fr",
+      "question": "Ouvre les documents",
+      "expectedKind": "answer",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-navigate-open-documents-es",
+      "translationOf": "seeded-navigate-open-documents-en",
+      "tenantFixture": "seeded",
+      "intent": "navigate",
+      "language": "es",
+      "question": "Abre los documentos",
+      "expectedKind": "answer",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-navigate-open-documents-de",
+      "translationOf": "seeded-navigate-open-documents-en",
+      "tenantFixture": "seeded",
+      "intent": "navigate",
+      "language": "de",
+      "question": "Öffne die Dokumente",
+      "expectedKind": "answer",
+      "expectNoCitations": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability_gap-export-excel-fr",
+      "translationOf": "seeded-capability_gap-export-excel-en",
+      "tenantFixture": "seeded",
+      "intent": "capability_gap",
+      "language": "fr",
+      "question": "Exporte mes contrats vers Excel",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability_gap-export-excel-es",
+      "translationOf": "seeded-capability_gap-export-excel-en",
+      "tenantFixture": "seeded",
+      "intent": "capability_gap",
+      "language": "es",
+      "question": "Exporta mis contratos a Excel",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability_gap-export-excel-de",
+      "translationOf": "seeded-capability_gap-export-excel-en",
+      "tenantFixture": "seeded",
+      "intent": "capability_gap",
+      "language": "de",
+      "question": "Exportiere meine Verträge nach Excel",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability_gap-reminder-docusign-fr",
+      "translationOf": "seeded-capability_gap-reminder-docusign-it",
+      "tenantFixture": "seeded",
+      "intent": "capability_gap",
+      "language": "fr",
+      "question": "Mets-moi un rappel pour la résiliation DocuSign",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability_gap-reminder-docusign-es",
+      "translationOf": "seeded-capability_gap-reminder-docusign-it",
+      "tenantFixture": "seeded",
+      "intent": "capability_gap",
+      "language": "es",
+      "question": "Ponme un recordatorio para la baja de DocuSign",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    },
+    {
+      "id": "seeded-capability_gap-reminder-docusign-de",
+      "translationOf": "seeded-capability_gap-reminder-docusign-it",
+      "tenantFixture": "seeded",
+      "intent": "capability_gap",
+      "language": "de",
+      "question": "Erinnere mich an die Kündigung von DocuSign",
+      "expectedKind": "redirect",
+      "expectNoCitations": true,
+      "expectNoGatewayCall": true,
+      "notes": "Model translation of the base case; expectations copied from it. Localised answer text/number format is not asserted (LANG-01/02 pending)."
+    }
+  ],
+  "obligationQuestionTemplates": {
+    "$comment": "Fill {supplier} with a supplier whose validated contract has the clause; expected answer and page must be written by an annotator who has the document (F1-D14). No answer is invented here.",
+    "templates": [
+      {
+        "id": "obl-01-it",
+        "language": "it",
+        "intent": "obligations",
+        "questionTemplate": "Qual e l'SLA di disponibilita nel contratto {supplier}?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-02-it",
+        "language": "it",
+        "intent": "obligations",
+        "questionTemplate": "Entro quanti giorni va inviata la disdetta del contratto {supplier}?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-03-it",
+        "language": "it",
+        "intent": "obligations",
+        "questionTemplate": "Quali crediti di servizio spettano se {supplier} non rispetta l'SLA?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-01-en",
+        "language": "en",
+        "intent": "obligations",
+        "questionTemplate": "What is the availability SLA in the {supplier} contract?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-02-en",
+        "language": "en",
+        "intent": "obligations",
+        "questionTemplate": "By how many days before term end must notice be sent for the {supplier} contract?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-03-en",
+        "language": "en",
+        "intent": "obligations",
+        "questionTemplate": "What service credits apply if {supplier} misses the SLA?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-01-fr",
+        "language": "fr",
+        "intent": "obligations",
+        "questionTemplate": "Quel est le SLA de disponibilité dans le contrat {supplier} ?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-02-fr",
+        "language": "fr",
+        "intent": "obligations",
+        "questionTemplate": "Combien de jours avant l'échéance faut-il envoyer le préavis du contrat {supplier} ?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-03-fr",
+        "language": "fr",
+        "intent": "obligations",
+        "questionTemplate": "Quels crédits de service s'appliquent si {supplier} ne respecte pas le SLA ?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-01-es",
+        "language": "es",
+        "intent": "obligations",
+        "questionTemplate": "¿Cuál es el SLA de disponibilidad en el contrato de {supplier}?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-02-es",
+        "language": "es",
+        "intent": "obligations",
+        "questionTemplate": "¿Con cuántos días de antelación al vencimiento hay que enviar el preaviso del contrato de {supplier}?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-03-es",
+        "language": "es",
+        "intent": "obligations",
+        "questionTemplate": "¿Qué créditos de servicio se aplican si {supplier} incumple el SLA?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-01-de",
+        "language": "de",
+        "intent": "obligations",
+        "questionTemplate": "Wie lautet das Verfügbarkeits-SLA im {supplier}-Vertrag?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-02-de",
+        "language": "de",
+        "intent": "obligations",
+        "questionTemplate": "Wie viele Tage vor Laufzeitende muss die Kündigung für den {supplier}-Vertrag erfolgen?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      },
+      {
+        "id": "obl-03-de",
+        "language": "de",
+        "intent": "obligations",
+        "questionTemplate": "Welche Servicegutschriften gelten, wenn {supplier} das SLA verfehlt?",
+        "expected": null,
+        "status": "needs_real_contract_and_page"
+      }
+    ]
+  }
+}

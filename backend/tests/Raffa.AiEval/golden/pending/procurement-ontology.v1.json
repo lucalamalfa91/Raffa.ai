@@ -1,0 +1,335 @@
+{
+  "$comment": "Phase 1 content DRAFT: F1-D12 clause/risk taxonomy, F1-D14 obligations+SLA ontology, F1-D15 savings rules, F1-D16 renewal windows, F2-D07 lever enum. Not loaded by any harness. See PROVENANCE block and PENDING_REVIEW.md.",
+  "version": "0.1.0",
+  "status": "draft-pending-review",
+  "provenance": {
+    "authorship": "Model-authored (Claude) structure and IT/EN/FR/ES/DE synonyms. Synonyms are model translation competence, NOT native-speaker validated. Nothing here is a legal opinion.",
+    "sources": [
+      {
+        "use": "Clause category inspiration (names/groupings only; no text copied). Each clause type below carries a cuadMapping where a CUAD category exists.",
+        "url": "https://huggingface.co/datasets/theatticusproject/cuad",
+        "licence": "CC BY 4.0 per the Hugging Face dataset card (cardData.license = cc-by-4.0, read 2026-10-15). Attribution: The Atticus Project, Contract Understanding Atticus Dataset (CUAD), Hendrycks et al. 2021, arXiv:2103.06268. The official Atticus page could not be fetched from the sandbox; the licence on the primary source is unverified."
+      },
+      {
+        "use": "Hard saving vs cost avoidance definitions and reporting caveats (separate reporting, agreed baseline, first-year only for hard savings).",
+        "url": "https://www.gep.com/white-papers/cost-avoidance-vs-hard-savings-measuring-procurement-impact",
+        "licence": "Vendor white paper; ideas paraphrased, no text copied. Also consulted: https://lapasar.com/procurement/cost-avoidance-and-savings , https://www.jaggaer.com/blog/hard-savings-soft-savings-measure-procurement-success"
+      },
+      {
+        "use": "SaaS renewal levers (multi-year discount, price cap CPI/5%, seat true-down, usage evidence, competing quote, start 90-180 days out). Percentages in advisory blogs are directional and are NOT reproduced as benchmarks here.",
+        "url": "https://zylo.com/blog/software-negotiation",
+        "licence": "Vendor/advisory blogs; ideas paraphrased. Also consulted: https://www.cloudnuro.ai/blog/saas-negotiation , https://www.hyperstart.com/blog/negotiating-saas-contracts/"
+      },
+      {
+        "use": "SLA vocabulary: ISO/IEC 19086-1:2016 defines SLO, SQO, metric, remedy, exception building blocks and deliberately gives no fixed list of objectives.",
+        "url": "https://webstore.iec.ch/publication/25920",
+        "licence": "Standard is copyrighted; only the existence of the concepts is cited, no text reproduced."
+      }
+    ],
+    "notReal": "No numeric threshold in this file is a market statistic. Day counts for renewal windows mirror the repo default Renewals:Thresholds (365,270,180,120,90,60,30) in backend/src/Raffa.Renewals/Configuration/ThresholdWindowOptions.cs."
+  },
+
+  "clauseTaxonomy": {
+    "$comment": "F1-D12. 15 clause types. 'preferred' is the term to use in generated text, 'variants' feed lexicons/ranker. riskDefault is a starting annotation, not a verdict. languageKeys: it,en,fr,es,de.",
+    "types": [
+      {
+        "id": "auto_renewal",
+        "cuadMapping": ["Renewal Term", "Notice Period To Terminate Renewal"],
+        "riskDefault": "high_if_long_notice",
+        "terms": {
+          "it": {"preferred": "rinnovo automatico", "variants": ["tacito rinnovo", "rinnovo tacito", "proroga automatica", "evergreen"]},
+          "en": {"preferred": "auto-renewal", "variants": ["automatic renewal", "evergreen clause", "renews automatically", "automatically extended"]},
+          "fr": {"preferred": "tacite reconduction", "variants": ["renouvellement automatique", "reconduction automatique"]},
+          "es": {"preferred": "prórroga tácita", "variants": ["renovación automática", "renovación tácita", "prórroga automática"]},
+          "de": {"preferred": "automatische Verlängerung", "variants": ["stillschweigende Verlängerung", "Verlängerungsklausel", "verlängert sich automatisch"]}
+        }
+      },
+      {
+        "id": "notice_period",
+        "cuadMapping": ["Notice Period To Terminate Renewal"],
+        "riskDefault": "high_if_over_90_days",
+        "terms": {
+          "it": {"preferred": "preavviso", "variants": ["termine di disdetta", "termine di preavviso", "disdetta"]},
+          "en": {"preferred": "notice period", "variants": ["notice of non-renewal", "notice of termination", "written notice"]},
+          "fr": {"preferred": "préavis", "variants": ["délai de préavis", "notification de non-renouvellement"]},
+          "es": {"preferred": "preaviso", "variants": ["plazo de preaviso", "notificación de no renovación"]},
+          "de": {"preferred": "Kündigungsfrist", "variants": ["Kündigung", "Kündigungstermin", "Nichtverlängerungsmitteilung"]}
+        }
+      },
+      {
+        "id": "term_and_expiry",
+        "cuadMapping": ["Agreement Date", "Effective Date", "Expiration Date"],
+        "riskDefault": "info",
+        "terms": {
+          "it": {"preferred": "durata", "variants": ["scadenza", "data di efficacia", "periodo iniziale"]},
+          "en": {"preferred": "term", "variants": ["initial term", "expiration date", "effective date", "expiry"]},
+          "fr": {"preferred": "durée", "variants": ["échéance", "date d'effet", "durée initiale"]},
+          "es": {"preferred": "duración", "variants": ["vencimiento", "fecha de efecto", "plazo inicial"]},
+          "de": {"preferred": "Laufzeit", "variants": ["Vertragsende", "Ablaufdatum", "Mindestlaufzeit"]}
+        }
+      },
+      {
+        "id": "termination_for_convenience",
+        "cuadMapping": ["Termination For Convenience"],
+        "riskDefault": "high_if_absent",
+        "terms": {
+          "it": {"preferred": "recesso senza giusta causa", "variants": ["recesso ad nutum", "recesso per comodità", "recesso anticipato"]},
+          "en": {"preferred": "termination for convenience", "variants": ["terminate without cause", "early termination right"]},
+          "fr": {"preferred": "résiliation pour convenance", "variants": ["résiliation anticipée", "résiliation sans motif"]},
+          "es": {"preferred": "resolución por conveniencia", "variants": ["desistimiento", "terminación anticipada"]},
+          "de": {"preferred": "ordentliche Kündigung", "variants": ["Kündigung ohne wichtigen Grund", "vorzeitige Kündigung"]}
+        }
+      },
+      {
+        "id": "price_adjustment",
+        "cuadMapping": ["Price Restrictions"],
+        "riskDefault": "high_if_uncapped",
+        "terms": {
+          "it": {"preferred": "adeguamento prezzi", "variants": ["indicizzazione", "aumento ISTAT", "revisione prezzi", "tetto all'aumento"]},
+          "en": {"preferred": "price adjustment", "variants": ["price escalation", "CPI increase", "price cap", "indexation", "uplift"]},
+          "fr": {"preferred": "révision des prix", "variants": ["indexation", "clause d'indexation", "plafonnement"]},
+          "es": {"preferred": "revisión de precios", "variants": ["actualización de precios", "indexación", "tope de subida"]},
+          "de": {"preferred": "Preisanpassung", "variants": ["Preisgleitklausel", "Indexierung", "Preiserhöhung", "Preisobergrenze"]}
+        }
+      },
+      {
+        "id": "minimum_commitment",
+        "cuadMapping": ["Minimum Commitment", "Volume Restriction"],
+        "riskDefault": "medium",
+        "terms": {
+          "it": {"preferred": "impegno minimo", "variants": ["minimo garantito", "volume minimo", "take-or-pay"]},
+          "en": {"preferred": "minimum commitment", "variants": ["minimum spend", "committed spend", "take-or-pay", "minimum seats"]},
+          "fr": {"preferred": "engagement minimum", "variants": ["volume minimum", "minimum garanti"]},
+          "es": {"preferred": "compromiso mínimo", "variants": ["volumen mínimo", "mínimo garantizado"]},
+          "de": {"preferred": "Mindestabnahme", "variants": ["Mindestverbrauch", "Mindestumsatz", "Mindestbestellmenge"]}
+        }
+      },
+      {
+        "id": "liability_cap",
+        "cuadMapping": ["Cap On Liability", "Uncapped Liability"],
+        "riskDefault": "high_if_low_cap",
+        "terms": {
+          "it": {"preferred": "limitazione di responsabilità", "variants": ["limite di responsabilità", "massimale", "tetto di responsabilità"]},
+          "en": {"preferred": "limitation of liability", "variants": ["liability cap", "cap on liability", "aggregate liability"]},
+          "fr": {"preferred": "limitation de responsabilité", "variants": ["plafond de responsabilité"]},
+          "es": {"preferred": "limitación de responsabilidad", "variants": ["límite de responsabilidad", "tope de responsabilidad"]},
+          "de": {"preferred": "Haftungsbeschränkung", "variants": ["Haftungsbegrenzung", "Haftungshöchstgrenze", "Haftungsobergrenze"]}
+        }
+      },
+      {
+        "id": "indemnification",
+        "cuadMapping": ["Ip Ownership Assignment", "Covenant Not To Sue"],
+        "riskDefault": "medium",
+        "note": "CUAD has no plain 'Indemnification' label; mapping is approximate.",
+        "terms": {
+          "it": {"preferred": "manleva", "variants": ["indennizzo", "obbligo di indennizzare", "garanzia di manleva"]},
+          "en": {"preferred": "indemnification", "variants": ["indemnity", "hold harmless", "defend and indemnify"]},
+          "fr": {"preferred": "indemnisation", "variants": ["garantie d'indemnisation", "clause de garantie"]},
+          "es": {"preferred": "indemnización", "variants": ["indemnidad", "mantener indemne"]},
+          "de": {"preferred": "Freistellung", "variants": ["Schadloshaltung", "Haftungsfreistellung", "Entschädigung"]}
+        }
+      },
+      {
+        "id": "service_levels",
+        "cuadMapping": [],
+        "riskDefault": "medium_if_no_remedy",
+        "terms": {
+          "it": {"preferred": "livelli di servizio", "variants": ["SLA", "crediti di servizio", "disponibilità garantita", "penali SLA"]},
+          "en": {"preferred": "service levels", "variants": ["SLA", "service credits", "uptime commitment", "availability guarantee"]},
+          "fr": {"preferred": "niveaux de service", "variants": ["SLA", "crédits de service", "disponibilité garantie"]},
+          "es": {"preferred": "niveles de servicio", "variants": ["SLA", "créditos de servicio", "disponibilidad garantizada"]},
+          "de": {"preferred": "Service-Level", "variants": ["SLA", "Servicegutschriften", "Verfügbarkeitszusage"]}
+        }
+      },
+      {
+        "id": "data_protection",
+        "cuadMapping": [],
+        "riskDefault": "medium",
+        "terms": {
+          "it": {"preferred": "protezione dei dati", "variants": ["trattamento dei dati personali", "DPA", "responsabile del trattamento", "GDPR"]},
+          "en": {"preferred": "data protection", "variants": ["data processing agreement", "DPA", "processor", "GDPR"]},
+          "fr": {"preferred": "protection des données", "variants": ["sous-traitant", "accord de traitement des données", "RGPD"]},
+          "es": {"preferred": "protección de datos", "variants": ["encargado del tratamiento", "acuerdo de tratamiento de datos", "RGPD"]},
+          "de": {"preferred": "Datenschutz", "variants": ["Auftragsverarbeitung", "AVV", "DSGVO"]}
+        }
+      },
+      {
+        "id": "assignment_change_of_control",
+        "cuadMapping": ["Anti-Assignment", "Change Of Control"],
+        "riskDefault": "medium",
+        "terms": {
+          "it": {"preferred": "cessione del contratto", "variants": ["divieto di cessione", "cambio di controllo"]},
+          "en": {"preferred": "assignment", "variants": ["anti-assignment", "change of control", "successors and assigns"]},
+          "fr": {"preferred": "cession du contrat", "variants": ["interdiction de cession", "changement de contrôle"]},
+          "es": {"preferred": "cesión del contrato", "variants": ["prohibición de cesión", "cambio de control"]},
+          "de": {"preferred": "Abtretung", "variants": ["Vertragsübernahme", "Abtretungsverbot", "Kontrollwechsel"]}
+        }
+      },
+      {
+        "id": "exclusivity_non_compete",
+        "cuadMapping": ["Exclusivity", "Non-Compete", "Most Favored Nation"],
+        "riskDefault": "high",
+        "terms": {
+          "it": {"preferred": "esclusiva", "variants": ["patto di non concorrenza", "clausola del cliente più favorito"]},
+          "en": {"preferred": "exclusivity", "variants": ["non-compete", "most favoured customer", "MFN"]},
+          "fr": {"preferred": "exclusivité", "variants": ["non-concurrence", "clause du client le plus favorisé"]},
+          "es": {"preferred": "exclusividad", "variants": ["no competencia", "cláusula de cliente más favorecido"]},
+          "de": {"preferred": "Exklusivität", "variants": ["Wettbewerbsverbot", "Meistbegünstigungsklausel"]}
+        }
+      },
+      {
+        "id": "payment_terms",
+        "cuadMapping": ["Revenue/Profit Sharing"],
+        "riskDefault": "low",
+        "note": "CUAD has no direct label; mapping is loose.",
+        "terms": {
+          "it": {"preferred": "termini di pagamento", "variants": ["scadenza fattura", "pagamento a 30 giorni", "interessi di mora"]},
+          "en": {"preferred": "payment terms", "variants": ["net 30", "invoicing", "late payment interest"]},
+          "fr": {"preferred": "conditions de paiement", "variants": ["délai de paiement", "pénalités de retard"]},
+          "es": {"preferred": "condiciones de pago", "variants": ["plazo de pago", "intereses de demora"]},
+          "de": {"preferred": "Zahlungsbedingungen", "variants": ["Zahlungsziel", "Verzugszinsen"]}
+        }
+      },
+      {
+        "id": "governing_law_jurisdiction",
+        "cuadMapping": ["Governing Law"],
+        "riskDefault": "info",
+        "terms": {
+          "it": {"preferred": "legge applicabile", "variants": ["foro competente", "giurisdizione"]},
+          "en": {"preferred": "governing law", "variants": ["jurisdiction", "venue", "applicable law"]},
+          "fr": {"preferred": "loi applicable", "variants": ["juridiction compétente", "tribunal compétent"]},
+          "es": {"preferred": "ley aplicable", "variants": ["jurisdicción", "fuero competente"]},
+          "de": {"preferred": "anwendbares Recht", "variants": ["Gerichtsstand", "Rechtswahl"]}
+        }
+      },
+      {
+        "id": "penalty_liquidated_damages",
+        "cuadMapping": ["Liquidated Damages"],
+        "riskDefault": "medium",
+        "terms": {
+          "it": {"preferred": "penale", "variants": ["clausola penale", "penali contrattuali"]},
+          "en": {"preferred": "liquidated damages", "variants": ["penalty", "early termination fee"]},
+          "fr": {"preferred": "clause pénale", "variants": ["pénalités", "indemnité de résiliation"]},
+          "es": {"preferred": "cláusula penal", "variants": ["penalización", "indemnización por resolución anticipada"]},
+          "de": {"preferred": "Vertragsstrafe", "variants": ["Pönale", "pauschalierter Schadensersatz"]}
+        }
+      }
+    ],
+    "rankerNote": "F1-D12 acceptance: ranker uses ids and variants, no free keywords. Count is 15 entries (target 12-15)."
+  },
+
+  "obligationsAndSlaOntology": {
+    "$comment": "F1-D14 experimental arm of R2-05. Types of obligation a contract can carry, with the party that owes it and the evidence field. The metric list for SLA is a vocabulary, NOT a list of values to expect: ISO/IEC 19086-1 gives no standard objectives.",
+    "obligationTypes": [
+      {"id": "notice_by_customer", "owedBy": "customer", "dateAnchored": true, "evidence": ["clause text", "page"], "examples": {"en": "give written notice of non-renewal 60 days before term end", "it": "inviare disdetta scritta 60 giorni prima della scadenza"}},
+      {"id": "minimum_purchase", "owedBy": "customer", "dateAnchored": false, "evidence": ["clause text", "page"], "examples": {"en": "purchase at least the committed seat count"}},
+      {"id": "payment", "owedBy": "customer", "dateAnchored": true, "evidence": ["clause text", "page"], "examples": {"en": "pay invoices within 30 days of receipt"}},
+      {"id": "service_availability", "owedBy": "supplier", "dateAnchored": false, "evidence": ["clause text", "page"], "slaMetric": "availability_percent", "examples": {"en": "service available at the stated monthly percentage"}},
+      {"id": "support_response", "owedBy": "supplier", "dateAnchored": false, "evidence": ["clause text", "page"], "slaMetric": "response_time", "examples": {"en": "respond to severity-1 incidents within the stated time"}},
+      {"id": "support_resolution", "owedBy": "supplier", "dateAnchored": false, "evidence": ["clause text", "page"], "slaMetric": "resolution_time"},
+      {"id": "reporting", "owedBy": "supplier", "dateAnchored": true, "evidence": ["clause text", "page"], "examples": {"en": "deliver monthly service report"}},
+      {"id": "security_compliance", "owedBy": "supplier", "dateAnchored": false, "evidence": ["clause text", "page"], "examples": {"en": "maintain a stated certification"}},
+      {"id": "data_return_exit", "owedBy": "supplier", "dateAnchored": true, "evidence": ["clause text", "page"], "examples": {"en": "return or delete customer data within the stated period after termination"}},
+      {"id": "breach_notification", "owedBy": "supplier", "dateAnchored": true, "evidence": ["clause text", "page"], "examples": {"en": "notify personal data breach without undue delay"}}
+    ],
+    "slaMetrics": [
+      {"id": "availability_percent", "unit": "percent_per_period", "periodOptions": ["month", "quarter", "year"]},
+      {"id": "response_time", "unit": "minutes_or_hours", "dimension": "severity"},
+      {"id": "resolution_time", "unit": "hours_or_days", "dimension": "severity"},
+      {"id": "rpo", "unit": "minutes_or_hours"},
+      {"id": "rto", "unit": "minutes_or_hours"},
+      {"id": "service_credit", "unit": "percent_of_fee_or_fixed", "isRemedy": true},
+      {"id": "exclusions", "unit": "text", "isException": true}
+    ],
+    "askAnswerShape": "For an obligations question the answer must cite the clause page, name the owing party, and copy the figure verbatim from the document; if the contract has no such clause the answer abstains (never infer a typical SLA).",
+    "tenQuestionsStatus": "The 10 questions with expected answer + cited page required by F1-D14 need real validated contracts of a tenant; they cannot be written from this sandbox. See PENDING_REVIEW.md. Question stems (no answers) are in ask-annotation-cases.v1.json under category obligations."
+  },
+
+  "leverEnum": {
+    "$comment": "F2-D07. Same 12 values already used by negotiation-cases.v1.json. Added: description, category (hardSaving | costAvoidance | termsImprovement) for F1-D15, and 5-language labels.",
+    "levers": [
+      {"id": "price_reduction", "savingsClass": "hard", "labels": {"it": "riduzione del prezzo", "en": "price reduction", "fr": "réduction de prix", "es": "reducción de precio", "de": "Preissenkung"}},
+      {"id": "term_for_discount", "savingsClass": "hard", "labels": {"it": "durata più lunga in cambio di sconto", "en": "longer term for a discount", "fr": "durée plus longue contre remise", "es": "plazo más largo a cambio de descuento", "de": "längere Laufzeit gegen Rabatt"}},
+      {"id": "volume_discount", "savingsClass": "hard", "labels": {"it": "sconto volume", "en": "volume discount", "fr": "remise sur volume", "es": "descuento por volumen", "de": "Mengenrabatt"}},
+      {"id": "indexation_cap", "savingsClass": "avoidance", "labels": {"it": "tetto all'indicizzazione", "en": "indexation cap", "fr": "plafonnement de l'indexation", "es": "tope de indexación", "de": "Begrenzung der Indexierung"}},
+      {"id": "notice_period_change", "savingsClass": "terms", "labels": {"it": "modifica del preavviso", "en": "notice period change", "fr": "modification du préavis", "es": "cambio del preaviso", "de": "Änderung der Kündigungsfrist"}},
+      {"id": "auto_renewal_removal", "savingsClass": "terms", "labels": {"it": "eliminazione del rinnovo automatico", "en": "auto-renewal removal", "fr": "suppression de la tacite reconduction", "es": "eliminación de la prórroga tácita", "de": "Streichung der automatischen Verlängerung"}},
+      {"id": "sla_credits", "savingsClass": "terms", "labels": {"it": "crediti di servizio SLA", "en": "SLA credits", "fr": "crédits de service SLA", "es": "créditos de servicio SLA", "de": "SLA-Gutschriften"}},
+      {"id": "liability_cap", "savingsClass": "terms", "labels": {"it": "limite di responsabilità", "en": "liability cap", "fr": "plafond de responsabilité", "es": "límite de responsabilidad", "de": "Haftungsobergrenze"}},
+      {"id": "payment_terms", "savingsClass": "terms", "labels": {"it": "termini di pagamento", "en": "payment terms", "fr": "conditions de paiement", "es": "condiciones de pago", "de": "Zahlungsbedingungen"}},
+      {"id": "consolidation", "savingsClass": "hard", "labels": {"it": "consolidamento", "en": "consolidation", "fr": "consolidation", "es": "consolidación", "de": "Konsolidierung"}},
+      {"id": "competitive_tender", "savingsClass": "hard", "labels": {"it": "gara competitiva", "en": "competitive tender", "fr": "mise en concurrence", "es": "licitación competitiva", "de": "Ausschreibung"}},
+      {"id": "exit_for_convenience", "savingsClass": "terms", "labels": {"it": "uscita anticipata", "en": "exit for convenience", "fr": "sortie anticipée", "es": "salida anticipada", "de": "vorzeitiger Ausstieg"}}
+    ],
+    "gapVsPlan": "Plan text for F2-D07 mentions seat true-down and usage-based right-sizing as common SaaS levers (see sources). They have no value in the current 12-value enum; proposed addition 'seat_true_down' is listed in PENDING_REVIEW.md for the product owner (not added silently)."
+  },
+
+  "savingsRules": {
+    "$comment": "F1-D15. Rules in prose + checkable invariants. Class names follow the common 'hard saving' and 'cost avoidance' split; both terms exist in the glossary.",
+    "classes": [
+      {"id": "hard_saving", "definition": "Reduction of actual spend against an agreed baseline, verifiable on invoices or order data.", "countsInSavingsIdentified": true},
+      {"id": "cost_avoidance", "definition": "A cost increase that was proposed or contractually possible and was prevented; no reduction of current spend.", "countsInSavingsIdentified": false, "reportedSeparately": true},
+      {"id": "terms_improvement", "definition": "Better contractual terms without a computable euro value (notice period, exit right, SLA credits).", "countsInSavingsIdentified": false, "reportedSeparately": true}
+    ],
+    "invariants": [
+      "Never add hard_saving and cost_avoidance into one total.",
+      "A saving needs a baseline (the validated current annual amount of the contract); without one the entry is abstain, not zero.",
+      "Count only the first 12 months as hard saving even if the deal is multi-year; later years are reported as 'projected' separately.",
+      "The same euro cannot be claimed by two levers: where levers overlap on the same contract the opportunity keeps the largest single lever, not the sum (F2-D04 non-additivity).",
+      "A figure the user declares (not from the tenant data) is labelled 'declared by the user' and not added to Savings Identified until confirmed (D7)."
+    ],
+    "decisionsNeeded": "Whether first-year-only is Raffa policy, and how multi-year effects are shown, is a product/finance decision; the 12-month rule is the common convention found in sources, not a Raffa rule. Listed in PENDING_REVIEW.md."
+  },
+
+  "renewalWindows": {
+    "$comment": "F1-D16. Phases anchored to the repo default Renewals:Thresholds (days before notice deadline). Copy per phase is IT/EN/FR/ES/DE next-step wording; no figures. The sources recommend starting 90-180 days out and sending a data-driven ask roughly 60-75 days out; these are advisory heuristics, not rules.",
+    "thresholdsDaysBeforeDeadline": [365, 270, 180, 120, 90, 60, 30],
+    "phases": [
+      {
+        "id": "plan",
+        "fromDays": 365, "toDays": 181,
+        "nextSteps": {
+          "it": "Verifica utilizzo e proprietario del contratto; fissa l'obiettivo di risparmio.",
+          "en": "Check usage and the contract owner; set the savings goal.",
+          "fr": "Vérifiez l'usage et le responsable du contrat ; fixez l'objectif d'économie.",
+          "es": "Revise el uso y el responsable del contrato; fije el objetivo de ahorro.",
+          "de": "Nutzung und Vertragsverantwortlichen prüfen; Einsparziel festlegen."
+        }
+      },
+      {
+        "id": "prepare",
+        "fromDays": 180, "toDays": 91,
+        "nextSteps": {
+          "it": "Raccogli alternative e dati di utilizzo; scegli le leve di negoziazione.",
+          "en": "Collect alternatives and usage data; choose the negotiation levers.",
+          "fr": "Rassemblez des alternatives et les données d'usage ; choisissez les leviers.",
+          "es": "Reúna alternativas y datos de uso; elija las palancas de negociación.",
+          "de": "Alternativen und Nutzungsdaten sammeln; Verhandlungshebel auswählen."
+        }
+      },
+      {
+        "id": "negotiate",
+        "fromDays": 90, "toDays": 31,
+        "nextSteps": {
+          "it": "Invia la richiesta al fornitore e conferma per iscritto le condizioni concordate.",
+          "en": "Send the request to the supplier and confirm agreed terms in writing.",
+          "fr": "Envoyez la demande au fournisseur et confirmez par écrit les conditions convenues.",
+          "es": "Envíe la solicitud al proveedor y confirme por escrito las condiciones acordadas.",
+          "de": "Anfrage an den Lieferanten senden und vereinbarte Konditionen schriftlich bestätigen."
+        }
+      },
+      {
+        "id": "decide",
+        "fromDays": 30, "toDays": 0,
+        "nextSteps": {
+          "it": "Decidi: rinnovare, rinegoziare o inviare la disdetta prima del termine.",
+          "en": "Decide: renew, renegotiate, or send notice before the deadline.",
+          "fr": "Décidez : renouveler, renégocier ou envoyer le préavis avant l'échéance.",
+          "es": "Decida: renovar, renegociar o enviar el preaviso antes del plazo.",
+          "de": "Entscheiden: verlängern, nachverhandeln oder vor Fristende kündigen."
+        }
+      }
+    ],
+    "status": "Phase boundaries are a proposal that reuses existing threshold values; the product owner decides the exact mapping (PENDING_REVIEW.md)."
+  }
+}

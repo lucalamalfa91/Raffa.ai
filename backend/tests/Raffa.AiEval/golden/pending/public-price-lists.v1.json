@@ -1,0 +1,193 @@
+{
+  "$comment": "F6-D03 DRAFT: real PUBLIC LIST PRICES captured from vendor pricing pages, as structured header+line records for annotating offer extraction/normalisation (F6-D04/D06). These are list prices, NOT supplier quotes: they carry no validity period, no named buyer, no discounts, no tax statement unless the page gave one. Not loaded by any harness.",
+  "version": "0.1.0",
+  "status": "draft-pending-review",
+  "provenance": {
+    "kind": "public_list_price_snapshot",
+    "retrievedAt": "2026-10-15",
+    "method": "HTTPS GET of each page from the sandbox, HTML stripped to text, values read from the text. GitHub values were read through the WebFetch summariser (a small model), so that offer is marked lowerConfidence. Pages are JS-heavy and may show geo-dependent prices; the sandbox location is unknown, so currency/geography is what the page displayed, not a guarantee for a tenant.",
+    "licence": "Prices are facts; the pages themselves are copyright of each vendor. Only prices, plan names and short verbatim phrases (rawQuote, under 15 words) are recorded for evaluation purposes. No page text is redistributed. Re-check the vendor terms of use before publishing this file outside the repo.",
+    "notFabricated": "Every number below was read from the cited page on the retrieval date. Where the page did not say annual vs monthly billing, billing is 'unspecified' rather than guessed.",
+    "stale": "Vendor prices change without notice. Treat as a point-in-time snapshot; the values must never be presented to a user as current market data."
+  },
+  "headerSchema": ["offerId", "supplier", "sourceUrl", "retrievedAt", "currency", "geographyShown", "documentKind", "validity", "taxNote", "lowerConfidence"],
+  "lineSchema": ["plan", "metric", "unit", "unitPrice", "billing", "minimumCommitment", "rawQuote"],
+  "offers": [
+    {
+      "offerId": "pl-slack-usd",
+      "supplier": "Slack",
+      "sourceUrl": "https://slack.com/pricing",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront (page showed USD)",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "not stated",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "Pro", "metric": "user", "unit": "per user per month", "unitPrice": 7.25, "billing": "annual", "minimumCommitment": null, "rawQuote": "$7.25 USD per user / month, when paying annually", "alsoMonthlyBilling": 8.75, "promoNote": "page also showed a 50% off for 3 months promotion"},
+        {"plan": "Business+", "metric": "user", "unit": "per user per month", "unitPrice": 15, "billing": "annual", "minimumCommitment": null, "rawQuote": "$15 USD per user / month, when paying annually", "alsoMonthlyBilling": 18},
+        {"plan": "Enterprise+", "metric": "user", "unit": "per user per month", "unitPrice": 45, "billing": "annual", "minimumCommitment": null, "rawQuote": "$45 USD per user / month, when paying annually", "note": "Contact Sales button; price shown is a 'starting' indicative"}
+      ]
+    },
+    {
+      "offerId": "pl-docusign-usd",
+      "supplier": "Docusign",
+      "sourceUrl": "https://www.docusign.com/products-and-pricing",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "Additional tax may apply",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "eSignature Personal", "metric": "account", "unit": "per month", "unitPrice": 11, "billing": "annual commitment, billed monthly", "minimumCommitment": "annual commitment of $132", "rawQuote": "annual commitment of $132", "limits": "5 envelopes per month"},
+        {"plan": "eSignature Standard", "metric": "user", "unit": "per user per month", "unitPrice": 30, "billing": "annual commitment, billed monthly", "minimumCommitment": "annual commitment of $360", "rawQuote": "annual commitment of $360", "limits": "100 envelopes per user per year"},
+        {"plan": "eSignature Business Pro", "metric": "user", "unit": "per user per month", "unitPrice": 45, "billing": "annual commitment, billed monthly", "minimumCommitment": "annual commitment of $540", "rawQuote": "annual commitment of $540", "limits": "100 envelopes per user per year"},
+        {"plan": "add-on: SMS delivery", "metric": "delivery", "unit": "per delivery", "unitPrice": 0.36, "billing": "usage", "minimumCommitment": null, "rawQuote": "Starting at $0.36/delivery", "note": "'Starting at'"},
+        {"plan": "add-on: ID verification", "metric": "verification attempt", "unit": "per attempt", "unitPrice": 2.4, "billing": "usage", "minimumCommitment": null, "rawQuote": "Starting at $2.40/ID verification attempt", "note": "'Starting at'"}
+      ]
+    },
+    {
+      "offerId": "pl-notion-usd",
+      "supplier": "Notion",
+      "sourceUrl": "https://www.notion.com/pricing",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "not stated",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "Plus", "metric": "member", "unit": "per member per month", "unitPrice": 10, "billing": "unspecified in extracted text", "minimumCommitment": null, "rawQuote": "$10 per member / month"},
+        {"plan": "Business", "metric": "member", "unit": "per member per month", "unitPrice": 20, "billing": "unspecified in extracted text", "minimumCommitment": null, "rawQuote": "$20 per member / month"},
+        {"plan": "add-on: custom domain", "metric": "domain", "unit": "per domain per month", "unitPrice": 8, "billing": "annual", "minimumCommitment": null, "rawQuote": "$8/month/domain paid annually", "alsoMonthlyBilling": 10},
+        {"plan": "add-on: AI credits", "metric": "credits", "unit": "per 1,000 credits", "unitPrice": 10, "billing": "usage", "minimumCommitment": null, "rawQuote": "$10 per 1,000 monthly Notion credits"}
+      ]
+    },
+    {
+      "offerId": "pl-asana-usd",
+      "supplier": "Asana",
+      "sourceUrl": "https://asana.com/pricing",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "not stated",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "Starter", "metric": "user", "unit": "per user per month", "unitPrice": 10.99, "billing": "annual", "minimumCommitment": null, "rawQuote": "Per user, per month billed annually", "alsoMonthlyBilling": 13.49},
+        {"plan": "Advanced", "metric": "user", "unit": "per user per month", "unitPrice": 24.99, "billing": "annual", "minimumCommitment": null, "rawQuote": "Per user, per month billed annually", "alsoMonthlyBilling": 30.49},
+        {"plan": "add-on: AI requests (pre-paid)", "metric": "request", "unit": "per request", "unitPrice": 0.5, "billing": "usage", "minimumCommitment": null, "rawQuote": "Pre-paid AI requests are $0.50 per request"}
+      ]
+    },
+    {
+      "offerId": "pl-zendesk-usd",
+      "supplier": "Zendesk",
+      "sourceUrl": "https://www.zendesk.com/pricing/",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "not stated",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "Support Team", "metric": "agent", "unit": "per agent per month", "unitPrice": 19, "billing": "annual", "minimumCommitment": null, "rawQuote": "agent/month paid yearly"},
+        {"plan": "Suite Team", "metric": "agent", "unit": "per agent per month", "unitPrice": 55, "billing": "annual", "minimumCommitment": null, "rawQuote": "agent/month paid yearly"},
+        {"plan": "Suite Professional", "metric": "agent", "unit": "per agent per month", "unitPrice": 115, "billing": "annual", "minimumCommitment": null, "rawQuote": "agent/month paid yearly"}
+      ]
+    },
+    {
+      "offerId": "pl-zendesk-eur-it",
+      "supplier": "Zendesk",
+      "sourceUrl": "https://www.zendesk.it/pricing/",
+      "retrievedAt": "2026-10-15",
+      "currency": "EUR",
+      "geographyShown": "Italian storefront, page in Italian (annotate extraction on Italian wording)",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "not stated (VAT treatment not shown in extracted text)",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "Support Team", "metric": "agent", "unit": "per agent per month", "unitPrice": 19, "billing": "annual", "minimumCommitment": null, "rawQuote": "19 € agente/mese pagato annualmente"},
+        {"plan": "Suite Team", "metric": "agent", "unit": "per agent per month", "unitPrice": 55, "billing": "annual", "minimumCommitment": null, "rawQuote": "55 € agente/mese pagato annualmente"},
+        {"plan": "Suite Professional", "metric": "agent", "unit": "per agent per month", "unitPrice": 115, "billing": "annual", "minimumCommitment": null, "rawQuote": "115 € agente/mese pagato annualmente"}
+      ]
+    },
+    {
+      "offerId": "pl-monday-usd",
+      "supplier": "monday.com",
+      "sourceUrl": "https://monday.com/pricing",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "not stated",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "Basic", "metric": "seat", "unit": "per seat per month", "unitPrice": 9, "billing": "annual", "minimumCommitment": "page example priced 10 seats: $9 x 10 seats = $90 / month, billed annually", "rawQuote": "$9 x 10 seats = $90"},
+        {"plan": "Standard", "metric": "seat", "unit": "per seat per month", "unitPrice": 12, "billing": "annual (page toggle state not captured)", "minimumCommitment": "page example priced 10 seats", "rawQuote": "$12 x 10 seats ="}
+      ]
+    },
+    {
+      "offerId": "pl-figma-usd",
+      "supplier": "Figma",
+      "sourceUrl": "https://www.figma.com/pricing/",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "not stated",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "Professional - Full seat", "metric": "seat", "unit": "per seat per month", "unitPrice": 16, "billing": "unspecified (Monthly/Annual toggle in extracted text)", "minimumCommitment": null, "rawQuote": "Full seat $16 /mo"},
+        {"plan": "Professional - Dev seat", "metric": "seat", "unit": "per seat per month", "unitPrice": 12, "billing": "unspecified", "minimumCommitment": null, "rawQuote": "Dev seat $12 /mo"},
+        {"plan": "Professional - Collab seat", "metric": "seat", "unit": "per seat per month", "unitPrice": 3, "billing": "unspecified", "minimumCommitment": null, "rawQuote": "Collab seat $3 /mo"}
+      ]
+    },
+    {
+      "offerId": "pl-dropbox-usd",
+      "supplier": "Dropbox",
+      "sourceUrl": "https://www.dropbox.com/plans",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront",
+      "documentKind": "public_list_price",
+      "validity": "not stated",
+      "taxNote": "not stated",
+      "lowerConfidence": false,
+      "lines": [
+        {"plan": "Plus (individual)", "metric": "account", "unit": "per month", "unitPrice": 9.99, "billing": "unspecified (Billed monthly/yearly toggle in extracted text)", "minimumCommitment": null, "rawQuote": "$9.99 / month"},
+        {"plan": "Standard (team)", "metric": "user", "unit": "per user per month", "unitPrice": 15, "billing": "unspecified", "minimumCommitment": null, "rawQuote": "$15 / user / month"},
+        {"plan": "Advanced (team)", "metric": "user", "unit": "per user per month", "unitPrice": 24, "billing": "unspecified", "minimumCommitment": null, "rawQuote": "$24 / user / month", "note": "plan name pairing taken from adjacent labels in extracted text; verify on the page"}
+      ]
+    },
+    {
+      "offerId": "pl-github-usd",
+      "supplier": "GitHub",
+      "sourceUrl": "https://github.com/pricing",
+      "retrievedAt": "2026-10-15",
+      "currency": "USD",
+      "geographyShown": "US storefront",
+      "documentKind": "public_list_price",
+      "validity": "Team price marked 'for the first 12 months*' (asterisk not explained in extracted text)",
+      "taxNote": "not stated",
+      "lowerConfidence": true,
+      "lines": [
+        {"plan": "Team", "metric": "user", "unit": "per user per month", "unitPrice": 4, "billing": "unspecified", "minimumCommitment": null, "rawQuote": "per user/month for the first 12 months*"},
+        {"plan": "Enterprise", "metric": "user", "unit": "per user per month", "unitPrice": 21, "billing": "unspecified", "minimumCommitment": null, "rawQuote": "Starting at $21 USD per user/month"}
+      ]
+    }
+  ],
+  "annotationNotes": {
+    "whatThisIsFor": "Header fields (supplier, currency, geography) and per-line metric/unit/billing are the extraction targets of F6-D05/D06. 'unspecified' billing cases test that the extractor abstains instead of assuming annual.",
+    "gapVsAcceptance": "F6-D03 asks for 12-15 annotated offers. This file holds 10 public list prices. Real offers (PDF/e-mail quotes with validity, discounts, multi-currency, IT/FR/ES/DE wording, scanned layouts) cannot be fabricated and must come from the owner or from real procurement partners; see PENDING_REVIEW.md.",
+    "notTestedHere": "Totals, rollups, FX conversion and multi-year terms (F6-D10/D22) need real quotes."
+  }
+}
