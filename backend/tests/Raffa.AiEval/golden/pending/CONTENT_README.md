@@ -15,6 +15,11 @@ Everything here is data/docs. `GoldenSet.cs` enumerates `golden/*.json` with `Se
 | `ANNOTATION_RUBRIC.md` | rubric for Ask, investigator, negotiation and web cases; inter-annotator procedure |
 | `negotiation-cases.v1.json` | 39 F2 cases (IT 8, EN 7, FR 8, ES 8, DE 8): positive, polarity, abstain, off-topic |
 | `web-cases.v1.json` | 30 F3 cases (6 per language) over the 5 purposes, both consent paths, off-context and tenant-leak negatives |
+| `procurement-ontology.v1.json` | F1-D12 clause taxonomy (15 types x 5 languages, CUAD mapping), F1-D14 obligations/SLA ontology, F2-D07 lever enum with labels, F1-D15 savings rules, F1-D16 renewal phases |
+| `vendor-master.v1.json` | F3-D12 15 public vendors: aliases, official domains (checked 2026-10-15), parent |
+| `public-price-lists.v1.json` | F6-D03 10 real public list prices (dated snapshot, NOT quotes), header+line schema |
+| `ask-annotation-cases.v1.json` | F1-D09/LANG-06 81 FR/ES/DE translated Ask cases (from existing it/en) + obligation question templates in 5 languages |
+| `PENDING_REVIEW.md` | everything needing native-speaker/legal review or owner data |
 
 Schemas are new and deliberately NOT the Ask `GoldenCase` schema (that one asserts `kind`, citations, hrefs against the Ask host). They are structural/behavioural; an evaluator is a later task. No live model run was done.
 

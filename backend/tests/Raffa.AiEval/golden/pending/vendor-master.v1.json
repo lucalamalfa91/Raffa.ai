@@ -1,0 +1,38 @@
+{
+  "$comment": "F3-D12 DRAFT vendor master (15 widely used B2B software/cloud suppliers). Used for alias matching and for restricting supplier-news web searches to official domains. Not loaded by any harness.",
+  "version": "0.1.0",
+  "status": "draft-pending-review",
+  "provenance": {
+    "authorship": "Model-authored list of well-known public vendors. Brand names, official domains and parent relationships are public facts checked as described per field below. Nothing here comes from tenant data.",
+    "domainCheck": "On 2026-10-15 each officialDomains[0] was requested over HTTPS from the sandbox (curl, follow redirects). domainCheck values: ok = HTTP 200 on the stated host or its canonical redirect; bot_blocked = HTTP 403 from the vendor's bot protection (host exists, content not verified); unreachable = no response from the sandbox (not verified).",
+    "legalEntityNames": "legalEntityHints are from model knowledge of public corporate names, NOT checked against any company register. verified is false everywhere. Do not use them for matching without a registry check (see PENDING_REVIEW.md).",
+    "parentRelations": "parent is a long-standing public fact (acquisition announced by the parent). Re-check before relying on it for consolidation advice.",
+    "licence": "Facts (names, domains) carry no licence restriction; trade names belong to their owners and are used here for identification only.",
+    "sources": [
+      "Salesforce ownership of Slack: model knowledge of the 2021 acquisition, not re-fetched this session; verify",
+      "Vendor home pages listed under officialDomains, requested 2026-10-15"
+    ]
+  },
+  "vendors": [
+    {"id": "microsoft", "displayName": "Microsoft", "aliases": ["Microsoft Corporation", "MSFT", "Microsoft 365", "Office 365", "Azure", "Dynamics 365", "Teams"], "officialDomains": ["microsoft.com", "azure.com", "office.com"], "categoryHint": "software_platform", "parent": null, "domainCheck": "bot_blocked", "legalEntityHints": [{"name": "Microsoft Ireland Operations Limited", "verified": false}]},
+    {"id": "amazon-web-services", "displayName": "Amazon Web Services", "aliases": ["AWS", "Amazon AWS", "Amazon Web Services EMEA"], "officialDomains": ["aws.amazon.com", "amazonaws.com"], "categoryHint": "cloud_infrastructure", "parent": "Amazon.com", "domainCheck": "ok", "legalEntityHints": [{"name": "Amazon Web Services EMEA SARL", "verified": false}]},
+    {"id": "google", "displayName": "Google Cloud and Workspace", "aliases": ["Google", "Google Cloud", "GCP", "Google Workspace", "G Suite", "Alphabet"], "officialDomains": ["cloud.google.com", "workspace.google.com", "google.com"], "categoryHint": "cloud_infrastructure", "parent": "Alphabet", "domainCheck": "ok", "legalEntityHints": [{"name": "Google Cloud EMEA Limited", "verified": false}, {"name": "Google Ireland Limited", "verified": false}]},
+    {"id": "salesforce", "displayName": "Salesforce", "aliases": ["Salesforce.com", "SFDC", "Sales Cloud", "Service Cloud", "Marketing Cloud"], "officialDomains": ["salesforce.com"], "categoryHint": "crm", "parent": null, "domainCheck": "ok", "legalEntityHints": []},
+    {"id": "slack", "displayName": "Slack", "aliases": ["Slack Technologies", "Slack Technologies Limited"], "officialDomains": ["slack.com"], "categoryHint": "collaboration", "parent": "Salesforce", "domainCheck": "ok", "legalEntityHints": [{"name": "Slack Technologies Limited", "verified": false}]},
+    {"id": "docusign", "displayName": "Docusign", "aliases": ["DocuSign", "DocuSign Inc", "DocuSign International"], "officialDomains": ["docusign.com"], "categoryHint": "esignature_clm", "parent": null, "domainCheck": "ok", "legalEntityHints": [{"name": "DocuSign International (EMEA) Limited", "verified": false}]},
+    {"id": "atlassian", "displayName": "Atlassian", "aliases": ["Jira", "Confluence", "Trello", "Bitbucket", "Atlassian Pty Ltd"], "officialDomains": ["atlassian.com", "atlassian.net"], "categoryHint": "collaboration", "parent": null, "domainCheck": "ok", "legalEntityHints": []},
+    {"id": "zoom", "displayName": "Zoom", "aliases": ["Zoom Video Communications", "Zoom Communications", "Zoom Workplace"], "officialDomains": ["zoom.com", "zoom.us"], "categoryHint": "collaboration", "parent": null, "domainCheck": "ok", "legalEntityHints": []},
+    {"id": "adobe", "displayName": "Adobe", "aliases": ["Adobe Systems", "Creative Cloud", "Acrobat", "Adobe Sign", "Adobe Experience Cloud"], "officialDomains": ["adobe.com"], "categoryHint": "creative_software", "parent": null, "domainCheck": "bot_blocked", "legalEntityHints": []},
+    {"id": "oracle", "displayName": "Oracle", "aliases": ["Oracle Corporation", "Oracle Cloud", "OCI", "NetSuite"], "officialDomains": ["oracle.com", "netsuite.com"], "categoryHint": "database_erp", "parent": null, "domainCheck": "bot_blocked", "legalEntityHints": []},
+    {"id": "sap", "displayName": "SAP", "aliases": ["SAP SE", "S/4HANA", "SuccessFactors", "Ariba", "Concur"], "officialDomains": ["sap.com"], "categoryHint": "erp", "parent": null, "domainCheck": "bot_blocked", "legalEntityHints": [{"name": "SAP SE", "verified": false}]},
+    {"id": "servicenow", "displayName": "ServiceNow", "aliases": ["Now Platform", "ServiceNow Inc"], "officialDomains": ["servicenow.com"], "categoryHint": "itsm", "parent": null, "domainCheck": "unreachable", "legalEntityHints": []},
+    {"id": "workday", "displayName": "Workday", "aliases": ["Workday Inc", "Workday HCM"], "officialDomains": ["workday.com"], "categoryHint": "hr_finance", "parent": null, "domainCheck": "ok", "legalEntityHints": []},
+    {"id": "hubspot", "displayName": "HubSpot", "aliases": ["HubSpot Inc", "HubSpot CRM"], "officialDomains": ["hubspot.com"], "categoryHint": "crm", "parent": null, "domainCheck": "ok", "legalEntityHints": []},
+    {"id": "zendesk", "displayName": "Zendesk", "aliases": ["Zendesk Inc", "Zendesk Suite"], "officialDomains": ["zendesk.com"], "categoryHint": "customer_support", "parent": null, "domainCheck": "ok", "legalEntityHints": []}
+  ],
+  "matchingNotes": {
+    "ambiguousAliases": ["Teams (Microsoft, but also a generic word)", "Concur (SAP brand)", "Google (generic parent vs. Cloud vs. Workspace)"],
+    "rule": "Aliases are case-insensitive whole-word matches; ambiguous aliases must not match alone without a second signal (domain, product context).",
+    "excluded": "Vendors whose domain could not be reached or whose parent relationship is contested were not added; a tenant's own suppliers come from tenant data, never from this file."
+  }
+}
