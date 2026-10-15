@@ -28,6 +28,12 @@ public sealed record ExtractedFact(
     /// of the wire contract and never persisted as such: the store turns false into review-required.</summary>
     [JsonIgnore]
     public bool? SpanVerified { get; init; }
+
+    /// <summary>F5-D19: set by the cross-stage validators in Gate mode only (the named rule that routed this
+    /// field to review, e.g. <c>cross-stage:date-order.end-before-start</c>); null otherwise. Never part of the
+    /// wire contract. The store turns a non-null reason into review-required; the value is never changed.</summary>
+    [JsonIgnore]
+    public string? ReviewReason { get; init; }
 }
 
 

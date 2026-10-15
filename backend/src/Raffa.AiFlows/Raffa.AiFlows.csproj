@@ -40,6 +40,13 @@
                       LogicalName="Raffa.AiFlows.CapabilityGaps.investigator-trigger-lexicon.json" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Plan A-02 / T-06: agent prompts are versioned files (Prompts/<flow>/<agent>/vN.md), embedded so
+         the text that ships is the text that was reviewed. Read through AgentPromptResource; the
+         hash registered beside the version in code is what the drift test compares against. -->
+    <EmbeddedResource Include="Negotiation\Prompts\**\*.md" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

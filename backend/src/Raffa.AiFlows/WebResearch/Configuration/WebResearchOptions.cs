@@ -38,4 +38,17 @@ public sealed class WebResearchOptions : IWebResearchBudgetLimit
 
     /// <summary>The source cap, clamped to the range the research role accepts.</summary>
     public int EffectiveMaxSources => Math.Clamp(MaxSources, 1, 10);
+
+    /// <summary>F3-T10: copies every setting from <paramref name="other"/> onto this instance — how a
+    /// configuration reload reaches the singleton the host registered
+    /// (<see cref="WebResearchOptionsMonitor"/>). Add each new setting here.</summary>
+    internal void CopyFrom(WebResearchOptions other)
+    {
+        Enabled = other.Enabled;
+        RequireWorkspaceOptIn = other.RequireWorkspaceOptIn;
+        DailyCallsPerTenant = other.DailyCallsPerTenant;
+        MaxSources = other.MaxSources;
+        MaxQueryChars = other.MaxQueryChars;
+        AllowReportedFigures = other.AllowReportedFigures;
+    }
 }
