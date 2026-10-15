@@ -8,6 +8,7 @@ using Raffa.AiFlows.WebResearch.Lexicons;
 using Raffa.AiFlows.WebResearch.Orchestration;
 using Raffa.AiFlows.WebResearch.Ports;
 using Raffa.AiFlows.WebResearch.Query;
+using Raffa.AiGateway.Logging;
 using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;
@@ -56,7 +57,8 @@ public sealed class WebResearchFlow(
     IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
     IAuditWriter auditWriter,
     IClock clock,
-    CapabilityRouting capabilityRouting)
+    CapabilityRouting capabilityRouting,
+    IQueryHasher queryHasher)
 {
     /// <summary>F3-T10: read on every use, so the kill switch applies without a restart.</summary>
     private WebResearchOptions webResearchOptions => webResearchOptionsMonitor.CurrentValue;
@@ -142,7 +144,7 @@ public sealed class WebResearchFlow(
         AbstainRecoveryResolver resolveAbstainRecoveryActions,
         CancellationToken cancellationToken)
     {
-        var queryHash = QueryHasher.ComputeHash(authorized.Query);
+        var queryHash = queryHasher.Compute(authorized.Query);
 
         // A consent authorises one question; the gates still decide at execution time.
         if (!webResearchOptions.Enabled)

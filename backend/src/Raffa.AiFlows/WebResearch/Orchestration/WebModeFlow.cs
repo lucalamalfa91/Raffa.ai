@@ -11,6 +11,7 @@ using Raffa.AiFlows.WebResearch.Orchestration;
 using Raffa.AiFlows.WebResearch.Ports;
 using Raffa.AiFlows.WebResearch.Query;
 using Raffa.AiFlows.WebResearch.Replies;
+using Raffa.AiGateway.Logging;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
@@ -57,7 +58,8 @@ public sealed class WebModeFlow(
     IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
     IWebResearchBudget webResearchBudget,
     WebResearchFlow webResearchFlow,
-    CapabilityRouting capabilityRouting)
+    CapabilityRouting capabilityRouting,
+    IQueryHasher queryHasher)
 {
     /// <summary>F3-T10: read on every use, so the kill switch applies without a restart.</summary>
     private WebResearchOptions webResearchOptions => webResearchOptionsMonitor.CurrentValue;
@@ -212,7 +214,7 @@ public sealed class WebModeFlow(
     private async Task<WebResearchOutcome?> RunResearchAsync(
         TenantId tenantId, string question, string query, string actor, CancellationToken cancellationToken)
     {
-        var queryHash = QueryHasher.ComputeHash(query);
+        var queryHash = queryHasher.Compute(query);
 
         await webResearchFlow.WriteAuditAsync(
                 tenantId, WebResearchFlow.AuditAuthorizedAction, actor,

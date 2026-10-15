@@ -249,7 +249,8 @@ public static class ServiceCollectionExtensions
                 inner,
                 sp.GetRequiredService<IAuditWriter>(),
                 sp.GetRequiredService<ITenantContext>(),
-                sp.GetRequiredService<AiGatewayComplianceOptions>());
+                sp.GetRequiredService<AiGatewayComplianceOptions>(),
+                sp.GetRequiredService<IQueryHasher>());
         });
 
         // Plan A-01: the agent step runner. Scoped with the Scoped IAiGateway it calls (one per
@@ -257,6 +258,12 @@ public static class ServiceCollectionExtensions
         // immutable singleton a host may replace before this method runs. It reaches a model only
         // through IAiGateway, so the logging decorator's tenant scope and audit are untouched.
         services.TryAddSingleton(new AgentRunnerOptions());
+
+        // F3-T11: the keyed query hash every web audit row shares (AiGateway:QueryHash:Key; absent =
+        // the unkeyed SHA-256 of today, one warning logged).
+        services.TryAddSingleton<IQueryHasher>(sp => new KeyedQueryHasher(
+            sp.GetRequiredService<IConfiguration>(),
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<KeyedQueryHasher>>()));
         services.TryAddScoped<StepRunner>();
 
         return services;
