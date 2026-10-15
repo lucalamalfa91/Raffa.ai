@@ -5,6 +5,7 @@ using Raffa.AiFlows.Ask.Gate;
 using Raffa.AiFlows.Ask.Interview;
 using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiFlows.Ask.Planning;
+using Raffa.AiFlows.Ask.Reply;
 using Raffa.AiFlows.Ask.Routing;
 using Raffa.AiFlows.Shared.ContractContext;
 using Raffa.AiFlows.Shared.Guards;
@@ -57,6 +58,9 @@ internal static class AskFlowServiceCollectionExtensions
         // The Ask pack-composition root: one Scoped instance per request/job shares that scope's
         // own DbContext-backed services instead of a second, independently-tracked copy.
         services.AddScoped<AskCopilotService>();
+        services.AddScoped<GateReplyBuilder>();
+        services.AddScoped<AbstainRecovery>();
+        services.AddScoped<AskTurnAudit>();
 
         // The (supplier name, geography) key a BenchmarkQuery requires: resolved once per request
         // and shared by Ask's priced-line bands and the renewals/strategy endpoints. Scoped: reads

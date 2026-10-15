@@ -1,4 +1,6 @@
 using Raffa.AiFlows.Shared.ContractContext;
+using static Raffa.AiFlows.Ask.Packs.ContractResolution;
+using static Raffa.AiFlows.Ask.Packs.PackItemFactory;
 using System.Globalization;
 using Raffa.AiFlows.Negotiation.Verdict;
 using Raffa.AiFlows.Shared.Pack;
@@ -532,46 +534,6 @@ public sealed partial class AskCopilotService
         }
     }
 
-    private static PackItem BuildMarketDealItem(MarketDeal deal)
-    {
-        var note = MarketNoteComposer.Compose(deal);
-        var values = new List<PackValue>
-        {
-            new("p25", Amount2(deal.UnitPriceP25), PackValueKind.Amount, deal.Currency),
-            new("p50", Amount2(deal.UnitPriceP50), PackValueKind.Amount, deal.Currency),
-            new("p75", Amount2(deal.UnitPriceP75), PackValueKind.Amount, deal.Currency),
-            new("termMonths", deal.TermMonths.ToString(CultureInfo.InvariantCulture), PackValueKind.Number),
-            new("sampleSize", deal.SampleSize.ToString(CultureInfo.InvariantCulture), PackValueKind.Number),
-        };
-
-        if (deal.DiscountAchievedPct is { } discount)
-        {
-            values.Add(new PackValue("discountAchievedPct", Pct((decimal)discount), PackValueKind.Percentage));
-        }
-
-        if (deal.UpliftCapPct is { } uplift)
-        {
-            values.Add(new PackValue("upliftCapPct", Pct((decimal)uplift), PackValueKind.Percentage));
-        }
-
-        if (deal.NoticeDays is { } notice)
-        {
-            values.Add(new PackValue("noticeDays", notice.ToString(CultureInfo.InvariantCulture), PackValueKind.Number));
-        }
-
-        return new PackItem(
-            InsightsCitationKeys.Market(deal.RecordId),
-            PackCorpus.Market,
-            note.Title,
-            $"{deal.TermMonths} months · {deal.Geography} · {note.Provenance}",
-            null, null,
-            note.Snippet,
-            null, null,
-            deal.RecordId,
-            note.Provenance,
-            values);
-    }
-
     private static PackItem BuildCandidateItem(string keyTail, PortfolioSavingsCandidate candidate, LeverEvidence evidence, string rankLabel)
     {
         var values = new List<PackValue>
@@ -735,33 +697,4 @@ public sealed partial class AskCopilotService
             deal.SampleSize,
             deal.ClosingPeriod);
 
-    private static IReadOnlyList<PackItem> DistinctByCitationKey(IEnumerable<PackItem> items)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var result = new List<PackItem>();
-        foreach (var item in items)
-        {
-            if (seen.Add(item.CitationKey))
-            {
-                result.Add(item);
-            }
-        }
-
-        return result;
-    }
-
-    private static string FeasibilityLabel(SavingsFeasibility feasibility) => feasibility switch
-    {
-        // The council's verdict (CouncilVerdict) reads these labels back: one definition, in Raffa.Chat.
-        SavingsFeasibility.Reachable => CouncilVerdict.ReachableLabel,
-        SavingsFeasibility.Stretch => CouncilVerdict.StretchLabel,
-        SavingsFeasibility.NotSupported => CouncilVerdict.NotSupportedLabel,
-        _ => CouncilVerdict.NoTargetLabel,
-    };
-
-    private static string Amount(decimal value) => Math.Round(value, 0, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);
-
-    private static string Amount2(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
-
-    private static string Pct(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero).ToString("0.##", CultureInfo.InvariantCulture);
 }
