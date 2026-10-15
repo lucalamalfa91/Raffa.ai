@@ -15,8 +15,19 @@ public sealed record EmbeddingRequest(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     int? Dimensions = null);
 
+/// <summary>Batched form of <see cref="EmbeddingRequest"/>: <c>input</c> is an array (T-05).</summary>
+public sealed record EmbeddingBatchRequest(
+    [property: JsonPropertyName("input")] IReadOnlyList<string> Input,
+    [property: JsonPropertyName("model")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Model = null,
+    [property: JsonPropertyName("dimensions")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    int? Dimensions = null);
+
 public sealed record EmbeddingDatum(
-    [property: JsonPropertyName("embedding")] IReadOnlyList<float>? Embedding);
+    [property: JsonPropertyName("embedding")] IReadOnlyList<float>? Embedding,
+    [property: JsonPropertyName("index")] int? Index = null);
 
 public sealed record EmbeddingUsage(
     [property: JsonPropertyName("prompt_tokens")] int PromptTokens,

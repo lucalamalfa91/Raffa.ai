@@ -24,6 +24,52 @@ namespace Raffa.Market.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Raffa.Market.Infrastructure.Entities.MarketCorpusVersionEntity", b =>
+                {
+                    b.Property<string>("Version")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("version");
+
+                    b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("activated_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FeedVersion")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("feed_version");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("state");
+
+                    b.HasKey("Version")
+                        .HasName("pk_market_corpus_version");
+
+                    b.HasIndex("State")
+                        .IsUnique()
+                        .HasDatabaseName("ux_market_corpus_version_active")
+                        .HasFilter("state = 'active'");
+
+                    b.ToTable("market_corpus_version", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Version = "initial",
+                            ActivatedAt = new DateTimeOffset(new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 9, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            State = "active"
+                        });
+                });
+
             modelBuilder.Entity("Raffa.Market.Infrastructure.Entities.MarketEmbeddingEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -38,6 +84,14 @@ namespace Raffa.Market.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("chunk_text");
+
+                    b.Property<string>("CorpusVersion")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("initial")
+                        .HasColumnName("corpus_version");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -67,8 +121,8 @@ namespace Raffa.Market.Migrations
                     b.HasKey("Id")
                         .HasName("pk_market_embedding");
 
-                    b.HasIndex("RecordId")
-                        .HasDatabaseName("ix_market_embedding_record_id");
+                    b.HasIndex("CorpusVersion")
+                        .HasDatabaseName("ix_market_embedding_corpus_version");
 
                     b.HasIndex("Vector")
                         .HasDatabaseName("ix_market_embedding_vector")
@@ -77,6 +131,9 @@ namespace Raffa.Market.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Vector"), "hnsw");
                     NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Vector"), new[] { "vector_cosine_ops" });
+
+                    b.HasIndex("RecordId", "CorpusVersion")
+                        .HasDatabaseName("ix_market_embedding_record_id_corpus_version");
 
                     b.ToTable("market_embedding", (string)null);
                 });
@@ -88,16 +145,48 @@ namespace Raffa.Market.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("record_id");
 
+                    b.Property<string>("CorpusVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("initial")
+                        .HasColumnName("corpus_version");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("currency");
+
                     b.Property<string>("FeedVersion")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("feed_version");
 
+                    b.Property<string>("Geography")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("geography");
+
+                    b.Property<string>("PayloadHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("payload_hash");
+
                     b.Property<string>("PayloadJson")
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("payload_json");
+
+                    b.Property<string>("ProductNorm")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("product_norm");
 
                     b.Property<string>("ProvenanceLabel")
                         .IsRequired()
@@ -111,15 +200,41 @@ namespace Raffa.Market.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("provider");
 
+                    b.Property<string>("SupplierNorm")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("supplier_norm");
+
+                    b.Property<int?>("TermMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("term_months");
+
+                    b.Property<string>("UnitMetric")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("unit_metric");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.HasKey("RecordId")
+                    b.HasKey("RecordId", "CorpusVersion")
                         .HasName("pk_market_record");
+
+                    b.HasIndex("CorpusVersion")
+                        .HasDatabaseName("ix_market_record_corpus_version");
+
+                    b.HasIndex("ProductNorm")
+                        .HasDatabaseName("ix_market_record_product_norm");
 
                     b.HasIndex("Provider")
                         .HasDatabaseName("ix_market_record_provider");
+
+                    b.HasIndex("SupplierNorm")
+                        .HasDatabaseName("ix_market_record_supplier_norm");
+
+                    b.HasIndex("Category", "Geography")
+                        .HasDatabaseName("ix_market_record_category_geography");
 
                     b.ToTable("market_record", (string)null);
                 });
@@ -128,10 +243,10 @@ namespace Raffa.Market.Migrations
                 {
                     b.HasOne("Raffa.Market.Infrastructure.Entities.MarketRecordEntity", null)
                         .WithMany()
-                        .HasForeignKey("RecordId")
+                        .HasForeignKey("RecordId", "CorpusVersion")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_market_embedding_market_record_record_id");
+                        .HasConstraintName("fk_market_embedding_market_record_record_id_corpus_version");
                 });
 #pragma warning restore 612, 618
         }

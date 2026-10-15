@@ -88,6 +88,17 @@ internal static class IngestMarketCommand
             $"Ingested feed '{summary.FeedVersion}': {summary.Inserted} inserted, " +
             $"{summary.Updated} updated, {summary.Unchanged} unchanged.");
 
+        if (summary.Removed > 0 || summary.CorpusVersion is not null)
+        {
+            Console.WriteLine($"Corpus version '{summary.CorpusVersion}'; {summary.Removed} record(s) removed.");
+        }
+
+        // A-11 / F7-T09: records the data-quality review kept out of the corpus, with their reasons.
+        foreach (var rejection in summary.Rejections ?? [])
+        {
+            Console.WriteLine($"Rejected '{rejection.RecordId}': {string.Join(", ", rejection.Reasons)}");
+        }
+
         return 0;
     }
 

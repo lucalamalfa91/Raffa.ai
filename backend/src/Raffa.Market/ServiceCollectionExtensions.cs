@@ -117,6 +117,18 @@ public static class ServiceCollectionExtensions
             // first time Raffa.Api was given ConnectionStrings:Market: the API would not boot at
             // all. Every Market test constructs its own options directly, so only running the real
             // host surfaced it.
+            // F7-T05: the structured corpus, cached per corpus version and shared by every read path
+            // (Market:CorpusCache:Enabled, default on).
+            services.TryAddSingleton(sp =>
+            {
+                var cacheOptions = new MarketCorpusCacheOptions();
+                sp.GetService<IConfiguration>()
+                    ?.GetSection(MarketCorpusCacheOptions.SectionName)
+                    .Bind(cacheOptions);
+                return cacheOptions;
+            });
+            services.TryAddSingleton<MarketCorpusCache>();
+
             services.AddDbContextFactory<MarketDbContext>(options =>
                 MarketDbContextOptions.Configure(options, marketConnectionString));
 
@@ -141,6 +153,28 @@ public static class ServiceCollectionExtensions
                 new MarketFeedBenchmarkAdapter(
                     sp.GetRequiredService<IDbContextFactory<MarketDbContext>>(),
                     sp.GetRequiredService<IClock>())));
+
+            // T-05: batch size / TPM budget / per-batch checkpoint of the ingestion job
+            // (Market:Ingestion). Defaults are the pre-batching behaviour.
+            services.TryAddSingleton(sp =>
+            {
+                var ingestionOptions = new MarketIngestionOptions();
+                sp.GetService<IConfiguration>()
+                    ?.GetSection(MarketIngestionOptions.SectionName)
+                    .Bind(ingestionOptions);
+                return ingestionOptions;
+            });
+
+            // F7-T07: hybrid search / diversification of the pgvector retrieval (Market:Retrieval).
+            // Both off by default, which is the retrieval as it was.
+            services.TryAddSingleton(sp =>
+            {
+                var retrievalOptions = new MarketRetrievalOptions();
+                sp.GetService<IConfiguration>()
+                    ?.GetSection(MarketRetrievalOptions.SectionName)
+                    .Bind(retrievalOptions);
+                return retrievalOptions;
+            });
 
             services.AddScoped<MarketIngestionService>();
             services.AddScoped<MarketRecordQueryService>();

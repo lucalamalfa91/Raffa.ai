@@ -8,6 +8,16 @@
 -- fixed module order. 20261008152734_AddEmbeddingFixtureFlagAndHnswIndex (F7-T01/F7-T06) adds the
 -- HNSW cosine index behind the `ORDER BY vector <=> @q LIMIT k` query and the nullable `is_fixture`
 -- flag the query-time embedding guard reads.
+-- 20261015205105_AddMarketRecordPayloadHash (F7-T04) adds the nullable `payload_hash` idempotency
+-- key of an ingested record (additive; rows that predate it are back-filled by the next ingest run).
+-- 20261015210706_AddMarketRecordFilterColumns (F7-T02) adds the nullable denormalised filter columns (supplier_norm,
+-- product_norm, category, geography, currency, term_months, unit_metric) and their indexes (additive;
+-- back-filled by the next ingest run, readers treat NULL as "check in memory").
+-- 20261015211333_AddCorpusVersioning (F7-T08) makes the corpus versioned (blue/green): `market_corpus_version` (the initial
+-- version is seeded active), `corpus_version` on market_record / market_embedding (default 'initial', so
+-- every existing row belongs to the active version), the primary key of market_record becomes
+-- (record_id, corpus_version) and the embedding FK follows. Data-preserving; the key swap takes a brief
+-- exclusive lock.
 --
 -- Grant model (task objective: "grants read to the application role and restricts writes to the
 -- ingestion role when the CI role model allows it"): Terraform (`infra/modules/postgres/main.tf`)
@@ -120,6 +130,215 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015205105_AddMarketRecordPayloadHash') THEN
+    ALTER TABLE market_record ADD payload_hash character varying(64);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015205105_AddMarketRecordPayloadHash') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261015205105_AddMarketRecordPayloadHash', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD category character varying(200);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD currency character varying(20);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD geography character varying(50);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD product_norm character varying(400);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD supplier_norm character varying(400);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD term_months integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD unit_metric character varying(100);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    CREATE INDEX ix_market_record_category_geography ON market_record (category, geography);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    CREATE INDEX ix_market_record_product_norm ON market_record (product_norm);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    CREATE INDEX ix_market_record_supplier_norm ON market_record (supplier_norm);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261015210706_AddMarketRecordFilterColumns', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    ALTER TABLE market_embedding DROP CONSTRAINT fk_market_embedding_market_record_record_id;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    ALTER TABLE market_record DROP CONSTRAINT pk_market_record;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    DROP INDEX ix_market_embedding_record_id;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    ALTER TABLE market_record ADD corpus_version character varying(100) NOT NULL DEFAULT 'initial';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    ALTER TABLE market_embedding ADD corpus_version character varying(100) NOT NULL DEFAULT 'initial';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    ALTER TABLE market_record ADD CONSTRAINT pk_market_record PRIMARY KEY (record_id, corpus_version);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    CREATE TABLE market_corpus_version (
+        version character varying(100) NOT NULL,
+        state character varying(20) NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        activated_at timestamp with time zone,
+        feed_version character varying(100),
+        CONSTRAINT pk_market_corpus_version PRIMARY KEY (version)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    INSERT INTO market_corpus_version (version, activated_at, created_at, feed_version, state)
+    VALUES ('initial', TIMESTAMPTZ '2026-09-09T00:00:00+00:00', TIMESTAMPTZ '2026-09-09T00:00:00+00:00', NULL, 'active');
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    CREATE INDEX ix_market_record_corpus_version ON market_record (corpus_version);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    CREATE INDEX ix_market_embedding_corpus_version ON market_embedding (corpus_version);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    CREATE INDEX ix_market_embedding_record_id_corpus_version ON market_embedding (record_id, corpus_version);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    CREATE UNIQUE INDEX ux_market_corpus_version_active ON market_corpus_version (state) WHERE state = 'active';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    ALTER TABLE market_embedding ADD CONSTRAINT fk_market_embedding_market_record_record_id_corpus_version FOREIGN KEY (record_id, corpus_version) REFERENCES market_record (record_id, corpus_version) ON DELETE CASCADE;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015211333_AddCorpusVersioning') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261015211333_AddCorpusVersioning', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
 -- Grant model (see this file's own header comment). Not part of the "20260909011226_Initial"
 -- EF migration and not gated on __EFMigrationsHistory: re-running these two blocks against an
 -- already-granted role is a harmless re-GRANT (Postgres allows granting a privilege a role
@@ -128,7 +347,7 @@ DO $EF$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'raffa_app') THEN
         GRANT USAGE ON SCHEMA public TO raffa_app;
-        GRANT SELECT ON market_record, market_embedding TO raffa_app;
+        GRANT SELECT ON market_record, market_embedding, market_corpus_version TO raffa_app;
     END IF;
 END $EF$;
 
@@ -136,7 +355,7 @@ DO $EF$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'raffa_market_ingest') THEN
         GRANT USAGE ON SCHEMA public TO raffa_market_ingest;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON market_record, market_embedding TO raffa_market_ingest;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON market_record, market_embedding, market_corpus_version TO raffa_market_ingest;
     END IF;
 END $EF$;
 
