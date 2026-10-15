@@ -34,7 +34,7 @@ public sealed record WebSourcePolicy(
         return new WebSourcePolicy(
             options.DeniedDomains ?? [],
             options.StripTrackingParameters,
-            options.DomainTiers ?? [],
+            options.VendorMasterAsTier1 ? WebVendorMaster.WithOfficialDomains(options.DomainTiers ?? []) : options.DomainTiers ?? [],
             options.MaxSourceTier);
     }
 

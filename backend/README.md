@@ -1768,7 +1768,13 @@ answer (`WebResearchOutcome.SentencesRemoved`, `GuardIntervened`); when no
 sentence with a marker is left the reply is the usual abstain. The persona is
 `WebResearch/Prompts/research/v2.md` (`WebResearchPrompt`, `research-v2`; v1 stays on disk). The query is
 `WebQuerySanitizer`'s: the user's words minus the "search the web" phrase and
-every amount, percentage, date, money shorthand, e-mail and URL.
+every amount, percentage, date, money shorthand, e-mail and URL. Three more
+opt-in refinements, all off by default: `Chat:WebResearch:RedactSensitiveQueryPatterns`
+(F3-D10: the query also loses IBANs, VAT numbers, Italian fiscal codes and phone
+numbers), `CiteSourcesOnAbstain` (F3-D05: an abstain keeps the sources it found as
+clickable citations, never the rejected text) and `VendorMasterAsTier1` (F3-D12:
+`WebVendorMaster`'s official vendor domains are tier 1 in the source policy, unless
+`DomainTiers` ranks them otherwise; only read with `MaxSourceTier` above zero).
 
 Three gates, re-checked when a consent is spent: `Chat:WebResearch:Enabled`
 (kill switch, **default false**), the workspace Admin's opt-in

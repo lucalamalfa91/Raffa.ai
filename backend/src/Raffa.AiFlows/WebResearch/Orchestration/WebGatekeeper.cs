@@ -34,7 +34,7 @@ public sealed class WebGatekeeper(
         }
 
         var purpose = WebResearchTopicLexicon.Classify(question);
-        var query = WebQuerySanitizer.Sanitize(question, options.MaxQueryChars);
+        var query = WebQuerySanitizer.Sanitize(question, options.MaxQueryChars, options.RedactSensitiveQueryPatterns);
         if (purpose is null || query is null)
         {
             return (WebGate.NoTopic, null);
@@ -74,7 +74,7 @@ public sealed class WebGatekeeper(
             return (WebGate.Budget, null);
         }
 
-        var query = WebQuerySanitizer.Sanitize(question, options.MaxQueryChars);
+        var query = WebQuerySanitizer.Sanitize(question, options.MaxQueryChars, options.RedactSensitiveQueryPatterns);
         return query is null ? (WebGate.TooShort, null) : (WebGate.Open, query);
     }
 
