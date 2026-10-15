@@ -266,6 +266,10 @@ public static class ServiceCollectionExtensions
             sp.GetService<Microsoft.Extensions.Logging.ILogger<KeyedQueryHasher>>()));
         services.TryAddScoped<StepRunner>();
 
+        // Plan A-02: the agent registry (catalog + per-agent kill switch), Singleton, every agent on
+        // by default. Flows add their definitions with AddAgentDefinitions.
+        services.AddAgentRegistry();
+
         return services;
     }
 }

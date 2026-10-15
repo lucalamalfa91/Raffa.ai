@@ -44,12 +44,16 @@ public sealed class StepRunner
 {
     private readonly IAiGateway _gateway;
     private readonly SemaphoreSlim _gate;
+    private readonly AgentRegistry? _registry;
     private string? _defaultRunId;
 
-    public StepRunner(IAiGateway gateway, AgentRunnerOptions? options = null)
+    /// <param name="registry">When supplied, an agent the registry reports off is not called: the step
+    /// degrades by its policy with <see cref="StepFailureReason.Disabled"/> (plan A-02).</param>
+    public StepRunner(IAiGateway gateway, AgentRunnerOptions? options = null, AgentRegistry? registry = null)
     {
         ArgumentNullException.ThrowIfNull(gateway);
         _gateway = gateway;
+        _registry = registry;
         _gate = new SemaphoreSlim(Math.Max(1, (options ?? new AgentRunnerOptions()).MaxParallelism));
     }
 
@@ -160,6 +164,14 @@ public sealed class StepRunner
         using var activity = StartSpan(definition);
 
         var clock = Stopwatch.StartNew();
+
+        if (_registry?.DisabledReason(definition.Name) is { } disabled)
+        {
+            var off = Degrade(step, input, StepFailureReason.Disabled, disabled, 0, false, null, clock);
+            Annotate(activity, off);
+            return off;
+        }
+
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(definition.Deadline);
 
