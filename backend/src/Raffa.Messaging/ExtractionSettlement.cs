@@ -1,4 +1,5 @@
 using Raffa.Documents.Contracts.Application.Extraction;
+using Raffa.SharedKernel.Jobs;
 
 namespace Raffa.Messaging;
 
@@ -30,6 +31,15 @@ public static class ExtractionSettlement
     {
         ExtractionHandleOutcome.JobNotFound when deliveryCount < 2 => Action.Abandon,
         ExtractionHandleOutcome.JobNotFound => Action.DeadLetter,
+        _ => Action.Complete,
+    };
+
+    /// <summary>Task F6-T05: the same policy for a shared-kernel job (<see cref="IJobHandler"/>), so the
+    /// document pipeline and every other job kind settle a delivery identically.</summary>
+    public static Action Decide(JobHandleOutcome outcome, long deliveryCount) => outcome switch
+    {
+        JobHandleOutcome.JobNotFound when deliveryCount < 2 => Action.Abandon,
+        JobHandleOutcome.JobNotFound => Action.DeadLetter,
         _ => Action.Complete,
     };
 }

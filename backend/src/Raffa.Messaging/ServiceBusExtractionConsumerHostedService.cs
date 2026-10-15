@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Azure.Messaging.ServiceBus;
 using Raffa.Documents.Contracts.Application.Extraction;
+using Raffa.SharedKernel.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -34,6 +35,7 @@ public sealed class ServiceBusExtractionConsumerHostedService(
     ServiceBusClient client,
     IOptions<ExtractionQueueOptions> options,
     IServiceScopeFactory scopeFactory,
+    JobDeliveryProcessor jobProcessor,
     ILogger<ServiceBusExtractionConsumerHostedService> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -75,6 +77,15 @@ public sealed class ServiceBusExtractionConsumerHostedService(
 
     private async Task OnMessageAsync(ProcessMessageEventArgs args)
     {
+        // Task F6-T05: the shared job kernel shares this topic and this subscription; its messages are
+        // told apart by subject. Everything without that subject is the document pipeline's own
+        // ExtractionRequested, handled exactly as before.
+        if (string.Equals(args.Message.Subject, JobRequested.MessageSubject, StringComparison.Ordinal))
+        {
+            await OnJobAsync(args).ConfigureAwait(false);
+            return;
+        }
+
         ExtractionRequested? message;
         try
         {
@@ -137,6 +148,27 @@ public sealed class ServiceBusExtractionConsumerHostedService(
                 exception, "Unhandled failure processing document {DocumentId} (delivery {Delivery}); abandoning",
                 message.DocumentId, args.Message.DeliveryCount);
             await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task OnJobAsync(ProcessMessageEventArgs args)
+    {
+        var decision = await jobProcessor
+            .ProcessAsync(args.Message.Body.ToMemory(), args.Message.DeliveryCount, args.CancellationToken)
+            .ConfigureAwait(false);
+
+        switch (decision.Action)
+        {
+            case ExtractionSettlement.Action.Abandon:
+                await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
+                break;
+            case ExtractionSettlement.Action.DeadLetter:
+                await args.DeadLetterMessageAsync(
+                    args.Message, decision.Reason ?? "unspecified", decision.Detail, args.CancellationToken).ConfigureAwait(false);
+                break;
+            default:
+                await args.CompleteMessageAsync(args.Message, args.CancellationToken).ConfigureAwait(false);
+                break;
         }
     }
 
