@@ -42,6 +42,12 @@ public static class AgentPromptResource
         return reader.ReadToEnd();
     }
 
+    /// <summary>Reads the embedded prompt like <see cref="ReadEmbedded"/> and returns it
+    /// <see cref="Normalize">normalized</see> (LF line endings, no trailing whitespace): the form a
+    /// prompt that used to be a string constant has, so moving the text into a file changes neither
+    /// the request nor the hash.</summary>
+    public static string Load(Assembly assembly, string path) => Normalize(ReadEmbedded(assembly, path));
+
     /// <summary>Line endings to <c>\n</c> and no trailing whitespace: the form that is hashed.</summary>
     public static string Normalize(string text)
     {

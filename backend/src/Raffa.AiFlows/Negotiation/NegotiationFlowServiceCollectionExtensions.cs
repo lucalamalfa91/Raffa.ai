@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Raffa.AiGateway.Agents;
 using Raffa.AiFlows.Negotiation.Agents;
 using Raffa.AiFlows.Negotiation.Options;
 using Raffa.AiFlows.Negotiation.Orchestration;
@@ -29,6 +30,13 @@ internal static class NegotiationFlowServiceCollectionExtensions
         services.AddScoped<NegotiationCouncil>();
         services.AddScoped<MarketResearcher>();
         services.AddScoped<AskAgentFlow>();
+
+        // Plan A-02: the council's three agents are in the agent registry (versioned, drift-checked,
+        // one kill switch each: Agents:Agents:<name>:Enabled). CouncilOptions.Enabled keeps working.
+        services.AddAgentRegistry();
+        services.AddAgentDefinitions(
+            CouncilStepDefinitions.Flow,
+            sp => CouncilStepDefinitions.All(sp.GetRequiredService<CouncilOptions>().AgentDeadline));
 
         return services;
     }

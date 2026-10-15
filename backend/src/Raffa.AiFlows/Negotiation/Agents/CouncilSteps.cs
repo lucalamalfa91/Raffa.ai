@@ -47,20 +47,40 @@ internal static class CouncilStepDefinitions
     private const string MarketAnalystHash = "6588ffe9477b2b7d063a17efc0f769020c9ecf5658a051c052e7fbcc8bccebd3";
     private const string LeverStrategistHash = "ca07e9bbdb4da29da985a5fcf30b2cc259d6199955a0048e87710c78816d5bb9";
 
+    /// <summary>The flow name the council's agents are registered under (<see cref="AgentRegistry"/>;
+    /// <c>Agents:Flows:council:Enabled</c> switches all three).</summary>
+    public const string Flow = "council";
+
+    // The prompts are the versioned files under Negotiation/Prompts/council/<agent>/v3.md (plan A-02,
+    // T-06), byte-identical (same text, same hash) to the CouncilAgents constants they were moved
+    // from; a test pins both. The constants stay for the callers that still read them.
+    private const string ContractAnalystPath = "Prompts/council/contract-analyst/v3.md";
+    private const string MarketAnalystPath = "Prompts/council/market-analyst/v3.md";
+    private const string LeverStrategistPath = "Prompts/council/lever-strategist/v3.md";
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> Prompts = new();
+
+    private static string Prompt(string path) =>
+        Prompts.GetOrAdd(path, p => AgentPromptResource.Load(typeof(CouncilStepDefinitions).Assembly, p));
+
     public static AgentDefinition ContractAnalyst(TimeSpan deadline) => new(
-        CouncilAgents.ContractAnalystName, CouncilAgents.Version, CouncilAgents.ContractAnalystPrompt,
+        CouncilAgents.ContractAnalystName, CouncilAgents.Version, Prompt(ContractAnalystPath),
         CouncilAgents.FindingsSchema, deadline, AgentFailurePolicy.Skip,
-        registeredPromptHash: ContractAnalystHash);
+        registeredPromptHash: ContractAnalystHash, promptResource: ContractAnalystPath);
 
     public static AgentDefinition MarketAnalyst(TimeSpan deadline) => new(
-        CouncilAgents.MarketAnalystName, CouncilAgents.Version, CouncilAgents.MarketAnalystPrompt,
+        CouncilAgents.MarketAnalystName, CouncilAgents.Version, Prompt(MarketAnalystPath),
         CouncilAgents.FindingsSchema, deadline, AgentFailurePolicy.Skip,
-        registeredPromptHash: MarketAnalystHash);
+        registeredPromptHash: MarketAnalystHash, promptResource: MarketAnalystPath);
 
     public static AgentDefinition LeverStrategist(TimeSpan deadline) => new(
-        CouncilAgents.LeverStrategistName, CouncilAgents.Version, CouncilAgents.LeverStrategistPrompt,
+        CouncilAgents.LeverStrategistName, CouncilAgents.Version, Prompt(LeverStrategistPath),
         CouncilAgents.PlaysSchema, deadline, AgentFailurePolicy.Fail,
-        registeredPromptHash: LeverStrategistHash);
+        registeredPromptHash: LeverStrategistHash, promptResource: LeverStrategistPath);
+
+    /// <summary>The three definitions, for <see cref="AgentRegistry"/> registration.</summary>
+    public static IEnumerable<AgentDefinition> All(TimeSpan deadline) =>
+        [ContractAnalyst(deadline), MarketAnalyst(deadline), LeverStrategist(deadline)];
 }
 
 /// <summary>Round one, tenant slice: the contract analyst.</summary>

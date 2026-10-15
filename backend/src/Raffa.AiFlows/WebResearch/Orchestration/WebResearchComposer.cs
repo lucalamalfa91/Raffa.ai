@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Options;
 using Raffa.AiFlows.Shared.Guards;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiFlows.Shared.Reply;
@@ -28,8 +29,14 @@ namespace Raffa.AiFlows.WebResearch.Orchestration;
 /// never a retry (each call is budgeted). Results are never indexed and never merged into an
 /// <c>answer</c>-role pack.
 /// </summary>
-public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions options, IClock clock)
+public sealed class WebResearchComposer(IAiGateway aiGateway, IOptionsMonitor<WebResearchOptions> optionsMonitor, IClock clock)
 {
+    /// <summary>A fixed options instance (unit tests, tools): never re-read.</summary>
+    public WebResearchComposer(IAiGateway aiGateway, WebResearchOptions options, IClock clock)
+        : this(aiGateway, WebResearchOptionsMonitor.Static(options), clock)
+    {
+    }
+
     public const string CitationKeyPrefix = "web:";
 
     public async Task<WebResearchOutcome> ComposeAsync(
@@ -38,6 +45,7 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, WebResearchOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
 
+        var options = optionsMonitor.CurrentValue;
         var italian = string.Equals(language, "it", StringComparison.OrdinalIgnoreCase);
         var lang = NumericLocale.SupportedLanguage(language) ?? "en"; // one of the five supported (D6)
 

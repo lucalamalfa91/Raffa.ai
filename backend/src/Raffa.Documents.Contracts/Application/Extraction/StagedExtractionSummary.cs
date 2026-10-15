@@ -21,11 +21,14 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// review list with its evidence, where a human correction re-resolves it
 /// (<c>ContractCorrectionService</c>, requirements R-SUP-03).
 /// </param>
+/// <param name="Truncated">F5-T04: part of the document exceeded the chunking budget and was not read; the
+/// document is never Completed in that case.</param>
 public sealed record StagedExtractionSummary(
     EntityId ContractId,
     DocumentProcessingStatus DocumentProcessingStatus,
     IReadOnlyList<StagedExtractionStageResult> Stages,
-    string? AcceptedSupplierName = null);
+    string? AcceptedSupplierName = null,
+    bool Truncated = false);
 
 /// <summary>Result of running a single <see cref="ExtractionStage"/> (one <see cref="ExtractionJob"/>
 /// row). <see cref="ExtractedCount"/> is how many facts/items were persisted;

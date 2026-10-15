@@ -15,8 +15,28 @@ public static class ExtractPromptTemplate
     /// <summary>Bump when the prompt wording below changes.</summary>
     public const string Version = "foundry-extract-v3";
 
+    /// <summary>F5-T03: version tag of the document-first layout (<see cref="SharedSystemPrompt"/> +
+    /// <see cref="DocumentFirstUserMessage"/>). The wording of the rules is the same as
+    /// <see cref="Version"/>'s; only the layout differs.</summary>
+    public const string DocumentFirstVersion = "foundry-extract-v3-docfirst";
+
     public static string SystemPrompt(string stageName) =>
         $"You extract structured facts for the '{stageName}' stage of a contract-review pipeline, " +
+        Body;
+
+    /// <summary>F5-T03: the stage-independent system prompt. Identical for every stage, so it is part of the
+    /// cacheable prefix shared by the stage calls over one document; the stage is named by the task line that
+    /// follows the document (<see cref="DocumentFirstUserMessage"/>).</summary>
+    public static string SharedSystemPrompt() =>
+        "You extract structured facts for one stage of a contract-review pipeline, " + Body;
+
+    /// <summary>F5-T03: document first, then the stage's task line. A context block, when the caller supplies
+    /// one, is already at the end of <paramref name="documentText"/>.</summary>
+    public static string DocumentFirstUserMessage(string documentText, string stageName) =>
+        documentText + "\n[[TASK]]\nExtract the '" + stageName + "' stage from the document above. " +
+        "Respond with strict JSON matching the given schema only.";
+
+    private const string Body =
         "from the document text only. The document may be written in any language (Italian supplier " +
         "contracts are common); read it in its own language. The text carries [[PAGE n]] markers " +
         "where each page starts. It may be a PDF, a Word table, a spreadsheet or OCR of a scan — " +

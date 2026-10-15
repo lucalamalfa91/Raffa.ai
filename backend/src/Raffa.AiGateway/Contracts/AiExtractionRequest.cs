@@ -16,7 +16,14 @@ namespace Raffa.AiGateway.Contracts;
 /// <c>source</c>/<c>confidence</c>-per-field shape is expressed here by the caller, not hard-coded
 /// in the gateway).
 /// </param>
+/// <param name="DocumentFirst">
+/// F5-T03: prompt-cache-friendly layout. When true the system prompt is the same for every stage and the
+/// document is the head of the user message, the stage-specific task line coming after it, so consecutive
+/// stage calls over one document share the longest possible prefix. False (default) = the historic layout,
+/// byte for byte.
+/// </param>
 public sealed record AiExtractionRequest(
     string StageName,
     string DocumentText,
-    string JsonSchema);
+    string JsonSchema,
+    bool DocumentFirst = false);
