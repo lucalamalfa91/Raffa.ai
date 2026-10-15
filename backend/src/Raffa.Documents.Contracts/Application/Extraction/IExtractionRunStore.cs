@@ -48,13 +48,33 @@ public interface IExtractionRunStore
     /// fields" auto-complete and the audit row. Returns the summary.</summary>
     Task<StagedExtractionSummary> CloseAsync(
         ExtractionRun run, IReadOnlyList<StagedExtractionStageResult> stageResults, CancellationToken cancellationToken);
+
+    /// <summary>F5-T05 (context dependencies, resume): the facts a resumed run's list stages should see
+    /// for the scalar <paramref name="stages"/> it did not re-run, rebuilt from the Contract's current
+    /// values (the ones a human or an earlier auto-accept left there), restricted to fields whose latest
+    /// evidence is accepted. Reads only; must not be called while another store call is in flight.
+    /// The default (no store support) is "no context".</summary>
+    Task<IReadOnlyDictionary<ExtractionStage, StageFacts>> ReadScalarContextAsync(
+        ExtractionRun run, IReadOnlyList<ExtractionStage> stages, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<ExtractionStage, StageFacts>>(new Dictionary<ExtractionStage, StageFacts>());
+
+    /// <summary>F5-T05 (Q2): records the hash of the request text this stage actually sent (context
+    /// included) on its still-tracked job; persisted by the stage's own <see cref="ApplyAsync"/> or
+    /// <see cref="FailAsync"/> save. Called only when it differs from the run's base hash. Not safe to
+    /// call while another store call is in flight. Default: no-op.</summary>
+    void SetStageInputHash(ExtractionRun run, ExtractionStage stage, string inputHash)
+    {
+    }
 }
 
 /// <summary>What opening a run needs. <paramref name="InputHash"/> identifies the page-marked text
-/// (and pipeline version) the run reads; a resume only reuses checkpoints with the same hash.</summary>
+/// (and pipeline version) the run reads; a resume only reuses checkpoints with the same hash.
+/// <paramref name="NoReuseStages"/> are stages whose request text depends on other stages' output (context
+/// dependencies on): their checkpoint is never reused, so a resume never mixes modes.</summary>
 public sealed record ExtractionRunRequest(
     TenantId TenantId,
     EntityId DocumentId,
     string InputHash,
     int PageCount,
-    double? ClassificationConfidence);
+    double? ClassificationConfidence,
+    IReadOnlySet<ExtractionStage>? NoReuseStages = null);

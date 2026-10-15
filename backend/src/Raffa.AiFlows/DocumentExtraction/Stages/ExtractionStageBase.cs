@@ -25,12 +25,18 @@ internal abstract class ExtractionStageBase(ExtractionStage stage, string jsonSc
 
     public string StageName { get; } = stage.ToString();
 
-    public IReadOnlyList<ExtractionStage> DependsOn => [];
+    /// <summary>The scalar stages, in pipeline order: what every list stage depends on.</summary>
+    protected static readonly IReadOnlyList<ExtractionStage> ScalarStages =
+        [ExtractionStage.Metadata, ExtractionStage.CommercialTerms, ExtractionStage.DatesAndRenewalTerms];
+
+    public virtual IReadOnlyList<ExtractionStage> DependsOn => [];
 
     public string JsonSchema { get; } = jsonSchema;
 
+    /// <summary>Byte-identical to the pipeline's historic request when <see cref="ExtractionStageInput.Context"/>
+    /// yields no block (always the case with context dependencies off).</summary>
     public AiExtractionRequest BuildRequest(ExtractionStageInput input) =>
-        new(StageName, input.DocumentText, JsonSchema);
+        new(StageName, ExtractionContextBlock.Prefix(input.Context, DependsOn) + input.DocumentText, JsonSchema);
 
     public abstract StageFacts Parse(string payloadJson);
 }

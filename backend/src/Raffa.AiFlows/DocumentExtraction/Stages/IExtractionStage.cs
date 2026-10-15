@@ -17,7 +17,9 @@ public interface IExtractionStage
     /// the fixture extractor (case-insensitive keys), the scripted test gateways and the audit step label.</summary>
     string StageName { get; }
 
-    /// <summary>Stages whose parsed output this stage wants as context (empty for every stage today).</summary>
+    /// <summary>F5-T05: stages whose parsed output this stage wants as context. Honoured only when
+    /// <c>ExtractionOrchestrationOptions.UseContextDependencies</c> is true; ignored otherwise (today's
+    /// behaviour). The three scalar stages declare none; the four list stages declare the three scalar ones.</summary>
     IReadOnlyList<ExtractionStage> DependsOn { get; }
 
     /// <summary>Strict-mode JSON schema, built once.</summary>

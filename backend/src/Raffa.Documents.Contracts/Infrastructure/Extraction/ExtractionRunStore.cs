@@ -86,7 +86,7 @@ public sealed partial class ExtractionRunStore(
         // F5-T01/F5-T02: decide whether this call starts a fresh run or continues an incomplete one
         // over the same text, and what a human already owns on this contract. Both are read before
         // anything is written.
-        var plan = await PlanRunAsync(tenantId, document.Id, request.InputHash, now, cancellationToken)
+        var plan = await PlanRunAsync(tenantId, document.Id, request.InputHash, now, request.NoReuseStages, cancellationToken)
             .ConfigureAwait(false);
         var run = new ExtractionRun(
             this,
@@ -276,6 +276,57 @@ public sealed partial class ExtractionRunStore(
         return new StagedExtractionStageResult(job.Stage, job.Status, 0, 0, job.ErrorDetail, kind);
     }
 
+    /// <inheritdoc />
+    public void SetStageInputHash(ExtractionRun run, ExtractionStage stage, string inputHash)
+    {
+        Guard(run);
+        JobOf(run, stage).InputHash = inputHash;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<ExtractionStage, StageFacts>> ReadScalarContextAsync(
+        ExtractionRun run, IReadOnlyList<ExtractionStage> stages, CancellationToken cancellationToken)
+    {
+        Guard(run);
+
+        var result = new Dictionary<ExtractionStage, StageFacts>();
+        foreach (var stage in stages)
+        {
+            var fields = ExtractionStageFields.For(stage).Where(f => !ExtractionConfidencePolicy.IsStatusField(f)).ToArray();
+            var latest = await LatestEvidenceAsync(run.TenantId, run.Contract.Id, fields, cancellationToken)
+                .ConfigureAwait(false);
+
+            var facts = new List<ExtractedFact>();
+            foreach (var field in fields)
+            {
+                if (!latest.TryGetValue(field, out var evidence))
+                {
+                    continue;
+                }
+
+                var decision = evidence.Decision ?? ExtractionConfidencePolicy.Decide(evidence.Confidence);
+                if (decision is not (ExtractionConfidencePolicy.AutoAccepted or ExtractionConfidencePolicy.HumanAccepted)
+                    || ReadContractValue(run.Contract, field) is not { } value)
+                {
+                    continue;
+                }
+
+                facts.Add(new ExtractedFact(
+                    field,
+                    value,
+                    null,
+                    null,
+                    decision == ExtractionConfidencePolicy.HumanAccepted
+                        ? ExtractionConfidencePolicy.OfficialConfidence
+                        : evidence.Confidence));
+            }
+
+            result[stage] = new StageFacts.Scalars(stage, facts);
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// Closes the run: derived deadline (F5-D08), status officialisation, document status, save, the
     /// "never Review 0 fields" auto-complete, and the one audit row. Returns the summary.
@@ -385,7 +436,8 @@ public sealed partial class ExtractionRunStore(
     /// they are not mistaken for live work.
     /// </summary>
     private async Task<RunPlan> PlanRunAsync(
-        TenantId tenantId, EntityId documentId, string inputHash, DateTimeOffset now, CancellationToken cancellationToken)
+        TenantId tenantId, EntityId documentId, string inputHash, DateTimeOffset now,
+        IReadOnlySet<ExtractionStage>? noReuseStages, CancellationToken cancellationToken)
     {
         var jobs = await dbContext.ExtractionJobs
             .Where(j => j.TenantId == tenantId && j.DocumentId == documentId && j.Stage != ExtractionStage.Classification)
@@ -427,6 +479,11 @@ public sealed partial class ExtractionRunStore(
         var reused = new Dictionary<ExtractionStage, ExtractionJob>();
         foreach (var stage in PipelineStages)
         {
+            if (noReuseStages?.Contains(stage) == true)
+            {
+                continue;
+            }
+
             var checkpoint = latest.Jobs
                 .Where(j => j.Stage == stage && IsFinished(j) && j.InputHash == inputHash)
                 .OrderByDescending(j => j.CompletedAt)

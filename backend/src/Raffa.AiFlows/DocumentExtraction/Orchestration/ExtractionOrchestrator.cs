@@ -24,8 +24,10 @@ namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
 /// split extraction into bounded, schema-constrained tasks") and its own <c>ExtractionJob</c> row. One
 /// stage's failure is recorded on that stage's job and does not abort the remaining stages (ADR-017's
 /// "fail visibly, never silently truncate"). <b>NW-106:</b> "in that order" names the conceptual/display
-/// order, not the execution order: the calls are independent reads over the same text, so all of them are
-/// fired at once; the store writes are awaited and applied strictly one at a time, in pipeline order,
+/// order, not the execution order: by default the calls are independent reads over the same text, so all of
+/// them are fired at once (F5-T05: <see cref="ExtractionOrchestrationOptions"/> can cap the concurrency, make
+/// the list stages wait for the scalar stages and receive their facts, and retry transient failures in run;
+/// see <see cref="StageScheduler"/>); the store writes are awaited and applied strictly one at a time, in pipeline order,
 /// because the DbContext behind the store is not safe for concurrent use.
 ///
 /// <b>AC-2</b> ("every extracted fact carries source span + confidence") is a property of the schemas and
@@ -44,6 +46,7 @@ public sealed class ExtractionOrchestrator
     private readonly IAiGateway _aiGateway;
     private readonly IReadOnlyDictionary<ExtractionStage, IExtractionStage> _stages;
     private readonly ITenantContext _tenantContext;
+    private readonly StageScheduler _scheduler;
     private readonly IExtractionHangWatch? _hangWatch;
     private readonly ExtractionProgressHeartbeat? _progressHeartbeat;
 
@@ -86,6 +89,7 @@ public sealed class ExtractionOrchestrator
         }
 
         _stages = byStage;
+        _scheduler = new StageScheduler(aiGateway, byStage, Options);
     }
 
     /// <summary>The effective options (defaults when none were supplied).</summary>
@@ -128,7 +132,8 @@ public sealed class ExtractionOrchestrator
         var opened = await _runStore
             .OpenAsync(
                 new ExtractionRunRequest(
-                    tenantId, documentId, ExtractionInputHash.Compute(documentText), pages.Count, classificationConfidence),
+                    tenantId, documentId, ExtractionInputHash.Compute(documentText), pages.Count, classificationConfidence,
+                    Options.UseContextDependencies ? _scheduler.ContextualStages : null),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -148,10 +153,25 @@ public sealed class ExtractionOrchestrator
         _hangWatch?.Heartbeat();
         await _runStore.StartStagesAsync(run, run.StagesToRun, cancellationToken).ConfigureAwait(false);
 
-        var input = new ExtractionStageInput(documentText, pages.Count, EmptyContext);
-        var pending = run.StagesToRun.ToDictionary(
-            stage => stage,
-            stage => CallStageAsync(_stages[stage], input, cancellationToken));
+        // F5-T05: on a resume with context dependencies on, the stages this run does not execute are not
+        // pending tasks, so their facts come from the Contract. Read before any call starts: the store is
+        // not safe for concurrent use and the apply loop below starts as soon as the first call returns.
+        var resumeContext = EmptyContext;
+        if (Options.UseContextDependencies && run.IsResume)
+        {
+            var reusedDependencies = ExtractionPipeline.Stages
+                .Where(run.ReusedStages.Contains)
+                .Where(stage => run.StagesToRun.Any(toRun => _stages[toRun].DependsOn.Contains(stage)))
+                .ToList();
+            if (reusedDependencies.Count > 0)
+            {
+                resumeContext = await _runStore
+                    .ReadScalarContextAsync(run, reusedDependencies, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        var pending = _scheduler.Start(run.StagesToRun, documentText, pages.Count, resumeContext, cancellationToken);
         var stageResults = new List<StagedExtractionStageResult>(ExtractionPipeline.Stages.Count);
 
         using (_progressHeartbeat?.BeginMemoryPulses())
@@ -172,35 +192,28 @@ public sealed class ExtractionOrchestrator
     private static readonly IReadOnlyDictionary<ExtractionStage, StageFacts> EmptyContext =
         new Dictionary<ExtractionStage, StageFacts>();
 
-    /// <summary>One stage's gateway call, labelled as a step of the run. A network-level fault thrown (not
-    /// returned) by the gateway is the same "could not be reached" a returned
-    /// <see cref="AiGatewayErrors.UnavailablePrefix"/> failure means, so it becomes a failed-transient result
-    /// instead of taking the whole run down.</summary>
-    private async Task<Result<AiExtractionResult>> CallStageAsync(
-        IExtractionStage stage, ExtractionStageInput input, CancellationToken cancellationToken)
-    {
-        using var step = RunContext.BeginStep(stage.StageName);
-
-        try
-        {
-            return await _aiGateway.ExtractAsync(stage.BuildRequest(input), cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (IsTransientTransportFault(exception, cancellationToken))
-        {
-            return Result<AiExtractionResult>.Failure(
-                $"{AiGatewayErrors.UnavailablePrefix} {exception.GetType().Name}: {exception.Message}");
-        }
-    }
-
     /// <summary>
     /// Awaits one stage's in-flight extraction call, parses its payload and hands the typed facts to the
     /// store. F5-T02: a failure is typed and recorded on the job; the caller turns any failed stage into a
     /// partial document.
     /// </summary>
     private async Task<StagedExtractionStageResult> ApplyStageResultAsync(
-        ExtractionRun run, IExtractionStage stage, Task<Result<AiExtractionResult>> call, CancellationToken cancellationToken)
+        ExtractionRun run, IExtractionStage stage, Task<StageCall> call, CancellationToken cancellationToken)
     {
-        var extractResult = await call.ConfigureAwait(false);
+        var stageCall = await call.ConfigureAwait(false);
+        var extractResult = stageCall.Result;
+
+        // F5-T05 (Q2): with context dependencies on, the stage's input hash is that of the request text it
+        // actually sent (context included), so a resume never mixes modes. Off: never touched, the job keeps
+        // SHA256("staged-v1\n" + text) exactly. Sequential with every other store call: the apply loop is.
+        if (Options.UseContextDependencies)
+        {
+            var stageHash = ExtractionInputHash.Compute(stageCall.RequestText);
+            if (!string.Equals(stageHash, run.InputHash, StringComparison.Ordinal))
+            {
+                _runStore.SetStageInputHash(run, stage.Stage, stageHash);
+            }
+        }
 
         if (extractResult.IsFailure)
         {
