@@ -19,4 +19,5 @@ public sealed record IngestionSummary(
     int Updated,
     int Unchanged,
     string? CorpusVersion = null,
-    int Removed = 0);
+    int Removed = 0,
+    IReadOnlyList<MarketRejection>? Rejections = null);

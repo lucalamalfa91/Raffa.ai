@@ -40,7 +40,8 @@ public sealed class MarketIngestionService(
     ITenantContext tenantContext,
     IClock clock,
     MarketIngestionOptions? options = null,
-    EmbeddingRateLimiter? limiter = null)
+    EmbeddingRateLimiter? limiter = null,
+    IMarketBatchCurator? curator = null)
 {
     /// <summary>
     /// Every AI Gateway call — including this job's own <see cref="IAiGateway.EmbedAsync"/> calls
@@ -119,6 +120,7 @@ public sealed class MarketIngestionService(
         var inserted = 0;
         var updated = 0;
         var unchanged = 0;
+        var rejections = new List<MarketRejection>();
 
         var batchSize = Math.Max(1, _options.EmbedBatchSize);
         var pending = new List<PendingRecord>(batchSize);
@@ -204,6 +206,7 @@ public sealed class MarketIngestionService(
             runIdentity = flushed.Value.RunIdentity;
             inserted += flushed.Value.Inserted;
             updated += flushed.Value.Updated;
+            rejections.AddRange(flushed.Value.Rejected);
             pending.Clear();
         }
 
@@ -219,6 +222,7 @@ public sealed class MarketIngestionService(
 
             inserted += flushed.Value.Inserted;
             updated += flushed.Value.Updated;
+            rejections.AddRange(flushed.Value.Rejected);
         }
 
         // One SaveChangesAsync for the whole run (unless CheckpointPerBatch committed each batch
@@ -230,7 +234,8 @@ public sealed class MarketIngestionService(
         if (!_options.BlueGreen)
         {
             return Result<IngestionSummary>.Success(
-                new IngestionSummary(snapshot.FeedVersion, inserted, updated, unchanged, corpusVersion));
+                new IngestionSummary(
+                    snapshot.FeedVersion, inserted, updated, unchanged, corpusVersion, 0, rejections));
         }
 
         // Blue/green: the building version should mirror the feed, so a record the feed no longer
@@ -249,14 +254,16 @@ public sealed class MarketIngestionService(
             await versions.DeleteAsync(corpusVersion, cancellationToken).ConfigureAwait(false);
             return Result<IngestionSummary>.Success(
                 new IngestionSummary(
-                    snapshot.FeedVersion, 0, 0, unchanged, await versions.GetActiveVersionAsync(cancellationToken).ConfigureAwait(false)));
+                    snapshot.FeedVersion, 0, 0, unchanged,
+                    await versions.GetActiveVersionAsync(cancellationToken).ConfigureAwait(false), 0, rejections));
         }
 
         await versions.SwitchAsync(corpusVersion, cancellationToken).ConfigureAwait(false);
         await versions.PurgeRetiredAsync(_options.RetiredVersionsToKeep, cancellationToken).ConfigureAwait(false);
 
         return Result<IngestionSummary>.Success(
-            new IngestionSummary(snapshot.FeedVersion, inserted, updated, unchanged, corpusVersion, removed));
+            new IngestionSummary(
+                snapshot.FeedVersion, inserted, updated, unchanged, corpusVersion, removed, rejections));
     }
 
     private sealed record EmbeddingSource(string RecordId, string ChunkText, string Model, bool? IsFixture);
@@ -264,7 +271,8 @@ public sealed class MarketIngestionService(
     private sealed record PendingRecord(
         MarketDeal Deal, string PayloadJson, string PayloadHash, MarketRecordEntity? Existing, MarketNote Note);
 
-    private sealed record FlushOutcome(int Inserted, int Updated, MarketEmbeddingIdentity? RunIdentity);
+    private sealed record FlushOutcome(
+        int Inserted, int Updated, MarketEmbeddingIdentity? RunIdentity, IReadOnlyList<MarketRejection> Rejected);
 
     /// <summary>
     /// Embeds the records of one batch (those that cannot keep their previous embedding) with a
@@ -272,13 +280,42 @@ public sealed class MarketIngestionService(
     /// original one-record-one-<c>EmbedAsync</c> path.
     /// </summary>
     private async Task<Result<FlushOutcome>> FlushAsync(
-        List<PendingRecord> batch,
+        List<PendingRecord> pendingBatch,
         string feedVersion,
         string corpusVersion,
         IReadOnlyDictionary<string, EmbeddingSource> existingEmbeddings,
         MarketEmbeddingIdentity? runIdentity,
         CancellationToken cancellationToken)
     {
+        // A-11 / F7-T09: the batch of changed records goes through the curator (data quality, provenance)
+        // before anything is embedded or stored. Rejected records are left out; accepted ones may come
+        // back completed. The idempotency hash stays that of the feed payload, so a curated record is
+        // still "unchanged" on the next run.
+        var batch = pendingBatch;
+        IReadOnlyList<MarketRejection> rejected = [];
+        if (curator is not null && pendingBatch.Count > 0)
+        {
+            var outcome = await curator
+                .CurateAsync(pendingBatch.Select(p => p.Deal).ToList(), cancellationToken)
+                .ConfigureAwait(false);
+            rejected = outcome.Rejected;
+
+            var byId = pendingBatch.ToDictionary(p => p.Deal.RecordId, StringComparer.Ordinal);
+            batch = [];
+            foreach (var deal in outcome.Accepted)
+            {
+                if (byId.TryGetValue(deal.RecordId, out var original))
+                {
+                    batch.Add(original with
+                    {
+                        Deal = deal,
+                        PayloadJson = JsonSerializer.Serialize(deal, JsonOptions),
+                        Note = MarketNoteComposer.Compose(deal),
+                    });
+                }
+            }
+        }
+
         // Keep the embedding when the narrative it was made from is unchanged, and it was made by
         // the same model and kind this run embeds with: only a payload field outside the note
         // moved, so a new vector would be identical. Never for a new record, and never before this
@@ -446,6 +483,6 @@ public sealed class MarketIngestionService(
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        return Result<FlushOutcome>.Success(new FlushOutcome(inserted, updated, newRunIdentity));
+        return Result<FlushOutcome>.Success(new FlushOutcome(inserted, updated, newRunIdentity, rejected));
     }
 }
