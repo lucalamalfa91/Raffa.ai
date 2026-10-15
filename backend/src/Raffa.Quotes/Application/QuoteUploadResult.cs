@@ -23,6 +23,10 @@ namespace Raffa.Quotes.Application;
 /// quote's persisted line count (a fresh upload has none yet).</param>
 /// <param name="NormalizedLineItemCount">Only meaningful when <paramref name="IsDuplicate"/>.</param>
 /// <param name="UnmatchedSkuCount">Only meaningful when <paramref name="IsDuplicate"/>.</param>
+/// <param name="ExtractionQueued">Task F6-T01: <see langword="true"/> when the extraction job was
+/// published to the durable queue and the Worker will run it; the caller must then not run the
+/// extraction pipeline itself. <see langword="false"/> (no broker configured) means the caller runs it
+/// inline, as before.</param>
 public sealed record QuoteUploadResult(
     EntityId QuoteId,
     string FileName,
@@ -36,4 +40,5 @@ public sealed record QuoteUploadResult(
     bool IsDuplicate = false,
     int LineItemCount = 0,
     int NormalizedLineItemCount = 0,
-    int UnmatchedSkuCount = 0);
+    int UnmatchedSkuCount = 0,
+    bool ExtractionQueued = false);

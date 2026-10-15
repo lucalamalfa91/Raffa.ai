@@ -1,6 +1,7 @@
 using Raffa.AiFlows;
 using Raffa.Audit.Infrastructure;
 using Raffa.Documents.Contracts.Infrastructure;
+using Raffa.Quotes.Infrastructure;
 using Raffa.Renewals.Infrastructure;
 using Raffa.Suppliers.Products.Infrastructure;
 using Raffa.Worker.Scheduling;
@@ -67,7 +68,8 @@ public static class WorkerServiceCollectionExtensions
         this IServiceCollection services,
         string documentsContractsConnectionString,
         string auditConnectionString,
-        string renewalsConnectionString)
+        string renewalsConnectionString,
+        string? quotesConnectionString = null)
     {
         services.AddDocumentsContractsModule(documentsContractsConnectionString);
         services.AddAuditModule(auditConnectionString);
@@ -76,11 +78,22 @@ public static class WorkerServiceCollectionExtensions
         // module; the Worker did not, so DocumentProcessingOrchestrator.LinkSupplierAsync ran with a
         // null ISupplierResolver and left every extracted supplier name unlinked.
         services.AddSuppliersProductsModule(documentsContractsConnectionString);
+        // Task F6-T01 (quote extraction on the durable queue): the Worker runs the quote extraction
+        // pipeline for the jobs the API publishes, so it composes the Quotes module -- before
+        // AddAiFlows below, which registers the quote flow (and its IJobHandler) only in a host that
+        // already has QuotesDbContext. Optional: without a Quotes connection string the Worker simply
+        // does not own that job kind, and a quote message would be dead-lettered as unknown-job-kind
+        // instead of being processed.
+        if (!string.IsNullOrWhiteSpace(quotesConnectionString))
+        {
+            services.AddQuotesModule(quotesConnectionString);
+        }
+
         // AI flows layer (ADR-002 amendment): after every module so a flow can replace a module
         // default. Provides the implementations of the ports the modules define, e.g. the
         // document-extraction flow's IDocumentAdmissionEvaluator / IDocumentProcessingFlow that
-        // ExtractionRequestedHandler needs. The quote-extraction flow is skipped here (this host does
-        // not compose the Quotes module); the MarketKnowledge flow registers IMarketPriceEstimator,
+        // ExtractionRequestedHandler needs. The quote-extraction flow is registered when the Quotes module
+        // is composed above (it is the queue handler of task F6-T01); the MarketKnowledge flow registers IMarketPriceEstimator,
         // which the extraction handler's LineItemMarketPriceService takes as an optional dependency
         // (the host's own AddMarketModule supplies the data layer under it).
         services.AddAiFlows();

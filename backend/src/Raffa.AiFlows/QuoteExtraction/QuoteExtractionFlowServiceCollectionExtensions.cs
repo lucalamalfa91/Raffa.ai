@@ -1,14 +1,17 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.AiFlows.QuoteExtraction.Agents;
 using Raffa.AiFlows.QuoteExtraction.Orchestration;
 using Raffa.Quotes.Infrastructure;
+using Raffa.SharedKernel.Jobs;
 
 namespace Raffa.AiFlows.QuoteExtraction;
 
 /// <summary>
 /// Registration of the quote-extraction flow (F6): the line-extraction service and the pipeline
-/// that <c>POST /api/quotes</c> runs synchronously in the request. Called by
+/// that <c>POST /api/quotes</c> runs in the request when no queue is configured, and the job handler the
+/// Worker runs it with when one is (task F6-T01). Called by
 /// <see cref="AiFlowsServiceCollectionExtensions.AddAiFlows"/>.
 /// </summary>
 public static class QuoteExtractionFlowServiceCollectionExtensions
@@ -31,8 +34,16 @@ public static class QuoteExtractionFlowServiceCollectionExtensions
             return services;
         }
 
+        // Task F6-T07: the flow's settings, from the QuoteExtraction configuration section.
+        services.AddOptions<QuoteExtractionOptions>()
+            .Configure<IConfiguration>((options, configuration) =>
+                configuration.GetSection(QuoteExtractionOptions.SectionName).Bind(options));
+
         services.TryAddScoped<QuoteLineExtractionService>();
         services.TryAddScoped<QuoteExtractionPipeline>();
+        // Task F6-T01: the Worker's queue consumer finds this handler by its job kind. Registered in
+        // every host that composes the flow; only a host running the consumer ever resolves it.
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IJobHandler, QuoteExtractionJobHandler>());
 
         return services;
     }

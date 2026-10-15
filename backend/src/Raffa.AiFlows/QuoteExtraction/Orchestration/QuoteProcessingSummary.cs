@@ -18,6 +18,9 @@ namespace Raffa.AiFlows.QuoteExtraction.Orchestration;
 /// unmatched SKUs" half).</param>
 /// <param name="InvalidCount">Task F6-T04: lines discarded for an out-of-range value; already
 /// included in <see cref="SkippedCount"/>.</param>
+/// <param name="HeaderFilled">Task F6-T07: header fields (<c>supplier</c>, <c>currency</c>,
+/// <c>geography</c>, <c>purchaseDate</c>) the header stage filled from the document, for the person to
+/// confirm; <see langword="null"/> when the stage did not run (it is off by default).</param>
 public sealed record QuoteProcessingSummary(
     EntityId QuoteId,
     QuoteProcessingStatus ProcessingStatus,
@@ -27,4 +30,5 @@ public sealed record QuoteProcessingSummary(
     int NormalizedLineItemCount,
     int UnresolvedNormalizationCount,
     int UnmatchedSkuCount,
-    int InvalidCount = 0);
+    int InvalidCount = 0,
+    IReadOnlyList<string>? HeaderFilled = null);

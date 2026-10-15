@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Raffa.Quotes.Domain;
 using Raffa.Quotes.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Jobs;
 using Raffa.SharedKernel.Storage;
 using Raffa.SharedKernel.Tenancy;
 
@@ -26,9 +27,19 @@ public sealed class QuoteUploadService(
     IDocumentStorage storage,
     ITenantContext tenantContext,
     IClock clock,
-    IAuditWriter auditWriter)
+    IAuditWriter auditWriter,
+    IJobQueuePublisher? jobQueuePublisher = null)
 {
     private const int InitialVersionNumber = 1;
+
+    /// <summary>A quote still <c>Uploaded</c>/<c>Processing</c> for no longer than this counts as in
+    /// flight for the duplicate check (task F6-T01); an older one is an orphan and never blocks a retry.
+    /// Same bound the reprocess uses for an open job.</summary>
+    private static readonly TimeSpan InFlightWindow = QuoteReprocessService.StaleJobAge;
+
+    /// <summary>True when a published extraction message will be worked by the Worker (a broker is
+    /// configured); false means the caller runs the extraction itself.</summary>
+    private bool QueueIsDurable => jobQueuePublisher is { IsDurable: true };
 
     /// <summary>
     /// Task E05/F02/US01/T01 (market-assessment) added the four trailing optional parameters —
@@ -91,7 +102,7 @@ public sealed class QuoteUploadService(
         //   * purchaseDate is compared only when the caller sent one (otherwise it defaults to the
         //     upload day, which is never a reason to treat two uploads as different).
         var existing = await FindReusableQuoteAsync(
-            tenantId, checksum, supplier, currency, geography, purchaseDate, cancellationToken)
+            tenantId, checksum, supplier, currency, geography, purchaseDate, now, cancellationToken)
             .ConfigureAwait(false);
         if (existing is not null)
         {
@@ -141,6 +152,23 @@ public sealed class QuoteUploadService(
         dbContext.Quotes.Add(quote);
         dbContext.QuoteExtractionJobs.Add(extractionJob);
 
+        // Task F6-T01: publish, then commit -- the job row is the durable record, so a lost commit
+        // leaves a harmless pointer to a row that does not exist (the handler answers it with
+        // "not found" and the broker redelivers or dead-letters it), while a publish failure fails
+        // this upload with nothing durable left behind. Same order DocumentUploadService uses.
+        var extractionQueued = QueueIsDurable;
+        if (extractionQueued)
+        {
+            await jobQueuePublisher!.PublishAsync(
+                new JobRequested(
+                    JobKinds.QuoteExtraction,
+                    tenantId.Value,
+                    quoteId.Value,
+                    extractionJob.Id.Value,
+                    JobRequested.CurrentSchemaVersion),
+                cancellationToken).ConfigureAwait(false);
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         await auditWriter.WriteAsync(
@@ -162,7 +190,8 @@ public sealed class QuoteUploadService(
             quote.Supplier,
             quote.Currency,
             quote.Geography,
-            quote.PurchaseDate));
+            quote.PurchaseDate,
+            ExtractionQueued: extractionQueued));
     }
 
     private async Task<Quote?> FindReusableQuoteAsync(
@@ -172,15 +201,28 @@ public sealed class QuoteUploadService(
         string? currency,
         string? geography,
         DateOnly? purchaseDate,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
+        // Task F6-T01: with a durable queue an upload is Uploaded/Processing for a while before it
+        // is Completed, and a second upload of the same bytes in that window (a double click, a
+        // retry on a slow link) must not start a second extraction. Only recent rows count (an
+        // older one is an orphan) and only when a queue exists: without one the extraction runs in
+        // the uploading request, so a row left Uploaded/Processing is a crash, never work in flight.
+        var inFlightSince = now - InFlightWindow;
+        var queueDurable = QueueIsDurable;
+
         // AsNoTracking: the caller only reads this row. Filtering on TenantId explicitly is
         // belt-and-braces beside RLS (ADR-009), the convention every query in this module follows.
         var candidates = dbContext.Quotes.AsNoTracking()
             .Where(q => q.TenantId == tenantId
                 && q.Checksum == checksum
                 && (q.ProcessingStatus == QuoteProcessingStatus.Completed
-                    || q.ProcessingStatus == QuoteProcessingStatus.NeedsReview)
+                    || q.ProcessingStatus == QuoteProcessingStatus.NeedsReview
+                    || (queueDurable
+                        && (q.ProcessingStatus == QuoteProcessingStatus.Uploaded
+                            || q.ProcessingStatus == QuoteProcessingStatus.Processing)
+                        && q.CreatedAt > inFlightSince))
                 && q.Supplier == supplier
                 && q.Currency == currency
                 && q.Geography == geography);

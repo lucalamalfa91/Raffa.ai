@@ -47,6 +47,13 @@ var renewalsConnectionString = BoundPostgres(
         "Missing required configuration 'ConnectionStrings:Renewals' " +
         "(set env var ConnectionStrings__Renewals in deployed environments)."));
 
+// Task F6-T01: the quote-extraction job handler needs the Quotes database. infra/modules/containerapps
+// already injects ConnectionStrings__Quotes into this container. Optional here (a local Worker run
+// without it still processes documents); without it quote jobs are not owned by this host.
+var quotesConnectionString = builder.Configuration.GetConnectionString("Quotes") is { } rawQuotesConnectionString
+    ? BoundPostgres(rawQuotesConnectionString)
+    : null;
+
 // Task E13/F02/US01/T02 (market-index): unlike the three connection strings above, this one is
 // optional -- ServiceCollectionExtensions.AddMarketModule's own DI swap already treats a null
 // connection string as "keep task E13/F02/US01/T01's in-memory/mock wiring, register nothing
@@ -62,7 +69,8 @@ var marketConnectionString = builder.Configuration.GetConnectionString("Market")
 // WorkerServiceCollectionExtensions.AddWorkerHost is the single source of truth for this host's
 // composition (module registration + queue consumer + hosted service) -- Raffa.Worker.Tests
 // calls the same method to prove the wiring, not a hand-rolled copy of it.
-builder.Services.AddWorkerHost(documentsContractsConnectionString, auditConnectionString, renewalsConnectionString);
+builder.Services.AddWorkerHost(
+    documentsContractsConnectionString, auditConnectionString, renewalsConnectionString, quotesConnectionString);
 
 // Task E16/F02/US03/T01 (ADR-027 D1-D3): the Worker is where an upload's content gate and
 // pipeline now run. It therefore needs the blob adapter (to read the bytes the API stored) and

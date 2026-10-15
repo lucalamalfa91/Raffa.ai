@@ -13,6 +13,7 @@ using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Raffa.AiFlows.QuoteExtraction.Orchestration;
 
@@ -77,8 +78,11 @@ public sealed class QuoteExtractionPipeline(
     ITenantContext tenantContext,
     IClock clock,
     IAuditWriter auditWriter,
-    ILogger<QuoteExtractionPipeline>? logger = null)
+    ILogger<QuoteExtractionPipeline>? logger = null,
+    IOptions<QuoteExtractionOptions>? options = null)
 {
+    private readonly QuoteExtractionOptions _options = options?.Value ?? new QuoteExtractionOptions();
+
     /// <summary>Recorded actor for this pipeline's own audit entry — same "no human caller, label
     /// it as automation" convention as
     /// <c>ExtractionRunStore.SystemActor</c>/<c>DocumentProcessingPipeline</c>'s own
@@ -106,14 +110,15 @@ public sealed class QuoteExtractionPipeline(
         string fileName,
         string mimeType,
         ReadOnlyMemory<byte> content,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        EntityId? claimedJobId = null)
     {
         using var tenantScope = tenantContext.BeginScope(tenantId);
 
         var run = new RunState();
         try
         {
-            return await RunAsync(run, tenantId, quoteId, fileName, mimeType, content, cancellationToken)
+            return await RunAsync(run, tenantId, quoteId, fileName, mimeType, content, claimedJobId, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (!run.StatusCommitted)
@@ -136,6 +141,52 @@ public sealed class QuoteExtractionPipeline(
         }
     }
 
+    /// <summary>
+    /// Task F6-T07: one extra `extract` call with the header schema, applied to the tracked quote by
+    /// <see cref="QuoteHeaderApplier"/>. Any failure (gateway error, malformed answer) is logged and
+    /// swallowed: the lines are what the run is for, and a missing header is something a person fills
+    /// in. Cancellation is not swallowed.
+    /// </summary>
+    private async Task<QuoteHeaderOutcome?> RunHeaderStageAsync(
+        Quote quote, string documentText, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await aiGateway
+                .ExtractAsync(
+                    new AiExtractionRequest(
+                        QuoteExtractionStages.HeaderStageName, documentText, QuoteHeaderJsonSchema.Header()),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (result.IsFailure)
+            {
+                logger?.LogWarning(
+                    "Quote {QuoteId} header stage failed; leaving the header as it is: {Error}", quote.Id, result.Error);
+                return null;
+            }
+
+            return QuoteHeaderApplier.Apply(quote, result.Value.PayloadJson, now, _options.HeaderMinConfidence);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger?.LogWarning(
+                exception, "Quote {QuoteId} header stage threw; leaving the header as it is.", quote.Id);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Ends a claimed job in <c>Failed</c> without running anything, for a failure the caller found
+    /// before it could call <see cref="ProcessAsync"/> (the stored file is gone). Same terminal-state
+    /// guarantee and typed error as a failure inside a run.
+    /// </summary>
+    public async Task FailAsync(
+        TenantId tenantId, EntityId quoteId, QuoteExtractionFailureKind kind, string detail)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        await FailAsync(new RunState(), tenantId, quoteId, kind, detail).ConfigureAwait(false);
+    }
+
     private async Task<Result<QuoteProcessingSummary>> RunAsync(
         RunState run,
         TenantId tenantId,
@@ -143,6 +194,7 @@ public sealed class QuoteExtractionPipeline(
         string fileName,
         string mimeType,
         ReadOnlyMemory<byte> content,
+        EntityId? claimedJobId,
         CancellationToken cancellationToken)
     {
         var quote = await dbContext.Quotes
@@ -151,22 +203,35 @@ public sealed class QuoteExtractionPipeline(
 
         if (quote is null)
         {
-            return Result<QuoteProcessingSummary>.Failure($"Quote {quoteId} was not found for this tenant.");
+            // A claimed job must still end terminal (never Running for ever); an unclaimed call has
+            // nothing to close.
+            return claimedJobId is null
+                ? Result<QuoteProcessingSummary>.Failure($"Quote {quoteId} was not found for this tenant.")
+                : await FailAsync(
+                    run, tenantId, quoteId, QuoteExtractionFailureKind.SourceMissing,
+                    $"Quote {quoteId} was not found for this tenant.").ConfigureAwait(false);
         }
 
-        // The row QuoteUploadService queued at upload — advanced to completion here, the same
+        // The row QuoteUploadService queued at upload -- advanced to completion here, the same
         // "advance the queued row, never insert a second one" shape
-        // DocumentProcessingPipeline.ClassifyAsync already uses for ExtractionJob.
-        var job = await dbContext.QuoteExtractionJobs
-            .Where(j => j.TenantId == tenantId
-                && j.QuoteId == quoteId
-                && j.Status == QuoteExtractionJobStatus.Queued)
-            .OrderBy(j => j.QueuedAt)
-            .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false);
+        // DocumentProcessingPipeline.ClassifyAsync already uses for ExtractionJob. When the durable
+        // queue's handler claimed a specific job (task F6-T01) it is already Running and is the one
+        // to advance; otherwise the oldest Queued job of the quote is picked up and started here.
+        var job = claimedJobId is { } claimedId
+            ? await dbContext.QuoteExtractionJobs
+                .Where(j => j.TenantId == tenantId && j.QuoteId == quoteId && j.Id == claimedId)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false)
+            : await dbContext.QuoteExtractionJobs
+                .Where(j => j.TenantId == tenantId
+                    && j.QuoteId == quoteId
+                    && j.Status == QuoteExtractionJobStatus.Queued)
+                .OrderBy(j => j.QueuedAt)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
 
         var startedAt = clock.UtcNow;
-        if (job is not null)
+        if (job is not null && claimedJobId is null)
         {
             job.Status = QuoteExtractionJobStatus.Running;
             job.StartedAt = startedAt;
@@ -244,6 +309,12 @@ public sealed class QuoteExtractionPipeline(
                 run.PersistedLineIds.Add(entry.Entity.Id);
             }
         }
+
+        // Task F6-T07: fill the blank header fields from the document. Best effort and before the
+        // transaction opens (it is a model call): a failure here never fails the quote.
+        var headerOutcome = _options.HeaderStageEnabled && QuoteHeaderApplier.IsIncomplete(quote)
+            ? await RunHeaderStageAsync(quote, documentText, completedAt, cancellationToken).ConfigureAwait(false)
+            : null;
 
         // Task F6-T03 (reprocess: replace, never add): a quote that already holds lines from an
         // earlier run (reprocess, or a retry of a NeedsReview quote) swaps them for this run's
@@ -331,6 +402,23 @@ public sealed class QuoteExtractionPipeline(
                 cancellationToken)
             .ConfigureAwait(false);
 
+        if (headerOutcome is { Filled.Count: > 0 })
+        {
+            // Names the fields, never the values: this is the provenance a person reviewing the quote
+            // can ask for ("which of these did the system fill?").
+            await auditWriter.WriteAsync(
+                    new AuditEntry(
+                        tenantId,
+                        SystemActor,
+                        "quote.header.extracted",
+                        "quote",
+                        quoteId.Value.ToString(),
+                        completedAt,
+                        string.Join(',', headerOutcome.Filled)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         return Result<QuoteProcessingSummary>.Success(new QuoteProcessingSummary(
             quoteId,
             quote.ProcessingStatus,
@@ -340,7 +428,8 @@ public sealed class QuoteExtractionPipeline(
             lineNormalizationOutcome.NormalizedCount,
             lineNormalizationOutcome.UnresolvedCount,
             skuNormalizationOutcome.UnmatchedCount,
-            outcome.InvalidCount));
+            outcome.InvalidCount,
+            headerOutcome?.Filled));
     }
 
     /// <summary>
@@ -369,8 +458,9 @@ public sealed class QuoteExtractionPipeline(
                 .ConfigureAwait(false);
 
             // Never downgrade a quote that already reached a successful terminal state.
-            if (quote is not null
-                && quote.ProcessingStatus is not (QuoteProcessingStatus.Completed or QuoteProcessingStatus.NeedsReview))
+            var alreadyDone = quote is not null
+                && quote.ProcessingStatus is QuoteProcessingStatus.Completed or QuoteProcessingStatus.NeedsReview;
+            if (!alreadyDone)
             {
                 var openJobs = await dbContext.QuoteExtractionJobs
                     .Where(j => j.TenantId == tenantId
@@ -395,7 +485,11 @@ public sealed class QuoteExtractionPipeline(
                         .ToListAsync(CancellationToken.None)
                         .ConfigureAwait(false));
 
-                quote.ProcessingStatus = QuoteProcessingStatus.Failed;
+                if (quote is not null)
+                {
+                    quote.ProcessingStatus = QuoteProcessingStatus.Failed;
+                }
+
                 await dbContext.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
             }
         }
