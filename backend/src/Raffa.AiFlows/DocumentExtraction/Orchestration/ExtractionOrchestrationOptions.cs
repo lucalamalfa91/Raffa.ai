@@ -61,6 +61,12 @@ public sealed class ExtractionOrchestrationOptions
     /// run is marked truncated and the document goes to review: never silent.</summary>
     public int MaxChunks { get; set; } = 12;
 
+    /// <summary>F5-T03: send the document at the head of the prompt with a stage-independent system prompt and
+    /// the stage's task line after it (prompt-cache-friendly ordering). This CHANGES THE REQUEST TEXT, so it is
+    /// off by default; on, the input hash uses pipeline version <c>staged-v2-docfirst</c> (never mixes
+    /// checkpoints with the other layout) and the run's audit row records the pipeline + prompt version.</summary>
+    public bool DocumentFirstPrompt { get; set; }
+
     /// <summary>A-07: take a second, focused reading of the high-impact fields (end date, notice period, annual
     /// fee) after the run and compare it with the applied one. SHADOW ONLY: counters, a log line and a metric;
     /// nothing is persisted and no value or status changes. Costs one extra gateway call per stage owning such

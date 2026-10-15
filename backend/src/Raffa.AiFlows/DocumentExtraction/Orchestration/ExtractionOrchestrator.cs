@@ -142,7 +142,7 @@ public sealed class ExtractionOrchestrator
         var opened = await _runStore
             .OpenAsync(
                 new ExtractionRunRequest(
-                    tenantId, documentId, ExtractionInputHash.Compute(documentText), pages.Count, classificationConfidence,
+                    tenantId, documentId, ExtractionInputHash.Compute(documentText, Options.DocumentFirstPrompt), pages.Count, classificationConfidence,
                     Options.UseContextDependencies ? _scheduler.ContextualStages : null),
                 cancellationToken)
             .ConfigureAwait(false);
@@ -303,7 +303,7 @@ public sealed class ExtractionOrchestrator
         // SHA256("staged-v1\n" + text) exactly. Sequential with every other store call: the apply loop is.
         if (Options.UseContextDependencies)
         {
-            var stageHash = ExtractionInputHash.Compute(stageCall.RequestText);
+            var stageHash = ExtractionInputHash.Compute(stageCall.RequestText, Options.DocumentFirstPrompt);
             if (!string.Equals(stageHash, run.InputHash, StringComparison.Ordinal))
             {
                 _runStore.SetStageInputHash(run, stage.Stage, stageHash);
@@ -324,6 +324,13 @@ public sealed class ExtractionOrchestrator
                     run, stage.Stage, resolved.MalformedMessage!, ExtractionStageFailureKind.Permanent,
                     cancellationToken, resolved.ModelId)
                 .ConfigureAwait(false);
+        }
+
+        // F5-T03: the layout actually used and the prompt version the gateway reports, recorded on the run.
+        if (Options.DocumentFirstPrompt && !string.IsNullOrWhiteSpace(extractResult.Value.Metadata.PromptVersion))
+        {
+            run.RecordPipelineVersion(
+                ExtractionInputHash.DocumentFirstPipelineVersion + "/" + extractResult.Value.Metadata.PromptVersion);
         }
 
         if (appliedScalars is not null && resolved.Facts is StageFacts.Scalars scalars)

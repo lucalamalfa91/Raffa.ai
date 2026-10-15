@@ -66,7 +66,7 @@ internal sealed class StageScheduler(
 
             if (!options.UseContextDependencies || definition.DependsOn.Count == 0)
             {
-                pending[stage] = CallAsync(definition, new ExtractionStageInput(documentText, pageCount, NoContext), gate, cancellationToken);
+                pending[stage] = CallAsync(definition, new ExtractionStageInput(documentText, pageCount, NoContext, options.DocumentFirstPrompt), gate, cancellationToken);
                 continue;
             }
 
@@ -131,7 +131,7 @@ internal sealed class StageScheduler(
             }
         }
 
-        return await CallAsync(stage, new ExtractionStageInput(documentText, pageCount, context), gate, cancellationToken)
+        return await CallAsync(stage, new ExtractionStageInput(documentText, pageCount, context, options.DocumentFirstPrompt), gate, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -139,7 +139,7 @@ internal sealed class StageScheduler(
     /// but outside the concurrency gate (it runs after the primary calls have been applied).</summary>
     public Task<StageCall> CallSecondOpinionAsync(
         SecondOpinionStage stage, string documentText, int pageCount, CancellationToken cancellationToken) =>
-        CallAsync(stage, new ExtractionStageInput(documentText, pageCount, NoContext), gate: null, cancellationToken);
+        CallAsync(stage, new ExtractionStageInput(documentText, pageCount, NoContext, options.DocumentFirstPrompt), gate: null, cancellationToken);
 
     /// <summary>One stage's gateway call (with the optional cap and in-run retry), labelled as a step of the
     /// run. A network-level fault thrown (not returned) by the gateway is the same "could not be reached" a

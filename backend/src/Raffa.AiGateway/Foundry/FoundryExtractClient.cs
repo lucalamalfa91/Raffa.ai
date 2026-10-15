@@ -57,8 +57,12 @@ public sealed class FoundryExtractClient(
         var completion = await chatClient.CompleteAsync(
                 "Extract",
                 model,
-                ExtractPromptTemplate.SystemPrompt(request.StageName),
-                request.DocumentText,
+                request.DocumentFirst
+                    ? ExtractPromptTemplate.SharedSystemPrompt()
+                    : ExtractPromptTemplate.SystemPrompt(request.StageName),
+                request.DocumentFirst
+                    ? ExtractPromptTemplate.DocumentFirstUserMessage(request.DocumentText, request.StageName)
+                    : request.DocumentText,
                 schemaName: "raffa_extraction_" + SanitizeSchemaName(request.StageName),
                 schemaElement,
                 cancellationToken)
@@ -71,7 +75,7 @@ public sealed class FoundryExtractClient(
 
         var metadata = FoundryCallMetadataFactory.Build(
             model,
-            ExtractPromptTemplate.Version,
+            request.DocumentFirst ? ExtractPromptTemplate.DocumentFirstVersion : ExtractPromptTemplate.Version,
             clock,
             request.StageName + " " + request.DocumentText + " " + request.JsonSchema,
             completion.Value.Usage);

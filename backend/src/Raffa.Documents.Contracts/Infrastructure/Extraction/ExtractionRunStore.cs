@@ -792,6 +792,11 @@ public sealed partial class ExtractionRunStore(
             detail += "; partialStages=" + string.Join(",", failedStages.Select(s => $"{s.Stage}({s.FailureKind})"));
         }
 
+        if (!string.IsNullOrEmpty(context.PipelineVersion))
+        {
+            detail += "; pipeline=" + context.PipelineVersion;
+        }
+
         if (context.Truncated)
         {
             detail += "; truncated=true";

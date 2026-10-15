@@ -44,7 +44,8 @@ internal sealed class SecondOpinionStage : IExtractionStage
 
     public string JsonSchema { get; }
 
-    public AiExtractionRequest BuildRequest(ExtractionStageInput input) => new(StageName, input.DocumentText, JsonSchema);
+    public AiExtractionRequest BuildRequest(ExtractionStageInput input) =>
+        new(StageName, input.DocumentText, JsonSchema, input.DocumentFirst);
 
     public StageFacts Parse(string payloadJson) => _inner.Parse(payloadJson);
 }

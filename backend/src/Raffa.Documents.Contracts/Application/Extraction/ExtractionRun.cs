@@ -64,6 +64,14 @@ public sealed class ExtractionRun
     /// summary carries it.</summary>
     public bool Truncated { get; private set; }
 
+    /// <summary>F5-T03: the pipeline + prompt version of a run that used a non-default prompt layout
+    /// (<c>staged-v2-docfirst/foundry-extract-v3-docfirst</c>); null for the historic layout. Persisted on the
+    /// run's audit row.</summary>
+    public string? PipelineVersion { get; private set; }
+
+    /// <summary>F5-T03: records the pipeline + prompt version the run used.</summary>
+    public void RecordPipelineVersion(string version) => PipelineVersion = version;
+
     /// <summary>F5-T04: records that part of the document was not read.</summary>
     public void MarkTruncated() => Truncated = true;
 
