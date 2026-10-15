@@ -103,14 +103,27 @@ public sealed class MarketResearcher
         var items = new List<PackItem>();
         var failures = new List<string>();
 
-        foreach (var query in queries)
+        // F2-T04: with the option on, every query is issued at once and the answers are merged below in
+        // the researcher's own query order, so the merge is the sequential one.
+        var pending = options.MarketResearchParallelQueries && queries.Count > 1
+            ? queries.Select(q => marketRag.SearchAsync(q.Query, options.MarketResearchTopK, cancellationToken)).ToList()
+            : null;
+        if (pending is not null)
         {
+            await Task.WhenAll(pending).ConfigureAwait(false);
+        }
+
+        for (var index = 0; index < queries.Count; index++)
+        {
+            var query = queries[index];
             if (items.Count >= options.MarketResearchMaxItems)
             {
                 break;
             }
 
-            var notes = await marketRag.SearchAsync(query.Query, options.MarketResearchTopK, cancellationToken).ConfigureAwait(false);
+            var notes = pending is not null
+                ? pending[index].Result
+                : await marketRag.SearchAsync(query.Query, options.MarketResearchTopK, cancellationToken).ConfigureAwait(false);
             if (notes.IsFailure)
             {
                 failures.Add($"'{query.Query}': {notes.Error}");

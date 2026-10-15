@@ -38,4 +38,25 @@ public sealed class CouncilOptions
     /// retries, so this is deliberately far above them: it bounds a hung call and does not change a
     /// normal turn. A step that overruns degrades by its policy with an explicit "deadline" reason.</summary>
     public TimeSpan AgentDeadline { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>F2-T04: run the market researcher's queries concurrently instead of one after the
+    /// other. The notes are merged in the researcher's own query order with the same de-duplication and
+    /// the same <see cref="MarketResearchMaxItems"/> cap, so the pack is the one the sequential run
+    /// builds; the difference is that every query is issued (the sequential run stops issuing queries
+    /// once the cap is reached). The market retrieval serialises its own database work per scope, so
+    /// the overlap is mostly the query embedding. <b>Off by default.</b></summary>
+    public bool MarketResearchParallelQueries { get; set; }
+
+    /// <summary>F2-T09: when none of the strategist's plays survives the council's local validation (a
+    /// citation key outside the pack, a figure the pack does not contain), send the call back once with
+    /// the violations named, the same single semantic retry the drafting writer has. A second
+    /// all-invalid answer fails the strategist step, which today also leaves the turn with no plays.
+    /// <b>Off by default</b>: one call, plays validated and dropped locally.</summary>
+    public bool SemanticPlayRetry { get; set; }
+
+    /// <summary>F2-T10 / F2-D09: carry the structured facts of a market note (its sample size and its
+    /// as-of date) as <see cref="Raffa.AiFlows.Shared.Pack.PackValue"/>s next to the snippet, so the
+    /// numeric guard can ground a figure the answer quotes from them and the evidence card can show
+    /// them. <b>Off by default</b>: notes carry no values, as before.</summary>
+    public bool MarketNoteValues { get; set; }
 }
