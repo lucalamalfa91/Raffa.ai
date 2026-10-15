@@ -1,9 +1,10 @@
+using Raffa.AiFlows.DocumentExtraction.Schemas;
 using System.Security.Cryptography;
 using System.Text;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 
-namespace Raffa.Documents.Contracts.Tests;
+namespace Raffa.AiFlows.Tests.DocumentExtraction.Orchestration;
 
 /// <summary>
 /// F5 PR-1: the JSON Schema each stage sends to the model is part of the model's behaviour. These

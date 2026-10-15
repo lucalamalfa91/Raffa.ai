@@ -13,7 +13,7 @@ namespace Raffa.Documents.Contracts.Tests;
 /// <c>POST /api/documents/{id}/validate</c>: a reviewed document becomes <c>completed</c> with one
 /// audit row naming the accepted fields, a document that is not yet reviewable is refused with a
 /// named reason, a second sign-off is an audited no-op, and another tenant's document is simply
-/// not found. Real Postgres (same Testcontainer pattern as <see cref="StagedExtractionServiceTests"/>)
+/// not found. Real Postgres (same Testcontainer pattern as <see cref="ExtractionOrchestratorTests"/>)
 /// because the status write goes through the RLS-scoped <see cref="DocumentsContractsDbContext"/>.
 /// </summary>
 public sealed class DocumentValidationServiceTests : IAsyncLifetime

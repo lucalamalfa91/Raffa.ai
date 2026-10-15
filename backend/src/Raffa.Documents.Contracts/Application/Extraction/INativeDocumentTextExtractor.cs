@@ -11,7 +11,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// <see cref="NativeDocumentTextExtractor"/> directly — for the same reason
 /// <see cref="Raffa.AiGateway.IAiGateway"/> is an interface: it lets the hybrid routing/
 /// page-budget logic be unit-tested against a scripted fake instead of real PDF/DOCX/XLSX bytes,
-/// mirroring how <see cref="StagedExtractionService"/>'s own tests script <c>IAiGateway</c> rather
+/// mirroring how <c>ExtractionOrchestrator</c>'s own tests script <c>IAiGateway</c> rather
 /// than depending on a live model.
 /// </summary>
 public interface INativeDocumentTextExtractor

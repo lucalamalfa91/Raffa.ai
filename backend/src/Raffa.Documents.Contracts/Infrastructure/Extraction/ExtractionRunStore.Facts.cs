@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Raffa.Documents.Contracts.Infrastructure.Extraction;
 
-/// <summary>Applying parsed stage facts onto the contract and the list tables (moved from StagedExtractionService.cs).</summary>
+/// <summary>Applying parsed stage facts onto the contract and the list tables (moved out of the former ExtractionOrchestrator).</summary>
 public sealed partial class ExtractionRunStore
 {
     /// <summary>
@@ -31,7 +31,7 @@ public sealed partial class ExtractionRunStore
     /// <see cref="Contract.Type"/> is promoted to <see cref="Document.DocumentType"/> the moment
     /// classification has resolved a specific type. <c>DocumentProcessingOrchestrator</c> flushes
     /// <see cref="Document.DocumentType"/> via <c>SaveChangesAsync</c> <em>before</em> calling
-    /// <c>StagedExtractionService.RunAsync</c>,
+    /// <c>ExtractionOrchestrator.RunAsync</c>,
     /// so by the time this method runs the in-memory document already carries the real classified
     /// type and the promotion is safe. The promotion is guarded to only fire while the contract is
     /// still at the bootstrap placeholder (<c>Other</c>) and the document has been classified as a

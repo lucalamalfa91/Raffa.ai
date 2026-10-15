@@ -17,10 +17,10 @@ namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
 
 /// <summary>
 /// Task E02/F06/US01/T01 (r1-integration): the caller <see cref="HybridDocumentParsingService"/>'s
-/// and <see cref="StagedExtractionService"/>'s own doc comments both name as missing —
+/// and the former staged-extraction service (now <see cref="ExtractionOrchestrator"/> and <c>ExtractionRunStore</c>) both named as missing —
 /// <c>HybridDocumentParsingService</c>: "Wiring 'load the Document row, read its bytes from
-/// storage, call this, then call StagedExtractionService' into an HTTP endpoint or the Worker's
-/// queue dispatch is later-task scope"; <c>StagedExtractionService.EnsureContractAsync</c>:
+/// storage, call this, then call the extraction orchestrator' into an HTTP endpoint or the Worker's
+/// queue dispatch is later-task scope"; <c>ExtractionRunStore.EnsureContractAsync</c>:
 /// "nothing else in this wave consumes the <see cref="ExtractionStage.Classification"/> job
 /// <c>DocumentUploadService</c> queues at upload". This is that later task: one orchestrator that
 /// runs the rest of product spec §7.1's pipeline — classify, then hybrid parse's page-mapped text
@@ -49,11 +49,11 @@ namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
 /// is "native or OCR'd text of the document" — classification has nothing to read until the hybrid
 /// parse (native or `ocr` gateway role) has already produced it. <see cref="Document.DocumentType"/>
 /// is set, and its own <see cref="Domain.ExtractionJob"/> row is resolved, before
-/// <see cref="StagedExtractionService.RunAsync"/> is called: that service's own
+/// <c>ExtractionOrchestrator.RunAsync</c> is called: that service's own
 /// <c>EnsureContractAsync</c> seeds a freshly-created <see cref="Contract"/>'s
 /// <see cref="Contract.Type"/> from <see cref="Document.DocumentType"/>, so classification must be
 /// durable first (both entry points flush it via <c>SaveChangesAsync</c> before calling
-/// <see cref="StagedExtractionService.RunAsync"/> — sharing the caller's own scoped
+/// <c>ExtractionOrchestrator.RunAsync</c> — sharing the caller's own scoped
 /// <see cref="DocumentsContractsDbContext"/>, so <c>RunAsync</c>'s own re-query for the
 /// <see cref="Document"/> row returns the same tracked, already-updated entity rather than racing a
 /// second connection).
@@ -76,14 +76,14 @@ namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
 /// failure, one extraction stage failing, one page failing to embed) is recorded on the
 /// <see cref="Document"/>/<see cref="Domain.ExtractionJob"/> rows and returned to the caller, but
 /// none of it unwinds the upload itself — the bytes are already safely stored and the document row
-/// already exists by the time this runs (mirrors <see cref="StagedExtractionService"/>'s own
+/// already exists by the time this runs (mirrors <see cref="ExtractionOrchestrator"/>'s own
 /// per-stage "one failure does not abort the others" posture, generalized one layer up).
 ///
 /// <b>Supplier linking</b> (task E13/F03/US01/T02, requirements R-SUP-01/R-SUP-02): once staged
 /// extraction reports an accepted <c>supplier</c> fact
 /// (<see cref="StagedExtractionSummary.AcceptedSupplierName"/>), this pipeline turns that legal name
 /// into <see cref="Contract.SupplierId"/> through <see cref="ISupplierResolver"/>. It happens here,
-/// not in <see cref="StagedExtractionService"/>, because ADR-002 forbids Documents/Contracts from
+/// not in <see cref="ExtractionOrchestrator"/>, because ADR-002 forbids Documents/Contracts from
 /// referencing <c>Raffa.Suppliers.Products</c> — the port lives in SharedKernel and this is the
 /// module's own orchestration layer. <paramref name="supplierResolver"/> is optional (defaulted to
 /// <see langword="null"/>, so the built-in container supplies it only where the Suppliers module is
@@ -99,7 +99,7 @@ public sealed class DocumentProcessingOrchestrator(
     DocumentsContractsDbContext dbContext,
     IAiGateway aiGateway,
     HybridDocumentParsingService parsingService,
-    StagedExtractionService extractionService,
+    ExtractionOrchestrator extractionOrchestrator,
     EmbeddingRetrievalService embeddingRetrievalService,
     ITenantContext tenantContext,
     IClock clock,
@@ -217,7 +217,7 @@ public sealed class DocumentProcessingOrchestrator(
 
     /// <summary>
     /// The continuation both entry points share once <paramref name="document"/>'s type is decided:
-    /// flush classification, run <see cref="StagedExtractionService.RunAsync"/>, index every page
+    /// flush classification, run <c>ExtractionOrchestrator.RunAsync</c>, index every page
     /// for retrieval, report the summary.
     /// </summary>
     private async Task<Result<DocumentProcessingSummary>> ExtractAndIndexAsync(
@@ -258,7 +258,7 @@ public sealed class DocumentProcessingOrchestrator(
             }
         }
 
-        // Flush classification before StagedExtractionService.RunAsync runs — see the type doc
+        // Flush classification before ExtractionOrchestrator.RunAsync runs — see the type doc
         // comment's "Ordering" remarks: EnsureContractAsync reads document.DocumentType to seed a
         // freshly-created Contract.Type, and both services share this same scoped DbContext
         // instance, so this SaveChangesAsync only needs to make the *classification job* durable;
@@ -269,7 +269,7 @@ public sealed class DocumentProcessingOrchestrator(
         // The classification verdict travels into the run so it is recorded as the contract's
         // `type` evidence row with its real confidence (ExtractionFieldNames.Type) —
         // the review screen shows "Contract type" next to every other extracted field.
-        var extractionResult = await extractionService
+        var extractionResult = await extractionOrchestrator
             .RunAsync(tenantId, document.Id, pages, classificationConfidence, cancellationToken)
             .ConfigureAwait(false);
         if (extractionResult.IsFailure)
@@ -359,7 +359,7 @@ public sealed class DocumentProcessingOrchestrator(
     /// <see cref="Document.DocumentType"/> at its current value (the pre-classification default,
     /// <see cref="ContractDocumentType.Other"/>, for a first run) and marks the job
     /// <see cref="ExtractionJobStatus.Failed"/> — classification is one stage among several; its
-    /// failure must not abort staged extraction (mirrors <see cref="StagedExtractionService"/>'s
+    /// failure must not abort staged extraction (mirrors <see cref="ExtractionOrchestrator"/>'s
     /// own per-stage failure posture).
     /// </summary>
     private async Task<(ContractDocumentType DocumentType, double? Confidence)> ClassifyAsync(

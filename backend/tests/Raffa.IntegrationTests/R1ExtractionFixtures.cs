@@ -30,7 +30,7 @@ internal static class R1ExtractionFixtures
     public const string ScannedMimeType = "image/png";
 
     /// <summary>The commercial-terms stage's own low-confidence fact (below
-    /// <c>DocumentProcessingOrchestrator</c>/<c>StagedExtractionService</c>'s shared 0.6 threshold) —
+    /// <c>DocumentProcessingOrchestrator</c>/<c>ExtractionOrchestrator</c>'s shared 0.6 threshold) —
     /// AC-2's "low-confidence field correction" needs one real field to correct. Both fixture
     /// documents extract to this same value; each is staged into its own, separate
     /// <c>Contract</c> row (one per uploaded <c>Document</c>).</summary>
@@ -79,7 +79,7 @@ internal static class R1ExtractionFixtures
     /// <summary>
     /// Scripted `extract` payloads, keyed by <c>AiExtractionRequest.StageName</c> (i.e.
     /// <c>ExtractionStage.ToString()</c>) — same shape as
-    /// <c>Raffa.Documents.Contracts.Tests.StagedExtractionServiceTests.HighConfidencePayloads</c>,
+    /// <c>Raffa.AiFlows.Tests.DocumentExtraction.Orchestration.ExtractionOrchestratorTests.HighConfidencePayloads</c>,
     /// with one deliberately low-confidence fact (<see cref="OriginalAnnualSpend"/>, 0.35) so the
     /// resulting <c>Contract</c> has a real field AC-2's correction test can target.
     /// </summary>

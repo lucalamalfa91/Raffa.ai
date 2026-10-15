@@ -5,7 +5,7 @@ namespace Raffa.Documents.Contracts.Application;
 /// <see cref="PortfolioAnalysisCalculator"/> needs (task E04/F03/US01/T01, savings-kpis; product
 /// spec §10.1 "Contracts Analyzed"/"Annual Spend Analyzed"). <see cref="HasCompletedProcessing"/>
 /// is not a column on <see cref="Domain.Contract"/> itself — a contract row exists the moment
-/// extraction *starts* (<c>Extraction.StagedExtractionService.EnsureContractAsync</c> creates a
+/// extraction *starts* (<c>ExtractionRunStore.EnsureContractAsync</c> creates a
 /// bootstrap shell before any stage has run — see that method's own doc comment), so "a Contract
 /// row exists" cannot mean "analyzed"; <see cref="PortfolioQueryService.GetAnalysisSummaryAsync"/>
 /// (the fetch half — see that method's own doc comment) derives this flag from whether any of the

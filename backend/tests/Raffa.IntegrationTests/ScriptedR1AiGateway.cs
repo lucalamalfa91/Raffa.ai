@@ -7,7 +7,7 @@ namespace Raffa.IntegrationTests;
 /// <summary>
 /// Test-only <see cref="IAiGateway"/> for <see cref="R1IntegrationFixture"/> — task
 /// E02/F06/US01/T01 (r1-integration) needs a gateway where every one of the five roles behaves
-/// meaningfully, not just the one <c>Raffa.Documents.Contracts.Tests.StagedExtractionServiceTests
+/// meaningfully, not just the one <c>Raffa.AiFlows.Tests.DocumentExtraction.Orchestration.ExtractionOrchestratorTests
 /// .ScriptedAiGateway</c> already scripts (<c>ExtractAsync</c>, since
 /// <c>Raffa.AiGateway.Fixtures.FixtureAiGateway.ExtractAsync</c> always returns an empty <c>{}</c>
 /// placeholder — see that method's own doc comment). <see cref="ClassifyAsync"/> (keyword
@@ -17,7 +17,7 @@ namespace Raffa.IntegrationTests;
 /// <paramref name="inner"/> (composition, the same shape
 /// <c>Raffa.AiGateway.Logging.LoggingAiGateway</c> already uses to wrap a real gateway) and only
 /// overrides <see cref="ExtractAsync"/> with a scripted, per-<see cref="AiExtractionRequest.StageName"/>
-/// payload so <c>Raffa.Documents.Contracts.Application.Extraction.StagedExtractionService</c> has
+/// payload so <c>Raffa.AiFlows.DocumentExtraction.Orchestration.ExtractionOrchestrator</c> has
 /// real facts to persist end-to-end (parent story us-01-final-integration AC-1/AC-2).
 ///
 /// <see cref="OcrCallCount"/> is direct, unambiguous proof for AC-4 ("at least one scanned or

@@ -13,7 +13,7 @@ namespace Raffa.Quotes.Domain;
 /// (<c>Raffa.ArchitectureTests.DependencyDirectionTests</c>'s allow-list for
 /// <c>Raffa.Quotes</c> is exactly <c>[SharedKernel, Benchmark]</c>), and a quote is not a
 /// contract — reusing <c>Document</c>/<c>Contract</c> would also route every uploaded quote
-/// through <c>StagedExtractionService.EnsureContractAsync</c>, silently creating a phantom
+/// through <c>ExtractionRunStore.EnsureContractAsync</c>, silently creating a phantom
 /// <c>Contract</c> row for a document that is never a contract (product spec §11's own Quote →
 /// Benchmark → Assessment → Negotiate → Contract flow treats "becomes a Contract" as a later,
 /// explicit step, not an upload-time side effect).

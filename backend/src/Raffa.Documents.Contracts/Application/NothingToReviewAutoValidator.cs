@@ -16,7 +16,7 @@ namespace Raffa.Documents.Contracts.Application;
 /// the review screen can resolve, so such a document is validated automatically instead.
 ///
 /// <para>
-/// <c>StagedExtractionService</c> applies the same rule at the end of every run through
+/// <c>ExtractionOrchestrator</c> applies the same rule at the end of every run through
 /// <see cref="WeakFactCountsAsync"/>; <see cref="AutoValidateInTenantAsync"/> is the sweep
 /// <c>GET /api/documents</c> runs so documents stored before the rule existed heal on the next
 /// list read, the same self-healing shape as <c>HungProcessingRecoveryService</c>.

@@ -30,7 +30,7 @@ namespace Raffa.IntegrationTests;
 /// <see cref="R0IntegrationFixture"/> (which this task's own scope leaves untouched — it is a
 /// different, already-merged task's artifact and other tests still depend on its exact shape):
 /// this fixture additionally swaps in <see cref="ScriptedR1AiGateway"/> so
-/// <c>Raffa.Documents.Contracts.Application.Extraction.StagedExtractionService</c> has real,
+/// <c>Raffa.AiFlows.DocumentExtraction.Orchestration.ExtractionOrchestrator</c> has real,
 /// schema-shaped facts to extract end-to-end — <see cref="R0IntegrationFixture"/> only ever needed
 /// the real <c>FixtureAiGateway</c>'s always-empty <c>ExtractAsync</c>, since no R0 task exercised
 /// staged extraction over HTTP.

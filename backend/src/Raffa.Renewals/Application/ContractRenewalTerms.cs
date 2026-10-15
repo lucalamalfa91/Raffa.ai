@@ -44,7 +44,7 @@ namespace Raffa.Renewals.Application;
 /// <para>
 /// Honest gap: <c>Raffa.Documents.Contracts.Domain.Contract</c> has no persisted column for
 /// this today — its "dates" extraction stage
-/// (<c>Raffa.Documents.Contracts.Application.Extraction.StagedExtractionService.ApplyDatesFact</c>)
+/// (<c>ExtractionRunStore.ApplyDatesFact</c>)
 /// still writes a raw <c>cancellationDeadline</c> date straight onto <c>Contract</c> instead of a
 /// notice-day count, which is exactly the "date invented outside deterministic code" gap this
 /// engine exists to close (parent story: "dates are never invented by the LLM"). Adding that

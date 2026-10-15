@@ -221,7 +221,7 @@ public sealed class PortfolioQueryService(
     /// Backs the "Contracts Analyzed"/"Annual Spend Analyzed" pair of `GET /api/savings/kpis`
     /// (task E04/F03/US01/T01, savings-kpis; product spec §10.1; parent story us-01-savings-kpis
     /// AC-1). A <see cref="Domain.Contract"/> row exists as soon as extraction *starts*, not once
-    /// it finishes (<see cref="Extraction.StagedExtractionService.EnsureContractAsync"/> creates a
+    /// it finishes (<c>ExtractionRunStore.EnsureContractAsync</c> creates a
     /// bootstrap shell before any pipeline stage has run — see that method's own doc comment), so
     /// "analyzed" cannot mean "a Contract row exists for this tenant"; it means at least one linked
     /// <see cref="Domain.Document"/> reached <see cref="Domain.DocumentProcessingStatus.Completed"/>
@@ -272,7 +272,7 @@ public sealed class PortfolioQueryService(
     /// <see cref="Domain.Document"/> reached <see cref="Domain.DocumentProcessingStatus.Completed"/>
     /// (<see cref="Domain.Contract.Status"/> can never define it: a bootstrapped-but-unprocessed
     /// contract's <c>Status</c> is the literal <c>"processing"</c>,
-    /// <c>Extraction.StagedExtractionService.EnsureContractAsync</c>) — so this equals
+    /// <c>ExtractionRunStore.EnsureContractAsync</c>) — so this equals
     /// <see cref="PortfolioAnalysisSummary.ContractsAnalyzedCount"/> for the same tenant, the same
     /// fact <c>SavingsKpiEndpointExtensions.cs:93</c> already serves as <c>contractsAnalyzedCount</c>.
     /// No new definition is invented.

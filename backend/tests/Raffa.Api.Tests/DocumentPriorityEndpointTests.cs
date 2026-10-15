@@ -152,7 +152,7 @@ public sealed class DocumentPriorityEndpointTests : IClassFixture<RaffaApiFactor
 
     /// <summary>The classification job's id for each document -- the only stage the queue-jump ever
     /// touches. A fully processed document also carries one <see cref="ExtractionJob"/> row per
-    /// later stage (<see cref="StagedExtractionService"/>), so the lookup must name the stage: an
+    /// later stage (<c>ExtractionOrchestrator</c>), so the lookup must name the stage: an
     /// unfiltered query throws once any of these documents has finished classification.</summary>
     private static async Task<Dictionary<Guid, EntityId>> JobIdsAsync(Host host, Guid tenantId, params Guid[] documentIds)
     {

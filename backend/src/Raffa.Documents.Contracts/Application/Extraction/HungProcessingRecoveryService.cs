@@ -163,7 +163,7 @@ public sealed class HungProcessingRecoveryService(
     /// provider was unreachable or throttling, even after the in-call retries), at most
     /// <see cref="MaxStageRetries"/> times per stage and not before <see cref="PartialRetryCooldown"/>
     /// has passed. The re-run resumes the open run: only the failed stage is called again, the
-    /// stages that finished for the same text are reused (<see cref="StagedExtractionService"/>).
+    /// stages that finished for the same text are reused (<c>ExtractionOrchestrator</c>).
     /// A permanent failure is never retried here -- a human decides.
     /// </summary>
     public async Task RetryPartialInTenantAsync(TenantId tenantId, CancellationToken cancellationToken = default)

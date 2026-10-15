@@ -33,7 +33,7 @@ public sealed class PortfolioAnalysisCalculatorTests
     [Fact]
     public void A_contract_still_processing_does_not_count_as_analyzed()
     {
-        // StagedExtractionService.EnsureContractAsync creates a bootstrap Contract shell before
+        // ExtractionRunStore.EnsureContractAsync creates a bootstrap Contract shell before
         // extraction finishes, so "a Contract row exists" is not "analyzed" — only a linked
         // Document that reached DocumentProcessingStatus.Completed makes it so.
         var result = _calculator.Summarize([Snapshot(hasCompletedProcessing: false)]);

@@ -79,7 +79,7 @@ public class FoundryOcrClientTests
 
     /// <summary>
     /// NW-106's OCR-half concurrency witness, mirroring
-    /// <c>Raffa.Documents.Contracts.Tests.StagedExtractionServiceTests.ConcurrencyTrackingGateway</c>:
+    /// <c>Raffa.AiFlows.Tests.DocumentExtraction.Orchestration.ExtractionOrchestratorTests.ConcurrencyTrackingGateway</c>:
     /// an artificial delay plus an interlocked high-water mark on every request proves two calls
     /// actually overlapped, not just that both eventually ran. Dispatches by URL/operation location
     /// rather than call order, since <c>prebuilt-read</c> and <c>prebuilt-layout</c> are in flight

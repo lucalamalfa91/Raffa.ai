@@ -120,7 +120,7 @@ public sealed class ValidatedContractCountTests : IAsyncLifetime
             tenantContext, NewDocument(tenantId, validated.Id, DocumentProcessingStatus.Completed, "validated.pdf"));
 
         // Not validated: extraction has started (a Contract row already exists — the
-        // StagedExtractionService.EnsureContractAsync bootstrap shell) but its document has not
+        // ExtractionRunStore.EnsureContractAsync bootstrap shell) but its document has not
         // reached Completed yet.
         var stillProcessing = NewContract(tenantId, annualSpend: 999_999m);
         await SeedContractAsync(tenantContext, stillProcessing);

@@ -18,7 +18,7 @@ namespace Raffa.Documents.Contracts.Application;
 /// one append-only <see cref="IAuditWriter"/> entry per successful <see cref="EditAsync"/> call.
 ///
 /// <para>
-/// <b>Which row the override lands on.</b> <c>StagedExtractionService</c>'s own write shape
+/// <b>Which row the override lands on.</b> <c>ExtractionOrchestrator</c>'s own write shape
 /// (<c>dbContext.ExtractionEvidences.Add(...)</c> — always an insert, never an update) means a
 /// field can carry more than one <see cref="ExtractionEvidence"/> row over its lifetime, newest
 /// extraction winning for <em>display</em>

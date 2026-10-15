@@ -61,9 +61,10 @@ public sealed class DocumentExtractionFlowRegistrationTests
             || d.ServiceType == typeof(IDocumentProcessingFlow)
             || d.ServiceType == typeof(DocumentAdmissionGate)
             || d.ServiceType == typeof(DocumentProcessingOrchestrator)
+            || d.ServiceType == typeof(ExtractionOrchestrator)
             || d.ServiceType == typeof(HybridDocumentParsingService)).ToList();
 
-        Assert.Equal(5, descriptors.Count);
+        Assert.Equal(6, descriptors.Count);
         Assert.All(descriptors, d => Assert.Equal(ServiceLifetime.Scoped, d.Lifetime));
     }
 
