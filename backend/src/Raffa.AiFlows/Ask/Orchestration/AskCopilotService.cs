@@ -198,15 +198,7 @@ public sealed partial class AskCopilotService(
     PackBudget packBudget,
     CapabilityRouting capabilityRouting,
     PortfolioQueryService portfolioQueryService,
-    Contract360QueryService contract360QueryService,
-    EmbeddingRetrievalService embeddingRetrievalService,
-    RenewalEngine renewalEngine,
-    PriorityScoreCalculator priorityScoreCalculator,
-    RenewalNegotiationTodoService renewalNegotiationTodoService,
-    CriticalityScoreCalculator criticalityScoreCalculator,
-    SavingsOpportunityService savingsOpportunityService,
     ISupplierNameLookup supplierNameLookup,
-    IMarketDealLookup marketDealLookup,
     AskAgentFlow askAgentFlow,
     NegotiationDraftingWorkflow negotiationDraftingWorkflow,
     CapabilityCheckRunner capabilityCheckRunner,
@@ -222,6 +214,11 @@ public sealed partial class AskCopilotService(
     StructuredFactPackBuilder structuredFacts,
     ClausePackBuilder clauses,
     MarketComparePackBuilder marketCompare,
+    RenewalStrategyPackBuilder renewalStrategy,
+    NegotiationPointsPackBuilder negotiationPoints,
+    PortfolioStrategyPackBuilder portfolioStrategy,
+    SavingsPackBuilder savings,
+    MarketDataCheck marketDataCheck,
     NoticeFallbackReplies noticeFallbacks,
     ITenantContext tenantContext,
     IClock clock,
@@ -230,9 +227,6 @@ public sealed partial class AskCopilotService(
     /// <summary>INV-01: the deterministic trigger of the capability investigator (the shared
     /// instance over the embedded lexicon unless a test supplies its own).</summary>
     private readonly InvestigatorTrigger investigatorTrigger = investigatorTriggerOverride ?? InvestigatorTrigger.Default;
-
-    private const int MaxPricedLinesForBenchmark = MarketComparePackBuilder.MaxPricedLinesForBenchmark;
-    private const int PortfolioStrategyTopN = 5;
 
     /// <summary>The tenant scope <see cref="AskAsync"/> already opened for this call
     /// (<see cref="ITenantContext.BeginScope"/>) — every private helper below reads this instead
@@ -256,6 +250,23 @@ public sealed partial class AskCopilotService(
     internal Task<IReadOnlyList<PackItem>> BuildMarketComparePackAsync(
         PortfolioListItem? namedContractItem, CancellationToken cancellationToken) =>
         marketCompare.BuildMarketComparePackAsync(namedContractItem, cancellationToken);
+
+    // Test seams (F1 Ask split, PR-3): the bodies moved to RenewalStrategyPackBuilder /
+    // NegotiationPointsPackBuilder; retargeted by the last mechanical PR.
+    internal Task<IReadOnlyList<PackItem>> BuildRenewalStrategyPackAsync(
+        PortfolioListItem namedContractItem,
+        CancellationToken cancellationToken,
+        bool persistTodos = false,
+        string actor = "") =>
+        renewalStrategy.BuildRenewalStrategyPackAsync(namedContractItem, cancellationToken, persistTodos, actor);
+
+    internal Task<IReadOnlyList<PackItem>> BuildNegotiationPointsPackAsync(
+        EntityId contractId,
+        bool includeRenewalUrgency,
+        bool persistTodos,
+        string actor,
+        CancellationToken cancellationToken) =>
+        negotiationPoints.BuildNegotiationPointsPackAsync(contractId, includeRenewalUrgency, persistTodos, actor, cancellationToken);
 
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
@@ -734,13 +745,13 @@ public sealed partial class AskCopilotService(
                 .ConfigureAwait(false),
             AskIntent.MarketCompare => await marketCompare.BuildMarketComparePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false),
             AskIntent.RenewalStrategy => namedContractItem is not null
-                ? await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, plan.Goal).ConfigureAwait(false)
-                : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
-            AskIntent.PortfolioStrategy => await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
-            AskIntent.PortfolioSavingsTarget => await BuildPortfolioSavingsTargetPackAsync(portfolio, plan.Goal, cancellationToken).ConfigureAwait(false),
+                ? await renewalStrategy.BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, plan.Goal).ConfigureAwait(false)
+                : await portfolioStrategy.BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
+            AskIntent.PortfolioStrategy => await portfolioStrategy.BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
+            AskIntent.PortfolioSavingsTarget => await savings.BuildPortfolioSavingsTargetPackAsync(portfolio, plan.Goal, cancellationToken).ConfigureAwait(false),
             AskIntent.Savings => namedContractItem is not null
-                ? await BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, actor, cancellationToken).ConfigureAwait(false)
-                : await BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
+                ? await savings.BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, actor, cancellationToken).ConfigureAwait(false)
+                : await portfolioStrategy.BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
             AskIntent.DocumentStatus => DocumentStatusPack.Build(portfolio, supplierNames),
             _ => [],
         };
@@ -778,14 +789,14 @@ public sealed partial class AskCopilotService(
         IReadOnlyList<PortfolioListItem> dataCheckContracts =
             plan.Intent is AskIntent.DocumentStatus or AskIntent.Clause ? []
             : namedContractItem is not null ? [namedContractItem]
-            : ContractsForDataCheck(packItems, portfolio);
+            : MarketDataCheck.ContractsForDataCheck(packItems, portfolio);
 
         var flow = await askAgentFlow.RunAsync(
                 new AskFlowRequest(
                     question,
                     packItems,
                     plan.Goal,
-                    dataCheckContracts.Count > 0 ? ct => RunMarketDataCheckAsync(dataCheckContracts, dataChecks, ct) : null,
+                    dataCheckContracts.Count > 0 ? ct => marketDataCheck.RunAsync(dataCheckContracts, dataChecks, ct) : null,
                     RunMarketResearch: portfolio.Items.Count > 0 && plan.Intent != AskIntent.DocumentStatus,
                     ConveneCouncil: IsCouncilIntent(plan.Intent, namedContractItem)),
                 cancellationToken)
@@ -961,440 +972,6 @@ public sealed partial class AskCopilotService(
             CopilotReplyBuilder.FromGuardedResult(result, boundedPack, resolvedActions, recoveryActions, recoveryFollowUps),
             composed.Value.GuardIntervened,
             composed.Value.FallbackUsed);
-    }
-
-    // ----- Per-intent pack composition -----
-
-    /// <summary>
-    /// <c>internal</c>, not <c>private</c> — see <see cref="BuildMarketComparePackAsync"/>'s own
-    /// doc comment for why (test-reachability precedent, <see cref="ResolveTenantClauseLinks"/>).
-    /// <c>Raffa.Api.Tests.AskPricedLinesParityTests</c> calls this directly to compare the
-    /// <c>calc:target[...]</c> item's <see cref="PackValue"/>s against <c>GET
-    /// /api/contracts/{id}/strategy</c>'s own JSON (AC-2) -- <c>FixtureAiGateway.AnswerFromPack</c>
-    /// only ever echoes a pack's first five items, and calling this method directly is what lets
-    /// that test (and <c>Raffa.Api.Tests.AskQ3RenewalStrategyTests</c>, task E31/F01/US01/T01)
-    /// assert past that unrelated cap regardless of this pack's own item order.
-    ///
-    /// <para>
-    /// <b>Tenant clause evidence is this method's own caller's job</b> (AC-2, task E31/F01/US01/T01,
-    /// NW-95): this method returns <c>calc</c>/<c>market</c>/<c>raffa</c> items only, never
-    /// <c>tenant</c> — it has no <c>question</c> text to search clause embeddings with, and adding
-    /// one just for this would break <c>AskPricedLinesParityTests</c>' own direct call (a signature
-    /// this task deliberately leaves alone). <see cref="BuildRenewalStrategyWithEvidenceAsync"/> is
-    /// the composition that appends this contract's own scoped clause evidence
-    /// (<see cref="ClausePackBuilder.BuildClausePackAsync"/>, the epic-28 scoped RAG) and is what <see cref="BuildInDomainReplyAsync"/>
-    /// actually calls for a live <see cref="AskIntent.RenewalStrategy"/> turn.
-    /// </para>
-    ///
-    /// <para>
-    /// <b>Fixed item order</b>: when-you-must-move, then up to three grounded ranked points
-    /// (<see cref="BuildNegotiationPointsPackAsync"/>, task E31/F02/US01/T01, NW-96 — never the
-    /// generic seven-lever dump this method used to emit here, retired by this same task per
-    /// epic-31's own "Out of scope: no ungrounded '7 lever' dump"), then one target per priced line,
-    /// then next-steps, then up to two market bands, then one raffa Renewals citation.
-    /// </para>
-    /// </summary>
-    internal async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyPackAsync(
-        PortfolioListItem namedContractItem,
-        CancellationToken cancellationToken,
-        bool persistTodos = false,
-        string actor = "")
-    {
-        var contract360 = await contract360QueryService
-            .GetByIdAsync(CurrentTenantId, new EntityId(namedContractItem.ContractId), cancellationToken)
-            .ConfigureAwait(false);
-
-        if (contract360 is null)
-        {
-            return [];
-        }
-
-        var renewal = ContractInsightsMapper.ComputeRenewal(contract360.Header, renewalEngine);
-        var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
-
-        // One resolution per screen (ADR-024 w17 clause 7), extended to Ask (task E28/F01/US01/T01,
-        // NW-82): the same BenchmarkKeyResolution key, and the same async ToPricedLines overload,
-        // GET /api/contracts/{id}/strategy already calls -- so the two paths query the benchmark
-        // service with an identical (supplier name, geography) key and cannot compute two different
-        // bands for the same line (AC-1/AC-2). Previously this called the *sync* ToPricedLines
-        // overload, which never resolves a band at all (every line's Benchmark stays null by
-        // construction) -- Ask's own strategy pack narrated "insufficient market data" on every
-        // priced line even when /strategy found a real one; that drift is this task's own bug to
-        // close.
-        var (benchmarkSupplierName, geography) = await context.ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
-            .ConfigureAwait(false);
-
-        var pricedLines = await context.ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
-            .ConfigureAwait(false);
-
-        var criticalFacts = ContractInsightsMapper.ToCriticalFacts(contract360);
-        var supplierName = await context.ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
-
-        // Composed by the same mapping GET /api/contracts/{id}/strategy uses
-        // (ContractInsightsMapper.ToStrategyInputs / StrategyPackBuilder.Build), so Ask and the
-        // endpoint narrate the identical targets whenever a band exists (AC-2) and the identical
-        // "insufficient market data" explanation when it does not (AC-3;
-        // PricedLineNegotiationCalculator.ComputeTargetRange). Ask overrides SupplierName with its
-        // own always-available ResolveDisplayNameAsync result (falls back to the contract type,
-        // never null, unlike /strategy's own name -- which is only as good as this same
-        // BenchmarkKeyResolution call) purely for narration text ("Notify X of intent..." etc.); the
-        // override never touches a priced line's own Benchmark/band, so it cannot desync the numbers
-        // this task fixes.
-        var strategyInputs = ContractInsightsMapper
-            .ToStrategyInputs(contract360, renewal, pricedLines, criticalFacts, asOfDate)
-            with
-            { SupplierName = supplierName };
-
-        var pack = StrategyPackBuilder.Build(strategyInputs);
-        var currency = contract360.Overview.Currency;
-        var items = new List<PackItem>
-        {
-            new(
-                InsightsCitationKeys.Calc("when-you-must-move"),
-                PackCorpus.Calc,
-                $"{supplierName} — when you must move",
-                null, null, null,
-                pack.WhenYouMustMove.Explanation,
-                $"/contracts/{namedContractItem.ContractId}", null, null,
-                "deterministic calculator",
-                BuildDateValues(pack.WhenYouMustMove.RenewalDate, pack.WhenYouMustMove.CancellationDeadline),
-                namedContractItem.ContractId.ToString()),
-        };
-
-        // Grounded-only ranked points (task E31/F02/US01/T01, point-ranker; NW-96; ADR-024 w19 cl.
-        // 23), wired into a live turn here (task E31/F01/US01/T01, q3-route; NW-95). Replaces the
-        // ungrounded seven-lever loop. includeRenewalUrgency is false -- the when-you-must-move
-        // item above already covers that ground. persistTodos is true on the live Q3 path
-        // (E29/F02/US01/T01 todo-host-upsert; NW-85) so ranking and upsert share one call;
-        // direct test callers leave the default false.
-        var rankedPoints = await BuildNegotiationPointsPackAsync(
-                new EntityId(namedContractItem.ContractId),
-                includeRenewalUrgency: false,
-                persistTodos,
-                persistTodos ? actor : string.Empty,
-                cancellationToken)
-            .ConfigureAwait(false);
-        items.AddRange(rankedPoints);
-
-        var targetIndex = 0;
-        foreach (var target in pack.Targets)
-        {
-            var values = new List<PackValue>();
-            if (target.OpeningTarget is { } opening)
-            {
-                values.Add(new PackValue("openingTarget", opening.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, currency));
-            }
-
-            if (target.AcceptableRangeLow is { } low)
-            {
-                values.Add(new PackValue("acceptableRangeLow", low.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, currency));
-            }
-
-            if (target.AcceptableRangeHigh is { } high)
-            {
-                values.Add(new PackValue("acceptableRangeHigh", high.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, currency));
-            }
-
-            if (target.WalkAwayThreshold is { } walkAway)
-            {
-                values.Add(new PackValue("walkAwayThreshold", walkAway.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, currency));
-            }
-
-            items.Add(new PackItem(
-                InsightsCitationKeys.Calc($"target[{targetIndex++}]"),
-                PackCorpus.Calc,
-                $"{supplierName} — {target.Description} target",
-                null, null, null,
-                target.Explanation,
-                $"/contracts/{namedContractItem.ContractId}", null, null,
-                "deterministic calculator", values,
-                namedContractItem.ContractId.ToString()));
-        }
-
-        items.Add(new PackItem(
-            InsightsCitationKeys.Calc("next-steps"),
-            PackCorpus.Calc,
-            $"{supplierName} — next steps",
-            null, null, null,
-            string.Join("; ", pack.NextSteps.Select(step => $"{step.Label} ({step.DueHint})")),
-            $"/contracts/{namedContractItem.ContractId}", null, null,
-            "deterministic calculator", [],
-            namedContractItem.ContractId.ToString()));
-
-        // Market corpus (AC-2 "+ market"): the same benchmarked priced lines above, as citable
-        // PackCorpus.Market items -- BuildMarketPricedLineItem is the same per-line shape
-        // BuildMarketComparePackAsync already builds (task E28/F01/US01/T01, NW-82), reused rather
-        // than duplicated so a missing band never narrates two different "insufficient market data"
-        // wordings for the identical line.
-        foreach (var line in pricedLines.Take(MaxPricedLinesForBenchmark))
-        {
-            if (line.UnitPrice is null)
-            {
-                continue;
-            }
-
-            items.Add(BuildMarketPricedLineItem(supplierName, line));
-        }
-
-        // AC-2 "+ one raffa Renewals item": a feature citation card, the same FeatureCitation shape
-        // BuildCapabilityReply already cites directly into a reply (R-SYS-03), but as a genuine
-        // PackItem here so the `answer` role can cite it like any other pack source. Task
-        // E31/F03/US01/T01 (q3-persist, NW-97) injects the server-injected /renewals?select=
-        // Navigate action in BuildInDomainReplyAsync's own isQ3PersistTurn branch -- this is the
-        // citation card, never the CTA.
-        if (BuildFeatureCitationPackItem(CapabilityCatalog.RenewalsKey) is { } renewalsItem)
-        {
-            items.Add(renewalsItem);
-        }
-
-        return items;
-    }
-
-    /// <summary>
-    /// Task E31/F01/US01/T01 (q3-route; NW-95; ADR-024 w19 cl. 23; parent story us-01-q3-route
-    /// AC-1/AC-2/AC-3) plus E29/F02/US01/T01 persist: the full Q3 "contrattare"/"rinnovo" answer
-    /// pack — <see cref="BuildRenewalStrategyPackAsync"/>'s calc/market/raffa items plus this
-    /// contract's own clause evidence (<see cref="ClausePackBuilder.BuildClausePackAsync"/>, epic-28 scoped RAG),
-    /// with <c>persistTodos: true</c> so the ranked set is upserted before
-    /// <see cref="AnswerComposer.AnswerAsync"/>. Tenant evidence is appended, not prepended: the
-    /// calc corpus's own "when you must move" item must stay first (AC-3).
-    ///
-    /// <para>
-    /// <paramref name="persistTodos"/> is <see langword="true"/> for the live Q3 turn (the user is
-    /// asking what to negotiate, and the Renewals link the reply offers is true after the turn) and
-    /// <see langword="false"/> for the drafted email (F1-D07, decision D7): a draft is a copyable
-    /// text with no side effect, so building its pack writes nothing.
-    /// </para>
-    /// </summary>
-    internal async Task<IReadOnlyList<PackItem>> BuildRenewalStrategyWithEvidenceAsync(
-        TenantId tenantId,
-        string question,
-        PortfolioListItem namedContractItem,
-        string actor,
-        CancellationToken cancellationToken,
-        SavingsGoal? goal = null,
-        bool persistTodos = true)
-    {
-        var strategyItems = (await BuildRenewalStrategyPackAsync(
-                namedContractItem, cancellationToken, persistTodos, persistTodos ? actor : string.Empty)
-            .ConfigureAwait(false)).ToList();
-
-        // The money behind the strategy: the target verdict, the grounded levers, the supplier's
-        // market deals and the playbook entries for those levers (AskCopilotService.Savings.cs).
-        strategyItems.AddRange(await BuildLeverAddendumAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false));
-
-        // Tenant clause evidence (AC-2). SearchByContractAsync uses CosineDistance, which
-        // InMemory EF cannot translate — the same constraint the notice fallbacks document
-        // and therefore never call embeddings. A translation miss is empty tenant corpus,
-        // never a failed Q3 turn: calc/market/raffa + persist already completed above.
-        IReadOnlyList<PackItem> clauseItems;
-        try
-        {
-            clauseItems = await clauses.BuildClausePackAsync(tenantId, question, namedContractItem, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("could not be translated", StringComparison.Ordinal))
-        {
-            clauseItems = [];
-        }
-
-        return DistinctByCitationKey(strategyItems.Concat(clauseItems));
-    }
-
-    /// <summary>
-    /// Task E31/F02/US01/T01 (point-ranker; NW-96; ADR-024 w19 cl. 23; parent story
-    /// us-01-point-ranker AC-1/AC-2/AC-3): the shared negotiation-points pack builder. Maps this
-    /// contract's clause/risk/commercial snapshot into
-    /// <see cref="NegotiationPointInputs"/> — the one mapping only this host may perform
-    /// (<c>Raffa.Insights</c> stays fenced to <c>[SharedKernel, Benchmark]</c>; ADR-002) — ranks it
-    /// through <see cref="NegotiationPointRanker.Rank"/>, and returns at most the top three as
-    /// <see cref="PackItem"/>s for the chat pack ("chat top-3"). When <paramref name="persistTodos"/>
-    /// is <see langword="true"/>, the <em>whole</em> grounded set (never just the returned top three)
-    /// is upserted to <see cref="RenewalNegotiationTodoService"/> first — "persist-all" — so a point
-    /// ranked #4 still reaches <c>/renewals?select=</c> even though chat never narrates it. Returns
-    /// <c>[]</c> when the contract does not resolve or the ranker grounds nothing — never a
-    /// fabricated point (Appendix C rule 10); <see cref="RenewalNegotiationTodoService.UpsertAsync"/>
-    /// itself refuses an empty point set, so an all-ungrounded contract is never called with one.
-    /// </summary>
-    /// <param name="contractId">The contract to rank.</param>
-    /// <param name="includeRenewalUrgency">When <see langword="true"/>, prepends one additional
-    /// <c>calc:when-you-must-move</c> item narrating <see cref="RenewalCalculationResult.Explanation"/>
-    /// — for a caller with no other renewal-timing summary in its own pack (e.g. a standalone
-    /// negotiation-points question). A caller that already renders its own "when you must move"
-    /// section (<see cref="BuildRenewalStrategyPackAsync"/>) passes <see langword="false"/> so the
-    /// same date is never narrated twice in one answer.</param>
-    /// <param name="persistTodos">See this method's own doc comment ("persist-all").</param>
-    /// <param name="actor">The caller's resolved token subject (ADR-011 w16 §15) — required, no
-    /// default, whenever <paramref name="persistTodos"/> is <see langword="true"/>
-    /// (<see cref="RenewalNegotiationTodoService.UpsertAsync"/>'s own required, no-default
-    /// <c>actor</c> parameter); ignored otherwise.</param>
-    internal async Task<IReadOnlyList<PackItem>> BuildNegotiationPointsPackAsync(
-        EntityId contractId,
-        bool includeRenewalUrgency,
-        bool persistTodos,
-        string actor,
-        CancellationToken cancellationToken)
-    {
-        if (persistTodos)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(actor);
-        }
-
-        var contract360 = await contract360QueryService
-            .GetByIdAsync(CurrentTenantId, contractId, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (contract360 is null)
-        {
-            return [];
-        }
-
-        var renewal = ContractInsightsMapper.ComputeRenewal(contract360.Header, renewalEngine);
-        var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
-
-        // One resolution per screen (ADR-024 w17 clause 7), same as BuildRenewalStrategyPackAsync/
-        // BuildMarketComparePackAsync (task E28/F01/US01/T01, NW-82) -- one (supplier name,
-        // geography) key, one async ToPricedLines call, so this pack's above-band-price point can
-        // never disagree with /strategy or the market-compare pack about the same line's band.
-        var (benchmarkSupplierName, geography) = await context.ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
-            .ConfigureAwait(false);
-        var pricedLines = await context.ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
-            .ConfigureAwait(false);
-
-        var rankerInputs = new NegotiationPointInputs(
-            contractId,
-            pricedLines,
-            contract360.Header.AutoRenewal,
-            renewal.RenewalDate,
-            renewal.CancellationDeadline ?? contract360.Header.CancellationDeadline,
-            contract360.Clauses.Select(c => new NegotiationClauseSnapshot(c.ClauseType, c.RawText)).ToList(),
-            contract360.Risks
-                .Select(r => new NegotiationRiskSnapshot(
-                    r.RiskType,
-                    r.Description,
-                    ContractInsightsMapper.ToCriticalityRiskSeverity(r.Severity) ?? CriticalityRiskSeverity.None))
-                .ToList(),
-            contract360.Overview.PaymentTerms);
-
-        var points = NegotiationPointRanker.Rank(rankerInputs);
-
-        // "Persist-all": the whole ranked set, never the chat-bounded top three below -- see this
-        // method's own doc comment. RenewalNegotiationTodoService.UpsertAsync itself rejects an
-        // empty point set (PointsRequiredError), so a contract that grounds nothing is simply never
-        // called rather than special-cased here.
-        if (persistTodos && points.Count > 0)
-        {
-            var todoPoints = points
-                .Select(p => new RenewalNegotiationTodoPoint(
-                    p.Topic.ToPointKey(), p.Topic.ToDisplayLabel(), p.Rank, p.Current, p.Target, p.WhyItMatters, p.CitationKeys))
-                .ToList();
-
-            await renewalNegotiationTodoService
-                .UpsertAsync(CurrentTenantId, contractId, todoPoints, actor, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        var supplierName = await context.ResolveDisplayNameAsync(contract360.Header.SupplierId, contract360.Header.Type, cancellationToken)
-            .ConfigureAwait(false);
-
-        var items = new List<PackItem>();
-
-        if (includeRenewalUrgency)
-        {
-            items.Add(new PackItem(
-                InsightsCitationKeys.Calc("when-you-must-move"),
-                PackCorpus.Calc,
-                $"{supplierName} — when you must move",
-                null, null, null,
-                renewal.Explanation,
-                $"/contracts/{contractId.Value}", null, null,
-                "deterministic calculator",
-                BuildDateValues(renewal.RenewalDate, renewal.CancellationDeadline ?? contract360.Header.CancellationDeadline)));
-        }
-
-        const int ChatTopCount = 3;
-        foreach (var point in points.Take(ChatTopCount))
-        {
-            items.Add(new PackItem(
-                InsightsCitationKeys.Calc($"negotiation-point[{point.Topic.ToPointKey()}]"),
-                PackCorpus.Calc,
-                $"{supplierName} — {point.Topic.ToDisplayLabel()}",
-                point.Strength.ToString(),
-                null, null,
-                $"{point.Current} Target: {point.Target} {point.WhyItMatters}",
-                $"/contracts/{contractId.Value}", null, null,
-                "deterministic calculator", []));
-        }
-
-        return items;
-    }
-
-    private async Task<IReadOnlyList<PackItem>> BuildPortfolioStrategyPackAsync(
-        PortfolioPage portfolio, IReadOnlyDictionary<EntityId, string> supplierNames, CancellationToken cancellationToken)
-    {
-        if (portfolio.Items.Count == 0)
-        {
-            return [];
-        }
-
-        var allSavings = await savingsOpportunityService.ListAsync(CurrentTenantId, cancellationToken).ConfigureAwait(false);
-
-        var contracts = new List<Contract360Result>();
-        foreach (var item in portfolio.Items)
-        {
-            var contract360 = await contract360QueryService
-                .GetByIdAsync(CurrentTenantId, new EntityId(item.ContractId), cancellationToken)
-                .ConfigureAwait(false);
-
-            if (contract360 is not null)
-            {
-                contracts.Add(contract360);
-            }
-        }
-
-        var portfolioAnnualSpendByCurrency = ContractInsightsMapper.ComputePortfolioAnnualSpendByCurrency(contracts);
-
-        var inputs = contracts
-            .Select(contract => ContractInsightsMapper.ToCriticalityInputs(
-                contract,
-                ContractInsightsMapper.ComputePriority(contract.Header, renewalEngine, priorityScoreCalculator),
-                portfolioAnnualSpendByCurrency,
-                allSavings))
-            .ToList();
-
-        var scores = criticalityScoreCalculator.CalculateMany(inputs);
-
-        var items = new List<PackItem>();
-        foreach (var score in scores.Take(PortfolioStrategyTopN))
-        {
-            var contractItem = portfolio.Items.First(item => item.ContractId == score.ContractId.Value);
-            var name = contractItem.SupplierId is { } sid && supplierNames.TryGetValue(new EntityId(sid), out var resolvedName)
-                ? resolvedName
-                : contractItem.Type.ToString();
-
-            var topComponent = new[]
-            {
-                ("renewal urgency", score.RenewalUrgency),
-                ("risk severity", score.RiskSeverity),
-                ("spend weight", score.SpendWeight),
-                ("savings potential", score.SavingsPotential),
-                ("open critical facts", score.OpenCriticalFacts),
-            }.MaxBy(c => c.Item2.Score);
-
-            items.Add(new PackItem(
-                InsightsCitationKeys.Calc($"criticality[{score.ContractId}]"),
-                PackCorpus.Calc,
-                $"{name} — criticality {score.TotalScore:0.#}/100",
-                $"driven by {topComponent.Item1}",
-                null, null,
-                topComponent.Item2.Explanation,
-                $"/contracts/{contractItem.ContractId}", null, null,
-                "deterministic calculator",
-                [new PackValue("totalScore", score.TotalScore.ToString(CultureInfo.InvariantCulture), PackValueKind.Number)],
-                contractItem.ContractId.ToString()));
-        }
-
-        return items;
     }
 
     // ----- Shared helpers -----

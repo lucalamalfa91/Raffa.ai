@@ -69,6 +69,11 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<StructuredFactPackBuilder>();
         services.AddScoped<ClausePackBuilder>();
         services.AddScoped<MarketComparePackBuilder>();
+        services.AddScoped<NegotiationPointsPackBuilder>();
+        services.AddScoped<RenewalStrategyPackBuilder>();
+        services.AddScoped<PortfolioStrategyPackBuilder>();
+        services.AddScoped<SavingsPackBuilder>();
+        services.AddScoped<MarketDataCheck>();
 
         // The (supplier name, geography) key a BenchmarkQuery requires: resolved once per request
         // and shared by Ask's priced-line bands and the renewals/strategy endpoints. Scoped: reads

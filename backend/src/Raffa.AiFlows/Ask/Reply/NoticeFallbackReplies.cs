@@ -261,6 +261,6 @@ public sealed class NoticeFallbackReplies(ContractContextReader context, Capabil
             .ConfigureAwait(false);
         var allDeals = await context.GetDealsBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken).ConfigureAwait(false);
 
-        return MarketSafetyNet.TypicalNoticeDays(AskCopilotService.NarrowDealsToContract(allDeals, contract360.Overview.Currency, geography));
+        return MarketSafetyNet.TypicalNoticeDays(PackItemFactory.NarrowDealsToContract(allDeals, contract360.Overview.Currency, geography));
     }
 }

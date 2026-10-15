@@ -210,7 +210,7 @@ public sealed partial class AskCopilotService
         var goal = SavingsGoalParser.Parse(question);
 
         IReadOnlyList<Raffa.AiFlows.Shared.Pack.PackItem> packItems =
-            await BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, goal, persistTodos: false)
+            await renewalStrategy.BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, goal, persistTodos: false)
                 .ConfigureAwait(false);
 
         if (disambiguationItem is not null)
@@ -227,7 +227,7 @@ public sealed partial class AskCopilotService
                     question,
                     packItems,
                     goal,
-                    ct => RunMarketDataCheckAsync([namedContractItem], [], ct),
+                    ct => marketDataCheck.RunAsync([namedContractItem], [], ct),
                     RunMarketResearch: true,
                     ConveneCouncil: true),
                 cancellationToken)
