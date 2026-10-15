@@ -1,19 +1,19 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
-using Raffa.AiGateway;
-using Raffa.AiGateway.Contracts;
+using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
-namespace Raffa.Documents.Contracts.Application.Extraction;
+namespace Raffa.Documents.Contracts.Infrastructure.Extraction;
 
 /// <summary>
-/// F5-T01 / F5-T02 / F5-D08: what makes a staged-extraction run idempotent, resumable and respectful
-/// of what a human already decided (the per-stage parsing stays in <c>StagedExtractionService.cs</c>).
+/// F5 PR-1: the persistence side of a staged-extraction run, behind <see cref="IExtractionRunStore"/>.
+/// What makes a run idempotent, resumable and respectful of what a human already decided
+/// (F5-T01 / F5-T02 / F5-D08), moved out of <c>StagedExtractionService</c> without a behaviour change.
 /// <list type="bullet">
-/// <item><b>Run id.</b> Every <c>RunAsync</c> belongs to one run (<see cref="ExtractionJob.ExtractionRunId"/>),
+/// <item><b>Run id.</b> Every run belongs to one run (<see cref="ExtractionJob.ExtractionRunId"/>),
 /// stamped on its stage jobs and facts. A list stage that applies successfully <em>replaces</em> the
 /// rows of the same kind for the same (contract, source document) in one <c>SaveChangesAsync</c>;
 /// rows with a human correction are kept. Replacing happens only once the payload has parsed, so a
@@ -28,45 +28,353 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// the document is then partial and never <c>Completed</c>.</item>
 /// <item><b>Notice period.</b> <c>cancellationDeadline = endDate - noticePeriodDays</c> is computed here.</item>
 /// </list>
+/// Tenancy (ADR-009): every public method refuses to run outside the tenant scope of the run it
+/// belongs to, and a run handle is only valid for the store instance (so the scoped DbContext) that
+/// opened it.
 /// </summary>
-public sealed partial class StagedExtractionService
+public sealed partial class ExtractionRunStore(
+    DocumentsContractsDbContext dbContext,
+    ITenantContext tenantContext,
+    IClock clock,
+    IAuditWriter auditWriter) : IExtractionRunStore
 {
-    /// <summary>Mixed into <see cref="ExtractionJob.InputHash"/>: bump it when the stage set or schemas
-    /// change so that an old checkpoint is never reused.</summary>
-    private const string PipelineVersion = "staged-v1";
+    private static IReadOnlyList<ExtractionStage> PipelineStages => ExtractionPipeline.Stages;
 
-    /// <summary>What one <c>RunAsync</c> call needs while applying stages. The evidence list and the
-    /// protection state are appended to as stages are applied.</summary>
-    private sealed record RunContext(
-        TenantId TenantId,
-        EntityId DocumentId,
-        Contract Contract,
-        RunPlan Plan,
-        int PageCount,
-        FieldProtection Protection,
-        bool ReplaceUnattributedRows)
+    /// <summary>Recorded actor for the one audit entry this pipeline writes per document per
+    /// extraction run (ADR-011 w17 clause 21): field names and confidence numbers, never a field
+    /// value. The reserved non-human principal; there is no HTTP caller.</summary>
+    private const string SystemActor = "system:extraction";
+
+    /// <summary>Bootstrap-only placeholder <see cref="Contract.Status"/> for a contract shell
+    /// this pipeline had to create (see <see cref="EnsureContractAsync"/>). Overwritten by the
+    /// `metadata` stage's own "status" fact when the model reports one, or by a human correction
+    /// — never presented as a real extracted value.</summary>
+    private const string BootstrapContractStatus = "processing";
+
+    /// <summary>Bootstrap-only placeholder <see cref="Contract.Currency"/> — see
+    /// <see cref="BootstrapContractStatus"/>. <see cref="Contract.Currency"/> is a required
+    /// (NOT NULL) column (contract-schema task, ADR-003); this pipeline cannot leave it unset
+    /// even before the `metadata` stage has run.</summary>
+    private const string BootstrapContractCurrency = "USD";
+
+    internal sealed record RunPlan(Guid RunId, string InputHash, IReadOnlyDictionary<ExtractionStage, ExtractionJob> Reused);
+
+    // ------------------------------------------------------------------------------------------
+    // The port
+    // ------------------------------------------------------------------------------------------
+
+    /// <inheritdoc />
+    public async Task<Result<ExtractionRun>> OpenAsync(ExtractionRunRequest request, CancellationToken cancellationToken)
     {
-        public Guid RunId => Plan.RunId;
+        RequireTenantScope(request.TenantId);
 
-        public List<(string FieldName, double? Confidence)> RunEvidence { get; } = [];
+        var tenantId = request.TenantId;
+        var documentId = request.DocumentId;
 
-        public Dictionary<ExtractionStage, EntityId> StageJobIds { get; } = [];
+        var document = await dbContext.Documents
+            .SingleOrDefaultAsync(d => d.TenantId == tenantId && d.Id == documentId, cancellationToken)
+            .ConfigureAwait(false);
 
-        /// <summary>First accepted <c>supplier</c> legal name of the run; only <c>metadata</c> produces one.</summary>
-        public string? AcceptedSupplierName { get; set; }
+        if (document is null)
+        {
+            return Result<ExtractionRun>.Failure($"Document {documentId} was not found for this tenant.");
+        }
+
+        var now = clock.UtcNow;
+        var contract = await EnsureContractAsync(tenantId, document, now, cancellationToken).ConfigureAwait(false);
+
+        // F5-T01/F5-T02: decide whether this call starts a fresh run or continues an incomplete one
+        // over the same text, and what a human already owns on this contract. Both are read before
+        // anything is written.
+        var plan = await PlanRunAsync(tenantId, document.Id, request.InputHash, now, cancellationToken)
+            .ConfigureAwait(false);
+        var run = new ExtractionRun(
+            this,
+            tenantId,
+            document,
+            contract,
+            plan,
+            request.PageCount,
+            await LoadProtectionAsync(tenantId, contract, cancellationToken).ConfigureAwait(false),
+            replaceUnattributedRows: !await dbContext.Documents
+                .AnyAsync(d => d.TenantId == tenantId && d.ContractId == contract.Id && d.Id != document.Id, cancellationToken)
+                .ConfigureAwait(false),
+            now,
+            request.ClassificationConfidence);
+
+        if (request.ClassificationConfidence is { } typeConfidence)
+        {
+            await RecordClassificationEvidenceAsync(run, document, typeConfidence, now, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        document.ProcessingStatus = DocumentProcessingStatus.Processing;
+
+        return Result<ExtractionRun>.Success(run);
     }
 
-    private sealed record RunPlan(Guid RunId, string InputHash, IReadOnlyDictionary<ExtractionStage, ExtractionJob> Reused);
+    /// <summary>
+    /// NW-106: creates and saves the <c>Running</c> job of every stage that is not reused (one
+    /// <c>SaveChangesAsync</c>, so every hang-recovery window starts together). The caller then fires
+    /// the stages' gateway calls; <see cref="ApplyAsync"/> applies them one at a time because the
+    /// <c>DbContext</c> is not safe for concurrent use.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<ExtractionStage, EntityId>> StartStagesAsync(
+        ExtractionRun run, IReadOnlyList<ExtractionStage> stages, CancellationToken cancellationToken)
+    {
+        Guard(run);
 
-    /// <summary>A stage of this run: its job and its gateway call, still in flight.</summary>
-    private sealed record PendingStage(ExtractionJob Job, Task<Result<AiExtractionResult>> Call);
+        var jobIds = new Dictionary<ExtractionStage, EntityId>();
+        foreach (var stage in stages)
+        {
+            var startedAt = clock.UtcNow;
+            var job = new ExtractionJob
+            {
+                TenantId = run.TenantId,
+                DocumentId = run.DocumentId,
+                Stage = stage,
+                Status = ExtractionJobStatus.Running,
+                QueuedAt = startedAt,
+                StartedAt = startedAt,
+                ExtractionRunId = run.RunId,
+                InputHash = run.Plan.InputHash,
+            };
+            dbContext.ExtractionJobs.Add(job);
+            run.Jobs[stage] = job;
+            jobIds[stage] = job.Id;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return jobIds;
+    }
+
+    /// <summary>A stage that already finished for this very text in the run being continued: nothing is
+    /// applied again; its result is rebuilt from the checkpoint and the evidence it wrote, so the later
+    /// steps (supplier link, audit detail) see what a full run would have given them.</summary>
+    public async Task<StagedExtractionStageResult> ReuseCheckpointAsync(
+        ExtractionRun run, ExtractionStage stage, CancellationToken cancellationToken)
+    {
+        Guard(run);
+
+        var context = run;
+        var checkpoint = run.Plan.Reused[stage];
+        context.StageJobIds[checkpoint.Stage] = checkpoint.Id;
+
+        var evidence = await dbContext.ExtractionEvidences
+            .AsNoTracking()
+            .Where(e => e.TenantId == context.TenantId && e.ExtractionJobId == checkpoint.Id)
+            .Select(e => new { e.FieldName, e.Confidence, e.Value, e.Decision })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        context.RunEvidence.AddRange(evidence.Select(e => (e.FieldName, e.Confidence)));
+
+        if (!context.Protection.IsProtected(ExtractionFieldNames.Supplier))
+        {
+            context.AcceptedSupplierName ??= evidence
+                .Where(e => e.FieldName == ExtractionFieldNames.Supplier
+                    && !string.IsNullOrWhiteSpace(e.Value)
+                    && e.Decision is ExtractionConfidencePolicy.AutoAccepted or ExtractionConfidencePolicy.HumanAccepted)
+                .Select(e => e.Value!.Trim())
+                .FirstOrDefault();
+        }
+
+        return new StagedExtractionStageResult(
+            checkpoint.Stage, checkpoint.Status, checkpoint.ExtractedCount ?? 0, checkpoint.SkippedCount ?? 0, null);
+    }
+
+    /// <summary>
+    /// Applies one stage's parsed facts. F5-T01: the stage's facts, the removal of the previous run's
+    /// rows (list stages) and the job row go out in one <c>SaveChangesAsync</c> -- one transaction --
+    /// and only after the payload has parsed (the caller parses before calling), so a failed stage
+    /// leaves what an earlier run stored untouched.
+    /// </summary>
+    public async Task<StagedExtractionStageResult> ApplyAsync(
+        ExtractionRun run, ExtractionStage stage, StageFacts facts, string? modelId, CancellationToken cancellationToken)
+    {
+        Guard(run);
+        ArgumentNullException.ThrowIfNull(facts);
+
+        if (facts.Stage != stage)
+        {
+            throw new InvalidOperationException(
+                $"Facts of stage {facts.Stage} cannot be applied as stage {stage}.");
+        }
+
+        var job = JobOf(run, stage);
+        var context = run;
+        context.StageJobIds[job.Stage] = job.Id;
+
+        // Always set by StartStagesAsync for every job this method is ever called with.
+        var startedAt = job.StartedAt!.Value;
+
+        var completedAt = clock.UtcNow;
+
+        job.ModelId = modelId;
+
+        var applied = job.Stage switch
+        {
+            ExtractionStage.Metadata => ApplyFacts(context, job.Id, ((StageFacts.Scalars)facts).Facts, ExtractionStageFields.Metadata, startedAt, ApplyMetadataFact),
+            ExtractionStage.CommercialTerms => ApplyFacts(context, job.Id, ((StageFacts.Scalars)facts).Facts, ExtractionStageFields.CommercialTerms, startedAt, ApplyCommercialTermsFact),
+            ExtractionStage.DatesAndRenewalTerms => ApplyFacts(context, job.Id, ((StageFacts.Scalars)facts).Facts, ExtractionStageFields.DatesAndRenewalTerms, startedAt, ApplyDatesFact),
+            ExtractionStage.LineItems => await ApplyLineItemsAsync(context, ((StageFacts.LineItems)facts).Items, startedAt, cancellationToken).ConfigureAwait(false),
+            ExtractionStage.LegalClauses => await ApplyClausesAsync(context, ((StageFacts.Clauses)facts).Items, startedAt, cancellationToken).ConfigureAwait(false),
+            ExtractionStage.Obligations => await ApplyObligationsAsync(context, ((StageFacts.Obligations)facts).Items, startedAt, cancellationToken).ConfigureAwait(false),
+            ExtractionStage.Risk => await ApplyRisksAsync(context, ((StageFacts.Risks)facts).Items, startedAt, cancellationToken).ConfigureAwait(false),
+            _ => throw new InvalidOperationException($"Stage {job.Stage} is not part of the staged extraction pipeline."),
+        };
+
+        // A stage needs review exactly when it produced a fact below ExtractionConfidencePolicy --
+        // something a reviewer can decide on (ADR-024 amendment 2026-09-21). A stage that found nothing
+        // is a legitimate answer, and so is a fact outside the stage's allow-list (counted in Skipped).
+        job.Status = applied.AnyBelowThreshold
+            ? ExtractionJobStatus.NeedsReview
+            : ExtractionJobStatus.Completed;
+        job.CompletedAt = completedAt;
+        job.ErrorDetail = null;
+        job.FailureKind = null;
+        job.ExtractedCount = applied.Extracted;
+        job.SkippedCount = applied.Skipped;
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return new StagedExtractionStageResult(job.Stage, job.Status, applied.Extracted, applied.Skipped, null);
+    }
+
+    /// <summary>Marks the stage job Failed with a typed kind and saves. <paramref name="modelId"/> is
+    /// kept on the job when the gateway did answer (a payload that then failed to parse).</summary>
+    public async Task<StagedExtractionStageResult> FailAsync(
+        ExtractionRun run,
+        ExtractionStage stage,
+        string error,
+        ExtractionStageFailureKind kind,
+        CancellationToken cancellationToken,
+        string? modelId = null)
+    {
+        Guard(run);
+
+        var job = JobOf(run, stage);
+        run.StageJobIds[job.Stage] = job.Id;
+
+        var completedAt = clock.UtcNow;
+
+        if (modelId is not null)
+        {
+            job.ModelId = modelId;
+        }
+
+        job.Status = ExtractionJobStatus.Failed;
+        job.ErrorDetail = Truncate(error);
+        job.FailureKind = kind;
+        job.CompletedAt = completedAt;
+        job.ExtractedCount = 0;
+        job.SkippedCount = 0;
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        return new StagedExtractionStageResult(job.Stage, job.Status, 0, 0, job.ErrorDetail, kind);
+    }
+
+    /// <summary>
+    /// Closes the run: derived deadline (F5-D08), status officialisation, document status, save, the
+    /// "never Review 0 fields" auto-complete, and the one audit row. Returns the summary.
+    /// </summary>
+    public async Task<StagedExtractionSummary> CloseAsync(
+        ExtractionRun run, IReadOnlyList<StagedExtractionStageResult> stageResults, CancellationToken cancellationToken)
+    {
+        Guard(run);
+
+        var context = run;
+        var document = run.Document;
+        var contract = run.Contract;
+        var tenantId = run.TenantId;
+        var now = run.OpenedAt;
+
+        // F5-D08: cancellationDeadline = endDate - noticePeriodDays, computed here and not left to
+        // the model's own arithmetic. It reads the evidence the Dates stage wrote, which the apply
+        // loop has already saved.
+        await DeriveCancellationDeadlineAsync(context, cancellationToken).ConfigureAwait(false);
+
+        OfficializeDerivedStatus(context, now);
+
+        document.ProcessingStatus = DetermineDocumentStatus(stageResults, run.ClassificationConfidence);
+
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // F5-T02: a stage that did not finish leaves the document partial, whatever the facts that
+        // did arrive look like. "Review 0 fields" below is only ever about weak facts; it must never
+        // turn a document that is missing a whole stage into Completed.
+        var failedStages = stageResults.Where(s => s.Status == ExtractionJobStatus.Failed).ToList();
+
+        // "Review 0 fields" is never a state to park a document in: a weak line item, clause,
+        // obligation or risk can route the document to review without leaving a single field the
+        // review screen can show. Counted after the save, on the same latest-evidence-per-field
+        // rule the Documents row uses (NothingToReviewAutoValidator).
+        if (document.ProcessingStatus == DocumentProcessingStatus.NeedsReview && failedStages.Count == 0)
+        {
+            var weakByContract = await NothingToReviewAutoValidator
+                .WeakFactCountsAsync(dbContext, tenantId, [contract.Id], cancellationToken)
+                .ConfigureAwait(false);
+
+            if (weakByContract.GetValueOrDefault(contract.Id) == 0)
+            {
+                document.ProcessingStatus = DocumentProcessingStatus.Completed;
+                await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId,
+                    SystemActor,
+                    $"document.extraction.{document.ProcessingStatus.ToString().ToLowerInvariant()}",
+                    "document",
+                    run.DocumentId.Value.ToString(),
+                    now,
+                    BuildExtractionAuditDetail(context, failedStages)),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return new StagedExtractionSummary(contract.Id, document.ProcessingStatus, stageResults, context.AcceptedSupplierName);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Guards
+    // ------------------------------------------------------------------------------------------
+
+    private void Guard(ExtractionRun run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+
+        if (!ReferenceEquals(run.Owner, this))
+        {
+            throw new InvalidOperationException(
+                "ExtractionRun belongs to another store instance (another DbContext scope).");
+        }
+
+        RequireTenantScope(run.TenantId);
+    }
+
+    /// <summary>ADR-009: a missing or foreign tenant scope is a programmer error, never a quiet empty
+    /// result -- under RLS it would plan a fresh run beside the old rows.</summary>
+    private void RequireTenantScope(TenantId expected)
+    {
+        if (tenantContext.Current != expected)
+        {
+            throw new InvalidOperationException(
+                $"No tenant scope for {expected} (ADR-009): refusing to touch tenant-scoped rows without the RLS claim.");
+        }
+    }
+
+    private static ExtractionJob JobOf(ExtractionRun run, ExtractionStage stage) =>
+        run.Jobs.TryGetValue(stage, out var job)
+            ? job
+            : throw new InvalidOperationException($"Stage {stage} has no running job in this run (not started, or reused).");
 
     // ------------------------------------------------------------------------------------------
     // Planning: fresh run vs. resume
     // ------------------------------------------------------------------------------------------
-
-    private static string ComputeInputHash(string documentText) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(PipelineVersion + "\n" + documentText)));
 
     private static bool IsFinished(ExtractionJob job) =>
         job.Status is ExtractionJobStatus.Completed or ExtractionJobStatus.NeedsReview && job.CompletedAt is not null;
@@ -133,120 +441,6 @@ public sealed partial class StagedExtractionService
     }
 
     // ------------------------------------------------------------------------------------------
-    // Stage jobs and gateway calls
-    // ------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// NW-106: creates and saves the <c>Running</c> job of every stage that is not reused (one
-    /// <c>SaveChangesAsync</c>, so every hang-recovery window starts together), then fires their
-    /// <see cref="IAiGateway.ExtractAsync"/> calls back to back without awaiting. The stages are
-    /// independent reads over the same text; <see cref="ApplyStageResultAsync"/> awaits and applies
-    /// them one at a time because the <c>DbContext</c> is not safe for concurrent use. No per-stage
-    /// <see cref="ExtractionProgressHeartbeat"/> is bound for the same reason: only the in-memory
-    /// pulses of <c>RunAsync</c> run while the calls are in flight.
-    /// </summary>
-    private async Task<Dictionary<ExtractionStage, PendingStage>> StartStagesAsync(
-        RunContext context, string documentText, CancellationToken cancellationToken)
-    {
-        var jobs = new Dictionary<ExtractionStage, ExtractionJob>();
-        foreach (var stage in PipelineStages.Where(stage => !context.Plan.Reused.ContainsKey(stage)))
-        {
-            var startedAt = clock.UtcNow;
-            var job = new ExtractionJob
-            {
-                TenantId = context.TenantId,
-                DocumentId = context.DocumentId,
-                Stage = stage,
-                Status = ExtractionJobStatus.Running,
-                QueuedAt = startedAt,
-                StartedAt = startedAt,
-                ExtractionRunId = context.RunId,
-                InputHash = context.Plan.InputHash,
-            };
-            dbContext.ExtractionJobs.Add(job);
-            jobs[stage] = job;
-        }
-
-        hangWatch?.Heartbeat();
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        return jobs.ToDictionary(
-            entry => entry.Key,
-            entry => new PendingStage(
-                entry.Value,
-                aiGateway.ExtractAsync(
-                    new AiExtractionRequest(entry.Key.ToString(), documentText, BuildSchema(entry.Key)), cancellationToken)));
-    }
-
-    /// <summary>A stage that already finished for this very text in the run being continued: nothing is
-    /// applied again; its result is rebuilt from the checkpoint and the evidence it wrote, so the later
-    /// steps (supplier link, audit detail) see what a full run would have given them.</summary>
-    private async Task<StagedExtractionStageResult> ReuseCheckpointAsync(
-        RunContext context, ExtractionJob checkpoint, CancellationToken cancellationToken)
-    {
-        context.StageJobIds[checkpoint.Stage] = checkpoint.Id;
-
-        var evidence = await dbContext.ExtractionEvidences
-            .AsNoTracking()
-            .Where(e => e.TenantId == context.TenantId && e.ExtractionJobId == checkpoint.Id)
-            .Select(e => new { e.FieldName, e.Confidence, e.Value, e.Decision })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        context.RunEvidence.AddRange(evidence.Select(e => (e.FieldName, e.Confidence)));
-
-        if (!context.Protection.IsProtected(ExtractionFieldNames.Supplier))
-        {
-            context.AcceptedSupplierName ??= evidence
-                .Where(e => e.FieldName == ExtractionFieldNames.Supplier
-                    && !string.IsNullOrWhiteSpace(e.Value)
-                    && e.Decision is ExtractionConfidencePolicy.AutoAccepted or ExtractionConfidencePolicy.HumanAccepted)
-                .Select(e => e.Value!.Trim())
-                .FirstOrDefault();
-        }
-
-        return new StagedExtractionStageResult(
-            checkpoint.Stage, checkpoint.Status, checkpoint.ExtractedCount ?? 0, checkpoint.SkippedCount ?? 0, null);
-    }
-
-    // ------------------------------------------------------------------------------------------
-    // Failure typing
-    // ------------------------------------------------------------------------------------------
-
-    /// <summary>A gateway failure meaning "the provider could not be reached or kept throttling"
-    /// (<see cref="AiGatewayErrors.UnavailablePrefix"/>) is transient; anything else (empty text, a
-    /// rejected request, a payload that does not parse) is a property of this input.</summary>
-    internal static ExtractionStageFailureKind ClassifyFailure(string error) =>
-        error.StartsWith(AiGatewayErrors.UnavailablePrefix, StringComparison.Ordinal)
-            ? ExtractionStageFailureKind.Transient
-            : ExtractionStageFailureKind.Permanent;
-
-    /// <summary>A network-level fault thrown (not returned) by a gateway call. A cancellation the caller
-    /// asked for is never one.</summary>
-    private static bool IsTransientTransportFault(Exception exception, CancellationToken cancellationToken) =>
-        exception is HttpRequestException or TimeoutException
-        || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested);
-
-    private async Task<StagedExtractionStageResult> FailStageAsync(
-        ExtractionJob job,
-        string error,
-        ExtractionStageFailureKind kind,
-        DateTimeOffset completedAt,
-        CancellationToken cancellationToken)
-    {
-        job.Status = ExtractionJobStatus.Failed;
-        job.ErrorDetail = Truncate(error);
-        job.FailureKind = kind;
-        job.CompletedAt = completedAt;
-        job.ExtractedCount = 0;
-        job.SkippedCount = 0;
-
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-
-        return new StagedExtractionStageResult(job.Stage, job.Status, 0, 0, job.ErrorDetail, kind);
-    }
-
-    // ------------------------------------------------------------------------------------------
     // Human-owned fields and evidence
     // ------------------------------------------------------------------------------------------
 
@@ -273,7 +467,7 @@ public sealed partial class StagedExtractionService
 
     /// <summary>Stages one evidence row of this run and notes it for the audit detail.</summary>
     private void AddEvidence(
-        RunContext context,
+        ExtractionRun context,
         string field,
         string? value,
         double? confidence,
@@ -340,7 +534,7 @@ public sealed partial class StagedExtractionService
         return protection;
     }
 
-    private sealed class FieldProtection
+    internal sealed class FieldProtection
     {
         private readonly HashSet<string> _protected = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string?> _latestEvidenceValue = new(StringComparer.OrdinalIgnoreCase);
@@ -417,7 +611,7 @@ public sealed partial class StagedExtractionService
     /// commits removals, additions and the stage job together.
     /// </summary>
     private async Task ReplaceRowsAsync<T>(
-        RunContext context,
+        ExtractionRun context,
         IQueryable<T> existingQuery,
         DbSet<T> set,
         List<T> newRows,
@@ -457,7 +651,7 @@ public sealed partial class StagedExtractionService
     /// with the weaker of the two inputs' confidences, so a deadline built on a shaky input is
     /// reviewed like any weak fact. A deadline that already equals the derived value is left alone.
     /// </summary>
-    private async Task DeriveCancellationDeadlineAsync(RunContext context, CancellationToken cancellationToken)
+    private async Task DeriveCancellationDeadlineAsync(ExtractionRun context, CancellationToken cancellationToken)
     {
         var contract = context.Contract;
         if (contract.EndDate is not { } endDate
@@ -517,7 +711,7 @@ public sealed partial class StagedExtractionService
     /// stages left partial.
     /// </summary>
     private static string BuildExtractionAuditDetail(
-        RunContext context, IReadOnlyList<StagedExtractionStageResult> failedStages)
+        ExtractionRun context, IReadOnlyList<StagedExtractionStageResult> failedStages)
     {
         var fields = string.Join(",",
             context.RunEvidence

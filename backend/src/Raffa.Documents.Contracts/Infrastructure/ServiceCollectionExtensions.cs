@@ -3,6 +3,7 @@ using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Application.Preview;
+using Raffa.Documents.Contracts.Infrastructure.Extraction;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -77,7 +78,16 @@ public static class ServiceCollectionExtensions
         // above) rather than a second, independently-tracked context.
         services.AddScoped<DocumentUploadService>();
         services.AddScoped<DocumentQueryService>();
-        services.AddScoped<StagedExtractionService>();
+        // F5 PR-1: the persistence side of a staged-extraction run, behind a port. Scoped for the same reason.
+        services.AddScoped<IExtractionRunStore, ExtractionRunStore>();
+        // Factory registration: the service has a second (DbContext) convenience constructor that would make the
+        // container's constructor choice ambiguous.
+        services.AddScoped(sp => new StagedExtractionService(
+            sp.GetRequiredService<IExtractionRunStore>(),
+            sp.GetRequiredService<IAiGateway>(),
+            sp.GetRequiredService<ITenantContext>(),
+            sp.GetService<IExtractionHangWatch>(),
+            sp.GetService<ExtractionProgressHeartbeat>()));
 
         // Task E04/F03/US01/T01 (savings-kpis): PortfolioQueryService's own
         // GetAnalysisSummaryAsync needs this stateless, dependency-free calculator — TryAddSingleton,

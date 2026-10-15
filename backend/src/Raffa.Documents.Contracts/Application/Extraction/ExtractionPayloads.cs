@@ -13,20 +13,20 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// responsible for validating required fields are actually present before persisting, and for
 /// skipping (not crashing on) an item that is missing one.
 /// </summary>
-internal sealed record ExtractedFactsPayload(
+public sealed record ExtractedFactsPayload(
     [property: JsonPropertyName("facts")] IReadOnlyList<ExtractedFact>? Facts);
 
-internal sealed record ExtractedFact(
+public sealed record ExtractedFact(
     [property: JsonPropertyName("field")] string? Field,
     [property: JsonPropertyName("value")] string? Value,
     [property: JsonPropertyName("sourcePage")] int? SourcePage,
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
     [property: JsonPropertyName("confidence")] double? Confidence);
 
-internal sealed record ExtractedLineItemsPayload(
+public sealed record ExtractedLineItemsPayload(
     [property: JsonPropertyName("items")] IReadOnlyList<ExtractedLineItemFact>? Items);
 
-internal sealed record ExtractedLineItemFact(
+public sealed record ExtractedLineItemFact(
     [property: JsonPropertyName("sku")] string? Sku,
     [property: JsonPropertyName("description")] string? Description,
     [property: JsonPropertyName("quantity")] decimal? Quantity,
@@ -41,10 +41,10 @@ internal sealed record ExtractedLineItemFact(
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
     [property: JsonPropertyName("confidence")] double? Confidence);
 
-internal sealed record ExtractedClausesPayload(
+public sealed record ExtractedClausesPayload(
     [property: JsonPropertyName("items")] IReadOnlyList<ExtractedClauseFact>? Items);
 
-internal sealed record ExtractedClauseFact(
+public sealed record ExtractedClauseFact(
     [property: JsonPropertyName("clauseType")] string? ClauseType,
     [property: JsonPropertyName("rawText")] string? RawText,
     [property: JsonPropertyName("normalizedValue")] string? NormalizedValue,
@@ -53,10 +53,10 @@ internal sealed record ExtractedClauseFact(
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
     [property: JsonPropertyName("confidence")] double? Confidence);
 
-internal sealed record ExtractedObligationsPayload(
+public sealed record ExtractedObligationsPayload(
     [property: JsonPropertyName("items")] IReadOnlyList<ExtractedObligationFact>? Items);
 
-internal sealed record ExtractedObligationFact(
+public sealed record ExtractedObligationFact(
     [property: JsonPropertyName("party")] string? Party,
     [property: JsonPropertyName("obligationType")] string? ObligationType,
     [property: JsonPropertyName("description")] string? Description,
@@ -68,10 +68,10 @@ internal sealed record ExtractedObligationFact(
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
     [property: JsonPropertyName("confidence")] double? Confidence);
 
-internal sealed record ExtractedRisksPayload(
+public sealed record ExtractedRisksPayload(
     [property: JsonPropertyName("items")] IReadOnlyList<ExtractedRiskFact>? Items);
 
-internal sealed record ExtractedRiskFact(
+public sealed record ExtractedRiskFact(
     [property: JsonPropertyName("riskType")] string? RiskType,
     [property: JsonPropertyName("severity")] string? Severity,
     [property: JsonPropertyName("description")] string? Description,
