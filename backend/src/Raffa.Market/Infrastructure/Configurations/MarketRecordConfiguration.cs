@@ -30,6 +30,17 @@ public sealed class MarketRecordConfiguration : IEntityTypeConfiguration<MarketR
         // the next ingestion run). 64 = a SHA-256 in hex.
         builder.Property(r => r.PayloadHash).HasMaxLength(64);
 
+        // F7-T02: filterable columns (nullable, additive) and the indexes the read paths use.
+        builder.Property(r => r.SupplierNorm).HasMaxLength(400);
+        builder.Property(r => r.ProductNorm).HasMaxLength(400);
+        builder.Property(r => r.Category).HasMaxLength(200);
+        builder.Property(r => r.Geography).HasMaxLength(50);
+        builder.Property(r => r.Currency).HasMaxLength(20);
+        builder.Property(r => r.UnitMetric).HasMaxLength(100);
+        builder.HasIndex(r => r.SupplierNorm);
+        builder.HasIndex(r => r.ProductNorm);
+        builder.HasIndex(r => new { r.Category, r.Geography });
+
         builder.HasIndex(r => r.Provider);
     }
 }

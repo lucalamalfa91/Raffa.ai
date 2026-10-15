@@ -68,4 +68,29 @@ public sealed class MarketRecordEntity
     /// ingestion run).
     /// </summary>
     public string? PayloadHash { get; set; }
+
+    // F7-T02: denormalised, indexable copies of the fields the read paths filter on, written by the
+    // ingestion job (Ingestion.MarketFilterColumns). Nullable: rows that predate them are back-filled
+    // by the next ingestion run, and readers treat NULL as "not filterable in SQL, check in memory".
+
+    /// <summary>Supplier folded for matching (lowercase words, legal suffixes dropped).</summary>
+    public string? SupplierNorm { get; set; }
+
+    /// <summary>Product folded for matching (lowercase alphanumeric words).</summary>
+    public string? ProductNorm { get; set; }
+
+    /// <summary>Category, trimmed and lowercased.</summary>
+    public string? Category { get; set; }
+
+    /// <summary>Geography code, trimmed and uppercased.</summary>
+    public string? Geography { get; set; }
+
+    /// <summary>Currency code, trimmed and uppercased.</summary>
+    public string? Currency { get; set; }
+
+    /// <summary>Contract term in months.</summary>
+    public int? TermMonths { get; set; }
+
+    /// <summary>Billing unit of the price (e.g. per user per month), lowercased; null when the record has none.</summary>
+    public string? UnitMetric { get; set; }
 }

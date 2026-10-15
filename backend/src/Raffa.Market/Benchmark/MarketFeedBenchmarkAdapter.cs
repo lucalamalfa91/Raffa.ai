@@ -3,7 +3,7 @@ using Raffa.Benchmark.Adapters;
 using Raffa.Benchmark.Contracts;
 using Raffa.Market.Contracts;
 using Raffa.Market.Infrastructure;
-using Raffa.Market.Retrieval;
+using Raffa.Market.Ingestion;
 using Raffa.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
@@ -66,7 +66,6 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     private readonly IMarketIntelligenceProvider? _provider;
     private readonly IDbContextFactory<MarketDbContext>? _dbContextFactory;
     private readonly IClock _clock;
-    private readonly MarketCorpusCache? _corpusCache;
 
     /// <summary>
     /// T01's original constructor: reads <see cref="MarketDeal"/> rows directly from
@@ -97,12 +96,10 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     /// this task) — see <see cref="Retrieval.PgVectorMarketKnowledgeRetrieval"/>'s own doc comment
     /// for the identical captive-dependency reasoning.
     /// </summary>
-    public MarketFeedBenchmarkAdapter(
-        IDbContextFactory<MarketDbContext> dbContextFactory, IClock clock, MarketCorpusCache? corpusCache = null)
+    public MarketFeedBenchmarkAdapter(IDbContextFactory<MarketDbContext> dbContextFactory, IClock clock)
     {
         _dbContextFactory = dbContextFactory;
         _clock = clock;
-        _corpusCache = corpusCache;
     }
 
     /// <summary>Registry key (<c>IBenchmarkProviderAdapter.Name</c>) and
@@ -153,7 +150,7 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var dealsResult = await LoadDealsAsync(cancellationToken).ConfigureAwait(false);
+        var dealsResult = await LoadDealsAsync(query, cancellationToken).ConfigureAwait(false);
         if (dealsResult.IsFailure)
         {
             return Result<BenchmarkResult>.Failure(dealsResult.Error);
@@ -161,12 +158,17 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
 
         var deals = dealsResult.Value;
         var strongMatch = FindStrongMatch(deals, query);
+        if (strongMatch is not null)
+        {
+            return Result<BenchmarkResult>.Success(BuildConfidentResult(query, strongMatch));
+        }
 
-        var result = strongMatch is not null
-            ? BuildConfidentResult(query, strongMatch)
-            : BuildInsufficientDataResult(query, FindWeakMatch(deals, query), deals, _clock);
+        var weakMatch = FindWeakMatch(deals, query);
+        var latest = weakMatch is null
+            ? await LatestUpdatedAtAsync(deals, cancellationToken).ConfigureAwait(false)
+            : _clock.UtcNow;
 
-        return Result<BenchmarkResult>.Success(result);
+        return Result<BenchmarkResult>.Success(BuildInsufficientDataResult(query, weakMatch, latest));
     }
 
     /// <summary>
@@ -178,7 +180,8 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     /// (T01, <see cref="_provider"/> set) is unchanged. Exactly one of the two fields is non-null
     /// for any instance (enforced by which constructor ran), so exactly one branch below executes.
     /// </summary>
-    private async Task<Result<IReadOnlyList<MarketDeal>>> LoadDealsAsync(CancellationToken cancellationToken)
+    private async Task<Result<IReadOnlyList<MarketDeal>>> LoadDealsAsync(
+        BenchmarkQuery query, CancellationToken cancellationToken)
     {
         if (_dbContextFactory is not null)
         {
@@ -186,16 +189,16 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
                 .CreateDbContextAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            // F7-T05: the cached structured corpus (table order, as the plain read returned it) when
-            // the module registered one; otherwise the original per-call read.
-            if (_corpusCache is not null)
-            {
-                var snapshot = await _corpusCache.GetAsync(dbContext, cancellationToken).ConfigureAwait(false);
-                return Result<IReadOnlyList<MarketDeal>>.Success(snapshot.TableOrder);
-            }
-
+            // F7-T02: only the candidates are read -- records of the query's supplier and product,
+            // selected on the indexed `*_norm` columns (the fold is deterministic, so every record
+            // the case-insensitive in-memory match below accepts is among them). Records whose
+            // columns were never written (NULL) are kept for that exact match to decide.
+            var supplier = MarketFilterColumns.SupplierNorm(query.Supplier);
+            var product = MarketFilterColumns.ProductNorm(query.Product);
             var records = await dbContext.MarketRecords
                 .AsNoTracking()
+                .Where(r => (r.SupplierNorm == null || r.SupplierNorm == supplier)
+                    && (r.ProductNorm == null || r.ProductNorm == product))
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
 
@@ -292,7 +295,7 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     /// size/refresh date; otherwise this adapter has nothing at all to say beyond the requested
     /// currency and the freshest date anywhere in the feed.</summary>
     private static BenchmarkResult BuildInsufficientDataResult(
-        BenchmarkQuery query, MarketDeal? weakMatch, IReadOnlyList<MarketDeal> deals, IClock clock)
+        BenchmarkQuery query, MarketDeal? weakMatch, DateTimeOffset latestUpdatedAt)
     {
         if (weakMatch is null)
         {
@@ -302,7 +305,7 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
                 Currency: query.Currency,
                 Confidence: 0d,
                 Source: ProvenanceSource,
-                UpdatedAt: LatestUpdatedAt(deals, clock),
+                UpdatedAt: latestUpdatedAt,
                 ComparisonDimensions: [],
                 SampleSize: null);
         }
@@ -331,11 +334,26 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
 
     /// <summary>The freshest <see cref="MarketDeal.UpdatedAt"/> anywhere in the feed — an honest
     /// "when this mock feed was last refreshed" fallback for the case where not even a weak
-    /// comparable exists to report a date from. Falls back to <paramref name="clock"/> only for the
+    /// comparable exists to report a date from. Falls back to the clock only for the
     /// degenerate empty-catalog case (never reachable through the real, 60+-record fixture; only
     /// through a test-supplied empty provider).</summary>
-    private static DateTimeOffset LatestUpdatedAt(IReadOnlyList<MarketDeal> deals, IClock clock) =>
-        deals.Count > 0 ? deals.Max(deal => deal.UpdatedAt) : clock.UtcNow;
+    private async Task<DateTimeOffset> LatestUpdatedAtAsync(
+        IReadOnlyList<MarketDeal> candidates, CancellationToken cancellationToken)
+    {
+        if (_dbContextFactory is null)
+        {
+            return candidates.Count > 0 ? candidates.Max(deal => deal.UpdatedAt) : _clock.UtcNow;
+        }
+
+        // The candidates are a slice of the corpus; the figure is the newest record of all of it.
+        await using var dbContext = await _dbContextFactory
+            .CreateDbContextAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var latest = await dbContext.MarketRecords
+            .MaxAsync(r => (DateTimeOffset?)r.UpdatedAt, cancellationToken)
+            .ConfigureAwait(false);
+        return latest ?? _clock.UtcNow;
+    }
 
     private static IReadOnlyCollection<BenchmarkComparisonDimension> BuildMatchedDimensions(bool skuMatched)
     {

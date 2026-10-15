@@ -148,6 +148,12 @@ public sealed class MarketIngestionService(
             {
                 if (string.Equals(existing.PayloadHash, payloadHash, StringComparison.Ordinal))
                 {
+                    // F7-T02: a row that predates the filter columns gets them back-filled.
+                    if (MarketFilterColumns.IsMissing(existing))
+                    {
+                        MarketFilterColumns.Apply(existing, deal);
+                    }
+
                     unchanged++;
                     continue;
                 }
@@ -159,6 +165,11 @@ public sealed class MarketIngestionService(
                 if (string.Equals(existingNormalizedPayloadJson, payloadJson, StringComparison.Ordinal))
                 {
                     existing.PayloadHash = payloadHash;
+                    if (MarketFilterColumns.IsMissing(existing))
+                    {
+                        MarketFilterColumns.Apply(existing, deal);
+                    }
+
                     unchanged++;
                     continue;
                 }
@@ -330,7 +341,7 @@ public sealed class MarketIngestionService(
 
             if (existing is null)
             {
-                dbContext.MarketRecords.Add(new MarketRecordEntity
+                var added = new MarketRecordEntity
                 {
                     RecordId = deal.RecordId,
                     FeedVersion = feedVersion,
@@ -339,7 +350,9 @@ public sealed class MarketIngestionService(
                     PayloadHash = payloadHash,
                     ProvenanceLabel = provenanceLabel,
                     UpdatedAt = deal.UpdatedAt,
-                });
+                };
+                MarketFilterColumns.Apply(added, deal);
+                dbContext.MarketRecords.Add(added);
                 inserted++;
             }
             else
@@ -348,6 +361,7 @@ public sealed class MarketIngestionService(
                 existing.Provider = deal.Provider;
                 existing.PayloadJson = payloadJson;
                 existing.PayloadHash = payloadHash;
+                MarketFilterColumns.Apply(existing, deal);
                 existing.ProvenanceLabel = provenanceLabel;
                 existing.UpdatedAt = deal.UpdatedAt;
 

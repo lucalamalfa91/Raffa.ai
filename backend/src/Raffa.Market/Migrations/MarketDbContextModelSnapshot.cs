@@ -88,11 +88,26 @@ namespace Raffa.Market.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("record_id");
 
+                    b.Property<string>("Category")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("currency");
+
                     b.Property<string>("FeedVersion")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("feed_version");
+
+                    b.Property<string>("Geography")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("geography");
 
                     b.Property<string>("PayloadHash")
                         .HasMaxLength(64)
@@ -103,6 +118,11 @@ namespace Raffa.Market.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("payload_json");
+
+                    b.Property<string>("ProductNorm")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("product_norm");
 
                     b.Property<string>("ProvenanceLabel")
                         .IsRequired()
@@ -116,6 +136,20 @@ namespace Raffa.Market.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("provider");
 
+                    b.Property<string>("SupplierNorm")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("supplier_norm");
+
+                    b.Property<int?>("TermMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("term_months");
+
+                    b.Property<string>("UnitMetric")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("unit_metric");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -123,8 +157,17 @@ namespace Raffa.Market.Migrations
                     b.HasKey("RecordId")
                         .HasName("pk_market_record");
 
+                    b.HasIndex("ProductNorm")
+                        .HasDatabaseName("ix_market_record_product_norm");
+
                     b.HasIndex("Provider")
                         .HasDatabaseName("ix_market_record_provider");
+
+                    b.HasIndex("SupplierNorm")
+                        .HasDatabaseName("ix_market_record_supplier_norm");
+
+                    b.HasIndex("Category", "Geography")
+                        .HasDatabaseName("ix_market_record_category_geography");
 
                     b.ToTable("market_record", (string)null);
                 });

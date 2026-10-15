@@ -10,6 +10,9 @@
 -- flag the query-time embedding guard reads.
 -- 20261015205105_AddMarketRecordPayloadHash (F7-T04) adds the nullable `payload_hash` idempotency
 -- key of an ingested record (additive; rows that predate it are back-filled by the next ingest run).
+-- 20261015210706_AddMarketRecordFilterColumns (F7-T02) adds the nullable denormalised filter columns (supplier_norm,
+-- product_norm, category, geography, currency, term_months, unit_metric) and their indexes (additive;
+-- back-filled by the next ingest run, readers treat NULL as "check in memory").
 --
 -- Grant model (task objective: "grants read to the application role and restricts writes to the
 -- ingestion role when the CI role model allows it"): Terraform (`infra/modules/postgres/main.tf`)
@@ -136,6 +139,87 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015205105_AddMarketRecordPayloadHash') THEN
     INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
     VALUES ('20261015205105_AddMarketRecordPayloadHash', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD category character varying(200);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD currency character varying(20);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD geography character varying(50);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD product_norm character varying(400);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD supplier_norm character varying(400);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD term_months integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    ALTER TABLE market_record ADD unit_metric character varying(100);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    CREATE INDEX ix_market_record_category_geography ON market_record (category, geography);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    CREATE INDEX ix_market_record_product_norm ON market_record (product_norm);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    CREATE INDEX ix_market_record_supplier_norm ON market_record (supplier_norm);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015210706_AddMarketRecordFilterColumns') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261015210706_AddMarketRecordFilterColumns', '10.0.4');
     END IF;
 END $EF$;
 COMMIT;

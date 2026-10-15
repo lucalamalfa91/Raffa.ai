@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Raffa.Market.Contracts;
 using Raffa.Market.Infrastructure;
+using Raffa.Market.Ingestion;
 using Microsoft.EntityFrameworkCore;
 
 namespace Raffa.Market.Retrieval;
@@ -53,20 +54,53 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext, MarketCo
     }
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<MarketDeal>> GetBySupplierAsync(
-        string supplierName, CancellationToken cancellationToken = default) =>
-        string.IsNullOrWhiteSpace(supplierName)
-            ? Task.FromResult<IReadOnlyList<MarketDeal>>([])
-            : LoadWhereAsync(deal => MarketSupplierMatch.Matches(deal.Supplier, supplierName), cancellationToken);
+    public async Task<IReadOnlyList<MarketDeal>> GetBySupplierAsync(
+        string supplierName, CancellationToken cancellationToken = default)
+    {
+        var wanted = MarketSupplierMatch.Normalize(supplierName ?? string.Empty);
+        if (wanted.Length == 0)
+        {
+            return [];
+        }
+
+        // F7-T02: the supplier filter runs in SQL on the indexed `supplier_norm` column. The predicate
+        // is the SQL form of MarketSupplierMatch (equal, or one contains the other on word
+        // boundaries); rows whose column was never written (NULL) are included and decided by the
+        // exact in-memory check below, so a partly back-filled table answers exactly as before.
+        var padded = " " + wanted + " ";
+        var likeWanted = "% " + wanted + " %";
+        var records = dbContext.MarketRecords
+            .AsNoTracking()
+            .Where(r => r.SupplierNorm == null
+                || r.SupplierNorm == wanted
+                || EF.Functions.Like(" " + r.SupplierNorm + " ", likeWanted)
+                || EF.Functions.Like(padded, "% " + r.SupplierNorm + " %"));
+
+        return await ReadDealsAsync(
+                records, deal => MarketSupplierMatch.Matches(deal.Supplier, supplierName!), cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<MarketDeal>> GetByCategoryAsync(
-        string category, CancellationToken cancellationToken = default) =>
-        string.IsNullOrWhiteSpace(category)
-            ? Task.FromResult<IReadOnlyList<MarketDeal>>([])
-            : LoadWhereAsync(
+    public async Task<IReadOnlyList<MarketDeal>> GetByCategoryAsync(
+        string category, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+        {
+            return [];
+        }
+
+        var folded = MarketFilterColumns.Category(category);
+        var records = dbContext.MarketRecords
+            .AsNoTracking()
+            .Where(r => r.Category == null || r.Category == folded);
+
+        return await ReadDealsAsync(
+                records,
                 deal => string.Equals(deal.Category, category.Trim(), StringComparison.OrdinalIgnoreCase),
-                cancellationToken);
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
     public Task<IReadOnlyList<MarketDeal>> GetAllAsync(CancellationToken cancellationToken = default) =>
@@ -85,6 +119,30 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext, MarketCo
             .MaxAsync(r => r.FeedVersion, cancellationToken)
             .ConfigureAwait(false);
         return $"{feedVersion}:{count}";
+    }
+
+    private static async Task<IReadOnlyList<MarketDeal>> ReadDealsAsync(
+        IQueryable<Infrastructure.Entities.MarketRecordEntity> records,
+        Func<MarketDeal, bool> exact,
+        CancellationToken cancellationToken)
+    {
+        var rows = await records
+            .OrderByDescending(r => r.UpdatedAt)
+            .ThenBy(r => r.RecordId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var deals = new List<MarketDeal>(rows.Count);
+        foreach (var row in rows)
+        {
+            var deal = JsonSerializer.Deserialize<MarketDeal>(row.PayloadJson, JsonOptions);
+            if (deal is not null && exact(deal))
+            {
+                deals.Add(deal);
+            }
+        }
+
+        return deals;
     }
 
     private async Task<IReadOnlyList<MarketDeal>> LoadWhereAsync(

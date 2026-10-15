@@ -171,14 +171,17 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
 
             var scannedWithIndex = useIndex;
             var neighbours = await FetchNeighboursAsync(
-                    queryVector, queryIdentity, window, scannedWithIndex, restrictToComparable: mixed, cancellationToken)
+                    queryVector, queryIdentity, window, scannedWithIndex, restrictToComparable: mixed, filters, cancellationToken)
                 .ConfigureAwait(false);
 
             var hits = CollectHits(neighbours, topK, filters);
 
             // An approximate (HNSW) scan may return fewer rows than the window even though more
             // exist, so a short result only proves exhaustion for an exact scan.
-            var exhausted = (!scannedWithIndex && neighbours.Count < window) || window >= comparable;
+            // F7-T02: the category/geography filter now runs in SQL, so a filtered query returns fewer
+            // rows than the window even when more exist; only an unfiltered exact scan can prove
+            // exhaustion by a short result.
+            var exhausted = (!filtered && !scannedWithIndex && neighbours.Count < window) || window >= comparable;
             if (hits.Count >= topK || exhausted)
             {
                 return Result<IReadOnlyList<MarketNote>>.Success(hits);
@@ -196,6 +199,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         int window,
         bool useIndex,
         bool restrictToComparable,
+        MarketKnowledgeSearchFilters? filters,
         CancellationToken cancellationToken)
     {
         // SET LOCAL needs a transaction; it also keeps the setting from leaking onto the pooled
@@ -223,7 +227,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         }
 
         var neighbours = await NearestNeighbours(
-                dbContext, queryVector, window, restrictToComparable ? queryIdentity : null)
+                dbContext, queryVector, window, restrictToComparable ? queryIdentity : null, filters)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -244,7 +248,11 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
     /// Public so the generated SQL can be asserted without a database (<c>ToQueryString()</c>).
     /// </summary>
     public static IQueryable<MarketNeighbour> NearestNeighbours(
-        MarketDbContext db, Vector queryVector, int limit, MarketEmbeddingIdentity? restrictTo = null)
+        MarketDbContext db,
+        Vector queryVector,
+        int limit,
+        MarketEmbeddingIdentity? restrictTo = null,
+        MarketKnowledgeSearchFilters? filters = null)
     {
         ArgumentNullException.ThrowIfNull(db);
 
@@ -261,9 +269,24 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
             .Take(limit)
             .Select(e => new { e.RecordId, Distance = e.Vector.CosineDistance(queryVector) });
 
+        // F7-T02: category / geography are filtered in SQL on the denormalised columns. A NULL column
+        // (a record that predates them) is kept and decided by CollectHits' exact in-memory check.
+        IQueryable<MarketRecordEntity> records = db.MarketRecords.AsNoTracking();
+        if (filters?.Category is { } category)
+        {
+            var folded = MarketFilterColumns.Category(category);
+            records = records.Where(r => r.Category == null || r.Category == folded);
+        }
+
+        if (filters?.Geography is { } geography)
+        {
+            var folded = MarketFilterColumns.Geography(geography);
+            records = records.Where(r => r.Geography == null || r.Geography == folded);
+        }
+
         return nearest
             .Join(
-                db.MarketRecords.AsNoTracking(),
+                records,
                 n => n.RecordId,
                 record => record.RecordId,
                 (n, record) => new { record.PayloadJson, n.Distance })
