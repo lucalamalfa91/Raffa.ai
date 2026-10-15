@@ -8,6 +8,9 @@ namespace Raffa.AiFlows.DocumentExtraction.Stages;
 internal sealed class ObligationsStage()
     : ExtractionStageBase(ExtractionStage.Obligations, StagedExtractionJsonSchemas.Obligations())
 {
+    /// <summary>F5-T05: the three scalar stages (used only when context dependencies are enabled).</summary>
+    public override IReadOnlyList<ExtractionStage> DependsOn => ScalarStages;
+
     public override StageFacts Parse(string payloadJson) =>
         new StageFacts.Obligations(StagePayload.Deserialize<ExtractedObligationsPayload>(payloadJson)?.Items ?? []);
 }

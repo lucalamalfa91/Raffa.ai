@@ -4,7 +4,7 @@ using Raffa.Documents.Contracts.Domain;
 namespace Raffa.AiFlows.DocumentExtraction.Stages;
 
 /// <summary>What a stage reads: the page-marked text of the whole document. <paramref name="Context"/> is
-/// empty unless context dependencies are enabled (not the case today).</summary>
+/// empty unless context dependencies are enabled (the default).</summary>
 public sealed record ExtractionStageInput(
     string DocumentText,
     int PageCount,

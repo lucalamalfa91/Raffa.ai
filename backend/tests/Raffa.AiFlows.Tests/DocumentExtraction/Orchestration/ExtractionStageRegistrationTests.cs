@@ -62,7 +62,11 @@ public sealed class ExtractionStageRegistrationTests
         foreach (var stage in ExtractionStages.Default)
         {
             Assert.Equal(stage.Stage.ToString(), stage.StageName);
-            Assert.Empty(stage.DependsOn);
+            // F5-T05: only the four list stages declare dependencies (the three scalar stages); covered in
+            // StageSchedulerTests. Declared, but inert unless UseContextDependencies is on.
+            Assert.Equal(
+                stage.Stage is ExtractionStage.Metadata or ExtractionStage.CommercialTerms or ExtractionStage.DatesAndRenewalTerms,
+                stage.DependsOn.Count == 0);
         }
 
         Assert.Equal(
