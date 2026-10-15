@@ -38,6 +38,10 @@
          lexicon loads empty ("unavailable") and T3 never fires. -->
     <EmbeddedResource Include="CapabilityGaps\Investigation\Lexicon\investigator-trigger-lexicon.json"
                       LogicalName="Raffa.AiFlows.CapabilityGaps.investigator-trigger-lexicon.json" />
+    <!-- INV-07 / F4-T08: the capability-gap catalogue (entries, it/en texts, include/exclude
+         lexicons) is versioned data. LogicalName must equal CapabilityGapCatalog.ResourceName. -->
+    <EmbeddedResource Include="CapabilityGaps\Catalog\gap-catalogue.json"
+                      LogicalName="Raffa.AiFlows.CapabilityGaps.gap-catalogue.json" />
   </ItemGroup>
 
   <ItemGroup>
