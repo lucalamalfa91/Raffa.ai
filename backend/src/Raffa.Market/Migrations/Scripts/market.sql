@@ -8,6 +8,8 @@
 -- fixed module order. 20261008152734_AddEmbeddingFixtureFlagAndHnswIndex (F7-T01/F7-T06) adds the
 -- HNSW cosine index behind the `ORDER BY vector <=> @q LIMIT k` query and the nullable `is_fixture`
 -- flag the query-time embedding guard reads.
+-- 20261015205105_AddMarketRecordPayloadHash (F7-T04) adds the nullable `payload_hash` idempotency
+-- key of an ingested record (additive; rows that predate it are back-filled by the next ingest run).
 --
 -- Grant model (task objective: "grants read to the application role and restricts writes to the
 -- ingestion role when the CI role model allows it"): Terraform (`infra/modules/postgres/main.tf`)
@@ -116,6 +118,24 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008152734_AddEmbeddingFixtureFlagAndHnswIndex') THEN
     INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
     VALUES ('20261008152734_AddEmbeddingFixtureFlagAndHnswIndex', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015205105_AddMarketRecordPayloadHash') THEN
+    ALTER TABLE market_record ADD payload_hash character varying(64);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261015205105_AddMarketRecordPayloadHash') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261015205105_AddMarketRecordPayloadHash', '10.0.4');
     END IF;
 END $EF$;
 COMMIT;

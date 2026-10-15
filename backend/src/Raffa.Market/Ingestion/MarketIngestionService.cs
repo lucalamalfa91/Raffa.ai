@@ -135,20 +135,37 @@ public sealed class MarketIngestionService(
             // same JsonOptions) puts both sides of the comparison through System.Text.Json's own
             // canonical key order, so this is an exact logical-equality check regardless of what order
             // jsonb happens to hand keys back in.
-            var existingNormalizedPayloadJson = existing is null
-                ? null
-                : JsonSerializer.Serialize(
-                    JsonSerializer.Deserialize<MarketDeal>(existing.PayloadJson, JsonOptions), JsonOptions);
+            //
+            // F7-T04: rows written since `payload_hash` exists carry the SHA-256 of that canonical
+            // payload, so the check is one string comparison and no jsonb round trip. A row that
+            // predates the column (null hash) falls back to the logical comparison above and, when
+            // it is unchanged, gets its hash back-filled so the next run takes the fast path.
+            var payloadHash = MarketPayloadHash.Of(payloadJson);
+            var sameVersion = existing is not null
+                && string.Equals(existing.FeedVersion, snapshot.FeedVersion, StringComparison.Ordinal);
 
-            if (existing is not null
-                && string.Equals(existing.FeedVersion, snapshot.FeedVersion, StringComparison.Ordinal)
-                && string.Equals(existingNormalizedPayloadJson, payloadJson, StringComparison.Ordinal))
+            if (existing is not null && sameVersion && existing.PayloadHash is not null)
             {
-                unchanged++;
-                continue;
+                if (string.Equals(existing.PayloadHash, payloadHash, StringComparison.Ordinal))
+                {
+                    unchanged++;
+                    continue;
+                }
+            }
+            else if (existing is not null && sameVersion)
+            {
+                var existingNormalizedPayloadJson = JsonSerializer.Serialize(
+                    JsonSerializer.Deserialize<MarketDeal>(existing.PayloadJson, JsonOptions), JsonOptions);
+                if (string.Equals(existingNormalizedPayloadJson, payloadJson, StringComparison.Ordinal))
+                {
+                    existing.PayloadHash = payloadHash;
+                    unchanged++;
+                    continue;
+                }
             }
 
-            pending.Add(new PendingRecord(deal, payloadJson, existing, MarketNoteComposer.Compose(deal)));
+            pending.Add(new PendingRecord(
+                deal, payloadJson, payloadHash, existing, MarketNoteComposer.Compose(deal)));
             if (pending.Count < batchSize)
             {
                 continue;
@@ -195,7 +212,7 @@ public sealed class MarketIngestionService(
     private sealed record EmbeddingSource(string RecordId, string ChunkText, string Model, bool? IsFixture);
 
     private sealed record PendingRecord(
-        MarketDeal Deal, string PayloadJson, MarketRecordEntity? Existing, MarketNote Note);
+        MarketDeal Deal, string PayloadJson, string PayloadHash, MarketRecordEntity? Existing, MarketNote Note);
 
     private sealed record FlushOutcome(int Inserted, int Updated, MarketEmbeddingIdentity? RunIdentity);
 
@@ -308,7 +325,7 @@ public sealed class MarketIngestionService(
 
         for (var i = 0; i < batch.Count; i++)
         {
-            var (deal, payloadJson, existing, note) = batch[i];
+            var (deal, payloadJson, payloadHash, existing, note) = batch[i];
             var provenanceLabel = MarketProvenance.Label(deal);
 
             if (existing is null)
@@ -319,6 +336,7 @@ public sealed class MarketIngestionService(
                     FeedVersion = feedVersion,
                     Provider = deal.Provider,
                     PayloadJson = payloadJson,
+                    PayloadHash = payloadHash,
                     ProvenanceLabel = provenanceLabel,
                     UpdatedAt = deal.UpdatedAt,
                 });
@@ -329,6 +347,7 @@ public sealed class MarketIngestionService(
                 existing.FeedVersion = feedVersion;
                 existing.Provider = deal.Provider;
                 existing.PayloadJson = payloadJson;
+                existing.PayloadHash = payloadHash;
                 existing.ProvenanceLabel = provenanceLabel;
                 existing.UpdatedAt = deal.UpdatedAt;
 

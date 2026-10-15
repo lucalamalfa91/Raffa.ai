@@ -94,6 +94,11 @@ namespace Raffa.Market.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("feed_version");
 
+                    b.Property<string>("PayloadHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("payload_hash");
+
                     b.Property<string>("PayloadJson")
                         .IsRequired()
                         .HasColumnType("jsonb")

@@ -61,4 +61,11 @@ public sealed class MarketRecordEntity
     /// <summary>Echoes <see cref="Contracts.MarketDeal.UpdatedAt"/> as its own column (same
     /// "cheap to read without deserializing the payload" reasoning as <see cref="Provider"/>).</summary>
     public required DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>
+    /// F7-T04: SHA-256 (hex) of the canonical payload JSON, the ingestion idempotency key.
+    /// <see langword="null"/> on rows written before the column existed (back-filled by the next
+    /// ingestion run).
+    /// </summary>
+    public string? PayloadHash { get; set; }
 }

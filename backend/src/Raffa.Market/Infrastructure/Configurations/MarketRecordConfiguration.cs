@@ -26,6 +26,10 @@ public sealed class MarketRecordConfiguration : IEntityTypeConfiguration<MarketR
 
         builder.Property(r => r.ProvenanceLabel).HasMaxLength(500);
 
+        // F7-T04: nullable on purpose (additive migration; rows that predate it are back-filled by
+        // the next ingestion run). 64 = a SHA-256 in hex.
+        builder.Property(r => r.PayloadHash).HasMaxLength(64);
+
         builder.HasIndex(r => r.Provider);
     }
 }
