@@ -34,6 +34,9 @@ namespace Raffa.Quotes.Application.Assessment;
 /// benchmark call was ever made). Never re-fetched or recomputed by this record.</param>
 /// <param name="Explanation">Human-readable trace of why this line has the status/position it
 /// does.</param>
+/// <param name="MatchLevel">Task F6-T09: how the benchmark was found. <see cref="MarketMatchLevel.Direct"/>
+/// (the default) is the query as built from the quote; any other level means the line only matched
+/// after the tenant's own recorded names were used (see <see cref="MarketAssessmentMatchLadder"/>).</param>
 public sealed record LineMarketAssessment(
     EntityId QuoteLineId,
     MarketAssessmentStatus Status,
@@ -41,7 +44,8 @@ public sealed record LineMarketAssessment(
     decimal? UnitPrice,
     decimal? Quantity,
     BenchmarkResult? Benchmark,
-    string Explanation)
+    string Explanation,
+    MarketMatchLevel MatchLevel = MarketMatchLevel.Direct)
 {
     /// <summary>
     /// Confidence + provenance "on the match" (AC-3) — <see cref="MarketAssessmentProvenanceClassifier.FromBenchmark"/>
