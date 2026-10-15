@@ -30,4 +30,12 @@ public sealed class AskTurnOptions
 
     /// <summary>F1-T01: read each contract once per turn. <see langword="false"/> = today.</summary>
     public bool MemoizeTurnReads { get; set; }
+
+    /// <summary>A-05: the answer role's calls run as runner steps (<c>answer-composer</c>), audited with the
+    /// step name. The request to the gateway and the guard policy are unchanged. <see langword="false"/> = today.</summary>
+    public bool AnswerOnRunner { get; set; }
+
+    /// <summary>A-05: backstop deadline of one answer-composer step when <see cref="AnswerOnRunner"/> is on;
+    /// far above the gateway's own timeout, so it bounds a hung call and changes no normal turn.</summary>
+    public TimeSpan AnswerStepDeadline { get; set; } = TimeSpan.FromMinutes(10);
 }

@@ -71,6 +71,9 @@ public sealed class CapabilityGapTurnHandler(
     CapabilityRouting capabilityRouting,
     GateReplyBuilder gateReplies)
 {
+    /// <summary>The turn-row fragment of a draft that reused the council's plays (F4-T05).</summary>
+    internal const string ReusedCouncilPlaysDetail = "draftReusedCouncilPlays=true";
+
     internal async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildCapabilityGapReplyAsync(
         TenantId tenantId,
         string question,
@@ -215,6 +218,15 @@ public sealed class CapabilityGapTurnHandler(
         var draft = await negotiationDraftingWorkflow
             .DraftAsync(new DraftRequest(question, language, supplierName, boundedPack, goal), cancellationToken)
             .ConfigureAwait(false);
+
+        // F4-T05 (A-08), Chat:Drafting:ReuseCouncilPlays: the pack above already carries this turn's council
+        // plays (the agent phase convened the council for the draft), so with the switch on the workflow plans
+        // the offer from them instead of calling the planner. Said on the turn row only when it happened --
+        // a turn with the switch off writes exactly the detail it wrote before.
+        if (draft.ReusedCouncilPlays)
+        {
+            RunContext.AddTurnDetail(ReusedCouncilPlaysDetail);
+        }
 
         var actions = capabilityRouting.ResolveActions(
             [CapabilityIntent.HowTo(CapabilityCatalog.RenewalsKey), CapabilityIntent.HowTo(CapabilityCatalog.ContractDetailKey)],
