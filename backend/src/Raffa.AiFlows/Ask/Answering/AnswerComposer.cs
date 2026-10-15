@@ -4,7 +4,9 @@ using Raffa.AiFlows.Ask.Guards;
 using Raffa.AiFlows.Shared.Guards;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiFlows.Shared.Routing;
+using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiGateway;
+using Raffa.AiGateway.Agents;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.SharedKernel;
@@ -43,8 +45,14 @@ namespace Raffa.AiFlows.Ask.Answering;
 /// proposal the user can act on, never a bare "cannot determine".
 /// </para>
 /// </summary>
-public sealed class AnswerComposer(IAiGateway aiGateway)
+public sealed class AnswerComposer(
+    IAiGateway aiGateway,
+    StepRunner? stepRunner = null,
+    AskTurnOptions? turnOptions = null)
 {
+    // Chat:AskTurn:AnswerOnRunner (A-05) -- off = the gateway is called directly, as before.
+    private readonly AskTurnOptions settings = turnOptions ?? new AskTurnOptions();
+
     // JsonStringEnumConverter: PackValue.Kind (PackValueKind) serializes as "Amount"/"Percentage"/
     // "Date"/"Number", never the numeric default — both a human/model reading the raw pack JSON
     // and Raffa.AiGateway.Fixtures.FixtureAiGateway's own pack-aware echo (which cannot
@@ -184,9 +192,29 @@ public sealed class AnswerComposer(IAiGateway aiGateway)
         result with { ActionKeys = ActionKeyNormalizer.Normalize(result.ActionKeys) };
 
     private Task<Result<AiAnswerResult>> CallGatewayAsync(
-        string question, string packJson, string systemPrompt, CancellationToken cancellationToken) =>
-        aiGateway.AnswerAsync(
+        string question, string packJson, string systemPrompt, CancellationToken cancellationToken)
+    {
+        if (stepRunner is not null && settings.AnswerOnRunner)
+        {
+            return CallOnRunnerAsync(stepRunner, question, packJson, systemPrompt, cancellationToken);
+        }
+
+        return aiGateway.AnswerAsync(
             new AiAnswerRequest(question, Evidence: [], systemPrompt, packJson, AnswerPromptV2.Version), cancellationToken);
+    }
+
+    /// <summary>The same call as a runner step (A-05): audited under the turn's run id and the step name;
+    /// a step that did not deliver is the gateway failure it replaces, so the policy above is untouched.</summary>
+    private async Task<Result<AiAnswerResult>> CallOnRunnerAsync(
+        StepRunner runner, string question, string packJson, string systemPrompt, CancellationToken cancellationToken)
+    {
+        var step = new AnswerComposerStep(systemPrompt, settings.AnswerStepDeadline);
+        var result = await runner.RunAnswerAsync(step, new AnswerStepInput(question, [], packJson), cancellationToken)
+            .ConfigureAwait(false);
+        return result.Value is { } value
+            ? Result<AiAnswerResult>.Success(value)
+            : Result<AiAnswerResult>.Failure(result.Error ?? result.Reason.ToString());
+    }
 
     // allowUncitedGuidance: persona v2.4 lets a draft or a plan that relies on no pack item carry no
     // citation; NumericGuard below still rejects any figure the pack does not hold.
