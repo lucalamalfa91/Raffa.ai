@@ -85,6 +85,8 @@ public sealed class QuoteExtractionPipeline(
     /// equivalents.</summary>
     private const string SystemActor = "system:quote-extraction";
 
+    private const string InMemoryProviderName = "Microsoft.EntityFrameworkCore.InMemory";
+
     /// <summary>
     /// Runs one quote through parse, extract, normalize and SKU-match, and always leaves the
     /// <see cref="Quote"/> and its <see cref="QuoteExtractionJob"/> in a terminal state (task
@@ -243,6 +245,23 @@ public sealed class QuoteExtractionPipeline(
             }
         }
 
+        // Task F6-T03 (reprocess: replace, never add): a quote that already holds lines from an
+        // earlier run (reprocess, or a retry of a NeedsReview quote) swaps them for this run's
+        // lines instead of keeping both -- the same replace-not-add rule F5-T01 gives the document
+        // facts. The swap and the whole rest of the run are one transaction (below), so a failure
+        // anywhere after this point rolls back to the previous lines intact. Queried only now,
+        // after the payload parsed, so a malformed answer never costs the quote its old lines.
+        var previousLines = await dbContext.QuoteLines
+            .Where(l => l.TenantId == tenantId && l.QuoteId == quoteId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        dbContext.QuoteLines.RemoveRange(previousLines);
+
+        // Not on the in-memory provider (unit-test hosts): it has no transactions and refuses to start one.
+        await using var transaction = dbContext.Database.ProviderName != InMemoryProviderName
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+
         // Task E05/F01/US01/T02 (quote-normalization): normalizes the very rows ApplyExtractedLines
         // just added to this same QuotesDbContext's change tracker (still unsaved) — spec §11.1
         // "Normalize unit economics", the pipeline step right after "Extract". Deliberately does not
@@ -294,6 +313,11 @@ public sealed class QuoteExtractionPipeline(
         quote.ProcessingStatus = MapStatus(finalJobStatus);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         run.StatusCommitted = true;
 
         await auditWriter.WriteAsync(

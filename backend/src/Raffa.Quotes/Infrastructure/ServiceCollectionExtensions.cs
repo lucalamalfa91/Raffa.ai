@@ -70,6 +70,8 @@ public static class ServiceCollectionExtensions
         // Scoped: shares the request's own QuotesDbContext instance (also Scoped, via AddDbContext
         // above) rather than a second, independently-tracked context.
         services.AddScoped<QuoteUploadService>();
+        // Task F6-T03 (reprocess): same dependencies as QuoteUploadService (storage, audit).
+        services.AddScoped<QuoteReprocessService>();
         // QuoteLineExtractionService (the AI-flow half of the extraction) is registered by
         // Raffa.AiFlows' AddQuoteExtractionFlow, not by this module (ADR-002 amendment).
         // Task E05/F01/US01/T02 (quote-normalization): shares this request's own QuotesDbContext
