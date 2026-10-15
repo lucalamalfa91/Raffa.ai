@@ -69,7 +69,7 @@ public sealed class JobDeliveryProcessor(IServiceScopeFactory scopeFactory, ILog
                 return Dead("unknown-job-kind", $"no handler for kind '{message.Kind}'");
             }
 
-            var outcome = await handler.HandleAsync(message, cancellationToken).ConfigureAwait(false);
+            var outcome = await handler.HandleAsync(message, deliveryCount, cancellationToken).ConfigureAwait(false);
             var action = ExtractionSettlement.Decide(outcome, deliveryCount);
             switch (action)
             {

@@ -29,9 +29,13 @@ public sealed class JobKernelTests
 
         public List<JobRequested> Seen { get; } = [];
 
-        public Task<JobHandleOutcome> HandleAsync(JobRequested message, CancellationToken cancellationToken = default)
+        public List<long> DeliveryCounts { get; } = [];
+
+        public Task<JobHandleOutcome> HandleAsync(
+            JobRequested message, long deliveryCount, CancellationToken cancellationToken = default)
         {
             Seen.Add(message);
+            DeliveryCounts.Add(deliveryCount);
             return throws is null ? Task.FromResult(outcome) : Task.FromException<JobHandleOutcome>(throws);
         }
     }
@@ -147,6 +151,16 @@ public sealed class JobKernelTests
         Assert.Equal(ExtractionSettlement.Action.Complete, decision.Action);
         Assert.Equal(message, Assert.Single(quotes.Seen));
         Assert.Empty(other.Seen);
+    }
+
+    [Fact]
+    public async Task The_handler_is_told_how_many_times_the_broker_delivered_the_message()
+    {
+        var handler = new RecordingHandler(JobKinds.QuoteExtraction);
+
+        await Processor(handler).ProcessAsync(Body(Message()), 3, CancellationToken.None);
+
+        Assert.Equal(3, Assert.Single(handler.DeliveryCounts));
     }
 
     [Fact]

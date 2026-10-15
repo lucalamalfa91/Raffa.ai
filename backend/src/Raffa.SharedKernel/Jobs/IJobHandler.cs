@@ -16,7 +16,13 @@ public interface IJobHandler
     /// completed). Throws for a failure the broker should redeliver; a handler that wants a redelivery
     /// must have released its claim first, so the next delivery can win it.
     /// </summary>
-    Task<JobHandleOutcome> HandleAsync(JobRequested message, CancellationToken cancellationToken = default);
+    /// <param name="message">The pointer to the job row.</param>
+    /// <param name="deliveryCount">How many times the broker has delivered this message (1 on the first
+    /// delivery). A handler may use it to tell a redelivery -- the previous consumer is gone or lost its
+    /// lock -- from a first delivery when deciding whether a job that is still marked running can be
+    /// taken over.</param>
+    /// <param name="cancellationToken">Cancelled when the host is shutting down.</param>
+    Task<JobHandleOutcome> HandleAsync(JobRequested message, long deliveryCount, CancellationToken cancellationToken = default);
 }
 
 /// <summary>What a handler found. <see cref="Handled"/> and <see cref="ClaimLost"/> both complete the
