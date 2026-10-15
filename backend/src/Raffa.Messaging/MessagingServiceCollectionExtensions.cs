@@ -1,6 +1,7 @@
 using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Raffa.Documents.Contracts.Application.Extraction;
+using Raffa.SharedKernel.Jobs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -34,12 +35,16 @@ public static class MessagingServiceCollectionExtensions
             AddServiceBusClient(services, options);
             services.TryAddSingleton<IExtractionQueuePublisher, ServiceBusExtractionQueuePublisher>();
             services.TryAddSingleton<IExtractionDeadLetterResubmitter, ServiceBusExtractionDeadLetterResubmitter>();
+            // Task F6-T05: the shared job kernel rides the same topic and the same predicate.
+            services.TryAddSingleton<IJobQueuePublisher, ServiceBusJobQueuePublisher>();
         }
         else
         {
             services.TryAddSingleton<InMemoryExtractionQueue>();
             services.TryAddSingleton<IExtractionQueuePublisher>(sp => sp.GetRequiredService<InMemoryExtractionQueue>());
             services.TryAddSingleton<IExtractionDeadLetterResubmitter>(sp => sp.GetRequiredService<InMemoryExtractionQueue>());
+            // No broker: the callers of the shared job kernel run their work inline (IsDurable is false).
+            services.TryAddSingleton<IJobQueuePublisher, InlineJobQueuePublisher>();
         }
 
         return services;
@@ -54,6 +59,9 @@ public static class MessagingServiceCollectionExtensions
 
         var options = BindOptions(services, configuration);
         services.AddScoped<ExtractionRequestedHandler>();
+        // Task F6-T05: routes the shared job kernel's messages to the IJobHandler that owns the kind.
+        // Handlers are registered by the module/flow that owns the job; none registered is fine.
+        services.TryAddSingleton<JobDeliveryProcessor>();
 
         if (options.UsesServiceBus)
         {
