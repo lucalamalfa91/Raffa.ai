@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Ask.Packs;
 using Raffa.AiFlows.Shared.ContractContext;
 using static Raffa.AiFlows.Ask.Packs.ContractResolution;
 using static Raffa.AiFlows.Ask.Packs.PackItemFactory;
@@ -71,13 +72,13 @@ public sealed partial class AskCopilotService
             return null;
         }
 
-        var supplierName = await ResolveDisplayNameAsync(item, cancellationToken).ConfigureAwait(false);
+        var supplierName = await context.ResolveDisplayNameAsync(item, cancellationToken).ConfigureAwait(false);
         var asOfDate = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
 
-        var (benchmarkSupplierName, geography) = await ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
+        var (benchmarkSupplierName, geography) = await context.ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken)
             .ConfigureAwait(false);
 
-        var pricedLines = await ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
+        var pricedLines = await context.ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
 
         var allDeals = await marketDealLookup
@@ -125,7 +126,7 @@ public sealed partial class AskCopilotService
     {
         var evidence = await ComputeLeverEvidenceAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false);
         var supplierName = evidence?.SupplierName
-            ?? await ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
+            ?? await context.ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false);
 
         var items = new List<PackItem> { BuildContractFactItem(namedContractItem, supplierName) };
 
@@ -653,7 +654,7 @@ public sealed partial class AskCopilotService
             foreach (var hit in searchResult.Value.ThisContract)
             {
                 var clause = contract360.Clauses.FirstOrDefault(c => c.ClauseId == hit.SourceId);
-                items.Add(BuildClausePackItem(hit, clause, namedContractItem.ContractId, isPeer: false));
+                items.Add(ClausePackBuilder.BuildClausePackItem(hit, clause, namedContractItem.ContractId, isPeer: false));
             }
         }
 
@@ -663,7 +664,7 @@ public sealed partial class AskCopilotService
     /// <summary>The supplier's deals that speak to this contract: same currency and geography
     /// when the corpus has them, else same currency, else everything — a wide corpus must
     /// benchmark a CHF contract against CHF peers, not against the cheapest region.</summary>
-    private static IReadOnlyList<MarketDeal> NarrowDealsToContract(IReadOnlyList<MarketDeal> deals, string currency, string? geography)
+    internal static IReadOnlyList<MarketDeal> NarrowDealsToContract(IReadOnlyList<MarketDeal> deals, string currency, string? geography)
     {
         var sameCurrency = deals.Where(d => string.Equals(d.Currency, currency, StringComparison.OrdinalIgnoreCase)).ToList();
         if (sameCurrency.Count == 0)
