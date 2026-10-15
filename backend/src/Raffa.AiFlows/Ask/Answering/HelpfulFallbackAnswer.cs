@@ -28,21 +28,36 @@ public static class HelpfulFallbackAnswer
     private const RegexOptions CueOptions = RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant;
 
     // A request to write something for the supplier.
-    private static readonly Regex DraftCue = new(@"\b(e-?mail|mail|pec|lettera|letter|bozza|draft)\b", CueOptions);
+    private static readonly Regex DraftCue = new(
+        @"\b(e-?mail|mail|pec|lettera|letter|bozza|draft|" +
+        // fr/es/de (LANG-03); German "Brief" is left out (English "brief").
+        @"courriel|brouillon|lettre|borrador|correo|carta|entwurf)\b", CueOptions);
 
     private static readonly Regex RenewalCue = new(
-        @"\b(rinnov\w*|renew\w*|scadenz\w*|scade\w*|disdett\w*|preavviso|notice|expir\w*)\b", CueOptions);
+        @"\b(rinnov\w*|renew\w*|scadenz\w*|scade\w*|disdett\w*|preavviso|notice|expir\w*|" +
+        // fr/es/de (LANG-03)
+        @"renouvel\w*|[eé]ch[eé]ance\w*|pr[eé]avis|r[eé]siliation|renov\w*|vencimiento|venc\w*|preaviso|" +
+        @"verl[aä]nger\w*|ablauf\w*|k(ue|[uü])ndigung\w*|laufzeitende)\b", CueOptions);
 
     private static readonly Regex SavingsCue = new(
-        @"\b(risparm\w*|save|saves|saving|savings|scont\w*|discount\w*|ridurre|riduzione|reduce|cut)\b", CueOptions);
+        @"\b(risparm\w*|save|saves|saving|savings|scont\w*|discount\w*|ridurre|riduzione|reduce|cut|" +
+        // fr/es/de (LANG-03)
+        @"[eé]conomi\w*|r[eé]duire|r[eé]duction|remise\w*|ahorr\w*|descuento\w*|reducir|reducci[oó]n|" +
+        @"einspar\w*|sparen|ersparnis\w*|rabatt\w*|reduzier\w*)\b", CueOptions);
 
     private static readonly Regex MarketCue = new(
-        @"\b(mercato|market|benchmark\w*|preventiv\w*|quotes?|prezz\w*|prices?|pricing)\b", CueOptions);
+        @"\b(mercato|market|benchmark\w*|preventiv\w*|quotes?|prezz\w*|prices?|pricing|" +
+        // fr/es/de (LANG-03)
+        @"prix|devis|tarif\w*|precio\w*|mercado|presupuesto\w*|cotizaci[oó]n|tarifa\w*|" +
+        @"markt\w*|preis\w*|angebot\w*|preisvergleich)\b", CueOptions);
 
     private static readonly Regex ClauseCue = new(
-        @"\b(clausol\w*|clauses?|responsabilit\w*|liabilit\w*|penal\w*|sla|indemnit\w*|recesso|termination)\b", CueOptions);
+        @"\b(clausol\w*|clauses?|responsabilit\w*|liabilit\w*|penal\w*|sla|indemnit\w*|recesso|termination|" +
+        // fr/es/de (LANG-03)
+        @"p[eé]nalit[eé]\w*|cl[aá]usula\w*|responsabilidad|penalizaci\w*|indemniz\w*|" +
+        @"klausel\w*|haftung\w*|vertragsstrafe\w*|freistellung)\b", CueOptions);
 
-    private static readonly Regex DocumentsCue = new(@"\b(document\w*|caric\w*|upload\w*|pdf)\b", CueOptions);
+    private static readonly Regex DocumentsCue = new(@"\b(document\w*|caric\w*|upload\w*|pdf|dokument\w*|hochlad\w*)\b", CueOptions);
 
     /// <summary>
     /// The kind of question <paramref name="question"/> reads as, from its own words — the area

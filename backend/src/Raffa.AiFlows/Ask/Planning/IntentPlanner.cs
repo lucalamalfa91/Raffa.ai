@@ -48,11 +48,16 @@ public sealed class IntentPlanner
     // Checked before BenchmarkPattern and SavingsPattern so a "mercato"/"risparmiare" inside the
     // same sentence never steals it into QuoteRoute/PortfolioStrategy — this is its own intent.
     private static readonly Regex PortfolioMarketPositionPattern = new(
-        @"\b(mal\s+posizionat\w*|poorly\s+positioned|above\s+market|too\s+expensive)\b",
+        @"\b(mal\s+posizionat\w*|poorly\s+positioned|above\s+market|too\s+expensive|" +
+        // fr/es/de (LANG-03); always paired with PortfolioQuestionPattern below.
+        @"mal\s+positionn[eé]\w*|au-dessus\s+du\s+march[eé]|trop\s+cher\w*|" +
+        @"mal\s+posicionad\w*|por\s+encima\s+del\s+mercado|demasiado\s+car[oa]s?|" +
+        @"schlecht\s+positioniert\w*|[uü]ber\s+(dem\s+)?markt(niveau|preis)?|zu\s+teuer)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex PortfolioQuestionPattern = new(
-        @"\b(quali\s+contratti|which\s+contracts)\b",
+        @"\b(quali\s+contratti|which\s+contracts|quels\s+contrats|qu[eé]\s+contratos|cu[aá]les\s+contratos|" +
+        @"welche\s+vertr[aä]ge)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // "saving / risparm / largest" (prototype) plus "where can we save / dove posso risparmiare"
@@ -63,7 +68,12 @@ public sealed class IntentPlanner
     // being stolen by the market/benchmark lexicon into QuoteRoute.
     private static readonly Regex SavingsPattern = new(
         @"\b(saving\w*|sav(e|es|ed)|risparm\w*|largest|salv\w*|tagli\w*|ridurr\w*|riduzione|ridotto|costi|budget|" +
-        @"lev[ae]|lever\w*|cut\s+(the\s+)?cost\w*|spend\s+less|abbassare|abbattere|efficient\w*)\b",
+        @"lev[ae]|lever\w*|cut\s+(the\s+)?cost\w*|spend\s+less|abbassare|abbattere|efficient\w*|" +
+        // fr/es/de (LANG-03): explicit saving words only; a bare "co[uû]ts"/"costes"/"Kosten" is a
+        // cost question, not a savings one (the it/en list keeps "costi" for historical reasons).
+        @"[eé]conomis\w*|[eé]conomies|r[eé]duire|r[eé]duction|baisser\s+les\s+co[uû]ts|d[eé]penser\s+moins|levier\w*|" +
+        @"ahorr\w*|reducir|reducci[oó]n|recortar\s+(los\s+)?(costes|costos|gastos)|gastar\s+menos|palanca\w*|" +
+        @"einspar\w*|ersparnis\w*|sparen|reduzier\w*|kosten\s*senk\w*|kostensenk\w*|hebel|verhandlungshebel)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // A short follow-up that carries no intent of its own ("non mi hai risposto", "e quindi?",
@@ -76,11 +86,20 @@ public sealed class IntentPlanner
         @"\b(non\s+(mi\s+)?hai\s+risposto|e\s+quindi|e\s+allora|spiegami|approfondisci|dettaglia\w*|pi[uù]\s+dettagli|" +
         @"di\s+pi[uù]|in\s+concreto|concretamente|nello\s+specifico|ok\s+e|s[iì]\s+ma|ma\s+come|ma\s+quindi|" +
         @"tell\s+me\s+more|more\s+detail\w*|elaborate|be\s+(more\s+)?specific|you\s+didn'?t\s+answer|" +
-        @"that'?s\s+not\s+an\s+answer|and\s+then|so\s+what|concretely|specifically)\b",
+        @"that'?s\s+not\s+an\s+answer|and\s+then|so\s+what|concretely|specifically|" +
+        // fr/es/de (LANG-03)
+        @"(tu|vous)\s+n['’]?(as|avez)\s+pas\s+r[eé]pondu|et\s+donc|et\s+alors|explique-?moi|d[eé]taille\w*|" +
+        @"plus\s+de\s+d[eé]tails|concr[eè]tement|en\s+d[eé]tail|" +
+        @"no\s+(me\s+)?has\s+respondido|y\s+entonces|expl[ií]came|ampl[ií]a|m[aá]s\s+detalles|en\s+concreto|" +
+        @"concretamente|en\s+detalle|" +
+        @"(du|sie)\s+(hast|haben)\s+nicht\s+geantwortet|und\s+dann|und\s+also|erkl[aä]re?\s+(mir\s+)?(das\s+)?(genauer|mehr)|" +
+        @"mehr\s+details|konkret|im\s+detail|ausf[uü]hrlicher|das\s+ist\s+keine\s+antwort)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex BareInterrogativePattern = new(
-        @"^(?:e\s+)?(?:come|quindi|perch[eé]|allora|how|why|and)\W*$",
+        @"^(?:e\s+)?(?:come|quindi|perch[eé]|allora|how|why|and|" +
+        // fr/es/de (LANG-03)
+        @"comment|pourquoi|alors|c[oó]mo|por\s+qu[eé]|entonces|wie|warum|wieso|und)\W*$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private const int FollowUpMaxWords = 12;
@@ -90,7 +109,14 @@ public sealed class IntentPlanner
     // verbatim, English + Italian.
     private static readonly Regex BenchmarkPattern = new(
         @"\b(benchmark|compar\w*|confront\w*|competitor|concorrent\w*|in\s+linea|allineat\w*|" +
-        @"market|mercato|fair\s+price|prezzo\s+giusto|too\s+much|troppo)\b",
+        @"market|mercato|fair\s+price|prezzo\s+giusto|too\s+much|troppo|" +
+        // fr/es/de (LANG-03). "march[eé]" is left out: in French public procurement a "march[eé]" is
+        // a contract. "concurrent" alone is left out too (English "concurrent users").
+        @"concurrence|concurrents|concurrentiel\w*|offre\s+concurrente|align[eé]e?s?|prix\s+(du|de)\s+march[eé]|" +
+        @"juste\s+prix|prix\s+correct|trop\s+cher\w*|" +
+        @"competidor\w*|la\s+competencia|alinead\w*|mercado|precio\s+(justo|de\s+mercado)|demasiado\s+car[oa]s?|" +
+        @"vergleich\w*|wettbewerber\w*|konkurren\w*|konkurrent\w*|markt|marktpreis\w*|markt[uü]blich\w*|" +
+        @"marktvergleich\w*|fairer\s+preis|angemessener\s+preis|zu\s+teuer)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // "How should I approach the Salesforce renewal?" / "Come dovrei affrontare il rinnovo
@@ -107,7 +133,12 @@ public sealed class IntentPlanner
     // portfolio-strategy criticality ranking instead of its documented abstain.
     private static readonly Regex RenewalStrategyPattern = new(
         @"\b(approach|affrontare|renewal\s+strategy|strategia|negotiat\w*|negozia\w*|" +
-        @"contrattare|contratta\w*|rinnovo|punti)\b",
+        @"contrattare|contratta\w*|rinnovo|punti|" +
+        // fr/es/de (LANG-03): nouns/infinitives only, never the "renouvel\w*"/"renov\w*"/"verl[aä]nger\w*"
+        // verb family (same collision as "rinnov\w*" above); "negocio" (ES: business) is not a match.
+        @"strat[eé]gie|n[eé]gocier|n[eé]gociation\w*|renouvellement|aborder|" +
+        @"estrategia|negociar|negociaci[oó]n|negociaciones|renovaci[oó]n|abordar|" +
+        @"strategie|verhandel\w*|verhandlung\w*|verl[aä]ngerung\w*|vorgehen)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // "top / first / why / perché / start" (priority narration) and "most critical / più critici"
@@ -115,18 +146,31 @@ public sealed class IntentPlanner
     // this becomes RenewalStrategy (that contract's own priority explanation), portfolio-wide it
     // becomes PortfolioStrategy.
     private static readonly Regex PriorityPattern = new(
-        @"\b(top|first|why|perch[eé]|start|critic\w*|priorit\w*)\b",
+        @"\b(top|first|why|perch[eé]|start|critic\w*|priorit\w*|" +
+        // fr/es/de (LANG-03)
+        @"pourquoi|commencer|d[eé]marrer|prioritaire\w*|" +
+        @"por\s+qu[eé]|empezar|comenzar|prioridad\w*|cr[ií]tic\w*|" +
+        @"warum|wieso|zuerst|beginnen|anfangen|kritisch\w*|wichtigste\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // "askable / not yet / confidence / fields / missing" (prototype) plus status/stato.
     private static readonly Regex DocumentStatusPattern = new(
-        @"\b(askable|not\s+yet|confidence|fiducia|fields?|campi|missing|mancant\w*|status|stato)\b",
+        @"\b(askable|not\s+yet|confidence|fiducia|fields?|campi|missing|mancant\w*|status|stato|" +
+        // fr/es/de (LANG-03); "estado" alone is left out (also "Estado", the state).
+        @"champs?|manquant\w*|statut|confiance|" +
+        @"campos|faltantes|estado\s+de\s+(los\s+)?(documentos?|campos)|nivel\s+de\s+confianza|" +
+        @"felder?|fehlend\w*|konfidenz\w*|vertrauensw\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // A bare "take me to X" / "open X" navigation request with nothing to narrate.
     private static readonly Regex NavigatePattern = new(
         @"\b(take\s+me\s+to|go\s+to|open\s+(documents|renewals|portfolio|savings|quotes)|" +
-        @"vai\s+a|apri\s+(documenti|rinnovi|portafoglio))\b",
+        @"vai\s+a|apri\s+(documenti|rinnovi|portafoglio)|" +
+        // fr/es/de (LANG-03)
+        @"emm[eè]ne-?moi\s+(a|à|vers)|ouvre\s+(les\s+)?(documents|renouvellements|portefeuille|[eé]conomies|devis)|" +
+        @"ll[eé]vame\s+a|abre\s+(los\s+)?(documentos|renovaciones|cartera|portafolio|ahorros|presupuestos)|" +
+        @"[oö]ffne\s+(die\s+)?(dokumente|verl[aä]ngerungen|portfolio|einsparungen|angebote)|" +
+        @"gehe?\s+zu|bring\s+mich\s+zu)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // "notice" / "preavviso" / "disdetta" / "disdetta period" / "cancellation deadline" (task
@@ -137,7 +181,12 @@ public sealed class IntentPlanner
     // of its own, so without this pattern those phrasings default to its Semantic fallback and
     // become AskIntent.Clause (unfiltered tenant RAG) instead of the structured notice fact.
     private static readonly Regex NoticePattern = new(
-        @"\b(notice|preavviso|disdetta(\s+period)?|cancellation\s+deadline)\b",
+        @"\b(notice|preavviso|disdetta(\s+period)?|cancellation\s+deadline|" +
+        // fr/es/de (LANG-03): the glossary's notice terms; the bare "Kündigung" / "résiliation" /
+        // "rescisión" are termination, not notice, and stay with the clause router.
+        @"pr[eé]avis|date\s+limite\s+de\s+(pr[eé]avis|r[eé]siliation)|non[\s-]renouvellement|" +
+        @"preaviso|plazo\s+de\s+preaviso|fecha\s+l[ií]mite\s+de\s+(preaviso|cancelaci[oó]n)|no\s+renovaci[oó]n|" +
+        @"k(ue|[uü])ndigungs(frist|termin)\w*|nichtverl[aä]ngerung\w*|nicht[\s-]verl[aä]ngerung\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
