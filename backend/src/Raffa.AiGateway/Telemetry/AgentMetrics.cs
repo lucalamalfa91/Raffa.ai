@@ -30,6 +30,21 @@ public static class AgentMetrics
         VerifierInterventionsName, unit: "{intervention}",
         description: "Outputs a verifier rejected (plan A-03: 'verifier intervened', per agent).");
 
+    public const string DeadlineExceededName = "raffa.agent.deadline.exceeded";
+    public const string TagScope = "raffa.deadline.scope";
+    public const string ScopeStep = "step";
+    public const string ScopeFlow = "flow";
+
+    private static readonly Counter<long> DeadlineExceeded = Meter.CreateCounter<long>(
+        DeadlineExceededName, unit: "{step}",
+        description: "Steps that missed their own or their flow's deadline (plan A-04), per agent.");
+
+    public static void RecordDeadlineExceeded(string agent, string scope) =>
+        DeadlineExceeded.Add(
+            1,
+            new KeyValuePair<string, object?>(TagAgent, agent),
+            new KeyValuePair<string, object?>(TagScope, scope));
+
     public static void RecordVerifierIntervention(string agent, string verifier, string outcome) =>
         VerifierInterventions.Add(
             1,

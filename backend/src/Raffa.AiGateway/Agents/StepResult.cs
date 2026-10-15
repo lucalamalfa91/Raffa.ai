@@ -39,6 +39,10 @@ public enum StepFailureReason
     /// <summary>The agent is switched off in the <see cref="AgentRegistry"/> (plan A-02 kill switch);
     /// the model was never called and the step degraded by its policy.</summary>
     Disabled = 5,
+
+    /// <summary>The flow's overall deadline (<see cref="Telemetry.RunContext.BeginFlowDeadline"/>) ran out
+    /// before or during the step (plan A-04).</summary>
+    FlowDeadlineExceeded = 6,
 }
 
 /// <summary>

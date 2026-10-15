@@ -61,6 +61,23 @@ public sealed class StepRunner
     /// it is audited under that run id. Dispose the result to leave the run.</summary>
     public IDisposable BeginRun(string? runId = null) => RunContext.BeginRun(runId);
 
+    /// <summary>Opens an agentic run like <see cref="BeginRun"/> and gives it an overall time budget
+    /// (plan A-04): steps inside are also bounded by what is left of it. Opt-in; no flow has one by
+    /// default.</summary>
+    public IDisposable BeginFlow(TimeSpan flowDeadline, string? runId = null) =>
+        new Scopes(RunContext.BeginRun(runId), RunContext.BeginFlowDeadline(flowDeadline));
+
+    private sealed class Scopes(params IDisposable[] scopes) : IDisposable
+    {
+        public void Dispose()
+        {
+            for (var i = scopes.Length - 1; i >= 0; i--)
+            {
+                scopes[i].Dispose();
+            }
+        }
+    }
+
     /// <summary>Runs one <see cref="AgentRole.Analyze"/> step.</summary>
     public Task<StepResult<TOut>> RunAsync<TIn, TOut>(
         IAgentStep<TIn, TOut> step, TIn input, CancellationToken cancellationToken = default)
@@ -172,8 +189,21 @@ public sealed class StepRunner
             return off;
         }
 
+
+        // Plan A-04: the flow's remaining budget (when the flow has one) also bounds the step; a
+        // budget that is already gone means the model is not called at all.
+        var flowRemaining = RunContext.FlowRemaining;
+        if (flowRemaining is { } left && left <= TimeSpan.Zero)
+        {
+            var late = Degrade(
+                step, input, StepFailureReason.FlowDeadlineExceeded, DeadlineText(definition, null), 0, false, null, clock);
+            Annotate(activity, late);
+            return late;
+        }
+
+        var flowBound = flowRemaining is { } remaining && remaining < definition.Deadline;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(definition.Deadline);
+        deadline.CancelAfter(flowBound ? flowRemaining!.Value : definition.Deadline);
 
         var verifier = step.Verifier;
         var maxAttempts = verifier is not null && definition.RetryOnVerifierViolation ? 2 : 1;
@@ -229,8 +259,9 @@ public sealed class StepRunner
             // client giving up. Either way the step degrades by its policy, explicitly.
             result = deadline.IsCancellationRequested
                 ? Degrade(
-                    step, input, StepFailureReason.DeadlineExceeded,
-                    $"deadline of {definition.Deadline.TotalSeconds:0.##}s exceeded.", attempts, intervened, metadata, clock)
+                    step, input,
+                    flowBound ? StepFailureReason.FlowDeadlineExceeded : StepFailureReason.DeadlineExceeded,
+                    DeadlineText(definition, flowBound ? null : definition.Deadline), attempts, intervened, metadata, clock)
                 : Degrade(
                     step, input, StepFailureReason.GatewayError,
                     "the call was cancelled by the provider client.", attempts, intervened, metadata, clock);
@@ -282,6 +313,18 @@ public sealed class StepRunner
     {
         var definition = step.Definition;
 
+        if (reason is StepFailureReason.DeadlineExceeded or StepFailureReason.FlowDeadlineExceeded)
+        {
+            AgentMetrics.RecordDeadlineExceeded(
+                definition.Name, reason == StepFailureReason.FlowDeadlineExceeded ? AgentMetrics.ScopeFlow : AgentMetrics.ScopeStep);
+            if (definition.SkipOnDeadline)
+            {
+                // The explicit, audited degrade: "skipped: deadline", whatever the failure policy.
+                return new StepResult<TOut>(
+                    definition.Name, StepStatus.Skipped, null, reason, "skipped: " + error, attempts, intervened, metadata, clock.Elapsed);
+            }
+        }
+
         if (definition.FailurePolicy == AgentFailurePolicy.Fallback && step.Fallback(input) is { } fallback)
         {
             return new StepResult<TOut>(
@@ -312,6 +355,11 @@ public sealed class StepRunner
             throw;
         }
     }
+
+    private static string DeadlineText(AgentDefinition definition, TimeSpan? stepDeadline) =>
+        stepDeadline is { } step
+            ? $"deadline of {step.TotalSeconds:0.##}s exceeded."
+            : $"flow deadline exceeded before {definition.Name} finished.";
 
     private static Activity? StartSpan(AgentDefinition definition)
     {
