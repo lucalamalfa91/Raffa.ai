@@ -1,7 +1,11 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.AiFlows.MarketKnowledge.Estimation;
+using Raffa.AiFlows.MarketKnowledge.Ingestion;
 using Raffa.AiFlows.MarketKnowledge.Retrieval;
+using Raffa.AiGateway.Agents;
+using Raffa.Market.Ingestion;
 using Raffa.Market.Retrieval;
 using Raffa.SharedKernel.Market;
 
@@ -33,6 +37,20 @@ internal static class MarketKnowledgeFlowServiceCollectionExtensions
             sp.GetService<Microsoft.Extensions.Logging.ILogger<MarketPriceEstimator>>()));
 
         services.AddScoped<Negotiation.Tools.IMarketRagSearch, MarketRagSearch>();
+
+        // A-11 / F7-T09: the market ingest batch's data-quality agent and provenance curator
+        // (Market:Ingestion:Curation, off by default: the curator is then a pass-through and the
+        // ingestion job makes no AI call for it). Resolved only by the ingestion job.
+        services.TryAddSingleton(sp =>
+        {
+            var options = new MarketCurationOptions();
+            sp.GetService<IConfiguration>()?.GetSection(MarketCurationOptions.SectionName).Bind(options);
+            return options;
+        });
+        services.TryAddScoped<IMarketBatchCurator>(sp => new MarketBatchCurator(
+            sp.GetRequiredService<StepRunner>(),
+            sp.GetRequiredService<MarketCurationOptions>(),
+            sp.GetRequiredService<Raffa.SharedKernel.IClock>()));
 
         return services;
     }

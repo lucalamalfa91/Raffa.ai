@@ -25,6 +25,7 @@ public sealed class MarketDbContext(DbContextOptions<MarketDbContext> options) :
 {
     public DbSet<MarketRecordEntity> MarketRecords => Set<MarketRecordEntity>();
     public DbSet<MarketEmbeddingEntity> MarketEmbeddings => Set<MarketEmbeddingEntity>();
+    public DbSet<MarketCorpusVersionEntity> CorpusVersions => Set<MarketCorpusVersionEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,6 +37,15 @@ public sealed class MarketDbContext(DbContextOptions<MarketDbContext> options) :
 
         modelBuilder.ApplyConfiguration(new MarketRecordConfiguration());
         modelBuilder.ApplyConfiguration(new MarketEmbeddingConfiguration());
+        modelBuilder.ApplyConfiguration(new MarketCorpusVersionConfiguration());
+
+        // F7-T08: every ordinary read sees the active corpus version only. The ingestion job (which
+        // builds the next version) and the version service opt out with IgnoreQueryFilters and
+        // address a version explicitly.
+        modelBuilder.Entity<MarketRecordEntity>().HasQueryFilter(
+            r => CorpusVersions.Any(v => v.Version == r.CorpusVersion && v.State == MarketCorpusStates.Active));
+        modelBuilder.Entity<MarketEmbeddingEntity>().HasQueryFilter(
+            e => CorpusVersions.Any(v => v.Version == e.CorpusVersion && v.State == MarketCorpusStates.Active));
 
         base.OnModelCreating(modelBuilder);
     }

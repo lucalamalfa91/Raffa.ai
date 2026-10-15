@@ -53,8 +53,11 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
     MarketDbContext dbContext,
     IAiGateway aiGateway,
     ITenantContext tenantContext,
-    ILogger<PgVectorMarketKnowledgeRetrieval>? logger = null) : IMarketKnowledgeRetrieval
+    ILogger<PgVectorMarketKnowledgeRetrieval>? logger = null,
+    MarketRetrievalOptions? retrievalOptions = null) : IMarketKnowledgeRetrieval
 {
+    private readonly MarketRetrievalOptions _retrieval = retrievalOptions ?? new MarketRetrievalOptions();
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ILogger _logger = (ILogger?)logger ?? NullLogger.Instance;
@@ -104,7 +107,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await SearchIndexAsync(queryVector, queryIdentity, topK, filters, cancellationToken)
+            return await SearchIndexAsync(query, queryVector, queryIdentity, topK, filters, cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -114,6 +117,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
     }
 
     private async Task<Result<IReadOnlyList<MarketNote>>> SearchIndexAsync(
+        string query,
         Vector queryVector,
         MarketEmbeddingIdentity queryIdentity,
         int topK,
@@ -124,7 +128,23 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         // columns -- cheap next to the vector query it protects. A query embedded with another model
         // (or a fixture query against a real index, and the reverse) has no meaningful distance to
         // these rows; ranking it anyway would return noise that looks like an answer, so refuse.
+        // F7-T08: readers see the active corpus version only. Resolved once per search and applied as a
+        // plain equality on the row (not the EXISTS of the model-level filter), which keeps the
+        // statement a simple filtered nearest-neighbour scan the HNSW index can serve.
+        var activeVersion = await dbContext.CorpusVersions
+            .AsNoTracking()
+            .Where(v => v.State == MarketCorpusStates.Active)
+            .Select(v => v.Version)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (activeVersion is null)
+        {
+            return Result<IReadOnlyList<MarketNote>>.Success([]);
+        }
+
         var populations = await dbContext.MarketEmbeddings
+            .IgnoreQueryFilters()
+            .Where(e => e.CorpusVersion == activeVersion)
             .AsNoTracking()
             .GroupBy(e => new { e.Model, e.IsFixture })
             .Select(g => new MarketEmbeddingPopulation(g.Key.Model, g.Key.IsFixture, g.Count()))
@@ -162,7 +182,11 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         // applied after the vector query: over-fetch a window, filter, and widen only when too few
         // rows survived. The widening is exact (no ANN index) and ends at the whole comparable
         // index, so a filtered search still finds every match the unbounded version did.
-        var window = MarketRetrievalWindow.Initial(topK, filtered, comparable);
+        // F7-T07: hybrid search and diversification re-rank a larger pool of vector candidates, so the
+        // vector side asks for more than topK; without either (the default) it asks for exactly topK.
+        var reranking = _retrieval.Hybrid || _retrieval.Diversify;
+        var wanted = reranking ? Math.Max(topK * Math.Max(1, _retrieval.PoolFactor), 20) : topK;
+        var window = MarketRetrievalWindow.Initial(wanted, filtered, comparable);
         var useIndex = !mixed;
 
         while (true)
@@ -171,17 +195,31 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
 
             var scannedWithIndex = useIndex;
             var neighbours = await FetchNeighboursAsync(
-                    queryVector, queryIdentity, window, scannedWithIndex, restrictToComparable: mixed, cancellationToken)
+                    queryVector, queryIdentity, window, scannedWithIndex, restrictToComparable: mixed, filters, activeVersion, cancellationToken)
                 .ConfigureAwait(false);
 
-            var hits = CollectHits(neighbours, topK, filters);
+            var hits = CollectHits(neighbours, wanted, filters);
 
             // An approximate (HNSW) scan may return fewer rows than the window even though more
             // exist, so a short result only proves exhaustion for an exact scan.
-            var exhausted = (!scannedWithIndex && neighbours.Count < window) || window >= comparable;
-            if (hits.Count >= topK || exhausted)
+            // F7-T02: the category/geography filter now runs in SQL, so a filtered query returns fewer
+            // rows than the window even when more exist; only an unfiltered exact scan can prove
+            // exhaustion by a short result.
+            var exhausted = (!filtered && !scannedWithIndex && neighbours.Count < window) || window >= comparable;
+            if (hits.Count >= wanted || exhausted)
             {
-                return Result<IReadOnlyList<MarketNote>>.Success(hits);
+                if (!reranking)
+                {
+                    return Result<IReadOnlyList<MarketNote>>.Success(hits.Select(ToNote).ToList());
+                }
+
+                var lexical = _retrieval.Hybrid
+                    ? await LexicalCandidatesAsync(query, filters, activeVersion, wanted, cancellationToken)
+                        .ConfigureAwait(false)
+                    : [];
+                var ranked = MarketHitRanker.Rank(hits, lexical, _retrieval, topK);
+                return Result<IReadOnlyList<MarketNote>>.Success(
+                    ranked.Select(r => MarketNoteComposer.Compose(r.Deal) with { Score = r.Score }).ToList());
             }
 
             // Too few survivors and more rows exist beyond the window: widen, exactly.
@@ -196,6 +234,8 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         int window,
         bool useIndex,
         bool restrictToComparable,
+        MarketKnowledgeSearchFilters? filters,
+        string activeVersion,
         CancellationToken cancellationToken)
     {
         // SET LOCAL needs a transaction; it also keeps the setting from leaking onto the pooled
@@ -223,7 +263,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         }
 
         var neighbours = await NearestNeighbours(
-                dbContext, queryVector, window, restrictToComparable ? queryIdentity : null)
+                dbContext, queryVector, window, restrictToComparable ? queryIdentity : null, filters, activeVersion)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -244,11 +284,23 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
     /// Public so the generated SQL can be asserted without a database (<c>ToQueryString()</c>).
     /// </summary>
     public static IQueryable<MarketNeighbour> NearestNeighbours(
-        MarketDbContext db, Vector queryVector, int limit, MarketEmbeddingIdentity? restrictTo = null)
+        MarketDbContext db,
+        Vector queryVector,
+        int limit,
+        MarketEmbeddingIdentity? restrictTo = null,
+        MarketKnowledgeSearchFilters? filters = null,
+        string? corpusVersion = null)
     {
         ArgumentNullException.ThrowIfNull(db);
 
+        // F7-T08: with an explicit corpus version the model-level "active only" filter is replaced by
+        // an equality on that version (see SearchIndexAsync); without one the model filter applies.
         IQueryable<MarketEmbeddingEntity> source = db.MarketEmbeddings.AsNoTracking();
+        if (corpusVersion is not null)
+        {
+            source = db.MarketEmbeddings.IgnoreQueryFilters().AsNoTracking().Where(e => e.CorpusVersion == corpusVersion);
+        }
+
         if (restrictTo is { } identity)
         {
             var model = identity.Model;
@@ -261,9 +313,29 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
             .Take(limit)
             .Select(e => new { e.RecordId, Distance = e.Vector.CosineDistance(queryVector) });
 
+        // F7-T02: category / geography are filtered in SQL on the denormalised columns. A NULL column
+        // (a record that predates them) is kept and decided by CollectHits' exact in-memory check.
+        IQueryable<MarketRecordEntity> records = db.MarketRecords.AsNoTracking();
+        if (corpusVersion is not null)
+        {
+            records = db.MarketRecords.IgnoreQueryFilters().AsNoTracking().Where(r => r.CorpusVersion == corpusVersion);
+        }
+
+        if (filters?.Category is { } category)
+        {
+            var folded = MarketFilterColumns.Category(category);
+            records = records.Where(r => r.Category == null || r.Category == folded);
+        }
+
+        if (filters?.Geography is { } geography)
+        {
+            var folded = MarketFilterColumns.Geography(geography);
+            records = records.Where(r => r.Geography == null || r.Geography == folded);
+        }
+
         return nearest
             .Join(
-                db.MarketRecords.AsNoTracking(),
+                records,
                 n => n.RecordId,
                 record => record.RecordId,
                 (n, record) => new { record.PayloadJson, n.Distance })
@@ -271,10 +343,77 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
             .Select(x => new MarketNeighbour(x.PayloadJson, x.Distance));
     }
 
-    private static List<MarketNote> CollectHits(
+    private static MarketNote ToNote(MarketCandidate candidate) =>
+        MarketNoteComposer.Compose(candidate.Deal) with { Score = candidate.Similarity };
+
+    /// <summary>
+    /// F7-T07 lexical side: records whose supplier or product is named in the query, found on the
+    /// denormalised, indexed <c>supplier_norm</c> / <c>product_norm</c> columns (no new index, no
+    /// full-text machinery). Ranked by how much of the facet set the query names (supplier and product
+    /// weigh most, then category, geography, currency), newest first; category / geography filters
+    /// apply as for the vector side. Rows whose columns were never back-filled cannot be found here.
+    /// </summary>
+    private async Task<IReadOnlyList<MarketDeal>> LexicalCandidatesAsync(
+        string query,
+        MarketKnowledgeSearchFilters? filters,
+        string activeVersion,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var supplierText = " " + MarketFilterColumns.SupplierNorm(query) + " ";
+        var productText = " " + MarketFilterColumns.ProductNorm(query) + " ";
+        var categoryText = productText;
+
+        IQueryable<MarketRecordEntity> records = dbContext.MarketRecords
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.CorpusVersion == activeVersion);
+        if (filters?.Category is { } category)
+        {
+            var folded = MarketFilterColumns.Category(category);
+            records = records.Where(r => r.Category == null || r.Category == folded);
+        }
+
+        if (filters?.Geography is { } geography)
+        {
+            var folded = MarketFilterColumns.Geography(geography);
+            records = records.Where(r => r.Geography == null || r.Geography == folded);
+        }
+
+        var rows = await records
+            .Where(r => r.SupplierNorm != null && r.SupplierNorm != ""
+                && r.ProductNorm != null && r.ProductNorm != ""
+                && (EF.Functions.Like(supplierText, "% " + r.SupplierNorm + " %")
+                    || EF.Functions.Like(productText, "% " + r.ProductNorm + " %")))
+            .OrderByDescending(r =>
+                (EF.Functions.Like(supplierText, "% " + r.SupplierNorm + " %") ? 4 : 0)
+                + (EF.Functions.Like(productText, "% " + r.ProductNorm + " %") ? 4 : 0)
+                + (r.Category != null && EF.Functions.Like(categoryText, "% " + r.Category + " %") ? 2 : 0)
+                + (r.Geography != null && EF.Functions.Like(" " + query.ToUpper() + " ", "% " + r.Geography + " %") ? 1 : 0)
+                + (r.Currency != null && EF.Functions.Like(" " + query.ToUpper() + " ", "% " + r.Currency + " %") ? 1 : 0))
+            .ThenByDescending(r => r.UpdatedAt)
+            .ThenBy(r => r.RecordId)
+            .Take(limit)
+            .Select(r => r.PayloadJson)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var deals = new List<MarketDeal>(rows.Count);
+        foreach (var payload in rows)
+        {
+            if (JsonSerializer.Deserialize<MarketDeal>(payload, JsonOptions) is { } deal)
+            {
+                deals.Add(deal);
+            }
+        }
+
+        return deals;
+    }
+
+    private static List<MarketCandidate> CollectHits(
         IReadOnlyList<MarketNeighbour> neighbours, int topK, MarketKnowledgeSearchFilters? filters)
     {
-        var hits = new List<MarketNote>(Math.Min(topK, neighbours.Count));
+        var hits = new List<MarketCandidate>(Math.Min(topK, neighbours.Count));
         var seenRecordIds = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var candidate in neighbours)
@@ -303,8 +442,6 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
                 continue;
             }
 
-            var note = MarketNoteComposer.Compose(deal);
-
             // pgvector cosine distance ranges [0, 2] (0 = identical direction, 1 = orthogonal,
             // 2 = opposite -- Pgvector.EntityFrameworkCore's own CosineDistance, the `<=>`
             // operator). MarketNote.Score's own doc comment promises "a vector-similarity score"
@@ -313,7 +450,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
             // converted here so a caller never has to know which retrieval implementation
             // produced a given hit to interpret its Score.
             var similarity = 1.0 - (candidate.Distance / 2.0);
-            hits.Add(note with { Score = similarity });
+            hits.Add(new MarketCandidate(deal, similarity));
 
             if (hits.Count == topK)
             {

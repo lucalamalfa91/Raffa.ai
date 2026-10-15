@@ -153,9 +153,20 @@ public sealed class ServiceBusExtractionConsumerHostedService(
 
     private async Task OnJobAsync(ProcessMessageEventArgs args)
     {
-        var decision = await jobProcessor
-            .ProcessAsync(args.Message.Body.ToMemory(), args.Message.DeliveryCount, args.CancellationToken)
-            .ConfigureAwait(false);
+        JobDeliveryDecision decision;
+        try
+        {
+            decision = await jobProcessor
+                .ProcessAsync(args.Message.Body.ToMemory(), args.Message.DeliveryCount, args.CancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // The host is shutting down mid-job (the handler already gave the job back): release the
+            // lock now so another replica gets the message at once, not after the lock expires.
+            await args.AbandonMessageAsync(args.Message, cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            return;
+        }
 
         switch (decision.Action)
         {

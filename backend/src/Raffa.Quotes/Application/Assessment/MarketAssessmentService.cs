@@ -1,9 +1,12 @@
 using Raffa.Benchmark;
+using Raffa.Benchmark.Contracts;
 using Raffa.Quotes.Domain;
 using Raffa.Quotes.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Raffa.Quotes.Application.Assessment;
 
@@ -58,9 +61,25 @@ namespace Raffa.Quotes.Application.Assessment;
 /// takes its own <see cref="ITenantContext"/> and opens the scope itself, so every current and future
 /// caller gets a correct claim with no caller-side change required.
 /// </para>
+///
+/// <para>
+/// <b>Task F6-T09 (matcher with <c>Raffa.Suppliers.Products</c>).</b> When the query as built finds no
+/// distribution, the line is retried with the names the tenant has recorded for it, in a fixed order
+/// (<see cref="MarketAssessmentMatchLadder"/>): the canonical product/SKU of its confirmed SKU mapping
+/// (<see cref="SkuProductMapping"/>, which until now was written by the manual mapping and read by
+/// nothing that priced the line) and the other names the tenant's supplier record carries
+/// (<see cref="ISupplierAliasLookup"/>). The first retry that finds a distribution wins and the line says
+/// which level it matched at; if none does the original answer stands, so a line that matched before
+/// matches exactly as before and the match rate can only go up. Both inputs are optional: without the
+/// lookup, or when it fails, only the mapping is used.
+/// </para>
 /// </summary>
 public sealed class MarketAssessmentService(
-    QuotesDbContext dbContext, IBenchmarkService benchmarkService, ITenantContext tenantContext)
+    QuotesDbContext dbContext,
+    IBenchmarkService benchmarkService,
+    ITenantContext tenantContext,
+    ISupplierAliasLookup? supplierAliasLookup = null,
+    ILogger<MarketAssessmentService>? logger = null)
 {
     /// <summary>
     /// Assesses every <see cref="QuoteLine"/> currently persisted for <paramref name="quoteId"/>/
@@ -90,17 +109,18 @@ public sealed class MarketAssessmentService(
             .ConfigureAwait(false);
 
         var assessments = new List<LineMarketAssessment>(lines.Count);
+        var retries = new RetryNames(dbContext, supplierAliasLookup, logger, tenantId, quote);
 
         foreach (var line in lines)
         {
-            assessments.Add(await AssessLineAsync(line, quote, cancellationToken).ConfigureAwait(false));
+            assessments.Add(await AssessLineAsync(line, quote, retries, cancellationToken).ConfigureAwait(false));
         }
 
         return Result<QuoteMarketAssessment>.Success(new QuoteMarketAssessment(quoteId, assessments));
     }
 
     private async Task<LineMarketAssessment> AssessLineAsync(
-        QuoteLine line, Quote quote, CancellationToken cancellationToken)
+        QuoteLine line, Quote quote, RetryNames retries, CancellationToken cancellationToken)
     {
         var queryResult = MarketAssessmentQueryBuilder.Build(quote, line);
 
@@ -136,6 +156,21 @@ public sealed class MarketAssessmentService(
         }
 
         var benchmark = benchmarkOutcome.Value;
+        var level = MarketMatchLevel.Direct;
+
+        // Task F6-T09: the query as built found nothing. Retry with the names the tenant recorded; the
+        // first retry that finds a distribution wins, otherwise the answer above stands (abstention).
+        if (!benchmark.HasSufficientData)
+        {
+            var retried = await RetryWithTenantNamesAsync(queryResult.Value, line, retries, cancellationToken)
+                .ConfigureAwait(false);
+            if (retried is { } found)
+            {
+                benchmark = found.Benchmark;
+                level = found.Level;
+            }
+        }
+
         var classification = MarketAssessmentCalculator.Classify(line.UnitPrice!.Value, benchmark);
 
         return new LineMarketAssessment(
@@ -145,6 +180,96 @@ public sealed class MarketAssessmentService(
             line.UnitPrice,
             line.Quantity,
             benchmark,
-            classification.Explanation);
+            level == MarketMatchLevel.Direct
+                ? classification.Explanation
+                : $"{classification.Explanation} Matched through {Describe(level)}.",
+            level);
+    }
+
+    private async Task<(BenchmarkResult Benchmark, MarketMatchLevel Level)?> RetryWithTenantNamesAsync(
+        BenchmarkQuery direct, QuoteLine line, RetryNames retries, CancellationToken cancellationToken)
+    {
+        var suppliers = await retries.SupplierNamesAsync(cancellationToken).ConfigureAwait(false);
+        var mapping = await retries.MappingAsync(line, cancellationToken).ConfigureAwait(false);
+
+        foreach (var candidate in MarketAssessmentMatchLadder.Retries(direct, suppliers, mapping))
+        {
+            var outcome = await benchmarkService
+                .GetBenchmarkAsync(candidate.Query, cancellationToken)
+                .ConfigureAwait(false);
+            if (outcome.IsSuccess && outcome.Value.HasSufficientData)
+            {
+                return (outcome.Value, candidate.Level);
+            }
+        }
+
+        return null;
+    }
+
+    private static string Describe(MarketMatchLevel level) => level switch
+    {
+        MarketMatchLevel.ProductAlias => "the product name or SKU confirmed for this SKU",
+        MarketMatchLevel.SupplierAlias => "another name recorded for this supplier",
+        MarketMatchLevel.SupplierAndProductAlias => "another name recorded for this supplier and the product name or SKU confirmed for this SKU",
+        _ => "the quote's own names",
+    };
+
+    /// <summary>
+    /// What the retries need, loaded the first time a line needs them and then reused for the rest of
+    /// the quote: a quote whose lines all match directly never reads either.
+    /// </summary>
+    private sealed class RetryNames(
+        QuotesDbContext dbContext,
+        ISupplierAliasLookup? aliasLookup,
+        ILogger<MarketAssessmentService>? logger,
+        TenantId tenantId,
+        Quote quote)
+    {
+        private IReadOnlyList<string>? _suppliers;
+        private IReadOnlyDictionary<string, SkuProductMapping>? _mappings;
+
+        public async Task<IReadOnlyList<string>> SupplierNamesAsync(CancellationToken cancellationToken)
+        {
+            if (_suppliers is not null)
+            {
+                return _suppliers;
+            }
+
+            _suppliers = [];
+            if (aliasLookup is not null && !string.IsNullOrWhiteSpace(quote.Supplier))
+            {
+                try
+                {
+                    _suppliers = await aliasLookup
+                        .GetAlternateNamesAsync(tenantId, quote.Supplier, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    // The aliases are an enhancement of the direct match, never a precondition of the
+                    // assessment: without them the line is assessed as it always was.
+                    logger?.LogWarning(
+                        exception, "Supplier aliases for quote {QuoteId} could not be read; matching without them.", quote.Id);
+                }
+            }
+
+            return _suppliers;
+        }
+
+        public async Task<SkuProductMapping?> MappingAsync(QuoteLine line, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(line.NormalizedSku))
+            {
+                return null;
+            }
+
+            _mappings ??= (await dbContext.SkuProductMappings.AsNoTracking()
+                    .Where(m => m.TenantId == tenantId)
+                    .ToListAsync(cancellationToken)
+                    .ConfigureAwait(false))
+                .ToDictionary(m => m.NormalizedSku, StringComparer.Ordinal);
+
+            return _mappings.GetValueOrDefault(line.NormalizedSku);
+        }
     }
 }

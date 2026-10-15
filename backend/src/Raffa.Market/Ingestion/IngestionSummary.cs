@@ -17,4 +17,7 @@ public sealed record IngestionSummary(
     string FeedVersion,
     int Inserted,
     int Updated,
-    int Unchanged);
+    int Unchanged,
+    string? CorpusVersion = null,
+    int Removed = 0,
+    IReadOnlyList<MarketRejection>? Rejections = null);

@@ -64,4 +64,66 @@ public sealed class FoundryEmbedClient(
 
         return Result<AiEmbeddingResult>.Success(new AiEmbeddingResult(vector, metadata));
     }
+
+    /// <summary>
+    /// T-05: one embeddings call for the whole array. The provider returns one datum per input
+    /// (with an <c>index</c>); the vectors are put back in input order and every one is checked for
+    /// the schema-fixed dimension, exactly like the single call. One metadata record per batch (the
+    /// input hash covers all texts, in order).
+    /// </summary>
+    public async Task<Result<AiEmbeddingBatchResult>> EmbedBatchAsync(
+        IReadOnlyList<string> texts, CancellationToken cancellationToken)
+    {
+        if (texts.Count == 0 || texts.Any(string.IsNullOrWhiteSpace))
+        {
+            return Result<AiEmbeddingBatchResult>.Failure("Embedding requires non-empty text.");
+        }
+
+        var model = modelOptions.Embed;
+        var route = FoundryOpenAiRoutes.Embeddings(foundryOptions, model.ModelId);
+
+        var result = await httpJsonClient
+            .PostAsync<EmbeddingBatchRequest, EmbeddingResponse>(
+                route.RelativeUrl,
+                new EmbeddingBatchRequest(texts, route.ModelInBody ? model.ModelId : null, model.Dimensions),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.IsFailure)
+        {
+            return Result<AiEmbeddingBatchResult>.Failure(result.Error);
+        }
+
+        var data = result.Value.Data;
+        if (data is null || data.Count != texts.Count)
+        {
+            return Result<AiEmbeddingBatchResult>.Failure(
+                $"Foundry embeddings response returned {data?.Count ?? 0} vectors for {texts.Count} inputs.");
+        }
+
+        var ordered = data.Select((datum, position) => (Position: datum.Index ?? position, datum.Embedding))
+            .OrderBy(x => x.Position)
+            .ToList();
+
+        var vectors = new List<IReadOnlyList<float>>(texts.Count);
+        foreach (var (_, vector) in ordered)
+        {
+            if (vector is null || vector.Count != AiGatewayConstants.EmbeddingDimensions)
+            {
+                return Result<AiEmbeddingBatchResult>.Failure(
+                    $"Foundry embeddings response returned a {vector?.Count ?? 0}-dimension vector; " +
+                    $"expected {AiGatewayConstants.EmbeddingDimensions} " +
+                    "(AiGatewayConstants.EmbeddingDimensions / ADR-004 schema-fixed dimension) - " +
+                    "set AiGateway:Models:Embed:Dimensions for a wider model.");
+            }
+
+            vectors.Add(vector);
+        }
+
+        var usage = result.Value.Usage is { } u ? new AiTokenUsage(u.PromptTokens, 0) : null;
+        var metadata = FoundryCallMetadataFactory.Build(
+            model, PromptVersion, clock, string.Join('\n', texts), usage);
+
+        return Result<AiEmbeddingBatchResult>.Success(new AiEmbeddingBatchResult(vectors, metadata));
+    }
 }

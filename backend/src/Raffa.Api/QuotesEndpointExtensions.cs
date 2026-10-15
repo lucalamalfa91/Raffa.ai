@@ -3,6 +3,7 @@ using Raffa.Api.Infrastructure;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Quotes.Application;
 using Raffa.Quotes.Application.Assessment;
+using Raffa.Quotes.Application.Header;
 using Raffa.Quotes.Application.Normalization;
 using Raffa.Quotes.Domain;
 using Raffa.SharedKernel;
@@ -39,6 +40,8 @@ public static class QuotesEndpointExtensions
         endpoints.MapPost("/api/quotes", UploadQuoteAsync);
         // Task F6-T03: Admin-only re-run over the stored bytes (parity with POST /api/documents/{id}/reprocess).
         endpoints.MapPost("/api/quotes/{id}/reprocess", ReprocessQuoteAsync);
+        // Task F6-T07 (user confirmation): set or correct the header fields the benchmark match is built from.
+        endpoints.MapPut("/api/quotes/{id}/header", UpdateHeaderAsync);
         // Task E19/F02/US01/T01 (quote-read-api) AC-1; ADR-028 §D2.
         endpoints.MapGet("/api/quotes", ListQuotesAsync);
         // Task E19/F02/US01/T01 (quote-read-api) AC-2/AC-3/AC-4; ADR-028 §D2 — the quote with its
@@ -63,7 +66,8 @@ public static class QuotesEndpointExtensions
     /// uploaded bytes + creates the queued <c>QuoteExtractionJob</c> (<see cref="QuoteUploadService"/>),
     /// then — same "read the bytes once, reuse them for the pipeline" shape `POST /api/documents`
     /// already uses, since an <c>IFormFile</c>'s own stream is not guaranteed re-readable after the
-    /// first copy — runs <c>QuoteExtractionPipeline</c> synchronously before responding
+    /// first copy — either queues the extraction for the Worker (task F6-T01, a broker is configured:
+    /// nothing extracts in this request) or, with no broker, runs <c>QuoteExtractionPipeline</c> before responding
     /// (AC-2 "line items extract...", AC-4 "reuse the epic-02 hybrid OCR path"). A pipeline
     /// failure is reported honestly in the response (`processingStatus`/`lineItemCount` fall back
     /// to the just-uploaded, pre-processing values) but never turns an already-successful upload
@@ -163,7 +167,15 @@ public static class QuotesEndpointExtensions
         // nothing: no second job, no second model call. A pipeline failure has already moved the quote
         // to Failed (task F6-T02), so that is what is reported, with every count at 0: nothing ran.
         QuoteProcessingSummary summary;
-        if (uploaded.IsDuplicate)
+        if (uploaded.ExtractionQueued)
+        {
+            // Task F6-T01: the extraction job is on the durable queue and the Worker runs it, so nothing
+            // extracts inside this request. The quote is reported as Uploaded with zero counts; the web
+            // client polls GET /api/quotes for the result, like it does for documents.
+            summary = new QuoteProcessingSummary(
+                uploaded.QuoteId, QuoteProcessingStatus.Uploaded, 0, 0, 0, 0, 0, 0);
+        }
+        else if (uploaded.IsDuplicate)
         {
             summary = new QuoteProcessingSummary(
                 uploaded.QuoteId,
@@ -198,7 +210,12 @@ public static class QuotesEndpointExtensions
             // value outside its valid range); invalidLineCount is the out-of-range subset.
             skippedLineCount = summary.SkippedCount,
             invalidLineCount = summary.InvalidCount,
+            // Task F6-T07: header fields the header stage read from the document, for the person to
+            // confirm (PUT /api/quotes/{id}/header). Empty when the stage is off or found nothing.
+            headerFilled = summary.HeaderFilled ?? [],
             deduplicated = uploaded.IsDuplicate,
+            // Task F6-T01: true when the Worker, not this request, runs the extraction.
+            extractionQueued = uploaded.ExtractionQueued,
             // Task E05/F02/US01/T01 (market-assessment): echoes what was actually recorded (including a
             // null, when the caller did not supply one) so a caller can see immediately whether
             // GET .../assessment will be able to match this quote's lines yet.
@@ -214,8 +231,9 @@ public static class QuotesEndpointExtensions
     /// Task F6-T03: Admin-only re-run of the extraction over a quote's stored bytes. The previous
     /// lines are replaced by the new ones, never added to (see <see cref="QuoteReprocessService"/>).
     /// 404 for an unknown quote (another tenant's included), 400 for a non-GUID id or a quote that
-    /// is still being processed, 403 for a non-admin. Until the durable queue of task F6-T01 the run
-    /// happens in this request, like a first upload; the response is the same summary shape.
+    /// is still being processed, 403 for a non-admin. With a durable queue configured (task F6-T01) the
+    /// job is queued for the Worker and the answer is 202; without one the run happens in this request,
+    /// like a first upload, and the response is the same summary shape.
     /// </summary>
     private static async Task<IResult> ReprocessQuoteAsync(
         string id,
@@ -258,6 +276,17 @@ public static class QuotesEndpointExtensions
         }
 
         var job = queued.Value;
+        if (job.ExtractionQueued)
+        {
+            // Task F6-T01: the Worker runs it; 202 like POST /api/documents/{id}/reprocess.
+            return Results.Accepted($"/api/quotes/{job.QuoteId.Value}", new
+            {
+                id = job.QuoteId.Value,
+                extractionJobId = job.ExtractionJobId.Value,
+                processingStatus = QuoteProcessingStatus.Uploaded.ToString(),
+            });
+        }
+
         var processingResult = await extractionPipeline.ProcessAsync(
             tenantId, job.QuoteId, job.FileName, job.MimeType, job.Bytes, cancellationToken);
         var summary = processingResult.IsSuccess
@@ -275,6 +304,60 @@ public static class QuotesEndpointExtensions
             unmatchedSkuCount = summary.UnmatchedSkuCount,
             skippedLineCount = summary.SkippedCount,
             invalidLineCount = summary.InvalidCount,
+            headerFilled = summary.HeaderFilled ?? [],
+        });
+    }
+
+    /// <summary>
+    /// Task F6-T07 ("conferma utente"): <c>PUT /api/quotes/{id}/header</c> with
+    /// <c>{ supplier?, currency?, geography?, purchaseDate? }</c> records a person's confirmation or
+    /// correction of the fields the benchmark match is built from, overriding whatever the upload or the
+    /// header stage put there. Omitted fields are left alone. Any member of the workspace may do it
+    /// (like the SKU-mapping correction); the next <c>GET .../assessment</c> reflects it. 404 for an
+    /// unknown quote (another tenant's included), 400 for a non-GUID id, a request that changes nothing
+    /// or an invalid value.
+    /// </summary>
+    private static async Task<IResult> UpdateHeaderAsync(
+        string id,
+        QuoteHeaderUpdate update,
+        HttpRequest request,
+        QuoteHeaderUpdateService headerService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+
+        if (!Guid.TryParse(id, out var quoteGuid))
+        {
+            return Results.BadRequest("The quote id in the route must be a GUID.");
+        }
+
+        var result = await headerService.UpdateAsync(
+            caller.TenantId, new EntityId(quoteGuid), update, caller.Identity!, cancellationToken);
+        if (result is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (result.IsFailure)
+        {
+            return Results.BadRequest(result.Error);
+        }
+
+        var header = result.Value;
+        return Results.Ok(new
+        {
+            id = header.QuoteId.Value,
+            supplier = header.Supplier,
+            currency = header.Currency,
+            geography = header.Geography,
+            purchaseDate = header.PurchaseDate,
         });
     }
 
@@ -523,6 +606,8 @@ public static class QuotesEndpointExtensions
                 explanation = line.TargetSaving.Explanation,
             },
         explanation = line.Explanation,
+        // Task F6-T09: how the benchmark was found. Direct unless the tenant's own names were needed.
+        matchLevel = line.MatchLevel.ToString(),
     };
 
     /// <summary>

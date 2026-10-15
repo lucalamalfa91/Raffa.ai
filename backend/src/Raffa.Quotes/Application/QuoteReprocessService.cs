@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Raffa.Quotes.Domain;
 using Raffa.Quotes.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Jobs;
 using Raffa.SharedKernel.Storage;
 using Raffa.SharedKernel.Tenancy;
 
@@ -29,7 +30,8 @@ namespace Raffa.Quotes.Application;
 /// </para>
 ///
 /// <para>
-/// Admin-only is the caller's rule (the endpoint), not this service's, as for documents.
+/// With a durable queue configured (task F6-T01) the job is published and the Worker runs it; the
+/// request returns at once. Admin-only is the caller's rule (the endpoint), not this service's, as for documents.
 /// </para>
 /// </summary>
 public sealed class QuoteReprocessService(
@@ -37,7 +39,8 @@ public sealed class QuoteReprocessService(
     IDocumentStorage storage,
     ITenantContext tenantContext,
     IAuditWriter auditWriter,
-    IClock clock)
+    IClock clock,
+    IJobQueuePublisher? jobQueuePublisher = null)
 {
     /// <summary>Audit action for a re-run that was queued.</summary>
     public const string ReprocessedAuditAction = "quote.reprocess.queued";
@@ -107,6 +110,21 @@ public sealed class QuoteReprocessService(
         dbContext.QuoteExtractionJobs.Add(job);
         quote.ProcessingStatus = QuoteProcessingStatus.Uploaded;
 
+        // Task F6-T01: with a durable queue the Worker runs the job; publish before the commit, as the
+        // upload does. Without one the caller runs it inline and gets the bytes for that.
+        var queued = jobQueuePublisher is { IsDurable: true };
+        if (queued)
+        {
+            await jobQueuePublisher!.PublishAsync(
+                new JobRequested(
+                    JobKinds.QuoteExtraction,
+                    tenantId.Value,
+                    quoteId.Value,
+                    job.Id.Value,
+                    JobRequested.CurrentSchemaVersion),
+                cancellationToken).ConfigureAwait(false);
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         await auditWriter.WriteAsync(
@@ -121,11 +139,17 @@ public sealed class QuoteReprocessService(
             cancellationToken).ConfigureAwait(false);
 
         return Result<QuoteReprocessQueued>.Success(new QuoteReprocessQueued(
-            quoteId, job.Id, quote.FileName, quote.MimeType, bytes));
+            quoteId, job.Id, quote.FileName, quote.MimeType, queued ? [] : bytes, queued));
     }
 }
 
-/// <summary>The queued re-run: which quote, which job the pipeline will advance, and the stored
-/// bytes the inline run needs.</summary>
+/// <summary>The queued re-run: which quote, which job the pipeline will advance, whether the Worker
+/// will run it (<paramref name="ExtractionQueued"/>), and otherwise the stored bytes the caller's
+/// inline run needs (empty when queued: the Worker reads them itself).</summary>
 public sealed record QuoteReprocessQueued(
-    EntityId QuoteId, EntityId ExtractionJobId, string FileName, string MimeType, byte[] Bytes);
+    EntityId QuoteId,
+    EntityId ExtractionJobId,
+    string FileName,
+    string MimeType,
+    byte[] Bytes,
+    bool ExtractionQueued = false);

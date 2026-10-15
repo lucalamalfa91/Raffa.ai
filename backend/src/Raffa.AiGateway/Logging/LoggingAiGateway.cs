@@ -136,6 +136,19 @@ public sealed class LoggingAiGateway : IAiGateway
             () => _inner.EmbedAsync(request, cancellationToken),
             r => r.Metadata, extraDetail: null, cancellationToken);
 
+    /// <summary>
+    /// T-05 / R1-06: one <c>ai_call</c> row per embedding batch (count, model, token usage and the
+    /// batch's input hash) instead of one row per text. Never the texts.
+    /// </summary>
+    public Task<Result<AiEmbeddingBatchResult>> EmbedBatchAsync(
+        IReadOnlyList<string> texts, CancellationToken cancellationToken = default) =>
+        InvokeAsync(
+            "embedded", "embeddings", "embedder", fallbackStep: null,
+            () => _inner.EmbedBatchAsync(texts, cancellationToken),
+            r => r.Metadata,
+            r => $"batchSize={r.Vectors.Count}",
+            cancellationToken);
+
     /// <inheritdoc/>
     public Task<Result<AiAnswerResult>> AnswerAsync(
         AiAnswerRequest request, CancellationToken cancellationToken = default) =>

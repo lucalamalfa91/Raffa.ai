@@ -45,6 +45,11 @@ public sealed class JevAiGateway(IAiGateway inner, JevClassifyClient classifyCli
         AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
         inner.EmbedAsync(request, cancellationToken);
 
+    /// <inheritdoc/>
+    public Task<Result<AiEmbeddingBatchResult>> EmbedBatchAsync(
+        IReadOnlyList<string> texts, CancellationToken cancellationToken = default) =>
+        inner.EmbedBatchAsync(texts, cancellationToken);
+
     public Task<Result<AiAnswerResult>> AnswerAsync(
         AiAnswerRequest request, CancellationToken cancellationToken = default) =>
         inner.AnswerAsync(request, cancellationToken);

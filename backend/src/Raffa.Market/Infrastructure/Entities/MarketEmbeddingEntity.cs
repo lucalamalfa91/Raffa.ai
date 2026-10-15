@@ -35,6 +35,9 @@ public sealed class MarketEmbeddingEntity
     /// without a schema change.</summary>
     public required string RecordId { get; set; }
 
+    /// <summary>F7-T08: the corpus version of the record this embedding belongs to.</summary>
+    public string CorpusVersion { get; set; } = MarketCorpusVersions.Initial;
+
     public int ChunkIndex { get; set; }
 
     /// <summary>The composed narrative text this row's <see cref="Vector"/> was embedded from
