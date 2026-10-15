@@ -252,8 +252,21 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     /// candidate over an unparseable query.</summary>
     private static int? ParseTermMonths(string term)
     {
-        var digits = new string(term.Where(char.IsAsciiDigit).ToArray());
-        return digits.Length > 0 && int.TryParse(digits, out var months) ? months : null;
+        // Only the first run of digits: "36 months (3 years)" is 36, not the concatenated 363.
+        var start = term.AsSpan().IndexOfAnyInRange('0', '9');
+        if (start < 0)
+        {
+            return null;
+        }
+
+        var rest = term.AsSpan(start);
+        var length = 0;
+        while (length < rest.Length && char.IsAsciiDigit(rest[length]))
+        {
+            length++;
+        }
+
+        return int.TryParse(rest[..length], out var months) ? months : null;
     }
 
     private static BenchmarkResult BuildConfidentResult(BenchmarkQuery query, MarketDeal match)

@@ -53,6 +53,31 @@ public class MarketFeedBenchmarkAdapterTests
         Assert.True(benchmark.SampleSize >= 5);
     }
 
+    /// <summary>F6-D06: a term such as "12 months (1 year)" must parse to 12 (the leading number),
+    /// not the concatenated digits 121, which matched no deal.</summary>
+    [Theory]
+    [InlineData("12 months (1 year)")]
+    [InlineData("12 months")]
+    [InlineData("12-month term (1 year)")]
+    public async Task Term_with_a_parenthetical_year_count_matches_on_the_leading_months(string term)
+    {
+        var query = new BenchmarkQuery(
+            Supplier: "Allianz",
+            Product: "Commercial Property Insurance",
+            Sku: null,
+            Geography: "CH",
+            Quantity: 1m,
+            Term: term,
+            Currency: "CHF",
+            PurchaseDate: new DateOnly(2026, 6, 1));
+
+        var result = await _adapter.GetBenchmarkAsync(query);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.HasSufficientData);
+        Assert.NotNull(result.Value.Distribution);
+    }
+
     /// <summary>
     /// Swiss Re carries exactly one fixture row (sampleSize 2) with no same-supplier/same-product
     /// sibling — the cleanest possible proof that a thin row abstains rather than the weak-match
