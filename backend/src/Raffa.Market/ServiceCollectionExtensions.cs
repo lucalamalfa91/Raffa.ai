@@ -117,6 +117,18 @@ public static class ServiceCollectionExtensions
             // first time Raffa.Api was given ConnectionStrings:Market: the API would not boot at
             // all. Every Market test constructs its own options directly, so only running the real
             // host surfaced it.
+            // F7-T05: the structured corpus, cached per corpus version and shared by every read path
+            // (Market:CorpusCache:Enabled, default on).
+            services.TryAddSingleton(sp =>
+            {
+                var cacheOptions = new MarketCorpusCacheOptions();
+                sp.GetService<IConfiguration>()
+                    ?.GetSection(MarketCorpusCacheOptions.SectionName)
+                    .Bind(cacheOptions);
+                return cacheOptions;
+            });
+            services.TryAddSingleton<MarketCorpusCache>();
+
             services.AddDbContextFactory<MarketDbContext>(options =>
                 MarketDbContextOptions.Configure(options, marketConnectionString));
 
@@ -140,7 +152,8 @@ public static class ServiceCollectionExtensions
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IBenchmarkProviderAdapter, MarketFeedBenchmarkAdapter>(sp =>
                 new MarketFeedBenchmarkAdapter(
                     sp.GetRequiredService<IDbContextFactory<MarketDbContext>>(),
-                    sp.GetRequiredService<IClock>())));
+                    sp.GetRequiredService<IClock>(),
+                    sp.GetRequiredService<MarketCorpusCache>())));
 
             // T-05: batch size / TPM budget / per-batch checkpoint of the ingestion job
             // (Market:Ingestion). Defaults are the pre-batching behaviour.

@@ -20,7 +20,8 @@ public sealed record MarketRecordDetail(MarketDeal Deal, string ProvenanceLabel)
 /// Postgres+pgvector database with no HTTP host in the loop — mirrors
 /// <c>Raffa.Documents.Contracts.Application.DocumentQueryService</c>'s identical split.
 /// </summary>
-public sealed class MarketRecordQueryService(MarketDbContext dbContext) : IMarketDealLookup
+public sealed class MarketRecordQueryService(MarketDbContext dbContext, MarketCorpusCache? corpusCache = null)
+    : IMarketDealLookup
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -89,9 +90,16 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext) : IMarke
     private async Task<IReadOnlyList<MarketDeal>> LoadWhereAsync(
         Func<MarketDeal, bool> predicate, CancellationToken cancellationToken)
     {
-        // The corpus is small (one feed, tens to low hundreds of rows) and the supplier and category
-        // live inside PayloadJson, so this filters in memory -- the same whole-corpus load
-        // MarketFeedBenchmarkAdapter.LoadDealsAsync already performs per benchmark query.
+        // F7-T05: with a corpus cache the whole-table read and the JSON parse happen once per corpus
+        // version, not once per call; without one (a bare construction) the table is read per call, as
+        // before. Supplier and category still live inside PayloadJson here -- F7-T02 moves them to
+        // columns.
+        if (corpusCache is not null)
+        {
+            var snapshot = await corpusCache.GetAsync(dbContext, cancellationToken).ConfigureAwait(false);
+            return snapshot.Deals.Where(predicate).ToList();
+        }
+
         var records = await dbContext.MarketRecords
             .AsNoTracking()
             .ToListAsync(cancellationToken)

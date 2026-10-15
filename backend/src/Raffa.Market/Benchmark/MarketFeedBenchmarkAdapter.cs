@@ -3,6 +3,7 @@ using Raffa.Benchmark.Adapters;
 using Raffa.Benchmark.Contracts;
 using Raffa.Market.Contracts;
 using Raffa.Market.Infrastructure;
+using Raffa.Market.Retrieval;
 using Raffa.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
@@ -65,6 +66,7 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     private readonly IMarketIntelligenceProvider? _provider;
     private readonly IDbContextFactory<MarketDbContext>? _dbContextFactory;
     private readonly IClock _clock;
+    private readonly MarketCorpusCache? _corpusCache;
 
     /// <summary>
     /// T01's original constructor: reads <see cref="MarketDeal"/> rows directly from
@@ -95,10 +97,12 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     /// this task) — see <see cref="Retrieval.PgVectorMarketKnowledgeRetrieval"/>'s own doc comment
     /// for the identical captive-dependency reasoning.
     /// </summary>
-    public MarketFeedBenchmarkAdapter(IDbContextFactory<MarketDbContext> dbContextFactory, IClock clock)
+    public MarketFeedBenchmarkAdapter(
+        IDbContextFactory<MarketDbContext> dbContextFactory, IClock clock, MarketCorpusCache? corpusCache = null)
     {
         _dbContextFactory = dbContextFactory;
         _clock = clock;
+        _corpusCache = corpusCache;
     }
 
     /// <summary>Registry key (<c>IBenchmarkProviderAdapter.Name</c>) and
@@ -181,6 +185,14 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
             await using var dbContext = await _dbContextFactory
                 .CreateDbContextAsync(cancellationToken)
                 .ConfigureAwait(false);
+
+            // F7-T05: the cached structured corpus (table order, as the plain read returned it) when
+            // the module registered one; otherwise the original per-call read.
+            if (_corpusCache is not null)
+            {
+                var snapshot = await _corpusCache.GetAsync(dbContext, cancellationToken).ConfigureAwait(false);
+                return Result<IReadOnlyList<MarketDeal>>.Success(snapshot.TableOrder);
+            }
 
             var records = await dbContext.MarketRecords
                 .AsNoTracking()
