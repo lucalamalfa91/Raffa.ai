@@ -103,10 +103,14 @@ public sealed class CapabilityInvestigator(
     /// <param name="question">The user's message, as typed.</param>
     /// <param name="knownSupplierNames">Every supplier this tenant has on file — removed from the
     /// feature texts, never sent to the model.</param>
+    /// <param name="recentTurns">INV-06: the conversation's earlier user questions, oldest first.
+    /// Used only when <see cref="GapInvestigationOptions.ContextTurns"/> is above zero; ignored
+    /// otherwise.</param>
     public async Task<GapInvestigation> InvestigateAsync(
         string question,
         IReadOnlyCollection<string> knownSupplierNames,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<string>? recentTurns = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
         ArgumentNullException.ThrowIfNull(knownSupplierNames);
@@ -121,9 +125,17 @@ public sealed class CapabilityInvestigator(
         var language = QuestionLanguage.Detect(question);
         var capabilities = CapabilityCatalog.All.Select(c => new CapabilityDto(c.Key, c.Title, c.Description)).ToList();
         var knownGaps = CapabilityGapCatalog.All.Select(g => new KnownGapDto(g.Key, g.OperationEn, g.AlternativeEn)).ToList();
-        var input = JsonSerializer.Serialize(
-            new InvestigatorInput(question.Trim(), language, capabilities, CapabilityInvestigatorAgent.AskAbilities, knownGaps),
-            JsonOptions);
+        // INV-06: the previous questions of the conversation, only while ContextTurns > 0 (default
+        // 0 = off) and the host supplied some. Off, the input is byte-identical to before.
+        var context = SelectContext(recentTurns, options.ContextTurns);
+        var input = context is null
+            ? JsonSerializer.Serialize(
+                new InvestigatorInput(question.Trim(), language, capabilities, CapabilityInvestigatorAgent.AskAbilities, knownGaps),
+                JsonOptions)
+            : JsonSerializer.Serialize(
+                new InvestigatorInputWithContext(
+                    question.Trim(), language, capabilities, CapabilityInvestigatorAgent.AskAbilities, knownGaps, context),
+                JsonOptions);
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, options.TimeoutSeconds)));
@@ -461,6 +473,35 @@ public sealed class CapabilityInvestigator(
         IReadOnlyList<CapabilityDto> Capabilities,
         IReadOnlyList<string> AskAbilities,
         IReadOnlyList<KnownGapDto> KnownGaps);
+
+    private sealed record InvestigatorInputWithContext(
+        string Question,
+        string Language,
+        IReadOnlyList<CapabilityDto> Capabilities,
+        IReadOnlyList<string> AskAbilities,
+        IReadOnlyList<KnownGapDto> KnownGaps,
+        IReadOnlyList<string> RecentUserQuestions);
+
+    /// <summary>Longest earlier question kept, in characters.</summary>
+    internal const int MaxContextTurnLength = 300;
+
+    /// <summary>The last <paramref name="count"/> non-blank earlier questions, oldest first, each cut
+    /// to <see cref="MaxContextTurnLength"/>; null when context is off or there is none.</summary>
+    internal static IReadOnlyList<string>? SelectContext(IReadOnlyList<string>? recentTurns, int count)
+    {
+        if (count <= 0 || recentTurns is null)
+        {
+            return null;
+        }
+
+        var kept = recentTurns
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim())
+            .Select(t => t.Length <= MaxContextTurnLength ? t : t[..MaxContextTurnLength])
+            .TakeLast(count)
+            .ToList();
+        return kept.Count == 0 ? null : kept;
+    }
 
     private sealed record FeaturePayload(
         string? Key,
