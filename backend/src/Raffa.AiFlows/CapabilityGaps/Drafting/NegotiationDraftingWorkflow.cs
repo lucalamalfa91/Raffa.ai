@@ -104,7 +104,7 @@ public sealed class NegotiationDraftingWorkflow
 
         if (!options.Enabled || pack.Count < options.MinPackItems)
         {
-            return Finalize(NegotiationEmailTemplate.Build(request.Language, request.SupplierName, pack, null), type, reused: false);
+            return Finalize(BuildTemplate(request, pack, null, type), type, reused: false);
         }
 
         var items = pack.Take(options.MaxItemsPerAgent).Select(ToItemDto).ToList();
@@ -138,7 +138,7 @@ public sealed class NegotiationDraftingWorkflow
         }
 
         return Finalize(
-            NegotiationEmailTemplate.Build(request.Language, request.SupplierName, pack, plan) with
+            BuildTemplate(request, pack, plan, type) with
             {
                 Attempts = result.Attempts >= 2 ? 2 : 0,
                 Failures = failures,
@@ -146,6 +146,13 @@ public sealed class NegotiationDraftingWorkflow
             type,
             reused);
     }
+
+    /// <summary>The deterministic draft: <see cref="NegotiationEmailTemplate"/>, or with
+    /// <see cref="DraftingOptions.LocalizedTemplates"/> the one for the draft type and language.</summary>
+    private DraftOutcome BuildTemplate(DraftRequest request, IReadOnlyList<PackItem> pack, DraftPlan? plan, DraftType type) =>
+        options.LocalizedTemplates
+            ? LocalizedDraftTemplate.Build(request.Language, request.SupplierName, pack, plan, type)
+            : NegotiationEmailTemplate.Build(request.Language, request.SupplierName, pack, plan);
 
     /// <summary>One failure line per rejected attempt, as before ("negotiation-writer: ..." then
     /// "negotiation-writer (retry): ..."), then the step's own failure when it ended on something
