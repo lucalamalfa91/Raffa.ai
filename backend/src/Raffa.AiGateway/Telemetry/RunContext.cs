@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace Raffa.AiGateway.Telemetry;
 
@@ -12,6 +13,10 @@ public sealed record RunContextData(string? RunId, string? TurnId, string? StepN
     /// <summary>Audit fragments the turn's steps leave for the turn's one audit row
     /// (<see cref="RunContext.AddTurnDetail"/>); shared by every scope of the same turn.</summary>
     internal ConcurrentQueue<string>? TurnDetails { get; init; }
+
+    /// <summary>The flow's absolute deadline as a <see cref="Stopwatch.GetTimestamp"/> value, or
+    /// <see langword="null"/> for none (the default: plan A-04, opt-in).</summary>
+    public long? FlowDeadlineTimestamp { get; init; }
 }
 
 /// <summary>
@@ -46,6 +51,32 @@ public static class RunContext
     /// <summary>Starts an agentic run inside the current turn (a fresh id by default), step cleared.</summary>
     public static IDisposable BeginRun(string? runId = null) =>
         Replace(current => current with { RunId = Sanitize(runId) ?? NewId(), StepName = null });
+
+    /// <summary>
+    /// Gives the flow an overall time budget (plan A-04): every step started inside the scope is also
+    /// bounded by what is left of it, and a step that starts after it ran out is not called. A nested
+    /// budget can only tighten the outer one. Dispose the result to leave the budget.
+    /// </summary>
+    public static IDisposable BeginFlowDeadline(TimeSpan budget)
+    {
+        if (budget <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(budget), budget, "A flow deadline must be positive.");
+        }
+
+        var target = Stopwatch.GetTimestamp() + (long)(budget.TotalSeconds * Stopwatch.Frequency);
+        return Replace(current => current with
+        {
+            FlowDeadlineTimestamp = current.FlowDeadlineTimestamp is { } existing ? Math.Min(existing, target) : target,
+        });
+    }
+
+    /// <summary>What is left of the flow's budget (zero or negative once it ran out), or
+    /// <see langword="null"/> when no flow deadline is set.</summary>
+    public static TimeSpan? FlowRemaining =>
+        Ambient.Value?.FlowDeadlineTimestamp is { } deadline
+            ? Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline)
+            : null;
 
     /// <summary>Names the step being executed; run and turn are kept.</summary>
     public static IDisposable BeginStep(string stepName)

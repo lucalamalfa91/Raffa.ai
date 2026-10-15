@@ -68,7 +68,9 @@ public sealed partial class AgentDefinition
         string? registeredPromptHash = null,
         string? promptResource = null,
         string? languageDirective = null,
-        bool retryOnVerifierViolation = true)
+        bool retryOnVerifierViolation = true,
+        bool skipOnDeadline = false,
+        bool responseLanguageDirective = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(version);
@@ -98,6 +100,8 @@ public sealed partial class AgentDefinition
         PromptResource = promptResource;
         LanguageDirective = string.IsNullOrWhiteSpace(languageDirective) ? null : languageDirective;
         RetryOnVerifierViolation = retryOnVerifierViolation;
+        SkipOnDeadline = skipOnDeadline;
+        ResponseLanguageDirective = responseLanguageDirective;
         PromptHash = HashPrompt(prompt);
     }
 
@@ -111,9 +115,10 @@ public sealed partial class AgentDefinition
         string? registeredPromptHash = null,
         string? promptResource = null,
         string? languageDirective = null,
-        bool retryOnVerifierViolation = true) =>
+        bool retryOnVerifierViolation = true,
+        bool skipOnDeadline = false) =>
         new(name, version, prompt, AgentSchema.For<TOut>(), deadline, failurePolicy, AgentRole.Analyze,
-            registeredPromptHash, promptResource, languageDirective, retryOnVerifierViolation);
+            registeredPromptHash, promptResource, languageDirective, retryOnVerifierViolation, skipOnDeadline);
 
     /// <summary>Stable agent identity: the audit <c>agent=</c> and <c>step=</c>, the span name, the
     /// gateway's strict-schema name. Letters, digits, '-' and '_' only.</summary>
@@ -157,6 +162,34 @@ public sealed partial class AgentDefinition
     /// <summary>Whether a verifier violation buys one more attempt with the violation named (at most
     /// one, the generalization of <c>RegenerateOnce</c>); <see langword="false"/> rejects at once.</summary>
     public bool RetryOnVerifierViolation { get; }
+
+    /// <summary>
+    /// Plan A-04: when <see langword="true"/>, a step that misses its own deadline or the flow's
+    /// (<see cref="Telemetry.RunContext.BeginFlowDeadline"/>) ends as an explicit <see cref="StepStatus.Skipped"/>
+    /// ("skipped: deadline ...") whatever its <see cref="FailurePolicy"/>, instead of degrading by it.
+    /// Off by default: a deadline then degrades by the policy as it always did.
+    /// </summary>
+    public bool SkipOnDeadline { get; }
+
+    /// <summary>
+    /// Plan LANG-04: when <see langword="true"/>, the runner appends the versioned per-language
+    /// response directive (<see cref="LanguageDirectives"/>) for the input's language after the prompt.
+    /// Off by default; <see cref="SystemPrompt"/> and the prompt hash never include it, so opting in
+    /// changes no registered text.
+    /// </summary>
+    public bool ResponseLanguageDirective { get; }
+
+    /// <summary>A copy of this definition that opts in to the per-language response directive.</summary>
+    public AgentDefinition WithResponseLanguageDirective() =>
+        new(Name, Version, Prompt, JsonSchema, Deadline, FailurePolicy, Role, RegisteredPromptHash, PromptResource,
+            LanguageDirective, RetryOnVerifierViolation, SkipOnDeadline, responseLanguageDirective: true);
+
+    /// <summary>The system prompt for a call in <paramref name="language"/>: <see cref="SystemPrompt"/>,
+    /// then the response directive when the definition opted in.</summary>
+    public string SystemPromptFor(string? language) =>
+        ResponseLanguageDirective
+            ? SystemPrompt + Environment.NewLine + Environment.NewLine + LanguageDirectives.For(language)
+            : SystemPrompt;
 
     /// <summary>The system prompt actually sent: <see cref="Prompt"/>, then the language directive.</summary>
     public string SystemPrompt =>
