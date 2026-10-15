@@ -166,7 +166,7 @@ public sealed class CapabilityGapTurnHandler(
     /// F1-D07, decision D7: a draft is a copyable text with no side effect, so building its pack
     /// writes no negotiation todo; the Renewals link the reply offers opens the screen, whose
     /// todos the user creates by asking the renewal-strategy question or from the screen itself),
-    /// Ask's agentic flow exactly as <see cref="BuildInDomainReplyAsync"/> runs it (the
+    /// Ask's agentic flow exactly as <see cref="InDomainReplyPipeline"/> runs it (the
     /// market data check and the market researcher's items appended, the council's plays inserted),
     /// the pack budget, then <see cref="NegotiationDraftingWorkflow.DraftAsync"/>. A
     /// template fallback or a retried writer is audited as a guard intervention

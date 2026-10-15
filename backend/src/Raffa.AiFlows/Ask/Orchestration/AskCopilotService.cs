@@ -91,7 +91,7 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 /// <b>Scope wins by id, and an unseen scope refuses (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl.
 /// 12; lock 4)</b>: the gate-level override above only carries a <em>name</em> forward — two
 /// portfolio rows can share one supplier's display name, and a name-only lookup could land on the
-/// wrong one. <see cref="BuildInDomainReplyAsync"/> also receives the scoped <em>id</em> itself
+/// wrong one. <see cref="InDomainReplyPipeline"/> also receives the scoped <em>id</em> itself
 /// (not just the resolved name) and lets it win outright over that lookup, and folds it into the
 /// routing context's own contract id so a follow-up action never points at the same-name-but-wrong
 /// contract either. A <c>scopeContractId</c> that does not resolve to a row in this call's own
@@ -135,13 +135,13 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 /// only the top three ever reach the returned pack (<c>PackItem</c>s — "chat top-3"): the two counts
 /// deliberately differ, so a re-ask never re-litigates a point Procurement already ticked done.
 /// <b>Live Q3 turn (E31/F01/US01/T01 q3-route + E29/F02/US01/T01 todo-host-upsert)</b>:
-/// <see cref="BuildInDomainReplyAsync"/>'s <see cref="AskIntent.RenewalStrategy"/> named-contract
+/// <see cref="InDomainReplyPipeline"/>'s <see cref="AskIntent.RenewalStrategy"/> named-contract
 /// branch calls <see cref="BuildRenewalStrategyWithEvidenceAsync"/> (calc + tenant + market + raffa)
 /// with <c>persistTodos: true</c>, so a real Q3 ask durably upserts before
 /// <see cref="AnswerComposer.AnswerAsync"/> — the <c>/renewals?select={id}</c> deep-link is true
 /// after asking. Feature-03 (q3-persist, NW-97) injects that turn's own server-side
 /// <c>/renewals?select={id}</c> <see cref="CopilotActionKind.Navigate"/> action — see
-/// <see cref="BuildInDomainReplyAsync"/>'s own <c>isQ3PersistTurn</c> branch, never
+/// <see cref="InDomainReplyPipeline"/>'s own <c>isQ3PersistTurn</c> branch, never
 /// <c>composed.Value.Result.ActionKeys</c> (the model's own action keys).
 /// </para>
 ///
@@ -196,25 +196,16 @@ public sealed partial class AskCopilotService(
     PortfolioQueryService portfolioQueryService,
     ISupplierNameLookup supplierNameLookup,
     CapabilityCheckRunner capabilityCheckRunner,
-    InterviewPlanner interviewPlanner,
-    InterviewOptions interviewOptions,
     WebResearchFlow webResearchFlow,
     WebModeFlow webModeFlow,
     IAuditWriter auditWriter,
     GateReplyBuilder gateReplies,
     AbstainRecovery abstainRecovery,
     AskTurnAudit audit,
-    StructuredFactPackBuilder structuredFacts,
-    ClausePackBuilder clauses,
     MarketComparePackBuilder marketCompare,
     RenewalStrategyPackBuilder renewalStrategy,
     NegotiationPointsPackBuilder negotiationPoints,
-    PortfolioStrategyPackBuilder portfolioStrategy,
-    SavingsPackBuilder savings,
-    NoticeFallbackReplies noticeFallbacks,
-    InDomainTurnPlanner inDomainPlanner,
-    AgentPhase agentPhase,
-    AnswerPhase answerPhase,
+    InDomainReplyPipeline inDomain,
     CapabilityGapTurnHandler capabilityGapTurn,
     ITenantContext tenantContext,
     IClock clock,
@@ -281,7 +272,7 @@ public sealed partial class AskCopilotService(
     /// from Contract 360's "Ask about it" (ADR-024 "citation landing... → /ask?scope="), null for
     /// the global Ask bar's always-unscoped new chat. See the scope-resolution step below (right
     /// after <c>gate</c> is classified) for what this does to the turn. Threaded on into
-    /// <see cref="BuildInDomainReplyAsync"/> unchanged (task E27/F02/US01/T01, NW-76) so that
+    /// <see cref="InDomainReplyPipeline"/> unchanged (task E27/F02/US01/T01, NW-76) so that
     /// method can tell "no scope" from "a scope that did not resolve" — this parameter alone, not
     /// the gate's already-resolved supplier name, is what lets a same-name portfolio hit lose to
     /// the real scoped id and an unseen id refuse (see this type's own doc comment).</param>
@@ -468,24 +459,18 @@ public sealed partial class AskCopilotService(
         // to abstain" from every other abstain path (empty pack, gateway call failed) — so every
         // branch here carries its own guardIntervened alongside the reply, rather than WriteAuditAsync
         // inferring it from ReplyKind alone (which cannot tell the two apart; see
-        // BuildInDomainReplyAsync's own doc comment on its tuple return).
+        // InDomainReplyPipeline's tuple return).
         // ADR-032: the composer's web-search toggle takes every question that is a search (see
         // IsWebModeTurn) to the web and to the store, the procurement-only filters lifted.
         var (reply, guardIntervened, fallbackUsed) = WebModeFlow.IsWebModeTurn(turnHints, gate, question)
             ? await webModeFlow.BuildReplyAsync(
                 tenantId, question, gate, portfolio, scopedContractItem, actor,
-                (webQuestion, namedSupplier, ct) => BuildInDomainReplyAsync(
-                    tenantId,
-                    webQuestion,
-                    namedSupplier,
-                    portfolio,
-                    supplierNames,
-                    recentTurns,
-                    scopeContractId,
-                    scopedContractItem,
-                    actor,
-                    AskTurnHints.None with { SuppressInterview = true },
-                    previousRaffaTurnWasInterview: false,
+                (webQuestion, namedSupplier, ct) => inDomain.BuildAsync(
+                    new AskTurnScope(
+                        tenantId, webQuestion, namedSupplier, recentTurns, actor, portfolio, supplierNames,
+                        scopeContractId, scopedContractItem, AskTurnHints.None with { SuppressInterview = true },
+                        PreviousRaffaTurnWasInterview: false),
+                    trace: null,
                     ct),
                 abstainRecovery.Resolver,
                 cancellationToken)
@@ -499,10 +484,12 @@ public sealed partial class AskCopilotService(
                 GateLabel.CapabilityGap => await capabilityGapTurn.BuildCapabilityGapReplyAsync(
                     tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor, cancellationToken)
                     .ConfigureAwait(false),
-                GateLabel.InDomain => await BuildInDomainReplyAsync(
-                    tenantId, question, gate.NamedSupplier, portfolio, supplierNames, recentTurns,
-                    scopeContractId, scopedContractItem, actor, turnHints, previousRaffaTurnWasInterview, cancellationToken,
-                    turnTrace)
+                GateLabel.InDomain => await inDomain.BuildAsync(
+                    new AskTurnScope(
+                        tenantId, question, gate.NamedSupplier, recentTurns, actor, portfolio, supplierNames,
+                        scopeContractId, scopedContractItem, turnHints, previousRaffaTurnWasInterview),
+                    turnTrace,
+                    cancellationToken)
                     .ConfigureAwait(false),
                 _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
             };
@@ -551,190 +538,6 @@ public sealed partial class AskCopilotService(
         }
 
         return reply;
-    }
-
-    // ----- In-domain: planner -> pack -> guarded answer (R-ASK-03...08) -----
-
-    /// <summary>
-    /// Returns the reply alongside whether <see cref="AnswerComposer"/>'s own guard pipeline ever
-    /// intervened for this turn (<see cref="AnswerComposerResult.GuardIntervened"/>) — folded into
-    /// the audit entry by <see cref="AskAsync"/> as AC-7's <c>abstainGuardIntervened</c>. Only the
-    /// final <c>composed.Value.GuardIntervened</c> branch below can ever be <see langword="true"/>:
-    /// the routing-only reply and the empty-pack/gateway-failure abstains never called
-    /// <see cref="AnswerComposer.AnswerAsync"/> at all, so there was no guard verdict to intervene —
-    /// reporting <see langword="false"/> for those is what actually lets an operator tell "the pack
-    /// was empty" and "the answer failed to reach the gateway" apart from a real guard catch, which
-    /// a single boolean derived from <see cref="ReplyKind"/> alone could never do (every one of
-    /// these paths returns <see cref="ReplyKind.Abstain"/> identically).
-    ///
-    /// <para>
-    /// <b>Which contract "named" resolves to (task E27/F05/US01/T01, NW-80)</b>: see
-    /// <see cref="ResolveNamedContractItem"/> for the scoped-id-wins / soonest-cancellation-deadline
-    /// rule that replaced a plain <c>FirstOrDefault</c> here, and never silently merges multiple
-    /// contracts under one supplier without saying so.
-    /// </para>
-    /// </summary>
-    /// <param name="scopeContractId">Echoes <see cref="AskAsync"/>'s own parameter of the same name
-    /// — <see langword="null"/> for an unscoped turn. Only used to tell that case apart from "a
-    /// scope was set but did not resolve" below; the id itself is <paramref name="scopedContractItem"/>.</param>
-    /// <param name="scopedContractItem">The portfolio row <paramref name="scopeContractId"/>
-    /// resolved to in this call's own freshly-fetched <paramref name="portfolio"/>
-    /// (<see langword="null"/> when <paramref name="scopeContractId"/> is itself
-    /// <see langword="null"/>, <em>or</em> when it named an id this tenant cannot currently see —
-    /// wrong tenant, no linked document, deleted since the conversation was opened). Task
-    /// E27/F02/US01/T01 (NW-76; ADR-024 w19 cl. 12; lock 4) — see this type's own doc comment.</param>
-    /// <param name="actor">Echoes <see cref="AskAsync"/>'s own required, no-default <c>actor</c>
-    /// (the caller's resolved token subject, ADR-011 w16 §15) — threaded down only so the
-    /// <see cref="AskIntent.RenewalStrategy"/> named-contract branch can pass it on to
-    /// <see cref="BuildNegotiationPointsPackAsync"/>'s own required <c>actor</c> parameter whenever
-    /// <c>persistTodos: true</c> (task E29/F02/US01/T01, todo-host-upsert). Never the model.</param>
-    private async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildInDomainReplyAsync(
-        TenantId tenantId,
-        string question,
-        string? namedSupplier,
-        PortfolioPage portfolio,
-        IReadOnlyDictionary<EntityId, string> supplierNames,
-        IReadOnlyList<(string Role, string Markdown)> recentTurns,
-        EntityId? scopeContractId,
-        PortfolioListItem? scopedContractItem,
-        string actor,
-        AskTurnHints hints,
-        bool previousRaffaTurnWasInterview,
-        CancellationToken cancellationToken,
-        InDomainTurnTrace? trace = null)
-    {
-        var inDomainTurn = inDomainPlanner.Plan(
-            new AskTurnScope(
-                tenantId, question, namedSupplier, recentTurns, actor, portfolio, supplierNames,
-                scopeContractId, scopedContractItem, hints, previousRaffaTurnWasInterview),
-            trace,
-            out var refusal);
-        if (inDomainTurn is null)
-        {
-            return (refusal!, false, false);
-        }
-
-        var plan = inDomainTurn.Plan;
-        var forcedContractItem = inDomainTurn.ForcedContractItem;
-        var namedContractItem = inDomainTurn.NamedContractItem;
-        var disambiguationItem = inDomainTurn.DisambiguationItem;
-        var supplierMatches = inDomainTurn.SupplierMatches;
-        var routingContext = inDomainTurn.RoutingContext;
-
-        // ADR-030 -- web research. A consumed consent runs the research role here, before any pack
-        // is built (nothing of the tenant's data is in scope of that call, by construction); an
-        // explicit or forced WebResearch intent gets the consent question, or a redirect naming
-        // the closed gate. There is no path from here to the search without a consumed consent.
-        if (hints.AuthorizedWebResearch is { } authorizedWebResearch && plan.Intent == AskIntent.WebResearch)
-        {
-            var reply = await webResearchFlow.RunAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, abstainRecovery.Resolver, cancellationToken)
-                .ConfigureAwait(false);
-            return (reply.Reply, reply.GuardIntervened, false);
-        }
-
-        if (plan.Intent == AskIntent.WebResearch)
-        {
-            return (
-                await webResearchFlow.BuildEntryReplyAsync(tenantId, question, portfolio, routingContext, actor, abstainRecovery.Resolver, cancellationToken)
-                    .ConfigureAwait(false),
-                false,
-                false);
-        }
-
-        if (plan.Intent is AskIntent.Navigate or AskIntent.QuoteRoute)
-        {
-            return (gateReplies.BuildRoutingOnlyReply(plan, routingContext), false, false);
-        }
-
-        // ADR-030 — the interview. Decided here, after scope and supplier resolution and before
-        // any pack is built, so an ambiguous turn retrieves nothing and calls no model. An answer
-        // to an interview (hints.SuppressInterview) never triggers a second one, and neither does
-        // a turn that directly follows one.
-        if (interviewOptions.Enabled && !hints.SuppressInterview)
-        {
-            var interviewContext = new InterviewContext(
-                HasScope: scopeContractId is not null || forcedContractItem is not null,
-                NamedSupplierContractCount: supplierMatches.Count,
-                PortfolioIsEmpty: portfolio.Items.Count == 0,
-                PreviousRaffaTurnWasInterview: previousRaffaTurnWasInterview,
-                IsNoticeQuestion: IntentPlanner.IsNoticeQuestion(question));
-            var signals = AmbiguityDetector.Detect(question, plan, interviewContext, interviewOptions);
-            if (signals.Verdict == AmbiguityVerdict.Ambiguous)
-            {
-                // The web option rides the interpretation menu only when every ADR-030 gate is
-                // open and the question is a procurement topic; picking it asks consent, never
-                // searches.
-                var webOffer = await webResearchFlow.BuildOfferAsync(tenantId, question, cancellationToken).ConfigureAwait(false);
-                var interview = interviewPlanner.Plan(
-                    question, plan, signals, BuildInterviewInputs(supplierMatches, portfolio, supplierNames), webOffer);
-                if (interview is not null)
-                {
-                    return (InterviewReplyBuilder.Interview(interview), false, false);
-                }
-            }
-        }
-
-        // Task E30/F02/US01/T01 (NW-94): the five notice fallbacks are fully server-decided, so a
-        // notice question never reaches AnswerComposer/the AI gateway at all -- intercepted here,
-        // before any pack is built, the same short-circuit shape the Navigate/QuoteRoute branch
-        // above already uses. Deliberately checked before namedContractItem is known to be
-        // resolved or not: BuildNoticeFallbackReplyAsync itself is what tells "a resolved contract"
-        // (cases 1-4) apart from "an unscoped notice question" (case 5, NW-94's own "unscoped
-        // deictic" abstain), so both must reach it rather than only the scoped half. Because every
-        // notice question leaves here, the pack switch below never sees one: the structured-fact
-        // pack is the plain one, with no notice branch of its own.
-        if (plan.Intent == AskIntent.StructuredFact && IntentPlanner.IsNoticeQuestion(question))
-        {
-            return (
-                await noticeFallbacks.BuildNoticeFallbackReplyAsync(question, namedContractItem, disambiguationItem, routingContext, cancellationToken)
-                    .ConfigureAwait(false),
-                false,
-                false);
-        }
-
-        var packItems = plan.Intent switch
-        {
-            AskIntent.StructuredFact => await structuredFacts.BuildStructuredFactPackAsync(question, namedContractItem, portfolio, supplierNames, cancellationToken)
-                .ConfigureAwait(false),
-            AskIntent.Clause => await clauses.BuildClausePackAsync(tenantId, question, namedContractItem, cancellationToken)
-                .ConfigureAwait(false),
-            AskIntent.MarketCompare => await marketCompare.BuildMarketComparePackAsync(namedContractItem, cancellationToken).ConfigureAwait(false),
-            AskIntent.RenewalStrategy => namedContractItem is not null
-                ? await renewalStrategy.BuildRenewalStrategyWithEvidenceAsync(tenantId, question, namedContractItem, actor, cancellationToken, plan.Goal).ConfigureAwait(false)
-                : await portfolioStrategy.BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
-            AskIntent.PortfolioStrategy => await portfolioStrategy.BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
-            AskIntent.PortfolioSavingsTarget => await savings.BuildPortfolioSavingsTargetPackAsync(portfolio, plan.Goal, cancellationToken).ConfigureAwait(false),
-            AskIntent.Savings => namedContractItem is not null
-                ? await savings.BuildSavingsLeverPackAsync(tenantId, namedContractItem, plan.Goal, actor, cancellationToken).ConfigureAwait(false)
-                : await portfolioStrategy.BuildPortfolioStrategyPackAsync(portfolio, supplierNames, cancellationToken).ConfigureAwait(false),
-            AskIntent.DocumentStatus => DocumentStatusPack.Build(portfolio, supplierNames),
-            _ => [],
-        };
-
-        // NW-80 "never silently merge": prepended, not appended, so PackBudget.Apply (which always
-        // keeps at least its first item) and FixtureAiGateway.AnswerFromPack (which cites only the
-        // first few pack items) can never drop the one sentence telling the user which contract was
-        // chosen among several.
-        if (disambiguationItem is not null)
-        {
-            packItems = packItems.Prepend(disambiguationItem).ToList();
-        }
-
-        var agents = await agentPhase.RunAsync(
-                question,
-                plan.Goal,
-                packItems,
-                new AgentPhaseRequest(
-                    plan.Intent is AskIntent.DocumentStatus or AskIntent.Clause ? []
-                    : namedContractItem is not null ? [namedContractItem]
-                    : MarketDataCheck.ContractsForDataCheck(packItems, portfolio),
-                    IntentPolicy.RunsMarketResearch(plan.Intent, portfolio),
-                    IntentPolicy.IsCouncilIntent(plan.Intent, namedContractItem),
-                    AppendCalendarItem: true),
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        return await answerPhase.ComposeAsync(inDomainTurn, agents, cancellationToken).ConfigureAwait(false);
     }
 
     private static string ComputeHash(string input) => QueryHasher.ComputeHash(input);

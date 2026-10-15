@@ -52,7 +52,7 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 
 /// <summary>What an in-domain turn is about, as <see cref="AskCopilotService.AskAsync"/> hands it
 /// down: exactly the values the former <c>BuildInDomainReplyAsync</c> parameters carried (F1 Ask split, PR-4).</summary>
-internal sealed record AskTurnScope(
+public sealed record AskTurnScope(
     TenantId TenantId,
     string Question,
     string? NamedSupplier,
@@ -67,7 +67,7 @@ internal sealed record AskTurnScope(
 
 /// <summary>What the former <c>BuildInDomainReplyAsync</c> computed before any branch: the plan, the
 /// forced and named contract, the disambiguation item and the routing context.</summary>
-internal sealed record InDomainTurn(
+public sealed record InDomainTurn(
     AskTurnScope Scope,
     IntentPlanResult Plan,
     PortfolioListItem? ForcedContractItem,
