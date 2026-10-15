@@ -10,11 +10,14 @@ using Raffa.AiGateway.Agents;
 namespace Raffa.AiFlows.Negotiation.Orchestration;
 
 /// <summary>What the council produced for one turn: the pack items to insert, which agents ran,
-/// and which failed (a failed agent degrades the council, never the turn).</summary>
+/// and which failed (a failed agent degrades the council, never the turn).
+/// <paramref name="PlaysDropped"/> counts the strategist's plays the council discarded (a blank
+/// lever or ask, no citation in the pack, a figure the numeric guard rejects): telemetry only.</summary>
 public sealed record CouncilOutcome(
     IReadOnlyList<PackItem> Items,
     IReadOnlyList<string> AgentsRun,
-    IReadOnlyList<string> Failures)
+    IReadOnlyList<string> Failures,
+    int PlaysDropped = 0)
 {
     public static CouncilOutcome Empty { get; } = new([], [], []);
 }
@@ -159,7 +162,7 @@ public sealed class NegotiationCouncil
             return new CouncilOutcome([], agentsRun, failures);
         }
 
-        var items = BuildPlayItems(payload, pack, packKeys);
+        var items = BuildPlayItems(payload, pack, packKeys, out var playsDropped);
 
         // One owner of the verdict (plan F2-D03): the strategist returns plays only; the verdict is
         // computed from the calculators' own items, so it cannot contradict them.
@@ -168,7 +171,7 @@ public sealed class NegotiationCouncil
             items.Add(verdictItem);
         }
 
-        return new CouncilOutcome(items, agentsRun, failures);
+        return new CouncilOutcome(items, agentsRun, failures, playsDropped);
     }
 
     /// <summary>One round-one analyst on the runner. A failed analyst is a skipped step, never an
@@ -196,8 +199,9 @@ public sealed class NegotiationCouncil
             .Take(5)
             .ToList();
 
-    private List<PackItem> BuildPlayItems(CouncilPlaysPayload payload, IReadOnlyList<PackItem> pack, HashSet<string> packKeys)
+    private List<PackItem> BuildPlayItems(CouncilPlaysPayload payload, IReadOnlyList<PackItem> pack, HashSet<string> packKeys, out int playsDropped)
     {
+        playsDropped = 0;
         var itemsByKey = pack.ToDictionary(i => i.CitationKey, StringComparer.Ordinal);
         var items = new List<PackItem>();
         var rank = 0;
@@ -206,18 +210,21 @@ public sealed class NegotiationCouncil
         {
             if (string.IsNullOrWhiteSpace(play.Lever) || string.IsNullOrWhiteSpace(play.Ask))
             {
+                playsDropped++;
                 continue;
             }
 
             var citationKeys = (play.CitationKeys ?? []).Where(packKeys.Contains).Distinct(StringComparer.Ordinal).ToList();
             if (citationKeys.Count == 0)
             {
+                playsDropped++;
                 continue;
             }
 
             var text = string.Join(" ", new[] { play.Ask, play.Timing, play.Fallback }.Where(t => !string.IsNullOrWhiteSpace(t)));
             if (!NumericGuard.Validate(text, pack).Passed)
             {
+                playsDropped++;
                 continue;
             }
 

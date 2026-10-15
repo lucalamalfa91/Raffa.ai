@@ -57,6 +57,10 @@ internal static class AskFlowServiceCollectionExtensions
         // actually resolves, this default only when no configuration overrides it.
         services.TryAddSingleton(new PackBudget());
 
+        // F1 Ask turn options (Chat:AskTurn): every default reproduces today. The host binds the
+        // section before AddAiFlows; TryAdd keeps that value.
+        services.TryAddSingleton(new AskTurnOptions());
+
         // The Ask pack-composition root: one Scoped instance per request/job shares that scope's
         // own DbContext-backed services instead of a second, independently-tracked copy.
         services.AddScoped<AskCopilotService>();
