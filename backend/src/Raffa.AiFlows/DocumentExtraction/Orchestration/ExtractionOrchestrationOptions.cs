@@ -60,4 +60,10 @@ public sealed class ExtractionOrchestrationOptions
     /// <summary>F5-T04: chunks read per stage at most. A longer document is read up to this many chunks, the
     /// run is marked truncated and the document goes to review: never silent.</summary>
     public int MaxChunks { get; set; } = 12;
+
+    /// <summary>A-07: take a second, focused reading of the high-impact fields (end date, notice period, annual
+    /// fee) after the run and compare it with the applied one. SHADOW ONLY: counters, a log line and a metric;
+    /// nothing is persisted and no value or status changes. Costs one extra gateway call per stage owning such
+    /// a field. Default off.</summary>
+    public bool SecondOpinionShadow { get; set; }
 }

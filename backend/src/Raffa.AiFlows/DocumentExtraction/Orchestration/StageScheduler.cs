@@ -135,6 +135,12 @@ internal sealed class StageScheduler(
             .ConfigureAwait(false);
     }
 
+    /// <summary>A-07: one shadow call of a <see cref="SecondOpinionStage"/>, paced and chunked like any stage call
+    /// but outside the concurrency gate (it runs after the primary calls have been applied).</summary>
+    public Task<StageCall> CallSecondOpinionAsync(
+        SecondOpinionStage stage, string documentText, int pageCount, CancellationToken cancellationToken) =>
+        CallAsync(stage, new ExtractionStageInput(documentText, pageCount, NoContext), gate: null, cancellationToken);
+
     /// <summary>One stage's gateway call (with the optional cap and in-run retry), labelled as a step of the
     /// run. A network-level fault thrown (not returned) by the gateway is the same "could not be reached" a
     /// returned <see cref="AiGatewayErrors.UnavailablePrefix"/> failure means, so it becomes a failed-transient

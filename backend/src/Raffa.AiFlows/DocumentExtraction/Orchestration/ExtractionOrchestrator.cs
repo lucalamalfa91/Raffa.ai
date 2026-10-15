@@ -197,6 +197,9 @@ public sealed class ExtractionOrchestrator
             await ValidateScalarStagesAsync(run, pending, resolved, spanVerifier).ConfigureAwait(false);
         }
 
+        // A-07: what the run applied for the stages it executed, kept only to compare with the shadow reading.
+        var appliedScalars = Options.SecondOpinionShadow ? new Dictionary<ExtractionStage, StageFacts.Scalars>() : null;
+
         using (_progressHeartbeat?.BeginMemoryPulses())
         {
             foreach (var stage in ExtractionPipeline.Stages)
@@ -204,12 +207,63 @@ public sealed class ExtractionOrchestrator
                 stageResults.Add(
                     run.ReusedStages.Contains(stage)
                         ? await _runStore.ReuseCheckpointAsync(run, stage, cancellationToken).ConfigureAwait(false)
-                        : await ApplyStageResultAsync(run, _stages[stage], pending[stage], resolved.GetValueOrDefault(stage), spanVerifier, cancellationToken).ConfigureAwait(false));
+                        : await ApplyStageResultAsync(run, _stages[stage], pending[stage], resolved.GetValueOrDefault(stage), spanVerifier, appliedScalars, cancellationToken).ConfigureAwait(false));
             }
         }
 
-        return Result<StagedExtractionSummary>.Success(
-            await _runStore.CloseAsync(run, stageResults, cancellationToken).ConfigureAwait(false));
+        var summary = await _runStore.CloseAsync(run, stageResults, cancellationToken).ConfigureAwait(false);
+
+        if (appliedScalars is { Count: > 0 })
+        {
+            _hangWatch?.Heartbeat();
+            await RunSecondOpinionAsync(run, appliedScalars, documentText, pages.Count, cancellationToken).ConfigureAwait(false);
+        }
+
+        return Result<StagedExtractionSummary>.Success(summary);
+    }
+
+    /// <summary>
+    /// A-07 (Shadow only): a second, focused reading of the high-impact fields of each executed scalar stage,
+    /// compared with the applied one. Counted, logged (field names and outcomes, never values) and forgotten;
+    /// it touches no store state, and a fault in it never fails the run.
+    /// </summary>
+    private async Task RunSecondOpinionAsync(
+        ExtractionRun run,
+        IReadOnlyDictionary<ExtractionStage, StageFacts.Scalars> applied,
+        string documentText,
+        int pageCount,
+        CancellationToken cancellationToken)
+    {
+        foreach (var (stageKey, primary) in applied)
+        {
+            var fields = SecondOpinionShadow.FieldsOf(stageKey);
+            if (fields.Count == 0)
+            {
+                continue;
+            }
+
+            try
+            {
+                var shadowStage = new SecondOpinionStage(_stages[stageKey], fields);
+                var call = await _scheduler.CallSecondOpinionAsync(shadowStage, documentText, pageCount, cancellationToken).ConfigureAwait(false);
+                if (call.Result.IsFailure || shadowStage.Parse(call.Result.Value.PayloadJson) is not StageFacts.Scalars second)
+                {
+                    _logger?.LogInformation("Second opinion for stage {Stage} of run {RunId} produced no reading.", stageKey, run.RunId);
+                    continue;
+                }
+
+                var outcomes = SecondOpinionShadow.Compare(primary, second, fields);
+                SecondOpinionShadow.Record(outcomes);
+                _logger?.LogInformation(
+                    "Second opinion (shadow) for run {RunId}: {Outcomes}",
+                    run.RunId,
+                    string.Join(", ", outcomes.Select(o => $"{o.Field}={o.Outcome}")));
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger?.LogWarning(ex, "Second opinion failed for stage {Stage} of run {RunId}; ignored (shadow).", stageKey, run.RunId);
+            }
+        }
     }
 
     private static readonly IReadOnlyDictionary<ExtractionStage, StageFacts> EmptyContext =
@@ -226,6 +280,7 @@ public sealed class ExtractionOrchestrator
         Task<StageCall> call,
         ResolvedStage? alreadyResolved,
         Lazy<SpanVerifier>? spanVerifier,
+        Dictionary<ExtractionStage, StageFacts.Scalars>? appliedScalars,
         CancellationToken cancellationToken)
     {
         var resolved = alreadyResolved ?? await ResolveStageAsync(stage, call, spanVerifier).ConfigureAwait(false);
@@ -269,6 +324,11 @@ public sealed class ExtractionOrchestrator
                     run, stage.Stage, resolved.MalformedMessage!, ExtractionStageFailureKind.Permanent,
                     cancellationToken, resolved.ModelId)
                 .ConfigureAwait(false);
+        }
+
+        if (appliedScalars is not null && resolved.Facts is StageFacts.Scalars scalars)
+        {
+            appliedScalars[stage.Stage] = scalars;
         }
 
         return await _runStore
