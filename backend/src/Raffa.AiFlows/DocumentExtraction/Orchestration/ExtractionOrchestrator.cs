@@ -62,7 +62,8 @@ public sealed class ExtractionOrchestrator
         ExtractionOrchestrationOptions? options = null,
         IExtractionHangWatch? hangWatch = null,
         ExtractionProgressHeartbeat? progressHeartbeat = null,
-        ILogger<ExtractionOrchestrator>? logger = null)
+        ILogger<ExtractionOrchestrator>? logger = null,
+        StageTpmLimit? tpmLimit = null)
     {
         ArgumentNullException.ThrowIfNull(runStore);
         ArgumentNullException.ThrowIfNull(aiGateway);
@@ -95,7 +96,10 @@ public sealed class ExtractionOrchestrator
         }
 
         _stages = byStage;
-        _scheduler = new StageScheduler(aiGateway, byStage, Options);
+        _scheduler = new StageScheduler(
+            aiGateway, byStage, Options,
+            tpmLimit?.Limiter
+            ?? (Options.TokensPerMinuteLimit > 0 ? new TpmRateLimiter(Options.TokensPerMinuteLimit) : null));
     }
 
     /// <summary>The effective options (defaults when none were supplied).</summary>
@@ -138,7 +142,7 @@ public sealed class ExtractionOrchestrator
         var opened = await _runStore
             .OpenAsync(
                 new ExtractionRunRequest(
-                    tenantId, documentId, ExtractionInputHash.Compute(documentText), pages.Count, classificationConfidence,
+                    tenantId, documentId, ExtractionInputHash.Compute(documentText, Options.DocumentFirstPrompt), pages.Count, classificationConfidence,
                     Options.UseContextDependencies ? _scheduler.ContextualStages : null),
                 cancellationToken)
             .ConfigureAwait(false);
@@ -193,6 +197,9 @@ public sealed class ExtractionOrchestrator
             await ValidateScalarStagesAsync(run, pending, resolved, spanVerifier).ConfigureAwait(false);
         }
 
+        // A-07: what the run applied for the stages it executed, kept only to compare with the shadow reading.
+        var appliedScalars = Options.SecondOpinionShadow ? new Dictionary<ExtractionStage, StageFacts.Scalars>() : null;
+
         using (_progressHeartbeat?.BeginMemoryPulses())
         {
             foreach (var stage in ExtractionPipeline.Stages)
@@ -200,12 +207,63 @@ public sealed class ExtractionOrchestrator
                 stageResults.Add(
                     run.ReusedStages.Contains(stage)
                         ? await _runStore.ReuseCheckpointAsync(run, stage, cancellationToken).ConfigureAwait(false)
-                        : await ApplyStageResultAsync(run, _stages[stage], pending[stage], resolved.GetValueOrDefault(stage), spanVerifier, cancellationToken).ConfigureAwait(false));
+                        : await ApplyStageResultAsync(run, _stages[stage], pending[stage], resolved.GetValueOrDefault(stage), spanVerifier, appliedScalars, cancellationToken).ConfigureAwait(false));
             }
         }
 
-        return Result<StagedExtractionSummary>.Success(
-            await _runStore.CloseAsync(run, stageResults, cancellationToken).ConfigureAwait(false));
+        var summary = await _runStore.CloseAsync(run, stageResults, cancellationToken).ConfigureAwait(false);
+
+        if (appliedScalars is { Count: > 0 })
+        {
+            _hangWatch?.Heartbeat();
+            await RunSecondOpinionAsync(run, appliedScalars, documentText, pages.Count, cancellationToken).ConfigureAwait(false);
+        }
+
+        return Result<StagedExtractionSummary>.Success(summary);
+    }
+
+    /// <summary>
+    /// A-07 (Shadow only): a second, focused reading of the high-impact fields of each executed scalar stage,
+    /// compared with the applied one. Counted, logged (field names and outcomes, never values) and forgotten;
+    /// it touches no store state, and a fault in it never fails the run.
+    /// </summary>
+    private async Task RunSecondOpinionAsync(
+        ExtractionRun run,
+        IReadOnlyDictionary<ExtractionStage, StageFacts.Scalars> applied,
+        string documentText,
+        int pageCount,
+        CancellationToken cancellationToken)
+    {
+        foreach (var (stageKey, primary) in applied)
+        {
+            var fields = SecondOpinionShadow.FieldsOf(stageKey);
+            if (fields.Count == 0)
+            {
+                continue;
+            }
+
+            try
+            {
+                var shadowStage = new SecondOpinionStage(_stages[stageKey], fields);
+                var call = await _scheduler.CallSecondOpinionAsync(shadowStage, documentText, pageCount, cancellationToken).ConfigureAwait(false);
+                if (call.Result.IsFailure || shadowStage.Parse(call.Result.Value.PayloadJson) is not StageFacts.Scalars second)
+                {
+                    _logger?.LogInformation("Second opinion for stage {Stage} of run {RunId} produced no reading.", stageKey, run.RunId);
+                    continue;
+                }
+
+                var outcomes = SecondOpinionShadow.Compare(primary, second, fields);
+                SecondOpinionShadow.Record(outcomes);
+                _logger?.LogInformation(
+                    "Second opinion (shadow) for run {RunId}: {Outcomes}",
+                    run.RunId,
+                    string.Join(", ", outcomes.Select(o => $"{o.Field}={o.Outcome}")));
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger?.LogWarning(ex, "Second opinion failed for stage {Stage} of run {RunId}; ignored (shadow).", stageKey, run.RunId);
+            }
+        }
     }
 
     private static readonly IReadOnlyDictionary<ExtractionStage, StageFacts> EmptyContext =
@@ -222,18 +280,30 @@ public sealed class ExtractionOrchestrator
         Task<StageCall> call,
         ResolvedStage? alreadyResolved,
         Lazy<SpanVerifier>? spanVerifier,
+        Dictionary<ExtractionStage, StageFacts.Scalars>? appliedScalars,
         CancellationToken cancellationToken)
     {
         var resolved = alreadyResolved ?? await ResolveStageAsync(stage, call, spanVerifier).ConfigureAwait(false);
         var stageCall = resolved.Call;
         var extractResult = stageCall.Result;
 
+        // F5-T04: part of a very long document was not read. Visible on the run, the audit row, the summary,
+        // the log and a metric; the store never completes such a document.
+        if (stageCall.Truncated)
+        {
+            run.MarkTruncated();
+            ExtractionMetrics.TruncatedStages.Add(1);
+            _logger?.LogWarning(
+                "Stage {Stage} of run {RunId} read only the first {MaxChunks} chunks of the document; marked truncated.",
+                stage.Stage, run.RunId, Options.MaxChunks);
+        }
+
         // F5-T05 (Q2): with context dependencies on, the stage's input hash is that of the request text it
         // actually sent (context included), so a resume never mixes modes. Off: never touched, the job keeps
         // SHA256("staged-v1\n" + text) exactly. Sequential with every other store call: the apply loop is.
         if (Options.UseContextDependencies)
         {
-            var stageHash = ExtractionInputHash.Compute(stageCall.RequestText);
+            var stageHash = ExtractionInputHash.Compute(stageCall.RequestText, Options.DocumentFirstPrompt);
             if (!string.Equals(stageHash, run.InputHash, StringComparison.Ordinal))
             {
                 _runStore.SetStageInputHash(run, stage.Stage, stageHash);
@@ -254,6 +324,18 @@ public sealed class ExtractionOrchestrator
                     run, stage.Stage, resolved.MalformedMessage!, ExtractionStageFailureKind.Permanent,
                     cancellationToken, resolved.ModelId)
                 .ConfigureAwait(false);
+        }
+
+        // F5-T03: the layout actually used and the prompt version the gateway reports, recorded on the run.
+        if (Options.DocumentFirstPrompt && !string.IsNullOrWhiteSpace(extractResult.Value.Metadata.PromptVersion))
+        {
+            run.RecordPipelineVersion(
+                ExtractionInputHash.DocumentFirstPipelineVersion + "/" + extractResult.Value.Metadata.PromptVersion);
+        }
+
+        if (appliedScalars is not null && resolved.Facts is StageFacts.Scalars scalars)
+        {
+            appliedScalars[stage.Stage] = scalars;
         }
 
         return await _runStore

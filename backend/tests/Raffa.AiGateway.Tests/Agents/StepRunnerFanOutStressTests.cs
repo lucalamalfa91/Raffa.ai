@@ -20,7 +20,7 @@ public sealed class StepRunnerFanOutStressTests
 {
     private const int Repetitions = 200;
 
-    private sealed class NonThreadSafeAuditWriter : IAuditWriter
+    private sealed class NonThreadSafeAuditWriter(int writeDelayMilliseconds = 1) : IAuditWriter
     {
         private int _active;
 
@@ -38,7 +38,7 @@ public sealed class StepRunnerFanOutStressTests
             try
             {
                 await Task.Yield();
-                await Task.Delay(1, cancellationToken);
+                await Task.Delay(writeDelayMilliseconds, cancellationToken);
                 Interlocked.Increment(ref Written);
             }
             finally
@@ -64,7 +64,9 @@ public sealed class StepRunnerFanOutStressTests
     {
         // Control: without the gateway's serialization the double fails, so a green stress run means
         // the serialization held, not that the double is lenient.
-        var writer = new NonThreadSafeAuditWriter();
+        // A long write window: the first write must still be in flight when the later ones start, even
+        // if this thread is descheduled for a while on a loaded runner (1 ms made the overlap a race).
+        var writer = new NonThreadSafeAuditWriter(writeDelayMilliseconds: 250);
         var tenantId = TenantId.New();
         var entry = new AuditEntry(tenantId, "t", "a", "r", "1", DateTimeOffset.UtcNow);
 
