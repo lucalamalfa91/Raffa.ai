@@ -1,0 +1,678 @@
+{
+  "$comment": "F2-D06 / LANG-06 DRAFT negotiation golden cases. Schema is NOT the Ask GoldenCase schema (see CONTENT_README.md). Not loaded by the harness. Needs native-speaker review for fr/es/de.",
+  "version": "0.1.0",
+  "status": "draft-pending-review",
+  "leverEnum": [
+    "price_reduction",
+    "term_for_discount",
+    "volume_discount",
+    "indexation_cap",
+    "notice_period_change",
+    "auto_renewal_removal",
+    "sla_credits",
+    "liability_cap",
+    "payment_terms",
+    "consolidation",
+    "competitive_tender",
+    "exit_for_convenience"
+  ],
+  "verdictEnum": [
+    "reachable",
+    "partial",
+    "not_reachable",
+    "abstain"
+  ],
+  "cases": [
+    {
+      "id": "neg-it-01",
+      "language": "it",
+      "question": "Come posso negoziare uno sconto sul rinnovo del contratto Salesforce che scade a fine anno?",
+      "declaredFacts": [
+        "contratto Salesforce, rinnovo in 90 giorni"
+      ],
+      "expectedLevers": [
+        "price_reduction",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "it",
+      "notes": "Domanda base di rinnovo; nessuna cifra dichiarata: nessun numero inventato."
+    },
+    {
+      "id": "neg-it-02",
+      "language": "it",
+      "question": "Voglio ridurre la spesa cloud del 15%: è realistico con AWS?",
+      "declaredFacts": [
+        "obiettivo -15% dichiarato dall'utente"
+      ],
+      "expectedLevers": [
+        "volume_discount",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "it",
+      "notes": "Il verdetto deriva dal calcolatore sulle leve ancorate, non dal modello."
+    },
+    {
+      "id": "neg-it-03",
+      "language": "it",
+      "question": "Il fornitore ci ha proposto un aumento ISTAT del 6%: come lo contesto?",
+      "declaredFacts": [
+        "aumento proposto 6% (dichiarato)"
+      ],
+      "expectedLevers": [
+        "indexation_cap",
+        "price_reduction"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "it",
+      "notes": "Indicizzazione: proporre tetto o indice alternativo."
+    },
+    {
+      "id": "neg-it-04",
+      "language": "it",
+      "question": "Posso chiedere di togliere il rinnovo automatico dal contratto DocuSign?",
+      "declaredFacts": [
+        "clausola di rinnovo tacito presente"
+      ],
+      "expectedLevers": [
+        "auto_renewal_removal",
+        "notice_period_change"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "it",
+      "notes": "Leva non economica: nessun risparmio stimato."
+    },
+    {
+      "id": "neg-it-05",
+      "language": "it",
+      "question": "Vorrei aumentare il canone per avere un SLA migliore, come imposto la trattativa?",
+      "declaredFacts": [
+        "l'utente accetta di pagare di più"
+      ],
+      "expectedLevers": [
+        "sla_credits"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "increase_value",
+      "category": "polarity",
+      "mustNotInventFigures": true,
+      "responseLanguage": "it",
+      "notes": "Polarità: l'obiettivo non è ridurre il costo; non proporre sconti come esito."
+    },
+    {
+      "id": "neg-it-06",
+      "language": "it",
+      "question": "Quanto risparmio posso ottenere sul contratto Microsoft?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "reduce_cost",
+      "category": "abstain",
+      "mustNotInventFigures": true,
+      "responseLanguage": "it",
+      "notes": "Nessun dato di contratto o mercato: astensione, nessuna cifra."
+    },
+    {
+      "id": "neg-it-07",
+      "language": "it",
+      "question": "Non voglio rinegoziare, voglio solo capire se conviene disdire e passare a un altro fornitore.",
+      "declaredFacts": [
+        "nessun preventivo alternativo caricato"
+      ],
+      "expectedLevers": [
+        "competitive_tender",
+        "exit_for_convenience"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "polarity",
+      "mustNotInventFigures": true,
+      "responseLanguage": "it",
+      "notes": "Goal diverso dalla negoziazione: non generare leve di sconto."
+    },
+    {
+      "id": "neg-it-08",
+      "language": "it",
+      "question": "Che tempo farà domani a Milano?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "none",
+      "category": "off_topic",
+      "mustNotInventFigures": true,
+      "responseLanguage": "it",
+      "notes": "Fuori dominio: nessuna leva."
+    },
+    {
+      "id": "neg-en-01",
+      "language": "en",
+      "question": "How do I negotiate a discount on the Salesforce renewal that ends this year?",
+      "declaredFacts": [
+        "Salesforce contract, renewal in 90 days"
+      ],
+      "expectedLevers": [
+        "price_reduction",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "en",
+      "notes": "Mirror of it-01 for cross-language parity."
+    },
+    {
+      "id": "neg-en-02",
+      "language": "en",
+      "question": "I want to cut our cloud spend by 15 percent. Is that realistic with AWS?",
+      "declaredFacts": [
+        "user-declared target of -15%"
+      ],
+      "expectedLevers": [
+        "volume_discount",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "en",
+      "notes": "Verdict owned by the calculator (F2-D03)."
+    },
+    {
+      "id": "neg-en-03",
+      "language": "en",
+      "question": "The vendor is proposing a 6% CPI uplift. How do I push back?",
+      "declaredFacts": [
+        "proposed uplift 6% (declared)"
+      ],
+      "expectedLevers": [
+        "indexation_cap",
+        "price_reduction"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "en",
+      "notes": "Propose a cap or alternative index."
+    },
+    {
+      "id": "neg-en-04",
+      "language": "en",
+      "question": "Can I get the auto-renewal removed from our DocuSign agreement?",
+      "declaredFacts": [
+        "auto-renewal clause present"
+      ],
+      "expectedLevers": [
+        "auto_renewal_removal",
+        "notice_period_change"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "en",
+      "notes": "Non-monetary lever: no savings figure."
+    },
+    {
+      "id": "neg-en-05",
+      "language": "en",
+      "question": "We are happy to pay more if the SLA improves. How should we approach the talks?",
+      "declaredFacts": [
+        "user accepts a higher fee"
+      ],
+      "expectedLevers": [
+        "sla_credits"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "increase_value",
+      "category": "polarity",
+      "mustNotInventFigures": true,
+      "responseLanguage": "en",
+      "notes": "Polarity case: the goal is not cost reduction."
+    },
+    {
+      "id": "neg-en-06",
+      "language": "en",
+      "question": "How much can I save on the Microsoft contract?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "reduce_cost",
+      "category": "abstain",
+      "mustNotInventFigures": true,
+      "responseLanguage": "en",
+      "notes": "No contract or market data: abstain."
+    },
+    {
+      "id": "neg-en-07",
+      "language": "en",
+      "question": "Should I just terminate for convenience and move to another provider rather than renegotiate?",
+      "declaredFacts": [
+        "no alternative quote uploaded"
+      ],
+      "expectedLevers": [
+        "competitive_tender",
+        "exit_for_convenience"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "polarity",
+      "mustNotInventFigures": true,
+      "responseLanguage": "en",
+      "notes": "Do not frame as discount negotiation."
+    },
+    {
+      "id": "neg-fr-01",
+      "language": "fr",
+      "question": "Comment négocier une remise sur le renouvellement du contrat Salesforce qui expire en fin d'année ?",
+      "declaredFacts": [
+        "contrat Salesforce, renouvellement dans 90 jours"
+      ],
+      "expectedLevers": [
+        "price_reduction",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "fr",
+      "notes": "Parité avec it-01."
+    },
+    {
+      "id": "neg-fr-02",
+      "language": "fr",
+      "question": "Je veux réduire nos dépenses cloud de 15 % : est-ce réaliste avec AWS ?",
+      "declaredFacts": [
+        "objectif -15 % déclaré par l'utilisateur"
+      ],
+      "expectedLevers": [
+        "volume_discount",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "fr",
+      "notes": "Format FR : 15 % avec espace (insécable à tolérer par le guard)."
+    },
+    {
+      "id": "neg-fr-03",
+      "language": "fr",
+      "question": "Le fournisseur propose une hausse indexée de 6 % : comment la contester ?",
+      "declaredFacts": [
+        "hausse proposée 6 % (déclarée)"
+      ],
+      "expectedLevers": [
+        "indexation_cap",
+        "price_reduction"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "fr",
+      "notes": "Plafond ou indice alternatif."
+    },
+    {
+      "id": "neg-fr-04",
+      "language": "fr",
+      "question": "Puis-je faire supprimer la tacite reconduction du contrat DocuSign ?",
+      "declaredFacts": [
+        "clause de tacite reconduction présente"
+      ],
+      "expectedLevers": [
+        "auto_renewal_removal",
+        "notice_period_change"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "fr",
+      "notes": "Terme juridique : tacite reconduction."
+    },
+    {
+      "id": "neg-fr-05",
+      "language": "fr",
+      "question": "Nous acceptons de payer plus si le SLA s'améliore, comment aborder la discussion ?",
+      "declaredFacts": [
+        "l'utilisateur accepte une redevance plus élevée"
+      ],
+      "expectedLevers": [
+        "sla_credits"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "increase_value",
+      "category": "polarity",
+      "mustNotInventFigures": true,
+      "responseLanguage": "fr",
+      "notes": "Polarité : pas de baisse de coût."
+    },
+    {
+      "id": "neg-fr-06",
+      "language": "fr",
+      "question": "Combien puis-je économiser sur le contrat Microsoft ?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "reduce_cost",
+      "category": "abstain",
+      "mustNotInventFigures": true,
+      "responseLanguage": "fr",
+      "notes": "Aucune donnée : abstention."
+    },
+    {
+      "id": "neg-fr-07",
+      "language": "fr",
+      "question": "Quelle est la recette du gratin dauphinois ?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "none",
+      "category": "off_topic",
+      "mustNotInventFigures": true,
+      "responseLanguage": "fr",
+      "notes": "Hors domaine : mesure la couverture FR du planner/gate."
+    },
+    {
+      "id": "neg-fr-08",
+      "language": "fr",
+      "question": "Je dois informer le fournisseur de ma décision de ne pas renouveler : quel levier utiliser avant le préavis ?",
+      "declaredFacts": [
+        "préavis contractuel de 60 jours (déclaré)"
+      ],
+      "expectedLevers": [
+        "notice_period_change",
+        "competitive_tender"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "fr",
+      "notes": "Délai de préavis, pas de chiffre d'économie."
+    },
+    {
+      "id": "neg-es-01",
+      "language": "es",
+      "question": "¿Cómo negocio un descuento en la renovación del contrato de Salesforce que vence a fin de año?",
+      "declaredFacts": [
+        "contrato Salesforce, renovación en 90 días"
+      ],
+      "expectedLevers": [
+        "price_reduction",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "es",
+      "notes": "Paridad con it-01."
+    },
+    {
+      "id": "neg-es-02",
+      "language": "es",
+      "question": "Quiero reducir un 15 % el gasto en la nube: ¿es realista con AWS?",
+      "declaredFacts": [
+        "objetivo -15 % declarado por el usuario"
+      ],
+      "expectedLevers": [
+        "volume_discount",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "es",
+      "notes": "Formato ES: 15 % con espacio."
+    },
+    {
+      "id": "neg-es-03",
+      "language": "es",
+      "question": "El proveedor propone una subida del 6 % por IPC: ¿cómo la rebato?",
+      "declaredFacts": [
+        "subida propuesta 6 % (declarada)"
+      ],
+      "expectedLevers": [
+        "indexation_cap",
+        "price_reduction"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "es",
+      "notes": "Revisión de precios con tope."
+    },
+    {
+      "id": "neg-es-04",
+      "language": "es",
+      "question": "¿Puedo quitar la prórroga tácita del contrato de DocuSign?",
+      "declaredFacts": [
+        "cláusula de prórroga tácita presente"
+      ],
+      "expectedLevers": [
+        "auto_renewal_removal",
+        "notice_period_change"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "es",
+      "notes": "Término: prórroga tácita."
+    },
+    {
+      "id": "neg-es-05",
+      "language": "es",
+      "question": "Estamos dispuestos a pagar más si mejora el SLA: ¿cómo planteo la negociación?",
+      "declaredFacts": [
+        "el usuario acepta una cuota mayor"
+      ],
+      "expectedLevers": [
+        "sla_credits"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "increase_value",
+      "category": "polarity",
+      "mustNotInventFigures": true,
+      "responseLanguage": "es",
+      "notes": "Polaridad."
+    },
+    {
+      "id": "neg-es-06",
+      "language": "es",
+      "question": "¿Cuánto puedo ahorrar en el contrato de Microsoft?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "reduce_cost",
+      "category": "abstain",
+      "mustNotInventFigures": true,
+      "responseLanguage": "es",
+      "notes": "Sin datos: abstención."
+    },
+    {
+      "id": "neg-es-07",
+      "language": "es",
+      "question": "¿Quién ganó el partido de ayer?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "none",
+      "category": "off_topic",
+      "mustNotInventFigures": true,
+      "responseLanguage": "es",
+      "notes": "Fuera de dominio."
+    },
+    {
+      "id": "neg-es-08",
+      "language": "es",
+      "question": "Quiero un descuento por volumen si consolidamos tres licencias en un solo contrato.",
+      "declaredFacts": [
+        "tres licencias del mismo proveedor"
+      ],
+      "expectedLevers": [
+        "volume_discount",
+        "consolidation"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "es",
+      "notes": "Consolidación + descuento por volumen."
+    },
+    {
+      "id": "neg-de-01",
+      "language": "de",
+      "question": "Wie verhandle ich einen Rabatt bei der Verlängerung des Salesforce-Vertrags, der Ende des Jahres ausläuft?",
+      "declaredFacts": [
+        "Salesforce-Vertrag, Verlängerung in 90 Tagen"
+      ],
+      "expectedLevers": [
+        "price_reduction",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "de",
+      "notes": "Parität mit it-01."
+    },
+    {
+      "id": "neg-de-02",
+      "language": "de",
+      "question": "Ich möchte die Cloud-Kosten um 15 % senken. Ist das mit AWS realistisch?",
+      "declaredFacts": [
+        "vom Nutzer genanntes Ziel -15 %"
+      ],
+      "expectedLevers": [
+        "volume_discount",
+        "term_for_discount"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "de",
+      "notes": "Format DE: 15 % mit Leerzeichen."
+    },
+    {
+      "id": "neg-de-03",
+      "language": "de",
+      "question": "Der Lieferant verlangt eine Preisanpassung von 6 % nach Index. Wie widerspreche ich?",
+      "declaredFacts": [
+        "vorgeschlagene Erhöhung 6 % (angegeben)"
+      ],
+      "expectedLevers": [
+        "indexation_cap",
+        "price_reduction"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "reduce_cost",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "de",
+      "notes": "Preisanpassungsklausel mit Deckelung."
+    },
+    {
+      "id": "neg-de-04",
+      "language": "de",
+      "question": "Kann ich die automatische Verlängerung im DocuSign-Vertrag streichen lassen?",
+      "declaredFacts": [
+        "Klausel zur automatischen Verlängerung vorhanden"
+      ],
+      "expectedLevers": [
+        "auto_renewal_removal",
+        "notice_period_change"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "de",
+      "notes": "Begriff: automatische Verlängerung."
+    },
+    {
+      "id": "neg-de-05",
+      "language": "de",
+      "question": "Wir zahlen gern mehr, wenn sich das SLA verbessert. Wie gehen wir die Verhandlung an?",
+      "declaredFacts": [
+        "Nutzer akzeptiert höheres Entgelt"
+      ],
+      "expectedLevers": [
+        "sla_credits"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "increase_value",
+      "category": "polarity",
+      "mustNotInventFigures": true,
+      "responseLanguage": "de",
+      "notes": "Polarität."
+    },
+    {
+      "id": "neg-de-06",
+      "language": "de",
+      "question": "Wie viel kann ich beim Microsoft-Vertrag sparen?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "reduce_cost",
+      "category": "abstain",
+      "mustNotInventFigures": true,
+      "responseLanguage": "de",
+      "notes": "Keine Daten: Enthaltung."
+    },
+    {
+      "id": "neg-de-07",
+      "language": "de",
+      "question": "Wie wird morgen das Wetter in München?",
+      "declaredFacts": [],
+      "expectedLevers": [],
+      "expectedVerdict": "abstain",
+      "goalPolarity": "none",
+      "category": "off_topic",
+      "mustNotInventFigures": true,
+      "responseLanguage": "de",
+      "notes": "Außerhalb des Fachgebiets."
+    },
+    {
+      "id": "neg-de-08",
+      "language": "de",
+      "question": "Wir wollen die Haftungsbegrenzung im Rahmenvertrag anheben. Welche Argumente haben wir?",
+      "declaredFacts": [
+        "Haftungsbegrenzung vorhanden, Höhe nicht angegeben"
+      ],
+      "expectedLevers": [
+        "liability_cap"
+      ],
+      "expectedVerdict": "partial",
+      "goalPolarity": "neutral",
+      "category": "positive",
+      "mustNotInventFigures": true,
+      "responseLanguage": "de",
+      "notes": "Nicht-monetärer Hebel."
+    }
+  ]
+}
