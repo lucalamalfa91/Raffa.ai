@@ -207,7 +207,8 @@ public sealed class StepRunner
 
         var verifier = step.Verifier;
         var maxAttempts = verifier is not null && definition.RetryOnVerifierViolation ? 2 : 1;
-        var systemPrompt = definition.SystemPrompt;
+        var baseSystemPrompt = definition.SystemPromptFor((input as ILanguageAware)?.Language);
+        var systemPrompt = baseSystemPrompt;
         var attempts = 0;
         var intervened = false;
         AiCallMetadata? metadata = null;
@@ -243,7 +244,7 @@ public sealed class StepRunner
                 if (attempts < maxAttempts)
                 {
                     // The generalization of RegenerateOnce: one more attempt, the violation named.
-                    systemPrompt = definition.SystemPrompt + Environment.NewLine + Environment.NewLine + verifier!.RetryInstruction(verdict);
+                    systemPrompt = baseSystemPrompt + Environment.NewLine + Environment.NewLine + verifier!.RetryInstruction(verdict);
                     continue;
                 }
 

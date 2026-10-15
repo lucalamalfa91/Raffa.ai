@@ -69,7 +69,8 @@ public sealed partial class AgentDefinition
         string? promptResource = null,
         string? languageDirective = null,
         bool retryOnVerifierViolation = true,
-        bool skipOnDeadline = false)
+        bool skipOnDeadline = false,
+        bool responseLanguageDirective = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(version);
@@ -100,6 +101,7 @@ public sealed partial class AgentDefinition
         LanguageDirective = string.IsNullOrWhiteSpace(languageDirective) ? null : languageDirective;
         RetryOnVerifierViolation = retryOnVerifierViolation;
         SkipOnDeadline = skipOnDeadline;
+        ResponseLanguageDirective = responseLanguageDirective;
         PromptHash = HashPrompt(prompt);
     }
 
@@ -168,6 +170,26 @@ public sealed partial class AgentDefinition
     /// Off by default: a deadline then degrades by the policy as it always did.
     /// </summary>
     public bool SkipOnDeadline { get; }
+
+    /// <summary>
+    /// Plan LANG-04: when <see langword="true"/>, the runner appends the versioned per-language
+    /// response directive (<see cref="LanguageDirectives"/>) for the input's language after the prompt.
+    /// Off by default; <see cref="SystemPrompt"/> and the prompt hash never include it, so opting in
+    /// changes no registered text.
+    /// </summary>
+    public bool ResponseLanguageDirective { get; }
+
+    /// <summary>A copy of this definition that opts in to the per-language response directive.</summary>
+    public AgentDefinition WithResponseLanguageDirective() =>
+        new(Name, Version, Prompt, JsonSchema, Deadline, FailurePolicy, Role, RegisteredPromptHash, PromptResource,
+            LanguageDirective, RetryOnVerifierViolation, SkipOnDeadline, responseLanguageDirective: true);
+
+    /// <summary>The system prompt for a call in <paramref name="language"/>: <see cref="SystemPrompt"/>,
+    /// then the response directive when the definition opted in.</summary>
+    public string SystemPromptFor(string? language) =>
+        ResponseLanguageDirective
+            ? SystemPrompt + Environment.NewLine + Environment.NewLine + LanguageDirectives.For(language)
+            : SystemPrompt;
 
     /// <summary>The system prompt actually sent: <see cref="Prompt"/>, then the language directive.</summary>
     public string SystemPrompt =>
