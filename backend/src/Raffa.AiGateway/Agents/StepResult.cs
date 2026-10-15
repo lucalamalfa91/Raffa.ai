@@ -35,6 +35,10 @@ public enum StepFailureReason
 
     /// <summary>The step's deadline passed; the call was cancelled. Never a silently truncated output.</summary>
     DeadlineExceeded = 4,
+
+    /// <summary>The agent is switched off in the <see cref="AgentRegistry"/> (plan A-02 kill switch);
+    /// the model was never called and the step degraded by its policy.</summary>
+    Disabled = 5,
 }
 
 /// <summary>

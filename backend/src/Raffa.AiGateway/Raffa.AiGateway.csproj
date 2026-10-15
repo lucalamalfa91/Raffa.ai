@@ -17,6 +17,8 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <!-- Plan A-02: AgentRegistry reads its per-agent kill switches through IOptionsMonitor. -->
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>

@@ -61,7 +61,11 @@ public sealed record ChatCompletionChoice(
 public sealed record ChatCompletionUsage(
     [property: JsonPropertyName("prompt_tokens")] int PromptTokens,
     [property: JsonPropertyName("completion_tokens")] int CompletionTokens,
-    [property: JsonPropertyName("total_tokens")] int TotalTokens);
+    [property: JsonPropertyName("total_tokens")] int TotalTokens,
+    [property: JsonPropertyName("prompt_tokens_details")] ChatPromptTokensDetails? PromptTokensDetails = null);
+
+public sealed record ChatPromptTokensDetails(
+    [property: JsonPropertyName("cached_tokens")] int CachedTokens);
 
 public sealed record ChatCompletionResponse(
     [property: JsonPropertyName("choices")] IReadOnlyList<ChatCompletionChoice>? Choices,

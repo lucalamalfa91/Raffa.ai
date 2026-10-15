@@ -12,7 +12,7 @@ namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
 /// <summary>What one stage's gateway call produced, and the exact request text it sent (context block
 /// included), which is what the stage's <c>ExtractionJob.InputHash</c> is computed from when context
 /// dependencies are on.</summary>
-internal sealed record StageCall(Result<AiExtractionResult> Result, string RequestText);
+internal sealed record StageCall(Result<AiExtractionResult> Result, string RequestText, bool Truncated = false);
 
 /// <summary>
 /// F5-T05: starts the gateway calls of the stages a run has to execute and hands back one task per stage.
@@ -36,7 +36,8 @@ internal sealed record StageCall(Result<AiExtractionResult> Result, string Reque
 internal sealed class StageScheduler(
     IAiGateway aiGateway,
     IReadOnlyDictionary<ExtractionStage, IExtractionStage> stages,
-    ExtractionOrchestrationOptions options)
+    ExtractionOrchestrationOptions options,
+    TpmRateLimiter? tpmLimiter = null)
 {
     private static readonly IReadOnlyDictionary<ExtractionStage, StageFacts> NoContext =
         new Dictionary<ExtractionStage, StageFacts>();
@@ -65,7 +66,7 @@ internal sealed class StageScheduler(
 
             if (!options.UseContextDependencies || definition.DependsOn.Count == 0)
             {
-                pending[stage] = CallAsync(definition, new ExtractionStageInput(documentText, pageCount, NoContext), gate, cancellationToken);
+                pending[stage] = CallAsync(definition, new ExtractionStageInput(documentText, pageCount, NoContext, options.DocumentFirstPrompt), gate, cancellationToken);
                 continue;
             }
 
@@ -130,9 +131,15 @@ internal sealed class StageScheduler(
             }
         }
 
-        return await CallAsync(stage, new ExtractionStageInput(documentText, pageCount, context), gate, cancellationToken)
+        return await CallAsync(stage, new ExtractionStageInput(documentText, pageCount, context, options.DocumentFirstPrompt), gate, cancellationToken)
             .ConfigureAwait(false);
     }
+
+    /// <summary>A-07: one shadow call of a <see cref="SecondOpinionStage"/>, paced and chunked like any stage call
+    /// but outside the concurrency gate (it runs after the primary calls have been applied).</summary>
+    public Task<StageCall> CallSecondOpinionAsync(
+        SecondOpinionStage stage, string documentText, int pageCount, CancellationToken cancellationToken) =>
+        CallAsync(stage, new ExtractionStageInput(documentText, pageCount, NoContext, options.DocumentFirstPrompt), gate: null, cancellationToken);
 
     /// <summary>One stage's gateway call (with the optional cap and in-run retry), labelled as a step of the
     /// run. A network-level fault thrown (not returned) by the gateway is the same "could not be reached" a
@@ -143,6 +150,67 @@ internal sealed class StageScheduler(
     {
         using var step = RunContext.BeginStep(stage.StageName);
 
+        if (options.ChunkThresholdChars > 0 && input.DocumentText.Length > options.ChunkThresholdChars)
+        {
+            return await CallChunkedAsync(stage, input, gate, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await CallOnceAsync(stage, input, gate, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>F5-T04 map-reduce: the stage runs over each chunk of the long document (one after the other,
+    /// each call under the same cap, pacing and in-run retry), then the facts are merged into the single payload
+    /// the stage would have returned. Any failed chunk fails the stage (visible, retryable) rather than
+    /// applying a partial read; chunks dropped for exceeding <c>MaxChunks</c> mark the call truncated.</summary>
+    private async Task<StageCall> CallChunkedAsync(
+        IExtractionStage stage, ExtractionStageInput input, SemaphoreSlim? gate, CancellationToken cancellationToken)
+    {
+        var chunks = DocumentChunker.Split(input.DocumentText, options.ChunkSizeChars, options.MaxChunks);
+        var parts = new List<StageFacts>(chunks.Texts.Count);
+        var requestTexts = new List<string>(chunks.Texts.Count);
+        AiCallMetadata? metadata = null;
+        int prompt = 0, completion = 0;
+        var anyUsage = false;
+
+        foreach (var text in chunks.Texts)
+        {
+            var call = await CallOnceAsync(stage, input with { DocumentText = text }, gate, cancellationToken).ConfigureAwait(false);
+            requestTexts.Add(call.RequestText);
+            if (call.Result.IsFailure)
+            {
+                return new StageCall(call.Result, string.Join('\n', requestTexts), chunks.Truncated);
+            }
+
+            metadata ??= call.Result.Value.Metadata;
+            if (call.Result.Value.Metadata.Usage is { } usage)
+            {
+                anyUsage = true;
+                prompt += usage.PromptTokens;
+                completion += usage.CompletionTokens;
+            }
+
+            try
+            {
+                parts.Add(stage.Parse(call.Result.Value.PayloadJson));
+            }
+            catch (JsonException)
+            {
+                // Malformed chunk payload: hand it to the apply step, which records the typed failure.
+                return new StageCall(call.Result, string.Join('\n', requestTexts), chunks.Truncated);
+            }
+        }
+
+        var merged = StageFactsMerger.ToPayloadJson(StageFactsMerger.Merge(parts));
+        var combined = metadata! with { Usage = anyUsage ? new AiTokenUsage(prompt, completion) : null };
+        return new StageCall(
+            Result<AiExtractionResult>.Success(new AiExtractionResult(merged, combined)),
+            string.Join('\n', requestTexts),
+            chunks.Truncated);
+    }
+
+    private async Task<StageCall> CallOnceAsync(
+        IExtractionStage stage, ExtractionStageInput input, SemaphoreSlim? gate, CancellationToken cancellationToken)
+    {
         AiExtractionRequest? request = null;
 
         for (var attempt = 0; ; attempt++)
@@ -153,18 +221,37 @@ internal sealed class StageScheduler(
             }
 
             Result<AiExtractionResult> result;
+            var reserved = 0;
+            var used = -1; // -1 = keep the estimate
             try
             {
                 request ??= stage.BuildRequest(input);
+
+                // F5-T10: wait for the TPM bucket (off by default = no wait at all).
+                if (tpmLimiter is not null)
+                {
+                    reserved = await tpmLimiter.AcquireAsync(EstimateTokens(request), cancellationToken).ConfigureAwait(false);
+                }
+
                 result = await aiGateway.ExtractAsync(request, cancellationToken).ConfigureAwait(false);
+                if (result.IsSuccess && result.Value.Metadata.Usage is { } usage)
+                {
+                    used = usage.PromptTokens + usage.CompletionTokens;
+                }
             }
             catch (Exception exception) when (ExtractionOrchestrator.IsTransientTransportFault(exception, cancellationToken))
             {
+                used = 0; // never reached the provider's accounting
                 result = Result<AiExtractionResult>.Failure(
                     $"{AiGatewayErrors.UnavailablePrefix} {exception.GetType().Name}: {exception.Message}");
             }
             finally
             {
+                if (tpmLimiter is not null && reserved > 0)
+                {
+                    tpmLimiter.Settle(reserved, used < 0 ? reserved : used);
+                }
+
                 gate?.Release();
             }
 
@@ -175,5 +262,13 @@ internal sealed class StageScheduler(
                 return new StageCall(result, request?.DocumentText ?? input.DocumentText);
             }
         }
+    }
+
+    /// <summary>Rough input + reserved output tokens of one stage call, for the TPM bucket.</summary>
+    private int EstimateTokens(AiExtractionRequest request)
+    {
+        var chars = request.DocumentText.Length + request.JsonSchema.Length;
+        var perToken = Math.Max(1.0, options.TpmCharsPerToken);
+        return (int)Math.Min(int.MaxValue / 2, Math.Ceiling(chars / perToken) + options.TpmEstimatedOutputTokens);
     }
 }

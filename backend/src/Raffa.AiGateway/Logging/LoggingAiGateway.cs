@@ -328,6 +328,10 @@ public sealed class LoggingAiGateway : IAiGateway
         {
             // Appendix C rule 8: spend must be observable per call — token counts, never text.
             detail += $" promptTokens={usage.PromptTokens} completionTokens={usage.CompletionTokens}";
+            if (usage.CachedTokens > 0)
+            {
+                detail += $" cachedTokens={usage.CachedTokens}";
+            }
         }
 
         detail += $" {extraDetail}";

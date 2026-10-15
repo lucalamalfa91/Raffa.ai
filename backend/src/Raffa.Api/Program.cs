@@ -243,6 +243,9 @@ builder.Services.AddSingleton(draftingOptions);
 builder.Services.Configure<Raffa.AiFlows.CapabilityGaps.Investigation.GapInvestigationOptions>(
     builder.Configuration.GetSection(Raffa.AiFlows.CapabilityGaps.Investigation.GapInvestigationOptions.SectionName));
 builder.Services.AddSingleton<Raffa.Api.CapabilityFollowUpAppender>();
+// F4-T02: on ApplicationStopping the host waits (within its shutdown budget) for the background
+// capability follow-ups still being appended — WhenIdleAsync, wired to the host lifetime.
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Raffa.Api.CapabilityFollowUpAppender>());
 
 // ADR-030: Chat:Interview (kill switch + bounds) — same before-AddChatModule ordering as the
 // council/drafting options above so a configured value wins over the module's TryAdd default.
