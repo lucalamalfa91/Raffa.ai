@@ -203,7 +203,8 @@ public sealed class AskCopilotService(
     CapabilityGapTurnHandler capabilityGapTurn,
     InDomainReplyPipeline inDomain,
     CapabilityCheckCoordinator capabilityChecks,
-    ITenantContext tenantContext)
+    ITenantContext tenantContext,
+    ContractContextReader? turnReads = null)
 {
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
@@ -253,6 +254,9 @@ public sealed class AskCopilotService(
         // ai.* row its AI calls write carry it, so a turn can be followed end to end.
         using var turn = RunContext.BeginTurn();
         using var run = RunContext.BeginRun();
+
+        // F1-T01: a reused scope must never serve a previous turn's reads (no-op unless MemoizeTurnReads).
+        turnReads?.BeginTurn();
 
         var portfolio = await portfolioQueryService
             .GetPortfolioAsync(tenantId, PortfolioFilter.None, new PortfolioPageRequest(1, PortfolioPageRequest.MaxPageSize), cancellationToken)

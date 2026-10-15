@@ -24,7 +24,8 @@ public sealed class InDomainReplyPipeline(
     InterviewOptions interviewOptions,
     WebResearchFlow webResearchFlow,
     AgentPhase agentPhase,
-    AnswerPhase answerPhase)
+    AnswerPhase answerPhase,
+    AskTurnOptions? turnOptions = null)
 {
     internal async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildAsync(
         AskTurnScope scope,
@@ -96,6 +97,9 @@ public sealed class InDomainReplyPipeline(
             packItems = packItems.Prepend(turn.DisambiguationItem).ToList();
         }
 
+        // A-04: one clock for the two phases that call a model (no cap configured = nothing linked).
+        using var deadline = TurnDeadline.Start(turnOptions, cancellationToken);
+
         var agents = await agentPhase.RunAsync(
                 scope.Question,
                 plan.Goal,
@@ -107,9 +111,12 @@ public sealed class InDomainReplyPipeline(
                     IntentPolicy.RunsMarketResearch(plan.Intent, scope.Portfolio),
                     IntentPolicy.IsCouncilIntent(plan.Intent, turn.NamedContractItem),
                     AppendCalendarItem: true),
-                cancellationToken)
+                cancellationToken,
+                deadline)
             .ConfigureAwait(false);
 
-        return await answerPhase.ComposeAsync(turn, agents, cancellationToken).ConfigureAwait(false);
+        var composed = await answerPhase.ComposeAsync(turn, agents, cancellationToken, deadline).ConfigureAwait(false);
+        deadline.WriteDetail();
+        return composed;
     }
 }

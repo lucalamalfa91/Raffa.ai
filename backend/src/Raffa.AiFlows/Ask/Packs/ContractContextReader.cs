@@ -47,14 +47,23 @@ using Raffa.SharedKernel.Tenancy;
 using Raffa.Suppliers.Products.Application;
 using Raffa.AiFlows.Ask.Packs;
 using Raffa.AiFlows.Ask.Orchestration;
+using System.Collections.Concurrent;
 
 namespace Raffa.AiFlows.Ask.Packs;
 
 /// <summary>
 /// The per-turn reads every Ask pack builder shares: a contract's 360 view, its supplier display
 /// name, its benchmark key, its priced lines and the market deals of its supplier. Moved verbatim
-/// from <see cref="Raffa.AiFlows.Ask.Orchestration.AskCopilotService"/> (F1 Ask split, PR-2). Not memoized
-/// yet: each call reads exactly as often as the code it replaced.
+/// from <see cref="Raffa.AiFlows.Ask.Orchestration.AskCopilotService"/> (F1 Ask split, PR-2).
+///
+/// <para>
+/// F1-T01: with <see cref="AskTurnOptions.MemoizeTurnReads"/> on, each named read is made once per
+/// turn and its result reused (the reader is Scoped, and <see cref="BeginTurn"/> at the start of every
+/// turn clears the cache, so a reused scope never serves a previous turn). Off (the default), every
+/// call reads exactly as often as the code it replaced. Only reads no turn step writes are cached:
+/// never the savings opportunities, the renewal todos, the embedding or market retrievals, the web
+/// flows or the audit.
+/// </para>
 /// </summary>
 public sealed class ContractContextReader(
     Contract360QueryService contract360QueryService,
@@ -63,8 +72,30 @@ public sealed class ContractContextReader(
     IBenchmarkService benchmarkService,
     IMarketDealLookup marketDealLookup,
     ITenantContext tenantContext,
-    LineItemMarketPriceService? lineItemMarketPriceService = null)
+    LineItemMarketPriceService? lineItemMarketPriceService = null,
+    AskTurnOptions? turnOptions = null)
 {
+    private readonly bool memoize = turnOptions?.MemoizeTurnReads == true;
+
+    // A cached value is boxed so a legitimately null read (a contract that no longer resolves) is cached too.
+    private sealed record Memo<T>(T Value);
+
+    private readonly ConcurrentDictionary<(TenantId, Guid), Memo<Contract360Result?>> contract360Cache = new();
+    private readonly ConcurrentDictionary<(TenantId, Guid, ContractDocumentType), Memo<string>> displayNameCache = new();
+    private readonly ConcurrentDictionary<(TenantId, Guid), Memo<(string? SupplierName, string? Geography)>> benchmarkKeyCache = new();
+    private readonly ConcurrentDictionary<string, Memo<IReadOnlyList<MarketDeal>>> dealsCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<(TenantId, Guid, string?, string?, DateOnly), Memo<IReadOnlyList<PricedLine>>> pricedLinesCache = new();
+
+    /// <summary>Starts a turn: forgets everything the previous turn of this scope read.</summary>
+    public void BeginTurn()
+    {
+        contract360Cache.Clear();
+        displayNameCache.Clear();
+        benchmarkKeyCache.Clear();
+        dealsCache.Clear();
+        pricedLinesCache.Clear();
+    }
+
     /// <summary>The tenant scope <c>AskAsync</c> already opened for this call
     /// (<see cref="ITenantContext.BeginScope"/>). Falls back to
     /// <see langword="default"/> only in the never-actually-reached case where a helper is somehow
@@ -74,13 +105,40 @@ public sealed class ContractContextReader(
 
     /// <summary>The Contract 360 view of <paramref name="contractId"/> in the turn's tenant scope, or
     /// <see langword="null"/> when it no longer resolves.</summary>
-    internal Task<Contract360Result?> GetContract360Async(Guid contractId, CancellationToken cancellationToken) =>
-        contract360QueryService.GetByIdAsync(CurrentTenantId, new EntityId(contractId), cancellationToken);
+    internal async Task<Contract360Result?> GetContract360Async(Guid contractId, CancellationToken cancellationToken)
+    {
+        var tenantId = CurrentTenantId;
+        if (memoize && contract360Cache.TryGetValue((tenantId, contractId), out var cached))
+        {
+            return cached.Value;
+        }
+
+        var result = await contract360QueryService.GetByIdAsync(tenantId, new EntityId(contractId), cancellationToken).ConfigureAwait(false);
+        if (memoize)
+        {
+            contract360Cache[(tenantId, contractId)] = new Memo<Contract360Result?>(result);
+        }
+
+        return result;
+    }
 
     /// <summary>Every market deal of <paramref name="supplierName"/> (see
     /// <see cref="IMarketDealLookup.GetBySupplierAsync"/>).</summary>
-    internal Task<IReadOnlyList<MarketDeal>> GetDealsBySupplierAsync(string supplierName, CancellationToken cancellationToken) =>
-        marketDealLookup.GetBySupplierAsync(supplierName, cancellationToken);
+    internal async Task<IReadOnlyList<MarketDeal>> GetDealsBySupplierAsync(string supplierName, CancellationToken cancellationToken)
+    {
+        if (memoize && dealsCache.TryGetValue(supplierName, out var cached))
+        {
+            return cached.Value;
+        }
+
+        var deals = await marketDealLookup.GetBySupplierAsync(supplierName, cancellationToken).ConfigureAwait(false);
+        if (memoize)
+        {
+            dealsCache[supplierName] = new Memo<IReadOnlyList<MarketDeal>>(deals);
+        }
+
+        return deals;
+    }
 
     /// <summary>
     /// The priced lines every Ask pack reads: the same <c>ContractInsightsMapper.ToPricedLines</c>
@@ -90,6 +148,28 @@ public sealed class ContractContextReader(
     /// bands for one line (ADR-024 w17 clause 7).
     /// </summary>
     internal async Task<IReadOnlyList<PricedLine>> ResolvePricedLinesAsync(
+        Contract360Result contract360,
+        string? benchmarkSupplierName,
+        string? geography,
+        DateOnly asOfDate,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = (CurrentTenantId, contract360.ContractId.Value, benchmarkSupplierName, geography, asOfDate);
+        if (memoize && pricedLinesCache.TryGetValue(cacheKey, out var cached))
+        {
+            return cached.Value;
+        }
+
+        var lines = await ReadPricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken).ConfigureAwait(false);
+        if (memoize)
+        {
+            pricedLinesCache[cacheKey] = new Memo<IReadOnlyList<PricedLine>>(lines);
+        }
+
+        return lines;
+    }
+
+    private async Task<IReadOnlyList<PricedLine>> ReadPricedLinesAsync(
         Contract360Result contract360,
         string? benchmarkSupplierName,
         string? geography,
@@ -120,11 +200,23 @@ public sealed class ContractContextReader(
     internal async Task<(string? SupplierName, string? Geography)> ResolveBenchmarkKeyAsync(
         EntityId? supplierId, CancellationToken cancellationToken)
     {
+        var tenantId = CurrentTenantId;
+        if (memoize && supplierId is { } cachedId && benchmarkKeyCache.TryGetValue((tenantId, cachedId.Value), out var cached))
+        {
+            return cached.Value;
+        }
+
         var key = await benchmarkKeyResolution
-            .ResolveAsync(CurrentTenantId, supplierId, cancellationToken)
+            .ResolveAsync(tenantId, supplierId, cancellationToken)
             .ConfigureAwait(false);
 
-        return key is BenchmarkKeyResult.Complete complete ? (complete.Supplier, complete.Geography) : (null, null);
+        var resolved = key is BenchmarkKeyResult.Complete complete ? (complete.Supplier, complete.Geography) : (null, null);
+        if (memoize && supplierId is { } id)
+        {
+            benchmarkKeyCache[(tenantId, id.Value)] = new Memo<(string? SupplierName, string? Geography)>(resolved);
+        }
+
+        return resolved;
     }
 
     internal Task<string> ResolveDisplayNameAsync(PortfolioListItem item, CancellationToken cancellationToken) =>
@@ -146,10 +238,22 @@ public sealed class ContractContextReader(
             return type.ToString();
         }
 
+        var tenantId = CurrentTenantId;
+        if (memoize && displayNameCache.TryGetValue((tenantId, id.Value, type), out var cached))
+        {
+            return cached.Value;
+        }
+
         var names = await supplierNameLookup
-            .GetNamesAsync(CurrentTenantId, [id], cancellationToken)
+            .GetNamesAsync(tenantId, [id], cancellationToken)
             .ConfigureAwait(false);
 
-        return names.TryGetValue(id, out var name) ? name : type.ToString();
+        var display = names.TryGetValue(id, out var name) ? name : type.ToString();
+        if (memoize)
+        {
+            displayNameCache[(tenantId, id.Value, type)] = new Memo<string>(display);
+        }
+
+        return display;
     }
 }

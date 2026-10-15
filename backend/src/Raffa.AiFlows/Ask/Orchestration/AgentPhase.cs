@@ -60,20 +60,61 @@ internal sealed record AgentPhaseRequest(
 internal sealed record AgentPhaseResult(
     IReadOnlyList<PackItem> BoundedPack,
     IReadOnlyList<MarketSafetyNet.ContractCheck> DataChecks,
-    AskFlowOutcome Flow);
+    AskFlowOutcome Flow,
+    bool AgentsDegraded = false);
 
 /// <summary>
 /// Ask's agentic flow between the intent pack and the answer: data check, researcher, council, then
 /// the pack budget and the calendar item. Moved verbatim from <see cref="AskCopilotService"/>
 /// (F1 Ask split, PR-4).
 /// </summary>
-public sealed class AgentPhase(AskAgentFlow askAgentFlow, MarketDataCheck marketDataCheck, PackBudget packBudget, IClock clock)
+public sealed class AgentPhase(
+    AskAgentFlow askAgentFlow,
+    MarketDataCheck marketDataCheck,
+    PackBudget packBudget,
+    IClock clock,
+    AskTurnOptions? turnOptions = null)
 {
+    // Chat:AskTurn -- every default reproduces the code path before PR-9/PR-10.
+    private readonly AskTurnOptions settings = turnOptions ?? new AskTurnOptions();
+
+    /// <param name="deadline">The turn's caps, shared with the answer phase by the in-domain pipeline;
+    /// <see langword="null"/> = this call starts (and, when a cap is set, audits) its own.</param>
     internal async Task<AgentPhaseResult> RunAsync(
         string question,
         SavingsGoal? goal,
         IReadOnlyList<PackItem> packItems,
         AgentPhaseRequest request,
+        CancellationToken cancellationToken,
+        TurnDeadline? deadline = null)
+    {
+        var owned = deadline is null;
+        deadline ??= TurnDeadline.Start(settings, cancellationToken);
+        try
+        {
+            var result = await RunCoreAsync(question, goal, packItems, request, deadline, cancellationToken).ConfigureAwait(false);
+            if (owned)
+            {
+                deadline.WriteDetail();
+            }
+
+            return result;
+        }
+        finally
+        {
+            if (owned)
+            {
+                deadline.Dispose();
+            }
+        }
+    }
+
+    private async Task<AgentPhaseResult> RunCoreAsync(
+        string question,
+        SavingsGoal? goal,
+        IReadOnlyList<PackItem> packItems,
+        AgentPhaseRequest request,
+        TurnDeadline deadline,
         CancellationToken cancellationToken)
     {
         // Ask's agentic flow (Raffa.AiFlows.Negotiation.Orchestration.AskAgentFlow), one coordinated sequence
@@ -92,6 +133,20 @@ public sealed class AgentPhase(AskAgentFlow askAgentFlow, MarketDataCheck market
         var dataChecks = new List<MarketSafetyNet.ContractCheck>();
         var dataCheckContracts = request.DataCheckContracts;
 
+        // F1-T03 (flag BudgetBeforeAgents): the agents read the intent pack already bounded, so the
+        // composer and the agents see the same tenant evidence; AgentPackReserveTokens is what the
+        // second bound below leaves free for the plays and market notes. Off = today: they read it whole.
+        var budgetDroppedBeforeAgents = 0;
+        if (settings.BudgetBeforeAgents)
+        {
+            var intentBounded = packBudget.Apply(packItems, packBudget.MaxTokens - Math.Max(0, settings.AgentPackReserveTokens));
+            budgetDroppedBeforeAgents = packItems.Count - intentBounded.Count;
+            packItems = intentBounded;
+        }
+
+        // A-04: the agent phase runs under its own cap (and the turn's). When it fires the flow returns
+        // what it has with a "deadline:" failure; a caller cancellation still propagates.
+        var agentToken = deadline.ForAgents();
         var flow = await askAgentFlow.RunAsync(
                 new AskFlowRequest(
                     question,
@@ -99,12 +154,20 @@ public sealed class AgentPhase(AskAgentFlow askAgentFlow, MarketDataCheck market
                     goal,
                     dataCheckContracts.Count > 0 ? ct => marketDataCheck.RunAsync(dataCheckContracts, dataChecks, ct) : null,
                     RunMarketResearch: request.RunMarketResearch,
-                    ConveneCouncil: request.ConveneCouncil),
-                cancellationToken)
+                    ConveneCouncil: request.ConveneCouncil,
+                    CancellationIsDeadline: deadline.Active ? () => deadline.Expired(agentToken) : null),
+                agentToken)
             .ConfigureAwait(false);
 
         // F2-T01: the flow's steps, failures and market queries (names and counts) ride on the turn's one audit row.
         RunContext.AddTurnDetail(flow.ToAuditDetail());
+
+        var degraded = flow.CutByDeadline && deadline.Mark("agents");
+        if (degraded && packItems.Count > 0)
+        {
+            // Said explicitly, right after the intent's own items: the answer states the gap.
+            packItems = [.. packItems, TurnDeadline.AgentsSkippedItem(HelpfulFallbackAnswer.IsItalian(question))];
+        }
 
         if (flow.MarketItems.Count > 0)
         {
@@ -125,6 +188,30 @@ public sealed class AgentPhase(AskAgentFlow askAgentFlow, MarketDataCheck market
         var councilItemsDropped = flow.CouncilItems.Count(i => !boundedKeys.Contains(i.CitationKey));
         RunContext.AddTurnDetail(BudgetDetail(packItems.Count, boundedPack.Count, councilItemsDropped, flow.PlaysDropped));
 
+        // F1-T03 (flag RevalidatePlaysAfterBudget): a play is only as grounded as the items it cites. One
+        // whose cited item the budget cut is removed -- counted, never silently -- instead of reaching
+        // the answer as a claim with no evidence in the pack.
+        var playsUngrounded = 0;
+        if (settings.RevalidatePlaysAfterBudget && flow.PlayCitations is { Count: > 0 } playCitations)
+        {
+            var ungrounded = boundedPack
+                .Where(i => playCitations.TryGetValue(i.CitationKey, out var cited) && cited.Any(k => !boundedKeys.Contains(k)))
+                .Select(i => i.CitationKey)
+                .ToHashSet(StringComparer.Ordinal);
+            if (ungrounded.Count > 0)
+            {
+                boundedPack = boundedPack.Where(i => !ungrounded.Contains(i.CitationKey)).ToList();
+                playsUngrounded = ungrounded.Count;
+            }
+        }
+
+        if (settings.BudgetBeforeAgents || settings.RevalidatePlaysAfterBudget)
+        {
+            RunContext.AddTurnDetail(
+                $"budgetBeforeAgents={(settings.BudgetBeforeAgents ? "on" : "off")} budgetDroppedBeforeAgents={budgetDroppedBeforeAgents} " +
+                $"revalidatePlays={(settings.RevalidatePlaysAfterBudget ? "on" : "off")} playsUngrounded={playsUngrounded}");
+        }
+
         // A question about a period ("this quarter", "fine trimestre") gets today's date and the
         // calendar quarter as one more citable item -- appended after the budget (it is a few
         // dozen tokens) so the model can state the quarter's end as a pack value instead of
@@ -135,7 +222,7 @@ public sealed class AgentPhase(AskAgentFlow askAgentFlow, MarketDataCheck market
         }
 
 
-        return new AgentPhaseResult(boundedPack, dataChecks, flow);
+        return new AgentPhaseResult(boundedPack, dataChecks, flow, degraded);
     }
 
     /// <summary>The turn-row fragment that makes the budget's cuts visible (F1-T03, observe only).</summary>

@@ -62,11 +62,44 @@ public sealed class AnswerPhase(
     WebResearchFlow webResearchFlow,
     CapabilityRouting capabilityRouting,
     AbstainRecovery abstainRecovery,
-    ContractContextReader context)
+    ContractContextReader context,
+    AskTurnOptions? turnOptions = null)
 {
+    private readonly AskTurnOptions settings = turnOptions ?? new AskTurnOptions();
+
+    /// <param name="deadline">The turn's caps, shared with the agent phase by the in-domain pipeline;
+    /// <see langword="null"/> = this call starts (and, when a cap is set, audits) its own.</param>
     internal async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> ComposeAsync(
         InDomainTurn turn,
         AgentPhaseResult agents,
+        CancellationToken cancellationToken,
+        TurnDeadline? deadline = null)
+    {
+        var owned = deadline is null;
+        deadline ??= TurnDeadline.Start(settings, cancellationToken);
+        try
+        {
+            var result = await ComposeCoreAsync(turn, agents, deadline, cancellationToken).ConfigureAwait(false);
+            if (owned)
+            {
+                deadline.WriteDetail();
+            }
+
+            return result;
+        }
+        finally
+        {
+            if (owned)
+            {
+                deadline.Dispose();
+            }
+        }
+    }
+
+    private async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> ComposeCoreAsync(
+        InDomainTurn turn,
+        AgentPhaseResult agents,
+        TurnDeadline deadline,
         CancellationToken cancellationToken)
     {
         var tenantId = turn.Scope.TenantId;
@@ -98,6 +131,12 @@ public sealed class AnswerPhase(
         // check found and what the market says in their place (step 1 of the flow above).
         var italianQuestion = HelpfulFallbackAnswer.IsItalian(question);
         var lead = MarketSafetyNet.Lead(dataChecks, italianQuestion);
+        if (agents.AgentsDegraded)
+        {
+            // A-04: the agent phase was cut short -- the proposal says so, in the same words as the pack item.
+            lead = TurnDeadline.DegradedLead(lead, italianQuestion);
+        }
+
         if (lead is null && plan.Intent == AskIntent.Clause && namedContractItem is not null && boundedPack.Count == 0)
         {
             // Honest first: the clause is not on file for this contract.
@@ -129,11 +168,32 @@ public sealed class AnswerPhase(
             && !previousRaffaTurnWasInterview
             && AmbiguousAbstainDetector.IsAmbiguous(reason);
 
-        var composed = await answerComposer.AnswerAsync(question, boundedPack, recentTurns, KeepDecline, cancellationToken)
-            .ConfigureAwait(false);
+        // A-04: the answer phase runs under its own cap (and the turn's). A cap that fires is the existing
+        // "service busy" abstain -- explicit, with the recovery actions -- never a truncated answer; the
+        // caller's own cancellation still propagates.
+        var answerToken = deadline.ForAnswer();
+        Result<AnswerComposerResult> composed;
+        try
+        {
+            composed = await answerComposer.AnswerAsync(question, boundedPack, recentTurns, KeepDecline, answerToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.Active && deadline.Expired(answerToken))
+        {
+            deadline.Mark("answer");
+            return (new CopilotReply(
+                ReplyKind.Abstain,
+                HelpfulFallbackAnswer.ServiceBusy(question),
+                [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps), false, false);
+        }
 
         if (composed.IsFailure)
         {
+            if (deadline.Active && deadline.Expired(answerToken))
+            {
+                deadline.Mark("answer");
+            }
+
             return (new CopilotReply(
                 ReplyKind.Abstain,
                 HelpfulFallbackAnswer.ServiceBusy(question),

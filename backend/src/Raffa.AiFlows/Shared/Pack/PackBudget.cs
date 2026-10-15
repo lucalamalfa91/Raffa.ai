@@ -46,9 +46,18 @@ public sealed class PackBudget
     /// because its one candidate item is verbose is worse than a slightly over-budget call —
     /// R-ASK-04's "bounded" pack must not become an accidentally-empty one).
     /// </summary>
-    public IReadOnlyList<PackItem> Apply(IReadOnlyList<PackItem> items)
+    public IReadOnlyList<PackItem> Apply(IReadOnlyList<PackItem> items) => Apply(items, MaxTokens);
+
+    /// <summary>
+    /// <see cref="Apply(IReadOnlyList{PackItem})"/> against an explicit ceiling instead of
+    /// <see cref="MaxTokens"/> (F1-T03: the intent pack is bounded below the full budget before the
+    /// agents read it, keeping a reserve for what they add). A ceiling below 1 is read as 1; the
+    /// first item is always kept.
+    /// </summary>
+    public IReadOnlyList<PackItem> Apply(IReadOnlyList<PackItem> items, int maxTokens)
     {
         ArgumentNullException.ThrowIfNull(items);
+        maxTokens = Math.Max(1, maxTokens);
 
         if (items.Count == 0)
         {
@@ -62,7 +71,7 @@ public sealed class PackBudget
         {
             var itemTokens = EstimateTokens(item);
 
-            if (kept.Count > 0 && usedTokens + itemTokens > MaxTokens)
+            if (kept.Count > 0 && usedTokens + itemTokens > maxTokens)
             {
                 break;
             }
@@ -73,6 +82,9 @@ public sealed class PackBudget
 
         return kept;
     }
+
+    /// <summary>The estimated tokens of a whole pack (the same estimate <see cref="Apply(IReadOnlyList{PackItem})"/> uses).</summary>
+    internal static int EstimateTokens(IReadOnlyList<PackItem> items) => items.Sum(EstimateTokens);
 
     private static int EstimateTokens(PackItem item)
     {
