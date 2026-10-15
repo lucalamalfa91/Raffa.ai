@@ -21,7 +21,15 @@ public sealed record ExtractedFact(
     [property: JsonPropertyName("value")] string? Value,
     [property: JsonPropertyName("sourcePage")] int? SourcePage,
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
-    [property: JsonPropertyName("confidence")] double? Confidence);
+    [property: JsonPropertyName("confidence")] double? Confidence)
+{
+    /// <summary>F5-T07: set by the span verifier in Gate mode only (false = the evidence span was not found
+    /// on the page the model named; true = found; null = not verified: Off, Shadow or no span). Never part
+    /// of the wire contract and never persisted as such: the store turns false into review-required.</summary>
+    [JsonIgnore]
+    public bool? SpanVerified { get; init; }
+}
+
 
 public sealed record ExtractedLineItemsPayload(
     [property: JsonPropertyName("items")] IReadOnlyList<ExtractedLineItemFact>? Items);
@@ -39,7 +47,15 @@ public sealed record ExtractedLineItemFact(
     [property: JsonPropertyName("totalCost")] decimal? TotalCost,
     [property: JsonPropertyName("sourcePage")] int? SourcePage,
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
-    [property: JsonPropertyName("confidence")] double? Confidence);
+    [property: JsonPropertyName("confidence")] double? Confidence)
+{
+    /// <summary>F5-T07: set by the span verifier in Gate mode only (false = the evidence span was not found
+    /// on the page the model named; true = found; null = not verified: Off, Shadow or no span). Never part
+    /// of the wire contract and never persisted as such: the store turns false into review-required.</summary>
+    [JsonIgnore]
+    public bool? SpanVerified { get; init; }
+}
+
 
 public sealed record ExtractedClausesPayload(
     [property: JsonPropertyName("items")] IReadOnlyList<ExtractedClauseFact>? Items);
@@ -51,7 +67,15 @@ public sealed record ExtractedClauseFact(
     [property: JsonPropertyName("riskLevel")] string? RiskLevel,
     [property: JsonPropertyName("sourcePage")] int? SourcePage,
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
-    [property: JsonPropertyName("confidence")] double? Confidence);
+    [property: JsonPropertyName("confidence")] double? Confidence)
+{
+    /// <summary>F5-T07: set by the span verifier in Gate mode only (false = the evidence span was not found
+    /// on the page the model named; true = found; null = not verified: Off, Shadow or no span). Never part
+    /// of the wire contract and never persisted as such: the store turns false into review-required.</summary>
+    [JsonIgnore]
+    public bool? SpanVerified { get; init; }
+}
+
 
 public sealed record ExtractedObligationsPayload(
     [property: JsonPropertyName("items")] IReadOnlyList<ExtractedObligationFact>? Items);
@@ -66,7 +90,15 @@ public sealed record ExtractedObligationFact(
     [property: JsonPropertyName("status")] string? Status,
     [property: JsonPropertyName("sourcePage")] int? SourcePage,
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
-    [property: JsonPropertyName("confidence")] double? Confidence);
+    [property: JsonPropertyName("confidence")] double? Confidence)
+{
+    /// <summary>F5-T07: set by the span verifier in Gate mode only (false = the evidence span was not found
+    /// on the page the model named; true = found; null = not verified: Off, Shadow or no span). Never part
+    /// of the wire contract and never persisted as such: the store turns false into review-required.</summary>
+    [JsonIgnore]
+    public bool? SpanVerified { get; init; }
+}
+
 
 public sealed record ExtractedRisksPayload(
     [property: JsonPropertyName("items")] IReadOnlyList<ExtractedRiskFact>? Items);
@@ -78,4 +110,12 @@ public sealed record ExtractedRiskFact(
     [property: JsonPropertyName("status")] string? Status,
     [property: JsonPropertyName("sourcePage")] int? SourcePage,
     [property: JsonPropertyName("sourceSpan")] string? SourceSpan,
-    [property: JsonPropertyName("confidence")] double? Confidence);
+    [property: JsonPropertyName("confidence")] double? Confidence)
+{
+    /// <summary>F5-T07: set by the span verifier in Gate mode only (false = the evidence span was not found
+    /// on the page the model named; true = found; null = not verified: Off, Shadow or no span). Never part
+    /// of the wire contract and never persisted as such: the store turns false into review-required.</summary>
+    [JsonIgnore]
+    public bool? SpanVerified { get; init; }
+}
+
