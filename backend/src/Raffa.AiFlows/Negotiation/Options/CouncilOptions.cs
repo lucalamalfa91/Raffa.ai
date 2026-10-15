@@ -32,4 +32,10 @@ public sealed class CouncilOptions
 
     /// <summary>Market notes the researcher may add to one turn's pack, all queries together.</summary>
     public int MarketResearchMaxItems { get; set; } = 6;
+
+    /// <summary>Backstop deadline of each council agent on the step runner (the two analysts and the
+    /// strategist). The council had no deadline of its own, only the gateway's per-call timeout and
+    /// retries, so this is deliberately far above them: it bounds a hung call and does not change a
+    /// normal turn. A step that overruns degrades by its policy with an explicit "deadline" reason.</summary>
+    public TimeSpan AgentDeadline { get; set; } = TimeSpan.FromMinutes(10);
 }

@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Raffa.AiFlows.Negotiation.Agents;
 using Raffa.AiFlows.Negotiation.Options;
 using Raffa.AiFlows.Negotiation.Verdict;
@@ -7,9 +5,7 @@ using Raffa.AiFlows.Shared.Guards;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiGateway;
-using Raffa.AiGateway.Contracts;
-using Raffa.AiGateway.Telemetry;
-using Raffa.SharedKernel;
+using Raffa.AiGateway.Agents;
 
 namespace Raffa.AiFlows.Negotiation.Orchestration;
 
@@ -41,15 +37,29 @@ public sealed record CouncilOutcome(
 /// the cited items so the answer can quote them verbatim.
 /// </para>
 /// </summary>
-public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions options)
+public sealed class NegotiationCouncil
 {
     public const string Provenance = "negotiation council";
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private readonly CouncilOptions options;
+    private readonly StepRunner runner;
+    private readonly ContractAnalystStep contractAnalyst;
+    private readonly MarketAnalystStep marketAnalyst;
+    private readonly LeverStrategistStep leverStrategist;
+
+    /// <param name="aiGateway">The gateway every agent call goes through (the runner never bypasses it).</param>
+    /// <param name="options">The council's bounds and kill switch.</param>
+    /// <param name="runner">The request's Scoped step runner; one over <paramref name="aiGateway"/> when omitted.</param>
+    public NegotiationCouncil(IAiGateway aiGateway, CouncilOptions options, StepRunner? runner = null)
     {
-        Converters = { new JsonStringEnumConverter() },
-        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-    };
+        ArgumentNullException.ThrowIfNull(aiGateway);
+        ArgumentNullException.ThrowIfNull(options);
+        this.options = options;
+        this.runner = runner ?? new StepRunner(aiGateway);
+        contractAnalyst = new ContractAnalystStep(options.AgentDeadline);
+        marketAnalyst = new MarketAnalystStep(options.AgentDeadline);
+        leverStrategist = new LeverStrategistStep(options.AgentDeadline);
+    }
 
     public async Task<CouncilOutcome> RunAsync(
         string question,
@@ -90,11 +100,11 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
 
         // ----- Round one: two analysts, in parallel, over disjoint evidence -----
         var contractTask = tenantItems.Count > 0
-            ? RunAnalystAsync(CouncilAgents.ContractAnalystName, CouncilAgents.ContractAnalystPrompt, question, goalDto, tenantItems, cancellationToken)
-            : Task.FromResult<(IReadOnlyList<Finding> Findings, string? Failure)>(([], null));
+            ? RunAnalystAsync(contractAnalyst, question, goalDto, tenantItems, cancellationToken)
+            : Task.FromResult<(IReadOnlyList<CouncilFinding> Findings, string? Failure)>(([], null));
         var marketTask = marketItems.Count > 0
-            ? RunAnalystAsync(CouncilAgents.MarketAnalystName, CouncilAgents.MarketAnalystPrompt, question, goalDto, marketItems, cancellationToken)
-            : Task.FromResult<(IReadOnlyList<Finding> Findings, string? Failure)>(([], null));
+            ? RunAnalystAsync(marketAnalyst, question, goalDto, marketItems, cancellationToken)
+            : Task.FromResult<(IReadOnlyList<CouncilFinding> Findings, string? Failure)>(([], null));
 
         await Task.WhenAll(contractTask, marketTask).ConfigureAwait(false);
 
@@ -132,48 +142,20 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
             .Take(options.MaxItemsPerAgent + 6)
             .ToList();
 
-        var strategistInput = new StrategistInput(
+        var strategistInput = new CouncilStrategistInput(
             question,
             goalDto,
             strategistItems.Select(ToItemDto).ToList(),
-            new FindingsByAgent(contractFindings, marketFindings));
+            new CouncilFindingsByAgent(contractFindings, marketFindings));
 
         agentsRun.Add(CouncilAgents.LeverStrategistName);
 
-        Result<AiAnalysisResult> strategistResult;
-        using (RunContext.BeginStep(CouncilAgents.LeverStrategistName))
+        // The one required step: it cannot deliver (gateway failure, unusable payload, deadline) and
+        // there is no council for the turn.
+        var strategistResult = await runner.RunAsync(leverStrategist, strategistInput, cancellationToken).ConfigureAwait(false);
+        if (strategistResult.Value is not { } payload)
         {
-            strategistResult = await aiGateway.AnalyzeAsync(
-                    new AiAnalysisRequest(
-                        CouncilAgents.LeverStrategistName,
-                        CouncilAgents.LeverStrategistPrompt,
-                        JsonSerializer.Serialize(strategistInput, JsonOptions),
-                        CouncilAgents.PlaysSchema,
-                        CouncilAgents.Version),
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        if (strategistResult.IsFailure)
-        {
-            failures.Add($"{CouncilAgents.LeverStrategistName}: {strategistResult.Error}");
-            return new CouncilOutcome([], agentsRun, failures);
-        }
-
-        StrategistPayload? payload;
-        try
-        {
-            payload = JsonSerializer.Deserialize<StrategistPayload>(strategistResult.Value.PayloadJson, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            failures.Add($"{CouncilAgents.LeverStrategistName}: payload was not valid JSON — {ex.Message}");
-            return new CouncilOutcome([], agentsRun, failures);
-        }
-
-        if (payload is null)
-        {
-            failures.Add($"{CouncilAgents.LeverStrategistName}: payload parsed to null.");
+            failures.Add(strategistResult.Describe()!);
             return new CouncilOutcome([], agentsRun, failures);
         }
 
@@ -189,45 +171,24 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
         return new CouncilOutcome(items, agentsRun, failures);
     }
 
-    private async Task<(IReadOnlyList<Finding> Findings, string? Failure)> RunAnalystAsync(
-        string agentName,
-        string systemPrompt,
+    /// <summary>One round-one analyst on the runner. A failed analyst is a skipped step, never an
+    /// exception: no findings and the reason the council reports as <c>"agent: reason"</c>.</summary>
+    private async Task<(IReadOnlyList<CouncilFinding> Findings, string? Failure)> RunAnalystAsync(
+        IAgentStep<CouncilAnalystInput, CouncilFindingsPayload> step,
         string question,
-        GoalDto? goal,
+        CouncilGoal? goal,
         IReadOnlyList<PackItem> items,
         CancellationToken cancellationToken)
     {
-        var input = new AnalystInput(question, goal, items.Select(ToItemDto).ToList());
+        var input = new CouncilAnalystInput(question, goal, items.Select(ToItemDto).ToList());
+        var result = await runner.RunAsync(step, input, cancellationToken).ConfigureAwait(false);
 
-        // Parallel analysts each name their own step: the scope is local to this call's async flow.
-        using var step = RunContext.BeginStep(agentName);
-        var result = await aiGateway.AnalyzeAsync(
-                new AiAnalysisRequest(
-                    agentName,
-                    systemPrompt,
-                    JsonSerializer.Serialize(input, JsonOptions),
-                    CouncilAgents.FindingsSchema,
-                    CouncilAgents.Version),
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        if (result.IsFailure)
-        {
-            return ([], result.Error);
-        }
-
-        try
-        {
-            var payload = JsonSerializer.Deserialize<FindingsPayload>(result.Value.PayloadJson, JsonOptions);
-            return (payload?.Findings ?? [], null);
-        }
-        catch (JsonException ex)
-        {
-            return ([], $"payload was not valid JSON — {ex.Message}");
-        }
+        return result.IsSuccess
+            ? (result.Value?.Findings ?? [], null)
+            : ([], result.Error ?? result.Reason.ToString());
     }
 
-    private static IReadOnlyList<Finding> FilterFindings(IReadOnlyList<Finding> findings, HashSet<string> packKeys) =>
+    private static IReadOnlyList<CouncilFinding> FilterFindings(IReadOnlyList<CouncilFinding> findings, HashSet<string> packKeys) =>
         findings
             .Where(f => !string.IsNullOrWhiteSpace(f.Title) && !string.IsNullOrWhiteSpace(f.Insight))
             .Select(f => f with { CitationKeys = (f.CitationKeys ?? []).Where(packKeys.Contains).Distinct(StringComparer.Ordinal).ToList() })
@@ -235,7 +196,7 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
             .Take(5)
             .ToList();
 
-    private List<PackItem> BuildPlayItems(StrategistPayload payload, IReadOnlyList<PackItem> pack, HashSet<string> packKeys)
+    private List<PackItem> BuildPlayItems(CouncilPlaysPayload payload, IReadOnlyList<PackItem> pack, HashSet<string> packKeys)
     {
         var itemsByKey = pack.ToDictionary(i => i.CitationKey, StringComparer.Ordinal);
         var items = new List<PackItem>();
@@ -297,34 +258,12 @@ public sealed class NegotiationCouncil(IAiGateway aiGateway, CouncilOptions opti
         return items;
     }
 
-    private static GoalDto? ToGoalDto(SavingsGoal? goal) =>
+    private static CouncilGoal? ToGoalDto(SavingsGoal? goal) =>
         goal is null || !goal.HasTarget
             ? null
-            : new GoalDto(goal.TargetAmount, goal.TargetPercent, goal.Currency, goal.WindowDays, goal.WindowLabel);
+            : new CouncilGoal(goal.TargetAmount, goal.TargetPercent, goal.Currency, goal.WindowDays, goal.WindowLabel);
 
-    private static ItemDto ToItemDto(PackItem item) =>
+    private static CouncilItem ToItemDto(PackItem item) =>
         new(item.CitationKey, item.Corpus, item.Title, item.Subtitle, item.Snippet,
-            item.Values.Select(v => new ValueDto(v.Key, v.Value, v.Kind.ToString(), v.Currency)).ToList());
-
-    // ----- wire shapes (camelCase JSON; the fixture gateway mirrors "items" structurally) -----
-
-    private sealed record GoalDto(decimal? TargetAmount, decimal? TargetPercent, string? Currency, int? WindowDays, string? WindowLabel);
-
-    private sealed record ValueDto(string Key, string Value, string Kind, string? Currency);
-
-    private sealed record ItemDto(string CitationKey, string Corpus, string Title, string? Subtitle, string Snippet, IReadOnlyList<ValueDto> Values);
-
-    private sealed record AnalystInput(string Question, GoalDto? Goal, IReadOnlyList<ItemDto> Items);
-
-    private sealed record FindingsByAgent(IReadOnlyList<Finding> ContractAnalyst, IReadOnlyList<Finding> MarketAnalyst);
-
-    private sealed record StrategistInput(string Question, GoalDto? Goal, IReadOnlyList<ItemDto> Items, FindingsByAgent Findings);
-
-    private sealed record FindingsPayload(IReadOnlyList<Finding>? Findings);
-
-    internal sealed record Finding(string Title, string Insight, string? LeverType, IReadOnlyList<string>? CitationKeys);
-
-    private sealed record StrategistPayload(IReadOnlyList<Play>? Plays);
-
-    private sealed record Play(int Rank, string Lever, string Ask, IReadOnlyList<string>? ExpectedValueKeys, string? Fallback, string? Timing, IReadOnlyList<string>? CitationKeys);
+            item.Values.Select(v => new CouncilValue(v.Key, v.Value, v.Kind.ToString(), v.Currency)).ToList());
 }
