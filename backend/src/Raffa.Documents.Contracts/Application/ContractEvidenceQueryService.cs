@@ -93,7 +93,7 @@ public sealed record ContractFieldEvidenceBox(double X, double Y, double Width, 
 /// <para>
 /// <b>The override rides independently of "latest" (epic-23 feature-03, ADR-027 fence).</b> A
 /// reprocess writes a brand-new <see cref="ExtractionEvidence"/> row per field
-/// (<c>StagedExtractionService</c> always <c>Add</c>s, never updates) — that new row wins "latest"
+/// (<c>ExtractionOrchestrator</c> always <c>Add</c>s, never updates) — that new row wins "latest"
 /// for <see cref="ContractFieldEvidence.Value"/>/<c>Box</c>/etc., but a human's already-recorded
 /// <see cref="ExtractionEvidence.OverrideValue"/> lives on whichever row it was written on, which
 /// the reprocess never touches. So <see cref="GetLatestAsync"/> resolves

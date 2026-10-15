@@ -1,4 +1,4 @@
-using System.Reflection;
+using Raffa.AiFlows.DocumentExtraction.Orchestration;
 using Raffa.AiFlows.Shared.Parsing;
 using Raffa.Documents.Contracts.Application.Extraction;
 
@@ -7,8 +7,7 @@ namespace Raffa.AiFlows.Tests.Shared;
 /// <summary>
 /// The <c>[[PAGE n]]</c> text is the extraction input: its format feeds the model prompt and (for
 /// documents) the resume <c>InputHash</c>. <see cref="PageMarkedText"/> serves quote extraction
-/// today and must stay equal to the copy document extraction still keeps in
-/// <c>StagedExtractionService</c>, until that service adopts it.
+/// and document extraction (<c>ExtractionOrchestrator</c>).
 /// </summary>
 public sealed class PageMarkedTextTests
 {
@@ -38,15 +37,12 @@ public sealed class PageMarkedTextTests
     }
 
     [Fact]
-    public void Build_is_identical_to_the_copy_document_extraction_still_keeps()
+    public void Build_is_the_text_the_document_extraction_input_hash_is_computed_over()
     {
-        var staged = typeof(StagedExtractionService).GetMethod(
-            "BuildPageMarkedText", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(staged);
-
-        var fromStaged = (string)staged.Invoke(null, [Pages])!;
-
-        Assert.Equal(fromStaged, PageMarkedText.Build(Pages));
-        Assert.Equal(staged.Invoke(null, [(IReadOnlyList<DocumentPageText>)[]]), PageMarkedText.Build([]));
+        // The module's private copy is gone: the document-extraction orchestrator now builds its input
+        // (and the resume InputHash) from this helper, so the helper's format is the stored-checkpoint contract.
+        Assert.Equal(
+            ExtractionInputHash.Compute("[[PAGE 1]]\nabc\n\n"),
+            ExtractionInputHash.Compute(PageMarkedText.Build([new DocumentPageText(1, "abc")])));
     }
 }

@@ -1,3 +1,7 @@
+using Raffa.AiFlows.DocumentExtraction.Orchestration;
+using Raffa.AiFlows.DocumentExtraction.Stages;
+using Raffa.AiFlows.Tests.TestSupport;
+using Raffa.Documents.Contracts.Infrastructure.Extraction;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -12,7 +16,7 @@ using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 
-namespace Raffa.Documents.Contracts.Tests;
+namespace Raffa.AiFlows.Tests.DocumentExtraction.Orchestration;
 
 /// <summary>
 /// Proves the Definition of Done for task E02/F01/US02/T01 (us-02-staged-extraction): AC-1 (all
@@ -26,12 +30,12 @@ namespace Raffa.Documents.Contracts.Tests;
 ///
 /// Runs against a real Postgres+pgvector Testcontainer (matching
 /// <see cref="ContractLineItemSchemaTests"/>'s pattern) rather than an in-memory provider —
-/// <see cref="StagedExtractionService"/> persists through <see cref="DocumentsContractsDbContext"/>
+/// <see cref="ExtractionOrchestrator"/> persists through <see cref="DocumentsContractsDbContext"/>
 /// exactly like every other application service in this module, so a fake provider would not
 /// prove the EF Core mappings (snake_case columns, FK ordering across a single
 /// <c>SaveChangesAsync</c> call, <c>vector</c> extension) actually work.
 /// </summary>
-public sealed class StagedExtractionServiceTests : IAsyncLifetime
+public sealed class ExtractionOrchestratorTests : IAsyncLifetime
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 4, 12, 0, 0, TimeSpan.Zero);
 
@@ -47,6 +51,11 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     }
 
     public Task DisposeAsync() => _postgres.DisposeAsync().AsTask();
+
+    /// <summary>Harness wiring: the orchestrator over the EF-backed store and the default stage set.</summary>
+    private static ExtractionOrchestrator NewService(
+        DocumentsContractsDbContext db, IAiGateway gateway, ITenantContext tenantContext, IClock clock, IAuditWriter auditWriter) =>
+        new(new ExtractionRunStore(db, tenantContext, clock, auditWriter), gateway, ExtractionStages.Default, tenantContext);
 
     private DocumentsContractsDbContext CreateContext(ITenantContext tenantContext)
     {
@@ -85,7 +94,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     {
         public Task<Result<AiClassificationResult>> ClassifyAsync(
             AiClassificationRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("StagedExtractionService does not call ClassifyAsync.");
+            throw new NotSupportedException("ExtractionOrchestrator does not call ClassifyAsync.");
 
         /// <summary>Every JSON schema the pipeline sent — order is call order only when the
         /// pipeline still calls sequentially; NW-106 fires all seven stages concurrently, so
@@ -117,15 +126,15 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         public Task<Result<AiEmbeddingResult>> EmbedAsync(
             AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("StagedExtractionService does not call EmbedAsync.");
+            throw new NotSupportedException("ExtractionOrchestrator does not call EmbedAsync.");
 
         public Task<Result<AiAnswerResult>> AnswerAsync(
             AiAnswerRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("StagedExtractionService does not call AnswerAsync.");
+            throw new NotSupportedException("ExtractionOrchestrator does not call AnswerAsync.");
 
         public Task<Result<AiOcrResult>> OcrAsync(
             AiOcrRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("StagedExtractionService does not call OcrAsync.");
+            throw new NotSupportedException("ExtractionOrchestrator does not call OcrAsync.");
     }
 
     /// <summary>NW-106: proves the seven extraction stages' Foundry calls are actually in flight
@@ -144,7 +153,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         public Task<Result<AiClassificationResult>> ClassifyAsync(
             AiClassificationRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("StagedExtractionService does not call ClassifyAsync.");
+            throw new NotSupportedException("ExtractionOrchestrator does not call ClassifyAsync.");
 
         public async Task<Result<AiExtractionResult>> ExtractAsync(
             AiExtractionRequest request, CancellationToken cancellationToken = default)
@@ -162,15 +171,15 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
 
         public Task<Result<AiEmbeddingResult>> EmbedAsync(
             AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("StagedExtractionService does not call EmbedAsync.");
+            throw new NotSupportedException("ExtractionOrchestrator does not call EmbedAsync.");
 
         public Task<Result<AiAnswerResult>> AnswerAsync(
             AiAnswerRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("StagedExtractionService does not call AnswerAsync.");
+            throw new NotSupportedException("ExtractionOrchestrator does not call AnswerAsync.");
 
         public Task<Result<AiOcrResult>> OcrAsync(
             AiOcrRequest request, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("StagedExtractionService does not call OcrAsync.");
+            throw new NotSupportedException("ExtractionOrchestrator does not call OcrAsync.");
 
         private static void InterlockedMax(ref int target, int candidate)
         {
@@ -194,7 +203,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     private const string SupplierLegalName = "Salesforce, Inc.";
 
     /// <summary>High-confidence payload for every AC-1 stage, used by the happy-path test.
-    /// Field/item shapes mirror <see cref="StagedExtractionJsonSchemas"/> exactly.</summary>
+    /// Field/item shapes mirror <c>StagedExtractionJsonSchemas</c> exactly.</summary>
     private static Dictionary<string, string> HighConfidencePayloads() => new()
     {
         ["Metadata"] = $$"""
@@ -274,7 +283,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var auditWriter = new RecordingAuditWriter();
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(runDb, gateway, tenantContext, new FixedClock(Now), auditWriter);
+        var service = NewService(runDb, gateway, tenantContext, new FixedClock(Now), auditWriter);
 
         IReadOnlyList<DocumentPageText> pages =
         [
@@ -396,7 +405,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var gateway = new ConcurrencyTrackingGateway();
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
+        var service = NewService(runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var pages = new[] { new DocumentPageText(1, "some contract text") };
 
@@ -430,7 +439,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var gateway = new ScriptedAiGateway(payloads);
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var pages = new[] { new DocumentPageText(1, "some contract text") };
@@ -468,7 +477,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """;
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -517,7 +526,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """;
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -553,7 +562,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var gateway = new ScriptedAiGateway(HighConfidencePayloads());
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -589,7 +598,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """;
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -622,7 +631,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var gateway = new ScriptedAiGateway(HighConfidencePayloads(), failStages: new HashSet<string> { "LegalClauses" });
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var pages = new[] { new DocumentPageText(1, "some contract text") };
@@ -662,7 +671,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """;
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -702,7 +711,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var gateway = new FixtureAiGateway(new AiGatewayModelOptions(), new FixedClock(Now));
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var pages = new[] { new DocumentPageText(1, "some contract text") };
@@ -733,7 +742,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var gateway = new FixtureAiGateway(new AiGatewayModelOptions(), new FixedClock(Now));
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, gateway, tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var clean = await service.RunAsync(
@@ -849,7 +858,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """;
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         // All staged facts are high-confidence; the weak classification (0.5 < 0.90) is the
@@ -900,7 +909,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """;
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -952,7 +961,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """;
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -1002,7 +1011,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
             """;
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -1043,7 +1052,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var failStages = new HashSet<string> { "CommercialTerms" };
 
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(payloads, failStages), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "some contract text")]);
@@ -1068,7 +1077,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var tenantContext = new TenantContext();
 
         await using var db = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             db, new ScriptedAiGateway(HighConfidencePayloads()), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, EntityId.New(), [new DocumentPageText(1, "text")]);
@@ -1083,7 +1092,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         var tenantContext = new TenantContext();
 
         await using var db = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             db, new ScriptedAiGateway(HighConfidencePayloads()), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, EntityId.New(), []);
@@ -1094,10 +1103,10 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
     /// <summary>
     /// Regression test for the w17 bootstrap-contract type promotion fix: when
     /// <c>DocumentUploadService</c> creates a Contract shell at upload time with
-    /// <see cref="ContractDocumentType.Other"/> as a placeholder, <see cref="StagedExtractionService"/>
+    /// <see cref="ContractDocumentType.Other"/> as a placeholder, <see cref="ExtractionOrchestrator"/>
     /// must promote that placeholder to the classified type (e.g. <c>Msa</c>) once
     /// <c>DocumentProcessingOrchestrator</c> has classified the document and flushed
-    /// <see cref="Document.DocumentType"/> before calling <see cref="StagedExtractionService.RunAsync"/>.
+    /// <see cref="Document.DocumentType"/> before calling <c>ExtractionOrchestrator.RunAsync</c>.
     /// Without this, the portfolio/360 type stays "Other" even after extraction completes (the
     /// E2E assertion at <c>R1EndToEndTests.cs:92</c> would fail with Expected "Msa"/Actual "Other").
     /// </summary>
@@ -1110,7 +1119,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         // Seed: document classified as Msa (DocumentProcessingOrchestrator has already set
         // DocumentType and flushed it before calling RunAsync) plus a bootstrap Contract shell
         // with the upload-time placeholder Type = Other — exactly the state the pipeline hands
-        // to StagedExtractionService after classification.
+        // to ExtractionOrchestrator after classification.
         await using var seedDb = CreateContext(tenantContext);
         using var seedScope = tenantContext.BeginScope(tenantId);
 
@@ -1142,7 +1151,7 @@ public sealed class StagedExtractionServiceTests : IAsyncLifetime
         // Run extraction with minimal payloads (type promotion is in EnsureContractAsync,
         // before any stage runs, so stage content does not affect this assertion).
         await using var runDb = CreateContext(tenantContext);
-        var service = new StagedExtractionService(
+        var service = NewService(
             runDb, new ScriptedAiGateway(new Dictionary<string, string>()), tenantContext, new FixedClock(Now), new RecordingAuditWriter());
 
         var result = await service.RunAsync(tenantId, document.Id, [new DocumentPageText(1, "MSA contract text.")]);

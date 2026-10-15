@@ -7,7 +7,7 @@ namespace Raffa.AiFlows.QuoteExtraction.Schemas;
 /// sends as <c>AiExtractionRequest.JsonSchema</c> for the quote line-item extraction stage (product
 /// spec §7.3/§4.4: "schema-constrained output... quantities, SKU/edition, prices, discounts and
 /// terms"; ADR-004: "a structured-output-capable model... not free text"). Public (unlike
-/// <c>Raffa.Documents.Contracts.Application.Extraction.StagedExtractionJsonSchemas</c>, which is
+/// <c>Raffa.AiFlows.DocumentExtraction.Schemas.StagedExtractionJsonSchemas</c>, which is
 /// <c>internal</c> to its own module); the AI Gateway call site is the pipeline named above, in
 /// the same project.
 ///

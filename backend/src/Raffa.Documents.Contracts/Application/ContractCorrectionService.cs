@@ -86,7 +86,7 @@ public sealed class ContractCorrectionService(
     /// <summary>The correctable field name for the supplier link (requirements R-SUP-03) —
     /// deliberately the same literal the extraction pipeline writes its own
     /// <see cref="ExtractionEvidence.FieldName"/> under
-    /// (<c>StagedExtractionService.SupplierFieldName</c>), so a reviewer correcting a weak
+    /// (<c>ExtractionFieldNames.Supplier</c>), so a reviewer correcting a weak
     /// <c>supplier</c> fact PATCHes exactly the field name the review list showed them. Not
     /// referenced as that constant: <c>Application.Extraction</c> depends on this namespace's
     /// <see cref="Contract"/> shape, and a compile-time dependency back the other way would make

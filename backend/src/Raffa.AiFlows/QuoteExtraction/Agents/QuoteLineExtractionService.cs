@@ -17,7 +17,7 @@ namespace Raffa.AiFlows.QuoteExtraction.Agents;
 /// hybrid-OCR reuse (this story's AC-4) both happen in
 /// <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c>, which calls this
 /// service afterward with the raw JSON payload, exactly mirroring how
-/// <c>Raffa.Documents.Contracts.Application.Extraction.StagedExtractionService.ApplyLineItems</c>
+/// <c>ExtractionRunStore.ApplyLineItems</c>
 /// only ever sees a payload string too, never the gateway itself.
 ///
 /// <b>AC-3</b>: this type is the one place quote-line arithmetic happens. The AI Gateway `extract`
@@ -31,13 +31,13 @@ namespace Raffa.AiFlows.QuoteExtraction.Agents;
 /// Only adds rows to the change tracker; it does not call <c>SaveChangesAsync</c> itself — the
 /// caller (<c>QuoteExtractionPipeline</c>) persists this alongside its own
 /// <see cref="QuoteExtractionJob"/> status update as one unit of work, mirroring
-/// <c>StagedExtractionService.ApplyLineItems</c>'s identical division of responsibility.
+/// <c>ExtractionRunStore.ApplyLineItems</c>'s identical division of responsibility.
 /// </summary>
 public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
 {
     /// <summary>Below this, a fact is treated as needing human review rather than trusted
     /// outright — same threshold and reasoning as
-    /// <c>Raffa.Documents.Contracts.Application.Extraction.StagedExtractionService
+    /// <c>ExtractionOrchestrator
     /// .LowConfidenceThreshold</c> (documented separately, not shared: the two run against
     /// independent module boundaries — see this module's own <c>TenantScopedEntity</c> doc
     /// comment for why duplication, not a shared constant, is this codebase's established
@@ -56,7 +56,7 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
     /// <see cref="QuoteLine"/> row per recognized item to the change tracker. A line whose
     /// <c>description</c> is blank is skipped, not persisted (same "one row = one fact, an
     /// unnamed line is not a fact" rule
-    /// <c>StagedExtractionService.ApplyLineItems</c> already applies to
+    /// <c>ExtractionRunStore.ApplyLineItems</c> already applies to
     /// <c>ContractLineItem</c>).
     /// </summary>
     public QuoteLineExtractionOutcome ApplyExtractedLines(
@@ -172,14 +172,14 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
 
     /// <summary>A page number the model reports outside the document's actual page range is
     /// treated as absent rather than stored as a plausible-looking but wrong citation — same rule
-    /// as <c>StagedExtractionService.ClampPage</c>.</summary>
+    /// as <c>ExtractionRunStore.ClampPage</c>.</summary>
     private static int? ClampPage(int? page, int pageCount) =>
         page is >= 1 && page <= pageCount ? page : null;
 }
 
 /// <summary>Counts <c>Raffa.AiFlows.QuoteExtraction.Orchestration.QuoteExtractionPipeline</c> uses to decide the resulting
 /// <see cref="QuoteExtractionJobStatus"/>/<see cref="QuoteProcessingStatus"/> — mirrors
-/// <c>StagedExtractionService</c>'s own inline stage-result tuple shape, named here since this
+/// <c>ExtractionOrchestrator</c>'s own inline stage-result tuple shape, named here since this
 /// service's result crosses an assembly boundary to its caller.</summary>
 /// <param name="InvalidCount">Task F6-T04: how many of <paramref name="SkippedCount"/> were
 /// discarded for an out-of-range value (negative quantity/price, discount outside 0-100,

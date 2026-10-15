@@ -3,13 +3,13 @@ using System.Text.Json.Serialization;
 namespace Raffa.Documents.Contracts.Application.Extraction;
 
 /// <summary>
-/// Raw structured-output shapes <see cref="StagedExtractionService"/> deserializes
-/// <c>AiExtractionResult.PayloadJson</c> into, mirroring
-/// <see cref="StagedExtractionJsonSchemas"/>'s shapes exactly. Every property is nullable (even
+/// Raw structured-output shapes the AiFlows extraction stages (<c>Raffa.AiFlows.DocumentExtraction.Stages</c>)
+/// deserialize <c>AiExtractionResult.PayloadJson</c> into, mirroring
+/// <c>StagedExtractionJsonSchemas</c>'s shapes exactly. Every property is nullable (even
 /// ones the JSON Schema marks <c>required</c>): a structured-output model is not guaranteed to
 /// honour the schema perfectly, and <see cref="Raffa.AiGateway.Fixtures.FixtureAiGateway"/>
 /// today always returns an empty <c>{}</c> object (no live model behind it yet) — deserializing
-/// that into these types must produce nulls, not throw. <see cref="StagedExtractionService"/> is
+/// that into these types must produce nulls, not throw. <c>ExtractionRunStore</c> is
 /// responsible for validating required fields are actually present before persisting, and for
 /// skipping (not crashing on) an item that is missing one.
 /// </summary>

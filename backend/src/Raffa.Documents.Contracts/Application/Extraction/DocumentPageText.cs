@@ -2,7 +2,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 
 /// <summary>
 /// One page's worth of already-parsed document text, keyed by 1-based page number. This is the
-/// input seam <see cref="StagedExtractionService"/> stages against — how the bytes behind a
+/// input seam <c>ExtractionOrchestrator</c> stages against — how the bytes behind a
 /// <see cref="Domain.Document"/> become page-mapped text is deliberately out of this task's
 /// scope (task E02/F01/US02/T01's own coding objective is the staged extraction pipeline, not
 /// text acquisition). ADR-017 assigns that to the *hybrid pre-pass* — task E02/F01/US02/T02

@@ -24,7 +24,7 @@ namespace Raffa.Documents.Contracts.Infrastructure;
 /// <see cref="DocumentUploadService"/>, registered here alongside the DbContext. Task
 /// E01/F06/US01/T02's <c>GET /api/documents/{id}</c> reuses the same DbContext registration and
 /// adds <see cref="DocumentQueryService"/> alongside it. Task E02/F01/US02/T01
-/// (us-02-staged-extraction) adds <see cref="StagedExtractionService"/>, and with it this
+/// (us-02-staged-extraction) adds <c>ExtractionOrchestrator</c> (in Raffa.AiFlows), and with it this
 /// module's first real dependency on <c>Raffa.AiGateway</c> (already allow-listed for this
 /// module — <c>Raffa.ArchitectureTests.DependencyDirectionTests</c>) — see
 /// <see cref="Raffa.AiGateway.ServiceCollectionExtensions.AddAiGatewayModule"/>'s own doc
@@ -78,16 +78,9 @@ public static class ServiceCollectionExtensions
         // above) rather than a second, independently-tracked context.
         services.AddScoped<DocumentUploadService>();
         services.AddScoped<DocumentQueryService>();
-        // F5 PR-1: the persistence side of a staged-extraction run, behind a port. Scoped for the same reason.
+        // F5: the persistence side of a staged-extraction run, behind a port. Scoped for the same reason.
+        // The AI side (ExtractionOrchestrator and the stages) is registered by Raffa.AiFlows.
         services.AddScoped<IExtractionRunStore, ExtractionRunStore>();
-        // Factory registration: the service has a second (DbContext) convenience constructor that would make the
-        // container's constructor choice ambiguous.
-        services.AddScoped(sp => new StagedExtractionService(
-            sp.GetRequiredService<IExtractionRunStore>(),
-            sp.GetRequiredService<IAiGateway>(),
-            sp.GetRequiredService<ITenantContext>(),
-            sp.GetService<IExtractionHangWatch>(),
-            sp.GetService<ExtractionProgressHeartbeat>()));
 
         // Task E04/F03/US01/T01 (savings-kpis): PortfolioQueryService's own
         // GetAnalysisSummaryAsync needs this stateless, dependency-free calculator — TryAddSingleton,
@@ -99,7 +92,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<EmbeddingRetrievalService>();
 
         // Task E02/F01/US02/T02 (hybrid-ocr): the native/OCR pre-pass that produces the
-        // DocumentPageText list StagedExtractionService above already depends on.
+        // DocumentPageText list ExtractionOrchestrator above already depends on.
         // NativeDocumentTextExtractor holds no per-request state (no DbContext, no ambient tenant
         // scope), so — unlike the DbContext-bound services above — Singleton is correct, not just
         // convenient. HybridDocumentParsingService itself (the AI flow that calls it) is registered
@@ -112,7 +105,7 @@ public static class ServiceCollectionExtensions
         // IDocumentAdmissionEvaluator (the content gate) are ports owned by this module and
         // implemented in Raffa.AiFlows; ExtractionRequestedHandler depends only on the ports. Hosts
         // register the implementations through AddAiFlows(). The orchestrator reaches the
-        // staged-extraction persistence below through StagedExtractionService, DocumentsContractsDbContext,
+        // staged-extraction persistence below through IExtractionRunStore, DocumentsContractsDbContext,
         // EmbeddingRetrievalService and LineItemMarketPriceService, all public and registered here.
 
         // Per-line market comparison, written at extraction and refreshed when stale on read.

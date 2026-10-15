@@ -20,7 +20,7 @@ namespace Raffa.Documents.Contracts.Application;
 /// <see cref="IndexChunkAsync"/> and <see cref="SearchAsync"/> obtain every vector from
 /// <see cref="IAiGateway.EmbedAsync"/> — this class never touches a Foundry/OpenAI SDK directly,
 /// structurally enforced by <c>Raffa.ArchitectureTests.DependencyDirectionTests</c>'s
-/// provider-SDK allow-list for this module (same shape as <c>StagedExtractionService</c>'s
+/// provider-SDK allow-list for this module (same shape as <c>ExtractionOrchestrator</c>'s
 /// <see cref="IAiGateway.ExtractAsync"/> dependency).
 ///
 /// <b>AC-2</b> ("similarity search is tenant-filtered — return only authorized tenant rows"):

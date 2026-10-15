@@ -9,7 +9,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// of it is now retrievable for Ask Raffa. Deliberately mirrors <see cref="StagedExtractionSummary"/>'s
 /// own "one record proves the whole call" shape — task E02/F06/US01/T01 (r1-integration) is the
 /// caller that finally threads <see cref="StagedExtractionSummary"/> together with the classify and
-/// indexing steps neither <c>HybridDocumentParsingService</c> nor <c>StagedExtractionService</c> own
+/// indexing steps neither <c>HybridDocumentParsingService</c> nor <c>ExtractionOrchestrator</c> own
 /// (see <c>DocumentProcessingOrchestrator</c>'s own doc comment).
 /// </summary>
 /// <param name="DocumentId">The processed <see cref="Document"/>.</param>

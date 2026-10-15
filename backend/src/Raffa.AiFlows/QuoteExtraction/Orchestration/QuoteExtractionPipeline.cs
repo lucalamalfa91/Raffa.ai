@@ -81,7 +81,7 @@ public sealed class QuoteExtractionPipeline(
 {
     /// <summary>Recorded actor for this pipeline's own audit entry — same "no human caller, label
     /// it as automation" convention as
-    /// <c>StagedExtractionService.SystemActor</c>/<c>DocumentProcessingPipeline</c>'s own
+    /// <c>ExtractionRunStore.SystemActor</c>/<c>DocumentProcessingPipeline</c>'s own
     /// equivalents.</summary>
     private const string SystemActor = "system:quote-extraction";
 
@@ -187,7 +187,7 @@ public sealed class QuoteExtractionPipeline(
         {
             // ADR-017: "over-budget jobs fail visibly... they are not silently truncated" —
             // generalized here to "no readable text at all", mirroring
-            // StagedExtractionService.RunAsync's identical guard.
+            // ExtractionOrchestrator.RunAsync's identical guard.
             return await FailAsync(
                 run, tenantId, quoteId, QuoteExtractionFailureKind.NoReadableText,
                 "Quote extraction requires at least one page of document text.")
@@ -224,7 +224,7 @@ public sealed class QuoteExtractionPipeline(
         {
             // The gateway does not validate the model's output against the schema it was given
             // (IAiGateway.ExtractAsync's own doc comment) — mirrors
-            // StagedExtractionService.ApplyStageResultAsync's identical guard against malformed
+            // ExtractionOrchestrator.ApplyStageResultAsync's identical guard against malformed
             // JSON from a real (non-fixture) model.
             return await FailAsync(
                 run, tenantId, quoteId, QuoteExtractionFailureKind.MalformedPayload,
@@ -277,7 +277,7 @@ public sealed class QuoteExtractionPipeline(
         // Human-in-the-loop principle: nothing extracted, something skipped, or any line below the
         // confidence threshold all mean a person should look at this quote before it is trusted,
         // even though the AI Gateway call itself succeeded — mirrors
-        // StagedExtractionService.ApplyStageResultAsync's identical decision rule. Deliberately does not
+        // ExtractionOrchestrator.ApplyStageResultAsync's identical decision rule. Deliberately does not
         // also factor in unmatched SKUs: that is a product-mapping gap for a person to resolve via
         // task E05/F01/US02/T02's manual mapping, not an extraction-confidence problem, so it does
         // not change this job's own Completed/NeedsReview outcome.

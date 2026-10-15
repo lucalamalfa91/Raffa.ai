@@ -11,7 +11,7 @@ namespace Raffa.Worker.Tests;
 /// <item>E22 (ADR-029 clause 2): a document whose extraction failed is still viewable because
 /// <see cref="Documents.Contracts.Application.Preview.DocumentPreviewService.RenderAndStoreAsync"/>
 /// runs <em>before</em>
-/// <see cref="Documents.Contracts.Application.Extraction.StagedExtractionService.RunAsync"/>
+/// <see cref="AiFlows.DocumentExtraction.Orchestration.ExtractionOrchestrator.RunAsync"/>
 /// in the pipeline (<c>DocumentProcessingOrchestrator.cs:237-244</c> precedes
 /// <c>DocumentProcessingOrchestrator.cs:259</c>). The settlement remains <see cref="ExtractionSettlement.Action.Complete"/>
 /// for a <see cref="ExtractionHandleOutcome.Handled"/> outcome whether the extraction succeeded or
@@ -55,7 +55,7 @@ public sealed class ExtractionSettlementTests
     {
         // ADR-029 clause 2: rasterisation runs after admission and independently of extraction
         // success. DocumentProcessingOrchestrator calls DocumentPreviewService.RenderAndStoreAsync
-        // at lines 237-244, *before* StagedExtractionService.RunAsync at line 259 -- so the
+        // at lines 237-244, *before* ExtractionOrchestrator.RunAsync at line 259 -- so the
         // preview is always stored before the extraction result is known. A document whose
         // extraction then fails is still viewable in the viewer: the settlement is
         // ExtractionHandleOutcome.Handled → ExtractionSettlement.Action.Complete regardless.

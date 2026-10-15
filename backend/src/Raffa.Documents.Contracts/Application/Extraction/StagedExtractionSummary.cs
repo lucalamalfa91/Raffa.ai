@@ -3,7 +3,7 @@ using Raffa.SharedKernel;
 
 namespace Raffa.Documents.Contracts.Application.Extraction;
 
-/// <summary>Outcome of one <see cref="StagedExtractionService.RunAsync"/> call: the
+/// <summary>Outcome of one <c>ExtractionOrchestrator.RunAsync</c> call: the
 /// <see cref="Domain.Contract"/> facts were staged into, the document's resulting
 /// <see cref="DocumentProcessingStatus"/>, and each stage's own result (AC-1: every stage runs
 /// and reports independently — one stage failing does not hide the others' outcomes).</summary>
@@ -13,7 +13,7 @@ namespace Raffa.Documents.Contracts.Application.Extraction;
 /// <see langword="null"/> when no supplier fact was returned or when the one returned was too weak
 /// to trust. Reported here rather than left for the caller to dig out of
 /// <see cref="Domain.ExtractionEvidence"/>, because "was this critical fact accepted?" is a
-/// decision <see cref="StagedExtractionService"/> makes and must not be re-derived (differently) by
+/// decision <c>ExtractionOrchestrator</c> makes and must not be re-derived (differently) by
 /// each consumer. <c>DocumentProcessingOrchestrator</c> is the one caller that acts on it: it
 /// turns the name into <see cref="Domain.Contract.SupplierId"/> through
 /// <see cref="Raffa.SharedKernel.Suppliers.ISupplierResolver"/> (ADR-002 — this module may not

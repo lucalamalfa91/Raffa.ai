@@ -1,3 +1,7 @@
+using Raffa.AiFlows.DocumentExtraction.Orchestration;
+using Raffa.AiFlows.DocumentExtraction.Stages;
+using Raffa.AiFlows.Tests.TestSupport;
+using Raffa.Documents.Contracts.Infrastructure.Extraction;
 using System.Collections.Concurrent;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
@@ -9,12 +13,12 @@ using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 
-namespace Raffa.Documents.Contracts.Tests;
+namespace Raffa.AiFlows.Tests.DocumentExtraction.Orchestration;
 
 /// <summary>
 /// F5-T01 (idempotent facts, human corrections protected), F5-T02 (typed stage failure, partial
 /// documents, checkpoint and resume) and F5-D08 (cancellation deadline derived from the notice
-/// period) -- proved against <see cref="StagedExtractionService"/> over the EF InMemory provider, so
+/// period) -- proved against <see cref="ExtractionOrchestrator"/> over the EF InMemory provider, so
 /// they run without Docker. What InMemory cannot show (the partial unique index, the SQL of the
 /// migration) is covered by the model assertions here and by the Postgres-backed tests.
 /// </summary>
@@ -35,6 +39,11 @@ public sealed class ExtractionIdempotenceTests
     // ------------------------------------------------------------------------------------------
     // Harness
     // ------------------------------------------------------------------------------------------
+
+    /// <summary>Harness wiring: the orchestrator over the EF-backed store and the default stage set.</summary>
+    private static ExtractionOrchestrator NewService(
+        DocumentsContractsDbContext db, IAiGateway gateway, ITenantContext tenantContext, IClock clock, IAuditWriter auditWriter) =>
+        new(new ExtractionRunStore(db, tenantContext, clock, auditWriter), gateway, ExtractionStages.Default, tenantContext);
 
     /// <summary>Clock that moves forward on every read, so rows written in one run are strictly
     /// older than rows written in the next (the pipeline orders "latest" by timestamp).</summary>
@@ -153,7 +162,7 @@ public sealed class ExtractionIdempotenceTests
         public async Task<StagedExtractionSummary> RunAsync(IReadOnlyList<DocumentPageText>? pages = null)
         {
             await using var db = CreateContext();
-            var service = new StagedExtractionService(db, Gateway, TenantContext, Clock, Audit);
+            var service = NewService(db, Gateway, TenantContext, Clock, Audit);
             var result = await service.RunAsync(TenantId, DocumentId, pages ?? Pages, classificationConfidence: null);
             Assert.True(result.IsSuccess, result.IsFailure ? result.Error : null);
             return result.Value;

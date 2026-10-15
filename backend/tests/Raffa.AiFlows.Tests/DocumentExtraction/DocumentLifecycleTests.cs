@@ -1,3 +1,5 @@
+using Raffa.AiFlows.DocumentExtraction.Stages;
+using Raffa.Documents.Contracts.Infrastructure.Extraction;
 using System.Text;
 using Raffa.AiFlows.DocumentExtraction.Admission;
 using Raffa.AiFlows.DocumentExtraction.Orchestration;
@@ -587,7 +589,7 @@ public sealed class DocumentLifecycleTests : IAsyncLifetime
             db,
             harness.Gateway,
             new HybridDocumentParsingService(harness.Gateway, new NativeDocumentTextExtractor()),
-            new StagedExtractionService(db, harness.Gateway, tenantContext, harness.Clock, new NoOpAuditWriter()),
+            new ExtractionOrchestrator(new ExtractionRunStore(db, tenantContext, harness.Clock, new NoOpAuditWriter()), harness.Gateway, ExtractionStages.Default, tenantContext),
             new EmbeddingRetrievalService(db, harness.Gateway, tenantContext, harness.Clock),
             tenantContext,
             harness.Clock,

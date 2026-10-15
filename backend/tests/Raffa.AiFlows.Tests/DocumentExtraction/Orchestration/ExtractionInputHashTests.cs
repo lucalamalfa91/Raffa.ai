@@ -1,6 +1,8 @@
+using Raffa.AiFlows.DocumentExtraction.Orchestration;
+using Raffa.AiFlows.Shared.Parsing;
 using Raffa.Documents.Contracts.Application.Extraction;
 
-namespace Raffa.Documents.Contracts.Tests;
+namespace Raffa.AiFlows.Tests.DocumentExtraction.Orchestration;
 
 /// <summary>
 /// F5 PR-1: production job rows carry <c>ExtractionJob.InputHash</c> computed as
@@ -15,7 +17,7 @@ public sealed class ExtractionInputHashTests
     [Fact]
     public void The_pipeline_version_is_a_contract()
     {
-        Assert.Equal("staged-v1", StagedExtractionService.PipelineVersion);
+        Assert.Equal("staged-v1", ExtractionInputHash.PipelineVersion);
     }
 
     [Fact]
@@ -23,16 +25,16 @@ public sealed class ExtractionInputHashTests
     {
         Assert.Equal(
             "[[PAGE 1]]\nabc\n\n",
-            StagedExtractionService.BuildPageMarkedText([new DocumentPageText(1, "abc")]));
+            PageMarkedText.Build([new DocumentPageText(1, "abc")]));
     }
 
     [Fact]
     public void The_input_hash_of_a_known_text_equals_the_pinned_value()
     {
-        Assert.Equal(PinnedHash, StagedExtractionService.ComputeInputHash("[[PAGE 1]]\nabc\n\n"));
+        Assert.Equal(PinnedHash, ExtractionInputHash.Compute("[[PAGE 1]]\nabc\n\n"));
         Assert.Equal(
             PinnedHash,
-            StagedExtractionService.ComputeInputHash(
-                StagedExtractionService.BuildPageMarkedText([new DocumentPageText(1, "abc")])));
+            ExtractionInputHash.Compute(
+                PageMarkedText.Build([new DocumentPageText(1, "abc")])));
     }
 }

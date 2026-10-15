@@ -20,7 +20,7 @@ namespace Raffa.Documents.Contracts.Application;
 /// shell at upload time and links <see cref="Document.ContractId"/> to it, so the contract appears
 /// in <see cref="PortfolioQueryService.GetPortfolioAsync"/> instantly — the same bootstrap
 /// placeholder (status: "processing", currency: "USD") that
-/// <see cref="Extraction.StagedExtractionService.EnsureContractAsync"/> would otherwise create when
+/// <c>ExtractionRunStore.EnsureContractAsync</c> would otherwise create when
 /// the worker eventually picks up the job. <c>EnsureContractAsync</c> already handles a non-null
 /// <see cref="Document.ContractId"/> (it looks up the existing row and returns it), so there is no
 /// double-create risk: old documents uploaded before this change see the original path; new uploads
@@ -62,14 +62,14 @@ public sealed class DocumentUploadService(
     private const int InitialVersionNumber = 1;
 
     /// <summary>Bootstrap-only placeholder <see cref="Contract.Status"/> — the same literal
-    /// <see cref="Extraction.StagedExtractionService"/> uses for its own
+    /// <c>ExtractionOrchestrator</c> uses for its own
     /// <c>BootstrapContractStatus</c> constant so the two are always in sync. Overwritten by the
     /// metadata stage once extraction runs.</summary>
     private const string BootstrapContractStatus = "processing";
 
     /// <summary>Bootstrap-only placeholder <see cref="Contract.Currency"/> — NOT NULL column on
     /// the contract table (ADR-003); must be set even before extraction determines the real value.
-    /// Same value <see cref="Extraction.StagedExtractionService"/> uses for its own
+    /// Same value <c>ExtractionOrchestrator</c> uses for its own
     /// <c>BootstrapContractCurrency</c>.</summary>
     private const string BootstrapContractCurrency = "USD";
 

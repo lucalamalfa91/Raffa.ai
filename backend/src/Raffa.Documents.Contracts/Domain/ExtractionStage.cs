@@ -9,7 +9,7 @@ namespace Raffa.Documents.Contracts.Domain;
 /// -&gt; LegalClauses -&gt; Obligations -&gt; Risk</c> — "metadata -&gt; commercial terms -&gt; dates -&gt;
 /// price/SKU -&gt; clauses -&gt; obligations -&gt; risk", with <see cref="Classification"/> as the
 /// zeroth stage queued by upload (task E01/F06/US01/T01) before any of these run.
-/// <see cref="Raffa.Documents.Contracts.Application.Extraction.StagedExtractionService"/> is
+/// <c>ExtractionOrchestrator</c> is
 /// the only caller that runs <see cref="Obligations"/>/<see cref="Risk"/> today.
 /// </summary>
 public enum ExtractionStage

@@ -21,7 +21,7 @@ namespace Raffa.AiFlows.Tests.Shared.Parsing;
 /// Uses the real <see cref="FixtureAiGateway"/> (already proven by
 /// <c>FixtureAiGatewayOcrTests</c>) as <see cref="IAiGateway"/> whenever a test actually wants OCR
 /// to run — only the native-extraction side needs a scripted fake, mirroring how
-/// <c>StagedExtractionServiceTests</c> scripts <c>IAiGateway</c> rather than depending on a live
+/// <c>ExtractionOrchestratorTests</c> scripts <c>IAiGateway</c> rather than depending on a live
 /// model.
 /// </summary>
 public sealed class HybridDocumentParsingServiceTests
@@ -48,7 +48,7 @@ public sealed class HybridDocumentParsingServiceTests
 
     /// <summary>Minimal <see cref="IAiGateway"/> fake used only to prove the gateway is (or is
     /// not) reached and, when it is, to script its response — mirrors
-    /// <c>StagedExtractionServiceTests.ScriptedAiGateway</c>'s "throw for every method this
+    /// <c>ExtractionOrchestratorTests.ScriptedAiGateway</c>'s "throw for every method this
     /// service does not call" shape.</summary>
     private sealed class OcrOnlyAiGateway(Func<AiOcrRequest, Result<AiOcrResult>>? onOcr = null) : IAiGateway
     {

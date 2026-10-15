@@ -1,9 +1,10 @@
 using System.Text.Json;
+using Raffa.Documents.Contracts.Application.Extraction;
 
-namespace Raffa.Documents.Contracts.Application.Extraction;
+namespace Raffa.AiFlows.DocumentExtraction.Schemas;
 
 /// <summary>
-/// Builds the JSON Schema text <see cref="StagedExtractionService"/> sends as
+/// Builds the JSON Schema text <c>ExtractionOrchestrator</c> (through the stage classes) sends as
 /// <c>AiExtractionRequest.JsonSchema</c> for each of AC-1's seven stages (product spec §7.3:
 /// "schema-constrained output"; ADR-004: "a structured-output-capable model ... not free text").
 /// <see cref="Raffa.AiGateway.IAiGateway"/>'s own doc comment is explicit that "the gateway
@@ -42,7 +43,7 @@ internal static class StagedExtractionJsonSchemas
 
     /// <summary>What each scalar fact name means, so the model resolves the document's own wording
     /// (Italian, German, English ...) to the right field. Keyed by the exact allow-list names
-    /// <see cref="StagedExtractionService"/> applies; an unknown name gets a generic gloss.</summary>
+    /// <c>ExtractionRunStore</c> applies; an unknown name gets a generic gloss.</summary>
     private static readonly IReadOnlyDictionary<string, string> FieldMeanings = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [ExtractionFieldNames.Supplier] =
@@ -67,14 +68,14 @@ internal static class StagedExtractionJsonSchemas
     /// array of <c>{field, value, sourcePage, sourceSpan, confidence}</c> facts, each naming
     /// which <see cref="Domain.Contract"/> property it is evidence for.
     /// <paramref name="allowedFieldNames"/> is the exact allow-list
-    /// <see cref="StagedExtractionService"/> knows how to apply for that stage — expressed as a
+    /// <c>ExtractionRunStore</c> knows how to apply for that stage — expressed as a
     /// JSON Schema <c>enum</c> so a structured-output model is constrained to only ever propose
     /// a field name the pipeline can actually persist. <c>value</c> is deliberately always a
     /// string (or null), even for numeric/boolean/date facts: the target CLR type depends on
     /// which <paramref name="allowedFieldNames"/> entry <c>field</c> is, which a JSON Schema
     /// union type cannot express per-enum-value, so the caller (not the schema) is responsible
     /// for parsing <c>value</c> against the field's real type (see
-    /// <c>StagedExtractionService.ApplyMetadataFact</c> and friends). A <c>null</c> value means
+    /// <c>ExtractionRunStore.ApplyMetadataFact</c> and friends). A <c>null</c> value means
     /// "the document does not state it" and is not persisted.
     ///
     /// <para>

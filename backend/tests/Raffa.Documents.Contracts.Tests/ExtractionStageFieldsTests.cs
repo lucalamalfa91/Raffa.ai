@@ -4,7 +4,7 @@ using Raffa.Documents.Contracts.Domain;
 namespace Raffa.Documents.Contracts.Tests;
 
 /// <summary>
-/// F5 PR-1: the three scalar allow-lists moved out of <c>StagedExtractionService</c>. Their order is the
+/// F5 PR-1: the three scalar allow-lists moved out of <c>ExtractionOrchestrator</c>. Their order is the
 /// order of the schema <c>enum</c> the model sees, so it is pinned together with the content.
 /// </summary>
 public sealed class ExtractionStageFieldsTests

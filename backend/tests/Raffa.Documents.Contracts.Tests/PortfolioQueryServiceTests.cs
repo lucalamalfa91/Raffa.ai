@@ -408,7 +408,7 @@ public sealed class PortfolioQueryServiceTests : IAsyncLifetime
         await SeedContractAsync(tenantContext, analyzed);
         await SeedDocumentAsync(tenantContext, NewDocument(tenantId, analyzed.Id, DocumentProcessingStatus.Completed));
 
-        // Not analyzed: extraction has started (StagedExtractionService.EnsureContractAsync's own
+        // Not analyzed: extraction has started (ExtractionRunStore.EnsureContractAsync's own
         // bootstrap-shell Contract row already exists) but its document has not reached Completed
         // yet — must not count toward either KPI, even though a Contract row genuinely exists.
         var stillProcessing = NewContract(tenantId, annualSpend: 999_999m);

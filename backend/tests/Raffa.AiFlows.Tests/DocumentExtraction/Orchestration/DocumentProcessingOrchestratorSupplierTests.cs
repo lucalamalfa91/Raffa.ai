@@ -1,3 +1,5 @@
+using Raffa.AiFlows.DocumentExtraction.Stages;
+using Raffa.Documents.Contracts.Infrastructure.Extraction;
 using Raffa.AiFlows.DocumentExtraction.Orchestration;
 using Raffa.AiFlows.Shared.Parsing;
 using Raffa.AiFlows.Tests.TestSupport;
@@ -26,7 +28,7 @@ namespace Raffa.AiFlows.Tests.DocumentExtraction.Orchestration;
 /// without the Suppliers module composed in, and — because the link is made on every processing
 /// pass, not only the first — back-fills a contract that was extracted before any of this existed.
 ///
-/// A separate class from <see cref="StagedExtractionServiceTests"/> on purpose: that one proves what
+/// A separate class from <see cref="ExtractionOrchestratorTests"/> on purpose: that one proves what
 /// the extraction service decides (which facts are accepted, what evidence is recorded), this one
 /// proves what the orchestrator does with that decision. Runs against the same real
 /// Postgres+pgvector Testcontainer for the same reason — the pipeline persists through
@@ -157,7 +159,7 @@ public sealed class DocumentProcessingOrchestratorSupplierTests : IAsyncLifetime
             dbContext,
             gateway,
             new HybridDocumentParsingService(gateway, new NativeDocumentTextExtractor()),
-            new StagedExtractionService(dbContext, gateway, tenantContext, clock, new NoOpAuditWriter()),
+            new ExtractionOrchestrator(new ExtractionRunStore(dbContext, tenantContext, clock, new NoOpAuditWriter()), gateway, ExtractionStages.Default, tenantContext),
             new EmbeddingRetrievalService(dbContext, gateway, tenantContext, clock),
             tenantContext,
             clock,

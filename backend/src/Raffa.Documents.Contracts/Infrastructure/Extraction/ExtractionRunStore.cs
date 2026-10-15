@@ -11,7 +11,7 @@ namespace Raffa.Documents.Contracts.Infrastructure.Extraction;
 /// <summary>
 /// F5 PR-1: the persistence side of a staged-extraction run, behind <see cref="IExtractionRunStore"/>.
 /// What makes a run idempotent, resumable and respectful of what a human already decided
-/// (F5-T01 / F5-T02 / F5-D08), moved out of <c>StagedExtractionService</c> without a behaviour change.
+/// (F5-T01 / F5-T02 / F5-D08), moved out of the former staged-extraction service without a behaviour change.
 /// <list type="bullet">
 /// <item><b>Run id.</b> Every run belongs to one run (<see cref="ExtractionJob.ExtractionRunId"/>),
 /// stamped on its stage jobs and facts. A list stage that applies successfully <em>replaces</em> the

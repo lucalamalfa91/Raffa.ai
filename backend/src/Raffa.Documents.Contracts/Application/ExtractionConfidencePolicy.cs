@@ -2,7 +2,7 @@ namespace Raffa.Documents.Contracts.Application;
 
 /// <summary>
 /// The single extraction auto-accept bar (ADR-024 w17 clause A1/A3). Both
-/// <c>StagedExtractionService.DetermineDocumentStatus</c> and <c>DocumentQueryService.IsWeak</c>
+/// <c>ExtractionRunStore.DetermineDocumentStatus</c> and <c>DocumentQueryService.IsWeak</c>
 /// consume this type so the Documents-row badge and the document's <c>needs_review</c> status
 /// cannot disagree. Compare the raw stored double; do not round first.
 ///

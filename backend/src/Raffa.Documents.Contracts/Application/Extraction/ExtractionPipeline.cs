@@ -10,7 +10,7 @@ public static class ExtractionPipeline
 {
     /// <summary>AC-1's seven stages, in pipeline order. <see cref="ExtractionStage.Classification"/>
     /// is deliberately excluded — it is queued and (eventually) consumed elsewhere, before the
-    /// pipeline ever runs (see <see cref="StagedExtractionService"/>'s doc comment).</summary>
+    /// pipeline ever runs (see <c>ExtractionOrchestrator</c>'s doc comment).</summary>
     public static IReadOnlyList<ExtractionStage> Stages { get; } =
     [
         ExtractionStage.Metadata,
