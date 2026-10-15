@@ -523,6 +523,8 @@ public static class QuotesEndpointExtensions
                 explanation = line.TargetSaving.Explanation,
             },
         explanation = line.Explanation,
+        // Task F6-T09: how the benchmark was found. Direct unless the tenant's own names were needed.
+        matchLevel = line.MatchLevel.ToString(),
     };
 
     /// <summary>

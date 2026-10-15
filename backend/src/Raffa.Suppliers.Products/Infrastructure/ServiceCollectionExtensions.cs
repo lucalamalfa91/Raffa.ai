@@ -39,6 +39,8 @@ public static class ServiceCollectionExtensions
         // module's own AddXxxModule already uses for its own DbContext-backed services.
         services.AddScoped<ISupplierResolver, SupplierResolver>();
         services.AddScoped<ISupplierNameLookup, SupplierNameLookup>();
+        // Task F6-T09: the other names a supplier is recorded under, for the quote assessment's matcher.
+        services.AddScoped<ISupplierAliasLookup, SupplierAliasLookup>();
         // Task E24/F01/US01/T01 (story us-01-portfolio-category-backend): consumed directly by
         // Raffa.Api as a Raffa.Suppliers.Products.Application type, not a SharedKernel port --
         // see ISupplierCategoryLookup's own doc comment for why.
