@@ -55,7 +55,7 @@ public sealed class NoticeFallbackEndpointTests : IClassFixture<RaffaApiFactory>
     }
 
     /// <summary>Case 1 (AC-1, happy path): a known cancellation deadline plus a matching clause
-    /// that resolves to a real document page (tier 1, <c>AskCopilotService.ResolveTenantClauseLinks</c>)
+    /// that resolves to a real document page (tier 1, <c>ClausePackBuilder.ResolveTenantClauseLinks</c>)
     /// answers, citing both the dated fact and the clause -- the clause citation alone carries the
     /// real contractId+documentId+page+href (NW-83) the client needs to build the two-CTA card
     /// (NW-93) without this test depending on any web code.</summary>

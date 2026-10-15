@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Ask.Packs;
 using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiFlows.Shared.ContractContext;
 using Raffa.AiFlows.Shared.Pack;
@@ -190,10 +191,10 @@ public sealed class AskNegotiationPointsPackTests : IClassFixture<RaffaApiFactor
     {
         using var scope = _factory.Services.CreateScope();
         var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
-        var askCopilotService = scope.ServiceProvider.GetRequiredService<AskCopilotService>();
+        var negotiationPoints = scope.ServiceProvider.GetRequiredService<NegotiationPointsPackBuilder>();
 
         using var tenantScope = tenantContext.BeginScope(tenantId);
-        return await askCopilotService.BuildNegotiationPointsPackAsync(
+        return await negotiationPoints.BuildNegotiationPointsPackAsync(
             contractId, includeRenewalUrgency: false, persistTodos, Actor, CancellationToken.None);
     }
 

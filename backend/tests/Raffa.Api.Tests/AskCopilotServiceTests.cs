@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Ask.Packs;
 using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.Documents.Contracts.Application;
@@ -7,7 +8,7 @@ namespace Raffa.Api.Tests;
 
 /// <summary>
 /// Task E25/F02/US01/T01 (NW-55, us-01-citation-card-backend): unit-level proof for
-/// <see cref="AskCopilotService.ResolveTenantClauseLinks"/> -- the helper
+/// <see cref="ClausePackBuilder.ResolveTenantClauseLinks"/> -- the helper
 /// <c>BuildClausePackAsync</c> now calls to decide a tenant clause citation's
 /// <see cref="PackItem.Href"/>/<see cref="PackItem.PreviewUrl"/>. Exercised directly (not through a
 /// full <c>AskAsync</c>/HTTP round trip) because <c>InMemoryAskEngineFactory</c>'s own doc comment
@@ -39,7 +40,7 @@ public sealed class AskCopilotServiceTests
             SourcePage: 12,
             Confidence: 0.92);
 
-        var (href, previewUrl) = AskCopilotService.ResolveTenantClauseLinks(clause, clauseId, namedContractId);
+        var (href, previewUrl) = ClausePackBuilder.ResolveTenantClauseLinks(clause, clauseId, namedContractId);
 
         Assert.Equal($"/documents/{documentId.Value}/viewer?page=12&clause={clauseId.Value}", href);
         Assert.Equal($"/api/documents/{documentId.Value}/preview?page=12", previewUrl);
@@ -54,7 +55,7 @@ public sealed class AskCopilotServiceTests
         var sourceId = new EntityId(Guid.NewGuid());
         var namedContractId = Guid.NewGuid();
 
-        var (href, previewUrl) = AskCopilotService.ResolveTenantClauseLinks(null, sourceId, namedContractId);
+        var (href, previewUrl) = ClausePackBuilder.ResolveTenantClauseLinks(null, sourceId, namedContractId);
 
         Assert.Equal($"/contracts/{namedContractId}", href);
         Assert.Null(previewUrl);
@@ -80,7 +81,7 @@ public sealed class AskCopilotServiceTests
             SourcePage: null,
             Confidence: 0.92);
 
-        var (href, previewUrl) = AskCopilotService.ResolveTenantClauseLinks(clause, clauseId, namedContractId);
+        var (href, previewUrl) = ClausePackBuilder.ResolveTenantClauseLinks(clause, clauseId, namedContractId);
 
         Assert.Equal($"/contracts/{namedContractId}", href);
         Assert.Null(previewUrl);
@@ -93,7 +94,7 @@ public sealed class AskCopilotServiceTests
     {
         var sourceId = new EntityId(Guid.NewGuid());
 
-        var (href, previewUrl) = AskCopilotService.ResolveTenantClauseLinks(null, sourceId, null);
+        var (href, previewUrl) = ClausePackBuilder.ResolveTenantClauseLinks(null, sourceId, null);
 
         Assert.Null(href);
         Assert.Null(previewUrl);
@@ -153,7 +154,7 @@ public sealed class AskCopilotServiceTests
             ChunkText: "This Agreement shall automatically renew...",
             Distance: 0.1);
 
-        var item = AskCopilotService.BuildClausePackItem(hit, clause, namedContractId, isPeer: false);
+        var item = ClausePackBuilder.BuildClausePackItem(hit, clause, namedContractId, isPeer: false);
 
         Assert.Equal(namedContractId.ToString(), item.ContractId);
         Assert.Equal(documentId.Value.ToString(), item.DocumentId);
@@ -180,7 +181,7 @@ public sealed class AskCopilotServiceTests
             Page: 4,
             Section: "9. Termination");
 
-        var item = AskCopilotService.BuildClausePackItem(hit, clause: null, namedContractId, isPeer: false);
+        var item = ClausePackBuilder.BuildClausePackItem(hit, clause: null, namedContractId, isPeer: false);
 
         Assert.Equal(namedContractId.ToString(), item.ContractId);
         Assert.Equal(documentId.Value.ToString(), item.DocumentId);
@@ -206,7 +207,7 @@ public sealed class AskCopilotServiceTests
             Distance: 0.3,
             Page: 2);
 
-        var item = AskCopilotService.BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: true);
+        var item = ClausePackBuilder.BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: true);
 
         Assert.Null(item.ContractId);
         Assert.Null(item.DocumentId);
@@ -220,7 +221,7 @@ public sealed class AskCopilotServiceTests
         var documentId = new EntityId(Guid.NewGuid());
         var namedContractId = Guid.NewGuid();
 
-        var (href, previewUrl) = AskCopilotService.ResolveTenantClauseLinks(
+        var (href, previewUrl) = ClausePackBuilder.ResolveTenantClauseLinks(
             null, documentId, namedContractId, hitSourceType: "Document", hitPage: 2);
 
         Assert.Equal($"/documents/{documentId.Value}/viewer?page=2", href);

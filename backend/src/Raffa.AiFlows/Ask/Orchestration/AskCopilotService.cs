@@ -107,7 +107,7 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 /// <para>
 /// <b>Priced-line bands share one resolution with <c>/api/contracts/{id}/strategy</c></b> (task
 /// E28/F01/US01/T01, NW-82; ADR-024 w17 clause 7 "one resolution per screen"):
-/// <see cref="BuildRenewalStrategyPackAsync"/>/<see cref="BuildMarketComparePackAsync"/> both
+/// <c>RenewalStrategyPackBuilder</c>/<c>MarketComparePackBuilder</c> both
 /// resolve the (supplier name, geography) key through the same <see cref="BenchmarkKeyResolution"/>
 /// <c>InsightsEndpointExtensions.GetContractStrategyAsync</c> already calls, then pass it to the
 /// same async <c>ContractInsightsMapper.ToPricedLines</c> overload — never
@@ -123,20 +123,20 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 ///
 /// <para>
 /// <b>Grounded negotiation points, shared between chat and Renewals</b> (task E31/F02/US01/T01,
-/// NW-96; ADR-024 w19 cl. 23): <see cref="BuildNegotiationPointsPackAsync"/> maps this contract's
+/// NW-96; ADR-024 w19 cl. 23): <c>NegotiationPointsPackBuilder</c> maps this contract's
 /// clause/risk/commercial snapshot (from <see cref="Contract360Result"/> — the one mapping only this
 /// host may perform, Insights stays fenced to <c>[SharedKernel, Benchmark]</c>) into
 /// <c>Raffa.Insights.Application.NegotiationPointRanker.Rank</c>, which emits a point only when it is
 /// grounded in a stored fact, a clause, an assessed risk or a benchmark band — never the generic
 /// seven-lever dump <see cref="Raffa.Insights.Negotiation.PricedLineNegotiationCalculator"/> used to
 /// emit into the <c>RenewalStrategy</c> pack below (task E31/F01/US01/T01 retired that loop — see
-/// <see cref="BuildRenewalStrategyPackAsync"/>'s own doc comment). The whole ranked set is upserted to
+/// <c>RenewalStrategyPackBuilder</c>'s own doc comment). The whole ranked set is upserted to
 /// <see cref="RenewalNegotiationTodoService"/> when asked (<c>persistTodos</c> — "persist-all"), while
 /// only the top three ever reach the returned pack (<c>PackItem</c>s — "chat top-3"): the two counts
 /// deliberately differ, so a re-ask never re-litigates a point Procurement already ticked done.
 /// <b>Live Q3 turn (E31/F01/US01/T01 q3-route + E29/F02/US01/T01 todo-host-upsert)</b>:
 /// <see cref="InDomainReplyPipeline"/>'s <see cref="AskIntent.RenewalStrategy"/> named-contract
-/// branch calls <see cref="BuildRenewalStrategyWithEvidenceAsync"/> (calc + tenant + market + raffa)
+/// branch calls <c>RenewalStrategyPackBuilder.BuildRenewalStrategyWithEvidenceAsync</c> (calc + tenant + market + raffa)
 /// with <c>persistTodos: true</c>, so a real Q3 ask durably upserts before
 /// <see cref="AnswerComposer.AnswerAsync"/> — the <c>/renewals?select={id}</c> deep-link is true
 /// after asking. Feature-03 (q3-persist, NW-97) injects that turn's own server-side
@@ -191,70 +191,20 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 /// abstain.
 /// </para>
 /// </summary>
-public sealed partial class AskCopilotService(
+public sealed class AskCopilotService(
     DomainGate domainGate,
     PortfolioQueryService portfolioQueryService,
     ISupplierNameLookup supplierNameLookup,
-    CapabilityCheckRunner capabilityCheckRunner,
     WebResearchFlow webResearchFlow,
     WebModeFlow webModeFlow,
-    IAuditWriter auditWriter,
     GateReplyBuilder gateReplies,
     AbstainRecovery abstainRecovery,
     AskTurnAudit audit,
-    MarketComparePackBuilder marketCompare,
-    RenewalStrategyPackBuilder renewalStrategy,
-    NegotiationPointsPackBuilder negotiationPoints,
-    InDomainReplyPipeline inDomain,
     CapabilityGapTurnHandler capabilityGapTurn,
-    ITenantContext tenantContext,
-    IClock clock,
-    InvestigatorTrigger? investigatorTriggerOverride = null)
+    InDomainReplyPipeline inDomain,
+    CapabilityCheckCoordinator capabilityChecks,
+    ITenantContext tenantContext)
 {
-    /// <summary>INV-01: the deterministic trigger of the capability investigator (the shared
-    /// instance over the embedded lexicon unless a test supplies its own).</summary>
-    private readonly InvestigatorTrigger investigatorTrigger = investigatorTriggerOverride ?? InvestigatorTrigger.Default;
-
-    /// <summary>The tenant scope <see cref="AskAsync"/> already opened for this call
-    /// (<see cref="ITenantContext.BeginScope"/>) — every private helper below reads this instead
-    /// of threading a <c>TenantId</c> parameter through the whole call tree. Falls back to
-    /// <see langword="default"/> only in the never-actually-reached case where a helper is somehow
-    /// invoked outside that scope (fail-closed: <see langword="default"/> resolves to no rows
-    /// under RLS, never another tenant's).</summary>
-    private TenantId CurrentTenantId => tenantContext.Current ?? default;
-
-    // Test seams that stay reachable through this type (F1 Ask split, PR-2): the bodies moved to
-    // ClausePackBuilder / MarketComparePackBuilder; retargeted by the last mechanical PR.
-    internal static (string? Href, string? PreviewUrl) ResolveTenantClauseLinks(
-        Contract360Clause? clause, EntityId sourceId, Guid? namedContractId,
-        string? hitSourceType = null, int? hitPage = null) =>
-        ClausePackBuilder.ResolveTenantClauseLinks(clause, sourceId, namedContractId, hitSourceType, hitPage);
-
-    internal static PackItem BuildClausePackItem(
-        EmbeddingSearchResult hit, Contract360Clause? clause, Guid? namedContractId, bool isPeer) =>
-        ClausePackBuilder.BuildClausePackItem(hit, clause, namedContractId, isPeer);
-
-    internal Task<IReadOnlyList<PackItem>> BuildMarketComparePackAsync(
-        PortfolioListItem? namedContractItem, CancellationToken cancellationToken) =>
-        marketCompare.BuildMarketComparePackAsync(namedContractItem, cancellationToken);
-
-    // Test seams (F1 Ask split, PR-3): the bodies moved to RenewalStrategyPackBuilder /
-    // NegotiationPointsPackBuilder; retargeted by the last mechanical PR.
-    internal Task<IReadOnlyList<PackItem>> BuildRenewalStrategyPackAsync(
-        PortfolioListItem namedContractItem,
-        CancellationToken cancellationToken,
-        bool persistTodos = false,
-        string actor = "") =>
-        renewalStrategy.BuildRenewalStrategyPackAsync(namedContractItem, cancellationToken, persistTodos, actor);
-
-    internal Task<IReadOnlyList<PackItem>> BuildNegotiationPointsPackAsync(
-        EntityId contractId,
-        bool includeRenewalUrgency,
-        bool persistTodos,
-        string actor,
-        CancellationToken cancellationToken) =>
-        negotiationPoints.BuildNegotiationPointsPackAsync(contractId, includeRenewalUrgency, persistTodos, actor, cancellationToken);
-
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
     /// answer). Writes exactly one audit row (R-ASK-09) before returning.
@@ -400,60 +350,12 @@ public sealed partial class AskCopilotService(
         // stay that way (R-ASK-02/03, the golden set's zero-call cases); a turn resolved by key (an
         // interview option, a web consent) continues one that was already checked; and only a
         // caller that will persist a follow-up (the conversation endpoints) passes a slot.
-        var gapInvestigation = "skipped";
         var turnTrace = new InDomainTurnTrace();
-        var investigatorEligible = false;
-        var investigatorStarted = false;
-        var investigatorMode = GapInvestigationMode.Triggered;
-        var triggerVerdict = TriggerVerdict.None;
         // One id per turn, shared with the run telemetry (RunContext) so every audit row of the turn agrees.
         var turnId = RunContext.Current?.TurnId ?? RunContext.NewId();
-
-        void StartInvestigator()
-        {
-            var (namedItem, _, _) = ResolveNamedContractItem(scopedContractItem, gate.NamedSupplier, portfolio, supplierNames);
-            var namedSupplier = namedItem?.SupplierId is { } namedSupplierId &&
-                supplierNames.TryGetValue(new EntityId(namedSupplierId), out var namedSupplierName)
-                    ? namedSupplierName
-                    : null;
-
-            capabilityCheck!.FollowUp = capabilityCheckRunner.Start(new CapabilityCheckRequest(
-                tenantId,
-                question,
-                supplierNames.Values.ToList(),
-                portfolio.TotalCount,
-                namedSupplier,
-                namedItem?.ContractId,
-                turnId,
-                actor));
-            investigatorStarted = true;
-            gapInvestigation = "started";
-        }
-
-        var investigatorTurn = capabilityCheck is not null && gate.Label == GateLabel.InDomain && IsFreshTurn(turnHints);
-        if (investigatorTurn)
-        {
-            capabilityCheck!.TurnId = turnId;
-
-            if (!capabilityCheckRunner.Enabled)
-            {
-                gapInvestigation = "off";
-                triggerVerdict = new TriggerVerdict(false, false, false, InvestigatorTrigger.ReasonKillSwitch);
-            }
-            else
-            {
-                investigatorEligible = true;
-                investigatorMode = capabilityCheckRunner.Mode;
-
-                // T3 reads the question alone: it (and Always mode) starts the check now, in
-                // parallel with the answer. T1/T2 are decided after the reply, below.
-                if (investigatorMode == GapInvestigationMode.Always ||
-                    investigatorTrigger.Evaluate(plan: null, replyOutcome: null, question).ShouldRun)
-                {
-                    StartInvestigator();
-                }
-            }
-        }
+        var check = capabilityChecks.Begin(
+            tenantId, question, gate, portfolio, supplierNames, scopedContractItem, recentTurns,
+            actor, turnHints, capabilityCheck, turnId);
 
         // AC-7 / R-ASK-09: the audit row must distinguish "guard caught a violation and downgraded
         // to abstain" from every other abstain path (empty pack, gateway call failed) — so every
@@ -494,39 +396,14 @@ public sealed partial class AskCopilotService(
                 _ => throw new ArgumentOutOfRangeException(nameof(gate), gate.Label, "Unknown GateLabel."),
             };
 
-        // INV-02: T1 (the planner found no intent) and T2 (Raffa could not answer) are known only
-        // now. The check starts after the reply is built — never before it, so the answer's
-        // latency is unchanged — and the endpoint appends its follow-up as a separate message.
-        if (investigatorEligible)
-        {
-            // The full verdict (T3 again, now with what T1 and T2 found), also in Always mode: the
-            // audit then shows what Triggered would have done, which is how the reduction in
-            // gaps-v1 calls is measured (plan 5.4).
-            triggerVerdict = investigatorTrigger.Evaluate(
-                turnTrace.Plan, new ReplyOutcome(reply.Kind, guardIntervened, fallbackUsed), question);
+        capabilityChecks.Complete(check, turnTrace, question, reply, guardIntervened, fallbackUsed);
 
-            if (!investigatorStarted)
-            {
-                if (triggerVerdict.ShouldRun)
-                {
-                    StartInvestigator();
-                }
-                else
-                {
-                    gapInvestigation = "not-triggered";
-                }
-            }
-        }
-
-        await audit.WriteAsync(tenantId, reply, guardIntervened, fallbackUsed, gapInvestigation, turnHints.WebMode, actor, cancellationToken)
+        await audit.WriteAsync(tenantId, reply, guardIntervened, fallbackUsed, check.GapInvestigation, turnHints.WebMode, actor, cancellationToken)
             .ConfigureAwait(false);
 
-        if (investigatorTurn)
+        if (check.InvestigatorTurn)
         {
-            await WriteTriggerAuditAsync(
-                    tenantId, actor, turnId, investigatorEligible ? investigatorMode.ToString() : "off",
-                    triggerVerdict, investigatorStarted, cancellationToken)
-                .ConfigureAwait(false);
+            await capabilityChecks.WriteTriggerAuditAsync(check, tenantId, actor, cancellationToken).ConfigureAwait(false);
         }
 
         // ADR-030: a declined consent is audited beside the turn it became (the contracts-only
@@ -539,6 +416,4 @@ public sealed partial class AskCopilotService(
 
         return reply;
     }
-
-    private static string ComputeHash(string input) => QueryHasher.ComputeHash(input);
 }

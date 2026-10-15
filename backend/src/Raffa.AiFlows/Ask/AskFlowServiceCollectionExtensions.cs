@@ -63,6 +63,7 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<GateReplyBuilder>();
         services.AddScoped<AbstainRecovery>();
         services.AddScoped<AskTurnAudit>();
+        services.AddScoped<CapabilityCheckCoordinator>();
         services.AddScoped<NoticeFallbackReplies>();
 
         // Pack builders and the per-turn contract reads they share (F1 Ask split, PR-2).
