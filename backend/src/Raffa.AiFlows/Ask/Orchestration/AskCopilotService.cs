@@ -1,4 +1,7 @@
 using Raffa.AiFlows.Shared.ContractContext;
+using static Raffa.AiFlows.Ask.Interview.InterviewInputsFactory;
+using static Raffa.AiFlows.Ask.Packs.ContractResolution;
+using static Raffa.AiFlows.Ask.Packs.PackItemFactory;
 using Raffa.AiFlows.Shared.Audit;
 using Raffa.AiFlows.CapabilityGaps.Investigation;
 using Raffa.AiFlows.Negotiation.DataCheck;
@@ -166,7 +169,7 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 /// <c>reports/architecture/waves/w19.md</c>'s NW-94 row is again the verifiable source):
 /// <see cref="BuildNoticeFallbackReplyAsync"/> intercepts every notice question — before any pack
 /// is built and before <see cref="AnswerComposer"/> ever runs, the same short-circuit shape
-/// <see cref="BuildRoutingOnlyReply"/> already uses for <see cref="AskIntent.Navigate"/>/
+/// <see cref="GateReplyBuilder.BuildRoutingOnlyReply"/> already uses for <see cref="AskIntent.Navigate"/>/
 /// <see cref="AskIntent.QuoteRoute"/> — and decides one of five outcomes purely from facts
 /// <see cref="BuildNoticeFactItem"/>/<see cref="BuildMatchingClauseItem"/> compute: a resolved deadline plus a
 /// span-anchored clause answers with the deep-link (two-CTA ids, NW-83/NW-93); a deadline with no
@@ -214,6 +217,9 @@ public sealed partial class AskCopilotService(
     WebResearchFlow webResearchFlow,
     WebModeFlow webModeFlow,
     IAuditWriter auditWriter,
+    GateReplyBuilder gateReplies,
+    AbstainRecovery abstainRecovery,
+    AskTurnAudit audit,
     ITenantContext tenantContext,
     IClock clock,
     LineItemMarketPriceService? lineItemMarketPriceService = null,
@@ -241,13 +247,6 @@ public sealed partial class AskCopilotService(
     private readonly AskRaffaQueryRouter _legacyRouter = new();
     private readonly DeterministicQueryPlanner _legacyPlanner = new();
     private readonly DeterministicQueryHandler _legacyHandler = new(clock);
-
-    private const string AuditAnsweredAction = "chat.answered";
-    private const string AuditRedirectedAction = "chat.redirected";
-    private const string AuditRefusedAction = "chat.refused";
-    private const string AuditAbstainedAction = "chat.abstained";
-    private const string AuditInterviewedAction = "chat.interviewed";
-    private const string AuditResourceType = AskAuditResourceType.Value;
 
     /// <summary>The tenant scope <see cref="AskAsync"/> already opened for this call
     /// (<see cref="ITenantContext.BeginScope"/>) — every private helper below reads this instead
@@ -480,15 +479,15 @@ public sealed partial class AskCopilotService(
                     AskTurnHints.None with { SuppressInterview = true },
                     previousRaffaTurnWasInterview: false,
                     ct),
-                ResolveAbstainRecovery,
+                abstainRecovery.Resolver,
                 cancellationToken)
                 .ConfigureAwait(false)
             : gate.Label switch
             {
-                GateLabel.Greeting or GateLabel.OffDomain => (BuildGreetingReply(portfolio, supplierNames), false, false),
-                GateLabel.Legal => (BuildLegalReply(portfolio, supplierNames, gate.NamedSupplier), false, false),
-                GateLabel.Capability => (BuildCapabilityReply(portfolio.Items.Count), false, false),
-                GateLabel.NeedsDocument => (BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
+                GateLabel.Greeting or GateLabel.OffDomain => (gateReplies.BuildGreetingReply(portfolio, supplierNames), false, false),
+                GateLabel.Legal => (gateReplies.BuildLegalReply(portfolio, supplierNames, gate.NamedSupplier), false, false),
+                GateLabel.Capability => (gateReplies.BuildCapabilityReply(portfolio.Items.Count), false, false),
+                GateLabel.NeedsDocument => (gateReplies.BuildNeedsDocumentReply(gate.NamedSupplier!, portfolio.Items.Count), false, false),
                 GateLabel.CapabilityGap => await BuildCapabilityGapReplyAsync(
                     tenantId, question, gate, portfolio, supplierNames, scopeContractId, scopedContractItem, actor, cancellationToken)
                     .ConfigureAwait(false),
@@ -524,7 +523,7 @@ public sealed partial class AskCopilotService(
             }
         }
 
-        await WriteAuditAsync(tenantId, reply, guardIntervened, fallbackUsed, gapInvestigation, turnHints.WebMode, actor, cancellationToken)
+        await audit.WriteAsync(tenantId, reply, guardIntervened, fallbackUsed, gapInvestigation, turnHints.WebMode, actor, cancellationToken)
             .ConfigureAwait(false);
 
         if (investigatorTurn)
@@ -544,60 +543,6 @@ public sealed partial class AskCopilotService(
         }
 
         return reply;
-    }
-
-    // ----- Gate-level deterministic replies (R-ASK-02) -----
-
-    private CopilotReply BuildGreetingReply(
-        PortfolioPage portfolio, IReadOnlyDictionary<EntityId, string> supplierNames)
-    {
-        var (hookSentence, hookContractId) = BuildPortfolioHook(portfolio, supplierNames);
-        var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard, hookContractId);
-
-        var actions = hookContractId is not null
-            ? capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.ContractDetailKey)], routingContext)
-            : capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)], routingContext);
-
-        return RedirectReplyBuilder.GreetingOrOffDomain(hookSentence, actions);
-    }
-
-    private CopilotReply BuildLegalReply(
-        PortfolioPage portfolio, IReadOnlyDictionary<EntityId, string> supplierNames, string? namedSupplier)
-    {
-        var contractId = namedSupplier is null ? null : FindContractIdBySupplier(portfolio, supplierNames, namedSupplier);
-        var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard, contractId);
-
-        var actions = contractId is not null
-            ? capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.ContractDetailKey)], routingContext)
-            : capabilityRouting.ResolveActions([CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)], routingContext);
-
-        return RedirectReplyBuilder.Legal(actions);
-    }
-
-    private CopilotReply BuildCapabilityReply(int validatedContractCount)
-    {
-        var routingContext = new RoutingContext(validatedContractCount, CapabilityCallerRole.Standard);
-        var actions = capabilityRouting.ResolveActions([CapabilityIntent.CapabilityList], routingContext);
-
-        var citations = BuildFeatureCitations(
-            [CapabilityCatalog.DocumentsKey, CapabilityCatalog.PortfolioKey, CapabilityCatalog.RenewalsKey, CapabilityCatalog.QuoteCheckKey]);
-
-        const string markdown =
-            "I answer from your validated contracts and route you to the right part of Raffa:\n" +
-            "- Documents [1] — upload contracts, review weak facts.\n" +
-            "- Portfolio [2] — every contract, spend, liability and risk in one table.\n" +
-            "- Renewals [3] — deadlines and the action for each.\n" +
-            "- Quote check [4] — benchmark a new quote against the market and your history.\n" +
-            "Ask me about dates, spend, notice periods, clauses — or which of these to open.";
-
-        return RedirectReplyBuilder.Capability(markdown, citations, actions);
-    }
-
-    private CopilotReply BuildNeedsDocumentReply(string namedSupplier, int validatedContractCount)
-    {
-        var routingContext = new RoutingContext(validatedContractCount, CapabilityCallerRole.Standard);
-        var actions = capabilityRouting.ResolveActions([CapabilityIntent.UnknownSupplier], routingContext);
-        return RedirectReplyBuilder.NeedsDocument(namedSupplier, actions);
     }
 
     // ----- In-domain: planner -> pack -> guarded answer (R-ASK-03...08) -----
@@ -678,7 +623,7 @@ public sealed partial class AskCopilotService(
             forcedContractItem = portfolio.Items.FirstOrDefault(item => item.ContractId == forcedContractId.Value);
             if (forcedContractItem is null && plan.Intent != AskIntent.PortfolioMarketPosition)
             {
-                return (BuildUnseenScopeRefusal(portfolio), false, false);
+                return (gateReplies.BuildUnseenScopeRefusal(portfolio), false, false);
             }
         }
 
@@ -690,7 +635,7 @@ public sealed partial class AskCopilotService(
         // scope, so it never depends on the scoped contract resolving at all.
         if (scopeContractId is not null && scopedContractItem is null && plan.Intent != AskIntent.PortfolioMarketPosition)
         {
-            return (BuildUnseenScopeRefusal(portfolio), false, false);
+            return (gateReplies.BuildUnseenScopeRefusal(portfolio), false, false);
         }
 
         // AC-2 (NW-76) / NW-80 (task E27/F05/US01/T01): a resolved, visible scope id wins outright
@@ -715,7 +660,7 @@ public sealed partial class AskCopilotService(
         // the closed gate. There is no path from here to the search without a consumed consent.
         if (hints.AuthorizedWebResearch is { } authorizedWebResearch && plan.Intent == AskIntent.WebResearch)
         {
-            var reply = await webResearchFlow.RunAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, ResolveAbstainRecovery, cancellationToken)
+            var reply = await webResearchFlow.RunAsync(tenantId, question, authorizedWebResearch, portfolio, routingContext, actor, abstainRecovery.Resolver, cancellationToken)
                 .ConfigureAwait(false);
             return (reply.Reply, reply.GuardIntervened, false);
         }
@@ -723,7 +668,7 @@ public sealed partial class AskCopilotService(
         if (plan.Intent == AskIntent.WebResearch)
         {
             return (
-                await webResearchFlow.BuildEntryReplyAsync(tenantId, question, portfolio, routingContext, actor, ResolveAbstainRecovery, cancellationToken)
+                await webResearchFlow.BuildEntryReplyAsync(tenantId, question, portfolio, routingContext, actor, abstainRecovery.Resolver, cancellationToken)
                     .ConfigureAwait(false),
                 false,
                 false);
@@ -731,7 +676,7 @@ public sealed partial class AskCopilotService(
 
         if (plan.Intent is AskIntent.Navigate or AskIntent.QuoteRoute)
         {
-            return (BuildRoutingOnlyReply(plan, routingContext), false, false);
+            return (gateReplies.BuildRoutingOnlyReply(plan, routingContext), false, false);
         }
 
         // ADR-030 — the interview. Decided here, after scope and supplier resolution and before
@@ -873,8 +818,8 @@ public sealed partial class AskCopilotService(
         // Ask never answers "I don't have data I trust enough"): the screen where this kind of
         // answer lives, two questions that route to a real answer (ADR-024 "every abstain has a
         // clickable next step"), and HelpfulFallbackAnswer's way forward for this kind of question.
-        var recoveryActions = ResolveAbstainRecoveryActions(portfolio, routingContext, plan.Intent);
-        var recoveryFollowUps = AbstainFollowUps(question, portfolio, plan.Intent);
+        var recoveryActions = abstainRecovery.ResolveAbstainRecoveryActions(portfolio, routingContext, plan.Intent);
+        var recoveryFollowUps = AbstainRecovery.AbstainFollowUps(question, portfolio, plan.Intent);
         // The deterministic proposal opens, like the model must, with the honest gaps the market data
         // check found and what the market says in their place (step 1 of the flow above).
         var italianQuestion = HelpfulFallbackAnswer.IsItalian(question);
@@ -887,7 +832,7 @@ public sealed partial class AskCopilotService(
         }
 
         var proposal = (lead ?? string.Empty) +
-            HelpfulFallbackAnswer.Proposal(question, ProposalArea(question, plan.Intent), emptyWorkspace: portfolio.Items.Count == 0);
+            HelpfulFallbackAnswer.Proposal(question, AbstainRecovery.ProposalArea(question, plan.Intent), emptyWorkspace: portfolio.Items.Count == 0);
 
         if (boundedPack.Count == 0)
         {
@@ -1015,253 +960,6 @@ public sealed partial class AskCopilotService(
             CopilotReplyBuilder.FromGuardedResult(result, boundedPack, resolvedActions, recoveryActions, recoveryFollowUps),
             composed.Value.GuardIntervened,
             composed.Value.FallbackUsed);
-    }
-
-    /// <summary>
-    /// AC-3 (task E27/F02/US01/T01, NW-76; ADR-024 w19 cl. 12): the reply for a
-    /// <c>scopeContractId</c> that does not resolve to a row in this turn's own freshly-fetched
-    /// portfolio. <see cref="ReplyKind.Refusal"/>, not <see cref="ReplyKind.Abstain"/> — this is not
-    /// "a real question with no groundable evidence", it is "the caller named a contract they
-    /// cannot see", the same distinction <see cref="RedirectReplyBuilder.Legal"/> already draws for
-    /// a different refusal. Reuses <see cref="ResolveAbstainRecoveryActions"/> for the same
-    /// upload-or-ask-again next step every other "cannot proceed for this contract" reply in this
-    /// method already offers, rather than inventing a third recovery shape — a bare
-    /// <see cref="RoutingContext"/> with no <c>ContractId</c>, since the one contract this turn
-    /// named is exactly the one that is not available to route to.
-    /// </summary>
-    private CopilotReply BuildUnseenScopeRefusal(PortfolioPage portfolio)
-    {
-        var routingContext = new RoutingContext(portfolio.TotalCount, CapabilityCallerRole.Standard);
-
-        return new CopilotReply(
-            ReplyKind.Refusal,
-            "The contract this conversation is scoped to is no longer available to you. Open " +
-            "Portfolio to pick a contract, or ask a portfolio-wide question instead.",
-            [],
-            ResolveAbstainRecoveryActions(portfolio, routingContext),
-            ReplyProvenance.NoModelCall([]),
-            []);
-    }
-
-    /// <summary>
-    /// Task E27/F05/US01/T01 (NW-80; parent story us-01-supplier-resolution AC-2): which single
-    /// contract a named-supplier turn answers about, replacing a plain <c>FirstOrDefault</c> over
-    /// <paramref name="portfolio"/> (whichever row the portfolio query happened to return first for
-    /// that supplier — never a deliberate choice, and never told to the user) with two rules, tried
-    /// in order:
-    ///
-    /// <list type="number">
-    /// <item><b>Scoped id wins.</b> <paramref name="scopedContractItem"/> is <see cref="AskAsync"/>'s
-    /// own already-resolved <c>Conversation.ScopeContractId</c> (Contract 360's "Ask about it") — it
-    /// names one exact contract with no ambiguity at all, so it is returned unchanged and no
-    /// disambiguation note is produced (the user already knows which contract they opened this chat
-    /// from). <see cref="BuildInDomainReplyAsync"/> passes <see langword="null"/> here instead for
-    /// <see cref="AskIntent.PortfolioMarketPosition"/> (lock 4; task E27/F02/US01/T01, NW-76), which
-    /// is never narrowed to a scoped contract, so that intent always falls through to rule 2.</item>
-    /// <item><b>Else, the soonest cancellation deadline / renewal wins</b> — the same ordering
-    /// <c>Raffa.Renewals.Application.RenewalPipelineBuilder.Build</c> uses: cancellation deadline
-    /// when known, else renewal date, unknown-urgency rows last. Sorting directly on
-    /// <see cref="PortfolioListItem.CancellationDeadline"/>/<see cref="PortfolioListItem.RenewalDate"/>
-    /// *is* that ordering, not an approximation of it —
-    /// <c>Raffa.Renewals.Application.RenewalEngine.Calculate</c>'s own doc comment records that its
-    /// <c>RenewalDate</c> "reproduces <see cref="PortfolioListItem.RenewalDate"/>'s own convention on
-    /// purpose". When more than one contract matches, <see cref="BuildMultiContractDisambiguationItem"/>
-    /// is what keeps the pick from being a silent merge.</item>
-    /// </list>
-    /// </summary>
-    /// <returns>The contract this turn answers about (or <see langword="null"/> when no supplier was
-    /// named, or a named supplier has no contract at all — <see cref="GateLabel.NeedsDocument"/>
-    /// already handled the latter upstream so this is not expected in practice), and a
-    /// <see cref="PackCorpus.Calc"/> pack item naming the choice, only when the choice was actually
-    /// ambiguous.</returns>
-    private static (PortfolioListItem? Item, PackItem? DisambiguationItem, IReadOnlyList<PortfolioListItem> Matches) ResolveNamedContractItem(
-        PortfolioListItem? scopedContractItem,
-        string? namedSupplier,
-        PortfolioPage portfolio,
-        IReadOnlyDictionary<EntityId, string> supplierNames)
-    {
-        if (scopedContractItem is not null)
-        {
-            return (scopedContractItem, null, []);
-        }
-
-        if (namedSupplier is null)
-        {
-            return (null, null, []);
-        }
-
-        var matches = portfolio.Items
-            .Where(item =>
-                item.SupplierId is { } supplierId &&
-                supplierNames.TryGetValue(new EntityId(supplierId), out var name) &&
-                string.Equals(name, namedSupplier, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(item => item.CancellationDeadline ?? item.RenewalDate ?? DateOnly.MaxValue)
-            .ThenBy(item => item.ContractId)
-            .ToList();
-
-        if (matches.Count == 0)
-        {
-            return (null, null, []);
-        }
-
-        var chosen = matches[0];
-
-        if (matches.Count == 1)
-        {
-            return (chosen, null, matches);
-        }
-
-        return (chosen, BuildMultiContractDisambiguationItem(chosen, matches.Count, namedSupplier), matches);
-    }
-
-    /// <summary>
-    /// NW-80's required disambiguation sentence: <c>"Using {Type} CT-01 (renews …). Ask if you meant
-    /// another."</c> (task text, verbatim). A <see cref="PackCorpus.Calc"/> pack item, not free-form
-    /// model prose, so the fact of which contract was picked is grounded evidence the `answer` role
-    /// can cite rather than something it might choose to omit — both the fixture and the live gateway
-    /// cite pack items, never invent independent sentences (<c>Raffa.AiGateway.Fixtures
-    /// .FixtureAiGateway.AnswerFromPack</c>'s own "no chunk concatenation" convention), and
-    /// <see cref="BuildInDomainReplyAsync"/> prepends this item so <see cref="PackBudget.Apply"/> and
-    /// that fixture's first-N-items citation both always keep it.
-    ///
-    /// <para>
-    /// "CT-01" is this one reply's own local label, not a persisted contract code (no such column
-    /// exists on <c>Contract</c> yet) — it exists only so "ask if you meant another" has something
-    /// short to refer back to. It is always "01" because <paramref name="chosen"/> is always the
-    /// soonest match (position 1 of <see cref="ResolveNamedContractItem"/>'s own soonest-first sort)
-    /// and this sentence only ever names the one contract actually chosen, never enumerates the
-    /// others.
-    /// </para>
-    /// </summary>
-    private static PackItem BuildMultiContractDisambiguationItem(
-        PortfolioListItem chosen, int matchCount, string supplierDisplayName)
-    {
-        const string ChosenContractLabel = "CT-01";
-
-        // Never fabricated (Appendix C rule 10): renewal date first (what RenewalPipelineBuilder's
-        // own sort actually ordered on when known), else the cancellation deadline, else the bare
-        // end date, else an honest "unknown" rather than inventing one.
-        var renewalText = chosen.RenewalDate is { } renewalDate
-            ? $"renews {renewalDate:yyyy-MM-dd}"
-            : chosen.CancellationDeadline is { } deadline
-                ? $"cancellation deadline {deadline:yyyy-MM-dd}"
-                : chosen.EndDate is { } endDate
-                    ? $"ends {endDate:yyyy-MM-dd}"
-                    : "renewal date unknown";
-
-        var snippet =
-            $"Using {chosen.Type} {ChosenContractLabel} ({renewalText}). {supplierDisplayName} has " +
-            $"{matchCount} contracts on file — ask if you meant another.";
-
-        return new PackItem(
-            InsightsCitationKeys.Calc("multi-contract-resolution"),
-            PackCorpus.Calc,
-            $"{supplierDisplayName} — multiple contracts",
-            null,
-            null,
-            null,
-            snippet,
-            null, // Href is always null for PackCorpus.Calc (PackItem.Href's own doc comment).
-            null,
-            null,
-            "deterministic calculator",
-            []);
-    }
-
-    /// <summary>
-    /// The recovery actions every abstain path this method's caller can reach attaches
-    /// (E25/F05/US01/T01, story us-01-abstain-recovery-backend AC-1/AC-3; ADR-024 "every abstain
-    /// has a clickable next step"). Never derived from <c>AiAnswerResult.ActionKeys</c> — an
-    /// abstaining model has nothing grounded to suggest, and AC-2 requires a real catalog href
-    /// regardless of what it returned. Zero validated contracts is the one failure Ask can actually
-    /// unblock (upload something), so that case gets the Documents upload action; otherwise the
-    /// recovery is where the answer to <paramref name="intent"/>'s kind of question lives: Savings +
-    /// Renewals for a savings or priority question, Renewals + Portfolio for a date or renewal
-    /// question, Quote check (+ Contract 360 when a contract is in scope) for a market question,
-    /// the contract or Portfolio + Documents for a clause, Documents review for a document-status
-    /// question, and Portfolio for everything else (including a turn with no intent, the unseen-scope
-    /// refusal, whose own copy already says "Open Portfolio"). It used to be the Ask capability
-    /// itself (<c>/ask</c>) — the screen the user is already on, so the button led nowhere. Every
-    /// target is <see cref="CapabilityRoleGate.Any"/>, so this never role-gates away to an empty list.
-    /// </summary>
-    private IReadOnlyList<CopilotAction> ResolveAbstainRecoveryActions(
-        PortfolioPage portfolio, RoutingContext routingContext, AskIntent? intent = null)
-    {
-        if (portfolio.Items.Count == 0)
-        {
-            // Documents is Always-available, so HowTo(DocumentsKey) would Navigate to /documents.
-            // UnknownSupplier is the catalog path that emits CopilotActionKind.Upload at /documents.
-            return capabilityRouting.ResolveActions([CapabilityIntent.UnknownSupplier], routingContext);
-        }
-
-        CapabilityIntent[] intents = intent switch
-        {
-            AskIntent.Savings or AskIntent.PortfolioSavingsTarget or AskIntent.PortfolioStrategy =>
-                [CapabilityIntent.Savings, CapabilityIntent.Deadline],
-            AskIntent.RenewalStrategy or AskIntent.StructuredFact =>
-                [CapabilityIntent.Deadline, CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)],
-            AskIntent.MarketCompare or AskIntent.PortfolioMarketPosition =>
-                [CapabilityIntent.Benchmark],
-            AskIntent.Clause when routingContext.ContractId is not null =>
-                [CapabilityIntent.HowTo(CapabilityCatalog.ContractDetailKey), CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)],
-            AskIntent.Clause =>
-                [CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey), CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey)],
-            AskIntent.DocumentStatus =>
-                [CapabilityIntent.HowTo(CapabilityCatalog.DocumentsAttentionKey)],
-            _ => [CapabilityIntent.HowTo(CapabilityCatalog.PortfolioKey)],
-        };
-
-        return capabilityRouting.ResolveActions(intents, routingContext);
-    }
-
-    /// <summary>The area an abstain's suggested follow-ups come from: Documents while nothing is
-    /// uploaded (the one thing that unblocks Ask), else the same grouping
-    /// <see cref="ResolveAbstainRecoveryActions"/> routes to — savings, renewals, market position,
-    /// documents — and the general pair for a clause or anything else.</summary>
-    private static IReadOnlyList<string> AbstainFollowUps(string question, PortfolioPage portfolio, AskIntent intent)
-    {
-        var capabilityKey = portfolio.Items.Count == 0
-            ? CapabilityCatalog.DocumentsKey
-            : intent switch
-            {
-                AskIntent.Savings or AskIntent.PortfolioSavingsTarget or AskIntent.PortfolioStrategy => CapabilityCatalog.SavingsKey,
-                AskIntent.RenewalStrategy or AskIntent.StructuredFact => CapabilityCatalog.RenewalsKey,
-                AskIntent.MarketCompare or AskIntent.PortfolioMarketPosition => CapabilityCatalog.QuoteCheckKey,
-                AskIntent.DocumentStatus => CapabilityCatalog.DocumentsKey,
-                _ => CapabilityCatalog.AskKey,
-            };
-
-        return GroundedFallbackAnswer.SuggestedQuestions(question, capabilityKey);
-    }
-
-    /// <summary>The kind of question <see cref="HelpfulFallbackAnswer.Proposal"/> writes its way
-    /// forward for: the area the question's own words point at ("quando scade…" is a renewal
-    /// question even when the planner files it as a clause lookup), else the intent's own area.</summary>
-    private static string? ProposalArea(string question, AskIntent intent) =>
-        HelpfulFallbackAnswer.AreaFor(question) ?? intent switch
-        {
-            AskIntent.Savings or AskIntent.PortfolioSavingsTarget => CapabilityCatalog.SavingsKey,
-            AskIntent.RenewalStrategy => CapabilityCatalog.RenewalsKey,
-            AskIntent.MarketCompare or AskIntent.PortfolioMarketPosition => CapabilityCatalog.QuoteCheckKey,
-            AskIntent.Clause => CapabilityCatalog.ContractDetailKey,
-            AskIntent.DocumentStatus => CapabilityCatalog.DocumentsKey,
-            _ => null,
-        };
-
-    private CopilotReply BuildRoutingOnlyReply(IntentPlanResult plan, RoutingContext routingContext)
-    {
-        var intents = plan.Intent == AskIntent.QuoteRoute
-            ? new List<CapabilityIntent> { CapabilityIntent.Benchmark }
-            : new List<CapabilityIntent> { CapabilityIntent.HowTo(CapabilityCatalog.DocumentsKey) };
-
-        var actions = capabilityRouting.ResolveActions(intents, routingContext);
-
-        var markdown = plan.Intent == AskIntent.QuoteRoute
-            ? "That is a job for Quote check: it compares a quote or contract with market " +
-              "benchmarks and with what you already pay."
-            : "Here you go.";
-
-        return new CopilotReply(ReplyKind.Answer, markdown, [], actions, ReplyProvenance.NoModelCall(["raffa"]), []);
     }
 
     // ----- Per-intent pack composition -----
@@ -1576,7 +1274,7 @@ public sealed partial class AskCopilotService(
     /// (<see cref="BuildNoGroundableNoticeAbstain"/>) -- NW-59's own "an abstain still carries a
     /// real, catalog-sourced recovery action" pattern (<c>AskAbstainRecoveryActionTests</c>), here
     /// specialised to the one action that actually helps: open the contract this turn already
-    /// named, never the generic <see cref="ResolveAbstainRecoveryActions"/> hint.</item>
+    /// named, never the generic <see cref="AbstainRecovery.ResolveAbstainRecoveryActions"/> hint.</item>
     /// </list>
     /// A contract resolved by <see cref="ResolveNamedContractItem"/> but since vanished from
     /// <see cref="Contract360QueryService"/> (deleted mid-call -- a rare race) falls straight
@@ -2566,291 +2264,6 @@ public sealed partial class AskCopilotService(
 
     // ----- Shared helpers -----
 
-    /// <summary>ADR-030: the display facts the interview planner phrases a "which contract?"
-    /// question from -- supplier names, never guids in a label (R-ASK-08); the id rides in the
-    /// option's resolution.</summary>
-    private static InterviewInputs BuildInterviewInputs(
-        IReadOnlyList<PortfolioListItem> supplierMatches,
-        PortfolioPage portfolio,
-        IReadOnlyDictionary<EntityId, string> supplierNames)
-    {
-        var supplierContracts = supplierMatches.Select(item => ToInterviewChoice(item, supplierNames)).ToList();
-        var noticeCandidates = portfolio.Items
-            .Where(item => item.CancellationDeadline is not null)
-            .OrderBy(item => item.CancellationDeadline)
-            .ThenBy(item => item.ContractId)
-            .Select(item => ToInterviewChoice(item, supplierNames))
-            .ToList();
-
-        return new InterviewInputs(supplierContracts, noticeCandidates);
-    }
-
-    private static InterviewContractChoice ToInterviewChoice(
-        PortfolioListItem item, IReadOnlyDictionary<EntityId, string> supplierNames) =>
-        new(
-            item.ContractId.ToString(),
-            DisplayNameFor(item, supplierNames),
-            item.Type.ToString(),
-            item.RenewalDate,
-            item.CancellationDeadline,
-            item.EndDate);
-
-    /// <summary>
-    /// The name a contract is shown under everywhere in a pack (R-SUP-04): the resolved supplier
-    /// name from the per-turn map <see cref="AskAsync"/> builds, else the contract type -- never a
-    /// guid. Synchronous twin of <see cref="ResolveDisplayNameAsync(PortfolioListItem, CancellationToken)"/>
-    /// for the multi-contract paths that already hold the whole map.
-    /// </summary>
-    private static string DisplayNameFor(PortfolioListItem item, IReadOnlyDictionary<EntityId, string> supplierNames) =>
-        item.SupplierId is { } supplierId && supplierNames.TryGetValue(new EntityId(supplierId), out var name)
-            ? name
-            : item.Type.ToString();
-
-    /// <summary>
-    /// "Salesforce · MSA" -- the one title shape every contract-level pack item uses, so a reply
-    /// can always say which supplier it means. When no supplier name resolved (the display name fell
-    /// back to the type), the title says so instead of the misleading "MSA · MSA".
-    /// </summary>
-    private static string ContractTitle(PortfolioListItem item, string displayName) =>
-        string.Equals(displayName, item.Type.ToString(), StringComparison.Ordinal)
-            ? $"Unnamed supplier · {item.Type}"
-            : $"{displayName} · {item.Type}";
-
-    /// <summary>
-    /// Task E25/F02/US01/T01 (NW-55): still the pre-existing <c>/contracts/{id}</c> CTA and a
-    /// <see langword="null"/> <see cref="PackItem.PreviewUrl"/> -- deliberately untouched by this
-    /// task. A contract-level fact (e.g. "ends on 2027-01-01") has no single source page: it is
-    /// computed from <see cref="PortfolioListItem"/> columns, which name no
-    /// <c>SourceDocumentId</c>/<c>SourcePage</c> at all, so there is nothing here for
-    /// <see cref="ResolveTenantClauseLinks"/>'s viewer link to resolve against. AC-3 ("PreviewUrl is
-    /// set only for tenant <em>pages</em>") already reads this item as correctly page-less, not as a
-    /// gap: a contract route is still a valid <see cref="PackItem.Href"/> shape for
-    /// <see cref="PackCorpus.Tenant"/> per that field's own doc comment ("a document/contract route
-    /// for PackCorpus.Tenant").
-    /// </summary>
-    private PackItem BuildContractFactItem(PortfolioListItem item, string displayName)
-    {
-        var values = new List<PackValue>();
-        if (item.EndDate is { } endDate)
-        {
-            values.Add(new PackValue("endDate", endDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), PackValueKind.Date));
-        }
-
-        if (item.CancellationDeadline is { } deadline)
-        {
-            values.Add(new PackValue("cancellationDeadline", deadline.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), PackValueKind.Date));
-        }
-
-        // The real contract currency, never "n/a": NumericGuard matches an amount only against a
-        // pack value of the same currency, so "n/a" forced the model into bare "667000.00" figures
-        // (closes the golden set's GAP-ASK-SPEND-CURRENCY-NA).
-        var currency = string.IsNullOrWhiteSpace(item.Currency) ? "n/a" : item.Currency.Trim();
-        if (item.AnnualSpend is { } spend)
-        {
-            values.Add(new PackValue("annualSpend", spend.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, currency));
-        }
-
-        var title = ContractTitle(item, displayName);
-        var spendSentence = item.AnnualSpend is { } annualSpend && currency != "n/a"
-            ? $" Annual spend {currency} {annualSpend.ToString("0.##", CultureInfo.InvariantCulture)}."
-            : string.Empty;
-
-        var snippet = item.EndDate is { } end
-            ? $"{title} ends on {end:yyyy-MM-dd}" +
-              (item.AutoRenewal ? ", auto-renews unless notice is given" : ", does not auto-renew") +
-              (item.CancellationDeadline is { } cd ? $" (notice by {cd:yyyy-MM-dd})" : string.Empty) + "." + spendSentence
-            : $"{title} has no validated end date yet.{spendSentence}";
-
-        return new PackItem(
-            $"fact:{item.ContractId}:renewal",
-            PackCorpus.Tenant,
-            title,
-            null,
-            null,
-            null,
-            snippet,
-            $"/contracts/{item.ContractId}",
-            null,
-            null,
-            "validated contract",
-            values,
-            item.ContractId.ToString());
-    }
-
-    private static IReadOnlyList<PackValue> BuildDateValues(DateOnly? renewalDate, DateOnly? cancellationDeadline)
-    {
-        var values = new List<PackValue>();
-        if (renewalDate is { } renewal)
-        {
-            values.Add(new PackValue("renewalDate", renewal.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), PackValueKind.Date));
-        }
-
-        if (cancellationDeadline is { } deadline)
-        {
-            values.Add(new PackValue("cancellationDeadline", deadline.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), PackValueKind.Date));
-        }
-
-        return values;
-    }
-
-    private static PackItem ToMarketPackItem(MarketNote note) =>
-        new(
-            $"market:{note.RecordId}",
-            PackCorpus.Market,
-            note.Title,
-            note.Provenance,
-            null,
-            null,
-            note.Snippet,
-            null,
-            null,
-            note.RecordId,
-            note.Provenance,
-            []);
-
-    /// <summary>
-    /// One <see cref="PackCorpus.Market"/> item for a benchmarked priced line -- a representative
-    /// band (P25/P50/P75 + provenance) when one resolved, else an honest "insufficient market data"
-    /// entry, never a silently dropped line (AC-3, task E28/F01/US01/T01, NW-82). Shared by
-    /// <see cref="BuildMarketComparePackAsync"/> and <see cref="BuildRenewalStrategyPackAsync"/>
-    /// (task E31/F01/US01/T01, NW-95) so the two packs can never narrate two different wordings for
-    /// the identical line's missing band.
-    /// </summary>
-    private static PackItem BuildMarketPricedLineItem(string supplierName, PricedLine line)
-    {
-        var lineKey = $"market:{supplierName}:{line.Description}".Replace(' ', '-');
-
-        if (line.Benchmark is not { } distribution)
-        {
-            return new PackItem(
-                lineKey,
-                PackCorpus.Market,
-                $"{supplierName} · {line.Description}",
-                null,
-                null,
-                null,
-                "Insufficient market data for this line — too few comparables to publish a " +
-                "benchmark (Appendix C rule 10; ADR-001).",
-                null,
-                null,
-                null,
-                "insufficient market data",
-                []);
-        }
-
-        return new PackItem(
-            lineKey,
-            PackCorpus.Market,
-            $"{supplierName} · {line.Description}",
-            line.AdapterName,
-            null,
-            null,
-            $"P25 {distribution.P25} · P50 {distribution.P50} · P75 {distribution.P75} " +
-            $"{line.Currency}/unit · n = {line.SampleSize?.ToString(CultureInfo.InvariantCulture) ?? "n/a"}",
-            null,
-            null,
-            null,
-            FormatRepresentativeProvenance(line),
-            [
-                new PackValue("p25", distribution.P25.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
-                new PackValue("p50", distribution.P50.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
-                new PackValue("p75", distribution.P75.ToString(CultureInfo.InvariantCulture), PackValueKind.Amount, line.Currency),
-            ]);
-    }
-
-    /// <summary>
-    /// One <see cref="PackCorpus.Raffa"/> citation item for a capability (AC-2 "one raffa Renewals
-    /// item", task E31/F01/US01/T01, NW-95) -- the same <see cref="FeatureCitation"/> shape
-    /// <see cref="BuildFeatureCitations"/> already cites directly into a deterministic reply
-    /// (<see cref="BuildCapabilityReply"/>), but as a genuine <see cref="PackItem"/> here so the
-    /// `answer` role can cite it like any other pack source instead of it being injected out of
-    /// band. <see langword="null"/> for an unrecognized key -- never fabricated (Appendix C rule
-    /// 10) -- though every key this file passes is one of <see cref="CapabilityCatalog"/>'s own
-    /// constants, so this is not expected in practice.
-    /// </summary>
-    private static PackItem? BuildFeatureCitationPackItem(string capabilityKey)
-    {
-        var capability = CapabilityCatalog.Find(capabilityKey);
-        if (capability is null)
-        {
-            return null;
-        }
-
-        var feature = FeatureCitation.For(capability);
-
-        return new PackItem(
-            $"raffa:{capabilityKey}",
-            PackCorpus.Raffa,
-            feature.Title,
-            feature.Subtitle,
-            null,
-            null,
-            feature.Snippet,
-            feature.Href,
-            null,
-            null,
-            "Raffa feature",
-            []);
-    }
-
-    private static IReadOnlyList<ReplyCitation> BuildFeatureCitations(IReadOnlyList<string> keys)
-    {
-        var citations = new List<ReplyCitation>();
-        var n = 1;
-
-        foreach (var key in keys)
-        {
-            var capability = CapabilityCatalog.Find(key);
-            if (capability is null)
-            {
-                continue;
-            }
-
-            var feature = FeatureCitation.For(capability);
-            citations.Add(new ReplyCitation(
-                n++, feature.Corpus, feature.Title, feature.Subtitle, feature.Snippet,
-                null, null, null, null, null, feature.Href, null));
-        }
-
-        return citations;
-    }
-
-    private static (string? Sentence, EntityId? ContractId) BuildPortfolioHook(
-        PortfolioPage portfolio, IReadOnlyDictionary<EntityId, string> supplierNames)
-    {
-        if (portfolio.Items.Count == 0)
-        {
-            return (null, null);
-        }
-
-        var soonest = portfolio.Items
-            .Where(item => item.CancellationDeadline is not null)
-            .OrderBy(item => item.CancellationDeadline)
-            .FirstOrDefault()
-            ?? portfolio.Items.OrderBy(item => item.EndDate ?? DateOnly.MaxValue).First();
-
-        var name = soonest.SupplierId is { } supplierId && supplierNames.TryGetValue(new EntityId(supplierId), out var resolved)
-            ? resolved
-            : soonest.Type.ToString();
-
-        var sentence = soonest.EndDate is { } end
-            ? $"your {name} contract runs until {end:yyyy-MM-dd}"
-            : $"your {name} contract is on file and ready to ask about";
-
-        return (sentence, new EntityId(soonest.ContractId));
-    }
-
-    private static EntityId? FindContractIdBySupplier(
-        PortfolioPage portfolio, IReadOnlyDictionary<EntityId, string> supplierNames, string namedSupplier)
-    {
-        var match = portfolio.Items.FirstOrDefault(item =>
-            item.SupplierId is { } supplierId &&
-            supplierNames.TryGetValue(new EntityId(supplierId), out var name) &&
-            string.Equals(name, namedSupplier, StringComparison.OrdinalIgnoreCase));
-
-        return match is null ? null : new EntityId(match.ContractId);
-    }
-
     /// <summary>
     /// The priced lines every Ask pack reads: the same <c>ContractInsightsMapper.ToPricedLines</c>
     /// call <c>GET /api/contracts/{id}/strategy</c> makes, including each line's stored market
@@ -2896,21 +2309,6 @@ public sealed partial class AskCopilotService(
         return key is BenchmarkKeyResult.Complete complete ? (complete.Supplier, complete.Geography) : (null, null);
     }
 
-    /// <summary>
-    /// <see cref="BuildMarketComparePackAsync"/>'s own market-corpus provenance label for a line
-    /// whose band resolved (task text, verbatim: "a provenance label (representative · adapter · n
-    /// · as-of)") — distinct from, and simpler than,
-    /// <c>Raffa.Insights.Strategy.StrategyPackBuilder.AnnotateTargetExplanation</c>'s own
-    /// "representative (source: X; n=Y; as of Z)" phrase folded into a target's free-text
-    /// explanation (that file is out of this task's "Files to create or modify" scope, so its own
-    /// wording is left exactly as it already is); both name the same three facts — adapter, sample
-    /// size, as-of date — because ADR-001 w17 clause 4 requires a representative claim to carry
-    /// them, never a bare percentile.
-    /// </summary>
-    private static string FormatRepresentativeProvenance(PricedLine line) =>
-        $"representative · {line.AdapterName} · n={line.SampleSize?.ToString(CultureInfo.InvariantCulture) ?? "n/a"} " +
-        $"· as of {(line.AsOf is { } asOf ? asOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "n/a")}";
-
     private Task<string> ResolveDisplayNameAsync(PortfolioListItem item, CancellationToken cancellationToken) =>
         ResolveDisplayNameAsync(item.SupplierId is { } supplierId ? new EntityId(supplierId) : null, item.Type, cancellationToken);
 
@@ -2937,61 +2335,6 @@ public sealed partial class AskCopilotService(
         return names.TryGetValue(id, out var name) ? name : type.ToString();
     }
 
-    private static ContractFact ToContractFact(PortfolioListItem item) =>
-        new(
-            new EntityId(item.ContractId),
-            item.SupplierId is { } supplierId ? new EntityId(supplierId) : null,
-            item.AnnualSpend,
-            item.EndDate,
-            item.AutoRenewal);
-
-    private async Task WriteAuditAsync(
-        TenantId tenantId,
-        CopilotReply reply,
-        bool guardIntervened,
-        bool fallbackUsed,
-        string gapInvestigation,
-        bool webMode,
-        string actor,
-        CancellationToken cancellationToken)
-    {
-        var action = reply.Kind switch
-        {
-            ReplyKind.Answer => AuditAnsweredAction,
-            ReplyKind.Abstain => AuditAbstainedAction,
-            ReplyKind.Redirect => AuditRedirectedAction,
-            ReplyKind.Refusal => AuditRefusedAction,
-            ReplyKind.Draft => AuditDraftedAction,
-            ReplyKind.Interview => AuditInterviewedAction,
-            _ => AuditAnsweredAction,
-        };
-
-        var packHash = ComputeHash(string.Join('|', reply.Citations.Select(c => c.N + ":" + c.Corpus)));
-
-        // AC-7 / R-ASK-09: "audit records abstainGuardIntervened=true" when Guards.RegenerateOnce's
-        // retry-then-downgrade path fired — the field name every Ask audit entry carries,
-        // so an operator/query filters on one consistent key.
-        await auditWriter.WriteAsync(
-            new AuditEntry(
-                tenantId,
-                actor,
-                action,
-                AuditResourceType,
-                packHash,
-                clock.UtcNow,
-                $"kind={reply.Kind} citationCount={reply.Citations.Count} actionCount={reply.Actions.Count} " +
-                $"packHash={packHash} abstainGuardIntervened={guardIntervened} " +
-                $"fallbackUsed={fallbackUsed} " +
-                $"interviewQuestions={reply.Interview?.Questions.Count ?? 0} " +
-                $"webConsent={reply.Interview?.Questions.Any(q => q.Presentation == InterviewPresentation.Consent) ?? false} " +
-                $"unverified={reply.Provenance.Unverified} " +
-                $"gapInvestigation={gapInvestigation} " +
-                $"webMode={webMode} " +
-                $"turnId={RunContext.Current?.TurnId ?? "none"} " +
-                (RunContext.TurnDetail ?? "flow=none")),
-            cancellationToken).ConfigureAwait(false);
-    }
-
     private static bool IsCouncilIntent(AskIntent intent, PortfolioListItem? namedContractItem) =>
         intent is AskIntent.Savings or AskIntent.PortfolioSavingsTarget ||
         (intent == AskIntent.RenewalStrategy && namedContractItem is not null);
@@ -3008,9 +2351,4 @@ public sealed partial class AskCopilotService(
     }
 
     private static string ComputeHash(string input) => QueryHasher.ComputeHash(input);
-
-    /// <summary>The two-argument form of <see cref="ResolveAbstainRecoveryActions"/> the web flows
-    /// receive as a delegate (<see cref="AbstainRecoveryResolver"/>): they never reference this class.</summary>
-    private IReadOnlyList<CopilotAction> ResolveAbstainRecovery(PortfolioPage portfolio, RoutingContext routingContext) =>
-        ResolveAbstainRecoveryActions(portfolio, routingContext);
 }

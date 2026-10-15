@@ -1,4 +1,6 @@
 using Raffa.AiFlows.Negotiation.DataCheck;
+using static Raffa.AiFlows.Ask.Packs.ContractResolution;
+using static Raffa.AiFlows.Ask.Packs.PackItemFactory;
 using Raffa.AiFlows.Negotiation.Orchestration;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.Documents.Contracts.Application;

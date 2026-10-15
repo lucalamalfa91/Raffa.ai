@@ -1,4 +1,6 @@
 using Raffa.AiFlows.Ask.Gate;
+using static Raffa.AiFlows.Ask.Packs.ContractResolution;
+using static Raffa.AiFlows.Ask.Packs.PackItemFactory;
 using Raffa.AiFlows.Ask.Interview;
 using Raffa.AiFlows.Ask.Planning;
 using Raffa.AiFlows.CapabilityGaps.Catalog;
@@ -34,8 +36,6 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 /// </summary>
 public sealed partial class AskCopilotService
 {
-    private const string AuditDraftedAction = "chat.drafted";
-
     private async Task<(CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)> BuildCapabilityGapReplyAsync(
         TenantId tenantId,
         string question,
@@ -54,7 +54,7 @@ public sealed partial class AskCopilotService
         // no longer see refuses outright, never a silent fall-through to another contract.
         if (scopeContractId is not null && scopedContractItem is null)
         {
-            return (BuildUnseenScopeRefusal(portfolio), false, false);
+            return (gateReplies.BuildUnseenScopeRefusal(portfolio), false, false);
         }
 
         var (namedContractItem, disambiguationItem, _) = ResolveNamedContractItem(
