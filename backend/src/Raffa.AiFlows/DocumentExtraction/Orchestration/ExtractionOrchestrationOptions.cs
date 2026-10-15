@@ -48,4 +48,16 @@ public sealed class ExtractionOrchestrationOptions
 
     /// <summary>F5-T10: output tokens reserved per call on top of the input estimate.</summary>
     public int TpmEstimatedOutputTokens { get; set; } = 2000;
+
+    /// <summary>F5-T04: documents whose page-marked text is longer than this many characters are read in
+    /// chunks (map-reduce per stage). 0 = never chunk. The default is above the context of the models in use
+    /// (~130K tokens), so today's documents are unaffected.</summary>
+    public int ChunkThresholdChars { get; set; } = 400_000;
+
+    /// <summary>F5-T04: target size of a chunk in characters (cut at page boundaries).</summary>
+    public int ChunkSizeChars { get; set; } = 150_000;
+
+    /// <summary>F5-T04: chunks read per stage at most. A longer document is read up to this many chunks, the
+    /// run is marked truncated and the document goes to review: never silent.</summary>
+    public int MaxChunks { get; set; } = 12;
 }

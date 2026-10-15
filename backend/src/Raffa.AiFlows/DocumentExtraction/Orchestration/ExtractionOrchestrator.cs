@@ -232,6 +232,17 @@ public sealed class ExtractionOrchestrator
         var stageCall = resolved.Call;
         var extractResult = stageCall.Result;
 
+        // F5-T04: part of a very long document was not read. Visible on the run, the audit row, the summary,
+        // the log and a metric; the store never completes such a document.
+        if (stageCall.Truncated)
+        {
+            run.MarkTruncated();
+            ExtractionMetrics.TruncatedStages.Add(1);
+            _logger?.LogWarning(
+                "Stage {Stage} of run {RunId} read only the first {MaxChunks} chunks of the document; marked truncated.",
+                stage.Stage, run.RunId, Options.MaxChunks);
+        }
+
         // F5-T05 (Q2): with context dependencies on, the stage's input hash is that of the request text it
         // actually sent (context included), so a resume never mixes modes. Off: never touched, the job keeps
         // SHA256("staged-v1\n" + text) exactly. Sequential with every other store call: the apply loop is.

@@ -12,7 +12,7 @@ namespace Raffa.AiFlows.DocumentExtraction.Orchestration;
 /// <summary>What one stage's gateway call produced, and the exact request text it sent (context block
 /// included), which is what the stage's <c>ExtractionJob.InputHash</c> is computed from when context
 /// dependencies are on.</summary>
-internal sealed record StageCall(Result<AiExtractionResult> Result, string RequestText);
+internal sealed record StageCall(Result<AiExtractionResult> Result, string RequestText, bool Truncated = false);
 
 /// <summary>
 /// F5-T05: starts the gateway calls of the stages a run has to execute and hands back one task per stage.
@@ -144,6 +144,67 @@ internal sealed class StageScheduler(
     {
         using var step = RunContext.BeginStep(stage.StageName);
 
+        if (options.ChunkThresholdChars > 0 && input.DocumentText.Length > options.ChunkThresholdChars)
+        {
+            return await CallChunkedAsync(stage, input, gate, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await CallOnceAsync(stage, input, gate, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>F5-T04 map-reduce: the stage runs over each chunk of the long document (one after the other,
+    /// each call under the same cap, pacing and in-run retry), then the facts are merged into the single payload
+    /// the stage would have returned. Any failed chunk fails the stage (visible, retryable) rather than
+    /// applying a partial read; chunks dropped for exceeding <c>MaxChunks</c> mark the call truncated.</summary>
+    private async Task<StageCall> CallChunkedAsync(
+        IExtractionStage stage, ExtractionStageInput input, SemaphoreSlim? gate, CancellationToken cancellationToken)
+    {
+        var chunks = DocumentChunker.Split(input.DocumentText, options.ChunkSizeChars, options.MaxChunks);
+        var parts = new List<StageFacts>(chunks.Texts.Count);
+        var requestTexts = new List<string>(chunks.Texts.Count);
+        AiCallMetadata? metadata = null;
+        int prompt = 0, completion = 0;
+        var anyUsage = false;
+
+        foreach (var text in chunks.Texts)
+        {
+            var call = await CallOnceAsync(stage, input with { DocumentText = text }, gate, cancellationToken).ConfigureAwait(false);
+            requestTexts.Add(call.RequestText);
+            if (call.Result.IsFailure)
+            {
+                return new StageCall(call.Result, string.Join('\n', requestTexts), chunks.Truncated);
+            }
+
+            metadata ??= call.Result.Value.Metadata;
+            if (call.Result.Value.Metadata.Usage is { } usage)
+            {
+                anyUsage = true;
+                prompt += usage.PromptTokens;
+                completion += usage.CompletionTokens;
+            }
+
+            try
+            {
+                parts.Add(stage.Parse(call.Result.Value.PayloadJson));
+            }
+            catch (JsonException)
+            {
+                // Malformed chunk payload: hand it to the apply step, which records the typed failure.
+                return new StageCall(call.Result, string.Join('\n', requestTexts), chunks.Truncated);
+            }
+        }
+
+        var merged = StageFactsMerger.ToPayloadJson(StageFactsMerger.Merge(parts));
+        var combined = metadata! with { Usage = anyUsage ? new AiTokenUsage(prompt, completion) : null };
+        return new StageCall(
+            Result<AiExtractionResult>.Success(new AiExtractionResult(merged, combined)),
+            string.Join('\n', requestTexts),
+            chunks.Truncated);
+    }
+
+    private async Task<StageCall> CallOnceAsync(
+        IExtractionStage stage, ExtractionStageInput input, SemaphoreSlim? gate, CancellationToken cancellationToken)
+    {
         AiExtractionRequest? request = null;
 
         for (var attempt = 0; ; attempt++)

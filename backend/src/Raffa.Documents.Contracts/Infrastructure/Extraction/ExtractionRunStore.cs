@@ -351,6 +351,12 @@ public sealed partial class ExtractionRunStore(
 
         document.ProcessingStatus = DetermineDocumentStatus(stageResults, run.ClassificationConfidence);
 
+        // F5-T04: a document that was not read in full is never Completed.
+        if (run.Truncated && document.ProcessingStatus == DocumentProcessingStatus.Completed)
+        {
+            document.ProcessingStatus = DocumentProcessingStatus.NeedsReview;
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // F5-T02: a stage that did not finish leaves the document partial, whatever the facts that
@@ -362,7 +368,7 @@ public sealed partial class ExtractionRunStore(
         // obligation or risk can route the document to review without leaving a single field the
         // review screen can show. Counted after the save, on the same latest-evidence-per-field
         // rule the Documents row uses (NothingToReviewAutoValidator).
-        if (document.ProcessingStatus == DocumentProcessingStatus.NeedsReview && failedStages.Count == 0)
+        if (document.ProcessingStatus == DocumentProcessingStatus.NeedsReview && failedStages.Count == 0 && !run.Truncated)
         {
             var weakByContract = await NothingToReviewAutoValidator
                 .WeakFactCountsAsync(dbContext, tenantId, [contract.Id], cancellationToken)
@@ -387,7 +393,7 @@ public sealed partial class ExtractionRunStore(
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new StagedExtractionSummary(contract.Id, document.ProcessingStatus, stageResults, context.AcceptedSupplierName);
+        return new StagedExtractionSummary(contract.Id, document.ProcessingStatus, stageResults, context.AcceptedSupplierName, run.Truncated);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -784,6 +790,11 @@ public sealed partial class ExtractionRunStore(
         if (failedStages.Count > 0)
         {
             detail += "; partialStages=" + string.Join(",", failedStages.Select(s => $"{s.Stage}({s.FailureKind})"));
+        }
+
+        if (context.Truncated)
+        {
+            detail += "; truncated=true";
         }
 
         return detail;

@@ -59,6 +59,14 @@ public sealed class ExtractionRun
 
     public bool IsResume => ReusedStages.Count > 0;
 
+    /// <summary>F5-T04: set by the orchestrator when the document was longer than the chunking budget and
+    /// part of it was NOT read. Never silent: the document is routed to review, the audit row says so and the
+    /// summary carries it.</summary>
+    public bool Truncated { get; private set; }
+
+    /// <summary>F5-T04: records that part of the document was not read.</summary>
+    public void MarkTruncated() => Truncated = true;
+
     /// <summary>Identity guard: the store instance (so the DbContext scope) that opened this run.</summary>
     internal ExtractionRunStore Owner { get; }
 
