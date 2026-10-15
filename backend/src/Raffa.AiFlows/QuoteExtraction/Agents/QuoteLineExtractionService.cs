@@ -82,13 +82,15 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
                 continue;
             }
 
-            // Task F6-T04/T06 (payload validation): the strict-mode schema guarantees types, not
-            // ranges. A row with a negative quantity or price, a discount outside [0, 100] or a
-            // confidence outside [0, 1] cannot be a correctly read line, and persisting it would
-            // feed garbage into ComputePricing and the benchmark. It is discarded and counted — in
+            // Task F6-T04/T06 (payload validation, schema v2): the strict-mode schema guarantees types,
+            // not ranges or sizes. A row with a negative quantity or price, a discount outside [0, 100],
+            // a confidence outside [0, 1], a number that does not fit its column or a key/term longer
+            // than its column cannot be a correctly read line (or would fail the whole save), and
+            // persisting it would feed garbage into ComputePricing and the benchmark. See
+            // QuoteLinePayloadValidator. It is discarded and counted — in
             // SkippedCount too, so the job lands in NeedsReview and a person looks — never
             // silently clamped into a plausible-looking number (Appendix C rule 10).
-            if (!HasValidRanges(item))
+            if (QuoteLinePayloadValidator.Validate(item) != QuoteLinePayloadIssue.None)
             {
                 skipped++;
                 invalid++;
@@ -107,17 +109,18 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
             {
                 TenantId = tenantId,
                 QuoteId = quoteId,
-                Sku = item.Sku,
-                Edition = item.Edition,
-                Description = item.Description,
+                Sku = QuoteLinePayloadValidator.CleanText(item.Sku),
+                Edition = QuoteLinePayloadValidator.CleanText(item.Edition),
+                Description = QuoteLinePayloadValidator.CleanText(item.Description)!,
                 Quantity = item.Quantity,
-                Unit = item.Unit,
+                Unit = QuoteLinePayloadValidator.CleanText(item.Unit),
                 UnitPrice = unitPrice,
                 ListPrice = item.ListPrice,
                 DiscountPercent = item.DiscountPercent,
-                Term = item.Term,
+                Term = QuoteLinePayloadValidator.CleanText(item.Term),
                 ExtendedPrice = extendedPrice,
-                SourceSpan = item.SourceSpan,
+                SourceSpan = QuoteLinePayloadValidator.CleanText(
+                    item.SourceSpan, QuoteLinePayloadValidator.MaxSourceSpanLength),
                 SourcePage = ClampPage(item.SourcePage, pageCount),
                 Confidence = item.Confidence,
                 CreatedAt = now,
@@ -128,19 +131,6 @@ public sealed class QuoteLineExtractionService(QuotesDbContext dbContext)
 
         return new QuoteLineExtractionOutcome(extracted, skipped, anyLowConfidence, invalid);
     }
-
-    /// <summary>
-    /// Range check for one extracted fact: quantity, unit price and list price are not negative,
-    /// the discount is within 0-100 percent, the confidence (when reported) is within 0-1. A
-    /// <see langword="null"/> field is "not stated" and always passes — absence is handled by
-    /// <see cref="ComputePricing"/> and the confidence rule, not here.
-    /// </summary>
-    internal static bool HasValidRanges(ExtractedQuoteLineFact item) =>
-        item.Quantity is null or >= 0m
-        && item.UnitPrice is null or >= 0m
-        && item.ListPrice is null or >= 0m
-        && item.DiscountPercent is null or (>= 0m and <= 100m)
-        && item.Confidence is null or (>= 0d and <= 1d);
 
     /// <summary>
     /// AC-3's deterministic arithmetic, isolated as its own pure function so it is directly
