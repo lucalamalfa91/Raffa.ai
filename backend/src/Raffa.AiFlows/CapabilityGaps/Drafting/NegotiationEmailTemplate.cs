@@ -110,7 +110,7 @@ public static class NegotiationEmailTemplate
         return new DraftOutcome(subject, body.ToString(), used, DraftSource.Template, 0, null, []);
     }
 
-    private static void Track(List<string> used, string? key)
+    internal static void Track(List<string> used, string? key)
     {
         if (key is not null && !used.Contains(key, StringComparer.Ordinal))
         {
@@ -118,7 +118,7 @@ public static class NegotiationEmailTemplate
         }
     }
 
-    private static (string? Value, string? Key) FindDate(IReadOnlyList<PackItem> pack, params string[] keys)
+    internal static (string? Value, string? Key) FindDate(IReadOnlyList<PackItem> pack, params string[] keys)
     {
         foreach (var key in keys)
         {
@@ -138,7 +138,7 @@ public static class NegotiationEmailTemplate
     /// <summary>"{CUR} {value}" only when the currency is one <see cref="NumericGuard"/> checks —
     /// a contract whose currency never resolved ("n/a") gets no spend sentence rather than an
     /// unguardable figure.</summary>
-    private static (string? Value, string? Key) FindSpend(IReadOnlyList<PackItem> pack)
+    internal static (string? Value, string? Key) FindSpend(IReadOnlyList<PackItem> pack)
     {
         foreach (var item in pack)
         {
@@ -156,7 +156,7 @@ public static class NegotiationEmailTemplate
         return (null, null);
     }
 
-    private static IReadOnlyList<string> PlaybookKeys(IReadOnlyList<PackItem> pack) =>
+    internal static IReadOnlyList<string> PlaybookKeys(IReadOnlyList<PackItem> pack) =>
         pack.Where(i => i.CitationKey.StartsWith("raffa:playbook:", StringComparison.Ordinal))
             .Select(i => i.CitationKey)
             .Take(1)

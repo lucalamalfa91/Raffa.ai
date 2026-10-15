@@ -37,4 +37,12 @@ public sealed class DraftingOptions
     /// grounding violation. <b>Off by default</b>: findings are only reported on the draft
     /// (<see cref="DraftOutcome.ToneFindings"/>) and never change what is returned.</summary>
     public bool EnforceTone { get; set; }
+
+    /// <summary>LANG-07 / F4-D10: the deterministic fallback draft follows the draft type
+    /// (<see cref="DraftTypeClassifier"/>: renegotiation, cancellation / non-renewal, counter-proposal) and is
+    /// written in the request's language among the five supported (<see cref="LocalizedDraftTemplate"/>).
+    /// <b>Off by default</b>: the fallback is the Italian or English renegotiation mail whatever the type. The
+    /// French, Spanish and German texts and every cancellation text need a native and a legal review per
+    /// jurisdiction before they are relied on in production.</summary>
+    public bool LocalizedTemplates { get; set; }
 }

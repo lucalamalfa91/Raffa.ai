@@ -1549,7 +1549,15 @@ It now rides the same route with one branch before the planner:
    its fact (passes the guard by construction). **The draft path never
    abstains.** Prompts live in `CapabilityGaps/Prompts/draft/v1.md` (drift-tested);
    `Chat:Drafting` (`Enabled`, `MinPackItems`, `MaxItemsPerAgent`,
-   `MaxBodyChars`) is the kill switch. The reply: the preface plus a lead-in
+   `MaxBodyChars`) is the kill switch; `LocalizedTemplates` (off by default,
+   LANG-07) makes the fallback follow the draft type (renegotiation,
+   non-renewal, counter-proposal) in the five languages
+   (`LocalizedDraftTemplate`; the FR/ES/DE and every non-renewal text need a
+   native and a legal review per jurisdiction before production use).
+   `ReplyByCalculator` (business days after sending, weekends and national
+   holidays of IT/FR/ES/DE; `calc:reply-by` pack item) and `DraftTimingAdvisor`
+   (days to the notice deadline to a suggested type) are pure helpers, not yet
+   wired into the draft path. The reply: the preface plus a lead-in
    in `answerMarkdown` (never a marker), the email in `payload.draft`, the
    items it used as `citations`, Renewals + Contract 360 actions, two
    follow-ups on intents that already work, `payload.feedbackOffer`. A
