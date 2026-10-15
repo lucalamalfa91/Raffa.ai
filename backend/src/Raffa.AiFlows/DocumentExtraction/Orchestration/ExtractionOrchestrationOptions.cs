@@ -38,4 +38,38 @@ public sealed class ExtractionOrchestrationOptions
 
     /// <summary>Minimum similarity (1 - edit distance / span length) for an approximate span match.</summary>
     public double SpanFuzzyThreshold { get; set; } = SpanVerifier.DefaultThreshold;
+
+    /// <summary>F5-T10: provider quota in tokens per minute the stage calls are paced to (token bucket over
+    /// estimated tokens, shared by every run of the process). 0 = off = no pacing, today's behaviour.</summary>
+    public int TokensPerMinuteLimit { get; set; }
+
+    /// <summary>F5-T10: characters per token used to estimate a call's input (document + schema).</summary>
+    public double TpmCharsPerToken { get; set; } = 3.0;
+
+    /// <summary>F5-T10: output tokens reserved per call on top of the input estimate.</summary>
+    public int TpmEstimatedOutputTokens { get; set; } = 2000;
+
+    /// <summary>F5-T04: documents whose page-marked text is longer than this many characters are read in
+    /// chunks (map-reduce per stage). 0 = never chunk. The default is above the context of the models in use
+    /// (~130K tokens), so today's documents are unaffected.</summary>
+    public int ChunkThresholdChars { get; set; } = 400_000;
+
+    /// <summary>F5-T04: target size of a chunk in characters (cut at page boundaries).</summary>
+    public int ChunkSizeChars { get; set; } = 150_000;
+
+    /// <summary>F5-T04: chunks read per stage at most. A longer document is read up to this many chunks, the
+    /// run is marked truncated and the document goes to review: never silent.</summary>
+    public int MaxChunks { get; set; } = 12;
+
+    /// <summary>F5-T03: send the document at the head of the prompt with a stage-independent system prompt and
+    /// the stage's task line after it (prompt-cache-friendly ordering). This CHANGES THE REQUEST TEXT, so it is
+    /// off by default; on, the input hash uses pipeline version <c>staged-v2-docfirst</c> (never mixes
+    /// checkpoints with the other layout) and the run's audit row records the pipeline + prompt version.</summary>
+    public bool DocumentFirstPrompt { get; set; }
+
+    /// <summary>A-07: take a second, focused reading of the high-impact fields (end date, notice period, annual
+    /// fee) after the run and compare it with the applied one. SHADOW ONLY: counters, a log line and a metric;
+    /// nothing is persisted and no value or status changes. Costs one extra gateway call per stage owning such
+    /// a field. Default off.</summary>
+    public bool SecondOpinionShadow { get; set; }
 }
