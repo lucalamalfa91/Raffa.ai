@@ -75,6 +75,12 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<SavingsPackBuilder>();
         services.AddScoped<MarketDataCheck>();
 
+        // Pipeline phases and the capability-gap turn (F1 Ask split, PR-4).
+        services.AddScoped<InDomainTurnPlanner>();
+        services.AddScoped<AgentPhase>();
+        services.AddScoped<AnswerPhase>();
+        services.AddScoped<CapabilityGapTurnHandler>();
+
         // The (supplier name, geography) key a BenchmarkQuery requires: resolved once per request
         // and shared by Ask's priced-line bands and the renewals/strategy endpoints. Scoped: reads
         // IdentityWorkspaceDbContext (Scoped) and ISupplierNameLookup (Singleton).
