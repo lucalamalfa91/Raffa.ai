@@ -165,6 +165,17 @@ public static class ServiceCollectionExtensions
                 return ingestionOptions;
             });
 
+            // F7-T07: hybrid search / diversification of the pgvector retrieval (Market:Retrieval).
+            // Both off by default, which is the retrieval as it was.
+            services.TryAddSingleton(sp =>
+            {
+                var retrievalOptions = new MarketRetrievalOptions();
+                sp.GetService<IConfiguration>()
+                    ?.GetSection(MarketRetrievalOptions.SectionName)
+                    .Bind(retrievalOptions);
+                return retrievalOptions;
+            });
+
             services.AddScoped<MarketIngestionService>();
             services.AddScoped<MarketRecordQueryService>();
             services.Replace(ServiceDescriptor.Scoped<IMarketDealLookup>(sp => sp.GetRequiredService<MarketRecordQueryService>()));
