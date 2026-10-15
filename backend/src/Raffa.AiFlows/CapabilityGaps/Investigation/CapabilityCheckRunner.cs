@@ -32,6 +32,9 @@ namespace Raffa.AiFlows.CapabilityGaps.Investigation;
 /// <c>ask.capability_outcome</c>, <c>ask.capability_follow_up</c>) — not the message id, which
 /// does not exist yet when the check starts.</param>
 /// <param name="Actor">The caller's token subject, recorded on the outcome audit row.</param>
+/// <param name="RecentTurns">INV-06: the conversation's earlier user questions, oldest first.
+/// Read only when <c>Chat:GapInvestigation:ContextTurns</c> is above zero (default off); the Ask
+/// call site fills it.</param>
 public sealed record CapabilityCheckRequest(
     TenantId TenantId,
     string Question,
@@ -40,7 +43,8 @@ public sealed record CapabilityCheckRequest(
     string? NamedSupplier,
     Guid? NamedContractId,
     string? TurnId = null,
-    string Actor = "system");
+    string Actor = "system",
+    IReadOnlyList<string>? RecentTurns = null);
 
 /// <summary>The one-turn hand-off between <c>AskCopilotService.AskAsync</c>, which decides
 /// whether a turn is checked and starts the check, and the endpoint, which persists the answer and
@@ -199,7 +203,7 @@ public sealed class CapabilityCheckRunner(
             {
                 var investigator = scope.ServiceProvider.GetRequiredService<CapabilityInvestigator>();
                 var investigation = await investigator
-                    .InvestigateAsync(request.Question, request.SupplierNames, CancellationToken.None)
+                    .InvestigateAsync(request.Question, request.SupplierNames, CancellationToken.None, request.RecentTurns)
                     .ConfigureAwait(false);
 
                 logger.LogInformation(

@@ -44,6 +44,13 @@ public sealed class GapInvestigationOptions
     /// for a pending follow-up a little longer than this.</summary>
     public int TimeoutSeconds { get; set; } = 12;
 
+    /// <summary>INV-06 / F4-T06: how many of the conversation's previous user questions the
+    /// investigator also reads (as <c>recentUserQuestions</c> in its input), so a follow-up such as
+    /// "and for the other supplier?" is judged in context. <b>0 (default) = off</b>: the input is
+    /// exactly what it was. Switched on by configuration for an A/B on the INV-04 set; read through
+    /// <c>IOptionsMonitor</c> like the rest.</summary>
+    public int ContextTurns { get; set; }
+
     /// <summary>F4-T02 bulkhead: the most capability checks that may run at once in this process.
     /// A check is optional and fail-open, so past this a new turn's check is shed (audited as
     /// <c>busy</c>, no follow-up) instead of queueing model calls behind a slow deployment. 8 is far
