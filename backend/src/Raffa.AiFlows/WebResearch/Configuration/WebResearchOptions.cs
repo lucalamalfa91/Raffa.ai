@@ -60,6 +60,22 @@ public sealed class WebResearchOptions : IWebResearchBudgetLimit
     /// is tier <see cref="WebSourcePolicy.UnlistedTier"/>). Zero (default) switches the tier policy off.</summary>
     public int MaxSourceTier { get; set; }
 
+    /// <summary>F3-D05: an abstain after the search keeps the sources it found as clickable citations
+    /// (still no rejected text, still <c>Unverified</c> provenance with no sources), instead of only naming
+    /// their hosts in the prose. Off by default: the abstain carries no citation, as it always did.</summary>
+    public bool CiteSourcesOnAbstain { get; set; }
+
+    /// <summary>F3-D10: also remove from the outbound query the identifiers a tenant's own text can carry
+    /// and the amount/date filter does not catch: IBANs, VAT numbers (<c>IT12345678901</c>,
+    /// <c>P.IVA …</c>), Italian fiscal codes and phone numbers. Off by default: the query is sanitised as
+    /// it always was.</summary>
+    public bool RedactSensitiveQueryPatterns { get; set; }
+
+    /// <summary>F3-D12: treat the official domains of the vendor master (<see cref="Raffa.AiFlows.WebResearch.Pipeline.WebVendorMaster"/>)
+    /// as tier 1 in the source policy, unless <see cref="DomainTiers"/> says otherwise for that domain. Only
+    /// read when <see cref="MaxSourceTier"/> is above zero. Off by default.</summary>
+    public bool VendorMasterAsTier1 { get; set; }
+
     /// <summary>The source cap, clamped to the range the research role accepts.</summary>
     public int EffectiveMaxSources => Math.Clamp(MaxSources, 1, 10);
 
@@ -79,5 +95,8 @@ public sealed class WebResearchOptions : IWebResearchBudgetLimit
         StripTrackingParameters = other.StripTrackingParameters;
         DomainTiers = other.DomainTiers;
         MaxSourceTier = other.MaxSourceTier;
+        CiteSourcesOnAbstain = other.CiteSourcesOnAbstain;
+        RedactSensitiveQueryPatterns = other.RedactSensitiveQueryPatterns;
+        VendorMasterAsTier1 = other.VendorMasterAsTier1;
     }
 }

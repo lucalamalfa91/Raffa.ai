@@ -114,7 +114,11 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, IOptionsMonitor<We
             normalized.SummaryMarkdown, sources, lang, options.AllowReportedFigures));
         if (!verdict.Passed)
         {
-            return Abstained(sources, provenanceBase, italian, verdict.Violation!);
+            // F3-D05 (opt-in): the sources the search found stay clickable, built by the same mapper as an answer's.
+            IReadOnlyList<ReplyCitation> found = options.CiteSourcesOnAbstain && sources.Count > 0
+                ? Mapper.Run(new WebCitationMapperInput(sources, clock.UtcNow)).Citations
+                : [];
+            return Abstained(sources, found, provenanceBase, italian, verdict.Violation!);
         }
 
         // Every pack key is cited: the pack is made of exactly the sources the verifier just accepted
@@ -136,7 +140,7 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, IOptionsMonitor<We
     }
 
     private static WebResearchOutcome Abstained(
-        IReadOnlyList<AiWebSource> sources, ReplyProvenance provenance, bool italian, string violation)
+        IReadOnlyList<AiWebSource> sources, IReadOnlyList<ReplyCitation> citations, ReplyProvenance provenance, bool italian, string violation)
     {
         var hosts = sources
             .Select(s => Uri.TryCreate(s.Url, UriKind.Absolute, out var uri) ? uri.Host : s.Url)
@@ -155,7 +159,7 @@ public sealed class WebResearchComposer(IAiGateway aiGateway, IOptionsMonitor<We
             lead + (italian
                 ? " Per un confronto su cui puoi contare partiamo dai tuoi contratti: dimmi il fornitore, oppure restringi la ricerca a un prodotto, un servizio o un Paese e la rilancio."
                 : " For a comparison you can rely on, let's start from your contracts: name the supplier, or narrow the search to a product, a service or a country and I'll run it again."),
-            [],
+            citations,
             provenance with { Sources = [] },
             SourceCount: sources.Count,
             GuardIntervened: true,

@@ -41,6 +41,25 @@ public static class WebQuerySanitizer
         @"(?:normal|average|reasonable|expensive|cheap|high|low)\b))",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // F3-D10 (opt-in): identifiers a tenant's own text carries that the amount/date filter misses.
+    private static readonly Regex IbanPattern = new(
+        @"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex VatLabelPattern = new(
+        @"\b(?:p\.?\s?iva|partita\s+iva|codice\s+fiscale|c\.?f\.?|vat(?:\s+(?:id|number|no\.?))?|tva|n[ºo°]\s?tva|nif|cif|ust-?id(?:nr)?\.?|steuernummer)\s*[:#]?\s*[A-Z]{0,2}[\s\d.\-]{6,}[A-Z0-9]?\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex PrefixedVatPattern = new(
+        @"\b(?:AT|BE|BG|CY|CZ|DE|DK|EE|EL|ES|FI|FR|HR|HU|IE|IT|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK|GB|CH)\s?[A-Z0-9]?\d{7,12}[A-Z0-9]?\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex FiscalCodePattern = new(
+        @"\b[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex PhonePattern = new(
+        @"(?:(?<!\w)\+|(?<!\d)00)\d{1,3}[\s.()\-]*\d(?:[\s.()\-]*\d){6,12}|\b0\d{1,3}[\s./\-]\d{3,4}[\s./\-]?\d{3,4}\b",
+        RegexOptions.Compiled);
+
     private static readonly Regex WhitespacePattern = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex DanglingPunctuationPattern = new(@"\s+([,;:.!?])", RegexOptions.Compiled);
 
@@ -48,7 +67,11 @@ public static class WebQuerySanitizer
     /// The sanitised query, or <see langword="null"/> when fewer than <see cref="MinWords"/> words
     /// survive.
     /// </summary>
-    public static string? Sanitize(string question, int maxChars)
+    public static string? Sanitize(string question, int maxChars) => Sanitize(question, maxChars, redactSensitivePatterns: false);
+
+    /// <summary>The same, and with <paramref name="redactSensitivePatterns"/> (F3-D10, opt-in) also without
+    /// IBANs, VAT numbers, Italian fiscal codes and phone numbers.</summary>
+    public static string? Sanitize(string question, int maxChars, bool redactSensitivePatterns)
     {
         if (string.IsNullOrWhiteSpace(question) || maxChars <= 0)
         {
@@ -56,6 +79,15 @@ public static class WebQuerySanitizer
         }
 
         var text = WebResearchTopicLexicon.StripExplicitRequest(question);
+        if (redactSensitivePatterns)
+        {
+            text = IbanPattern.Replace(text, " ");
+            text = VatLabelPattern.Replace(text, " ");
+            text = PrefixedVatPattern.Replace(text, " ");
+            text = FiscalCodePattern.Replace(text, " ");
+            text = PhonePattern.Replace(text, " ");
+        }
+
         text = UrlPattern.Replace(text, " ");
         text = EmailPattern.Replace(text, " ");
         text = CurrencyAmountPattern.Replace(text, " ");
