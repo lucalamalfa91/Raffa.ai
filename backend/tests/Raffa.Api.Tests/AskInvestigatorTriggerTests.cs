@@ -402,7 +402,11 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
     public async Task A_proposal_that_arrives_after_the_conversation_moved_on_is_audited_as_a_drop()
     {
         var tenantId = TenantId.New();
-        var (host, _, audit, _) = Host(wrapInvestigator: inner => new ScriptedInvestigatorGateway(inner, GapPayload(), TimeSpan.FromMilliseconds(800)));
+        // The investigator is held until the second turn has been answered, so the proposal always
+        // arrives after the conversation moved on (a wall-clock delay raced a slow second ask on a
+        // loaded runner and turned the drop into an appended follow-up).
+        var secondTurnAnswered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (host, _, audit, _) = Host(wrapInvestigator: inner => new ScriptedInvestigatorGateway(inner, GapPayload(), gate: secondTurnAnswered.Task));
         await SeedAsync(host, tenantId);
         var client = host.CreateClient();
 
@@ -410,6 +414,7 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
         Assert.Equal("pending", first.RootElement.GetProperty("capabilityCheck").GetString());
 
         await AskAsync(client, tenantId, "Did you over all my contract?", conversationId: conversationId);
+        secondTurnAnswered.SetResult();
         await host.Services.GetRequiredService<CapabilityFollowUpAppender>().WhenIdleAsync();
 
         // The first turn's check found a gap (outcome row) and then dropped it (second row), both
@@ -500,7 +505,7 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
 
     /// <summary>Answers only the capability investigator with a fixed payload (or a failure when
     /// the payload is null), after an optional delay; everything else goes to the fixture.</summary>
-    private sealed class ScriptedInvestigatorGateway(IAiGateway inner, string? payload, TimeSpan? delay = null) : IAiGateway
+    private sealed class ScriptedInvestigatorGateway(IAiGateway inner, string? payload, TimeSpan? delay = null, Task? gate = null) : IAiGateway
     {
         public Task<Result<AiClassificationResult>> ClassifyAsync(AiClassificationRequest request, CancellationToken cancellationToken = default) => inner.ClassifyAsync(request, cancellationToken);
         public Task<Result<AiExtractionResult>> ExtractAsync(AiExtractionRequest request, CancellationToken cancellationToken = default) => inner.ExtractAsync(request, cancellationToken);
@@ -519,6 +524,11 @@ public sealed class AskInvestigatorTriggerTests(RaffaApiFactory factory) : IClas
             if (delay is { } wait)
             {
                 await Task.Delay(wait, cancellationToken);
+            }
+
+            if (gate is not null)
+            {
+                await gate.WaitAsync(cancellationToken);
             }
 
             return payload is null
