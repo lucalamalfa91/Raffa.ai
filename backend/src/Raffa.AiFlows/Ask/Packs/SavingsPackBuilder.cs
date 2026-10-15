@@ -1,35 +1,70 @@
-using Raffa.AiFlows.Ask.Packs;
 using Raffa.AiFlows.Shared.ContractContext;
+using static Raffa.AiFlows.Ask.Interview.InterviewInputsFactory;
 using static Raffa.AiFlows.Ask.Packs.ContractResolution;
 using static Raffa.AiFlows.Ask.Packs.PackItemFactory;
+using Raffa.AiFlows.Shared.Audit;
+using Raffa.AiFlows.CapabilityGaps.Investigation;
+using Raffa.AiFlows.Negotiation.DataCheck;
+using Raffa.AiFlows.WebResearch.Orchestration;
+using System.Diagnostics;
 using System.Globalization;
-using Raffa.AiFlows.Negotiation.Verdict;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using Raffa.AiFlows.Ask.Answering;
+using Raffa.AiFlows.Ask.Gate;
+using Raffa.AiFlows.Ask.Interview;
+using Raffa.AiFlows.Ask.Planning;
+using Raffa.AiFlows.Ask.Reply;
+using Raffa.AiFlows.Ask.Routing;
+using Raffa.AiFlows.CapabilityGaps.Drafting;
+using Raffa.AiFlows.Negotiation.Orchestration;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiFlows.Shared.Planning;
-using Raffa.AiFlows.Shared.Playbook;
+using Raffa.AiFlows.Shared.Reply;
+using Raffa.AiFlows.Shared.Routing;
+using Raffa.AiGateway.Telemetry;
+using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Interview;
+using Raffa.Chat.Application.Reply;
+using Raffa.Chat.Application.WebResearch;
+using Raffa.Chat.Domain;
 using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Domain;
 using Raffa.Insights.Application;
 using Raffa.Insights.Contracts;
-using Raffa.Insights.Savings;
+using Raffa.Insights.Criticality;
+using Raffa.Insights.Strategy;
 using Raffa.Market.Contracts;
 using Raffa.Market.Retrieval;
+using Raffa.Renewals.Application;
 using Raffa.Savings.Application;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
+using Raffa.Suppliers.Products.Application;
+using Raffa.AiFlows.Ask.Packs;
+using Raffa.AiFlows.Ask.Orchestration;
 
-namespace Raffa.AiFlows.Ask.Orchestration;
+using Raffa.AiFlows.Negotiation.Verdict;
+using Raffa.AiFlows.Shared.Playbook;
+using Raffa.Insights.Savings;
+
+namespace Raffa.AiFlows.Ask.Packs;
 
 /// <summary>
-/// The savings-consultant half of <see cref="AskCopilotService"/>: the evidence packs for
-/// <see cref="Raffa.Chat.Domain.AskIntent.Savings"/> (one contract's grounded levers) and
-/// <see cref="Raffa.Chat.Domain.AskIntent.PortfolioSavingsTarget"/> (which contracts add up to a
-/// target inside a window). Every number in these packs comes from
-/// <see cref="SavingsLeverCalculator"/> / <see cref="PortfolioSavingsTargetCalculator"/> over
-/// validated contract facts, benchmark bands and the market corpus; the model narrates them.
+/// The savings-consultant half of Ask: the evidence packs for Savings (one contract's grounded levers) and PortfolioSavingsTarget (which contracts add up to a target inside a window). Every number comes from SavingsLeverCalculator / PortfolioSavingsTargetCalculator over validated contract facts, benchmark bands and the market corpus; the model narrates them. Moved verbatim from
+/// <see cref="Raffa.AiFlows.Ask.Orchestration.AskCopilotService"/> (F1 Ask split, PR-3).
 /// </summary>
-public sealed partial class AskCopilotService
+public sealed class SavingsPackBuilder(
+    ContractContextReader context,
+    RenewalEngine renewalEngine,
+    SavingsOpportunityService savingsOpportunityService,
+    EmbeddingRetrievalService embeddingRetrievalService,
+    NegotiationPointsPackBuilder negotiationPoints,
+    IClock clock)
 {
     private const int LeverClauseQueriesTopK = 2;
     private const int MarketDealsTopK = 4;
@@ -63,8 +98,7 @@ public sealed partial class AskCopilotService
     private async Task<LeverEvidence?> ComputeLeverEvidenceAsync(
         PortfolioListItem item, SavingsGoal? goal, CancellationToken cancellationToken)
     {
-        var contract360 = await contract360QueryService
-            .GetByIdAsync(CurrentTenantId, new EntityId(item.ContractId), cancellationToken)
+        var contract360 = await context.GetContract360Async(item.ContractId, cancellationToken)
             .ConfigureAwait(false);
 
         if (contract360 is null)
@@ -81,8 +115,8 @@ public sealed partial class AskCopilotService
         var pricedLines = await context.ResolvePricedLinesAsync(contract360, benchmarkSupplierName, geography, asOfDate, cancellationToken)
             .ConfigureAwait(false);
 
-        var allDeals = await marketDealLookup
-            .GetBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
+        var allDeals = await context
+            .GetDealsBySupplierAsync(benchmarkSupplierName ?? supplierName, cancellationToken)
             .ConfigureAwait(false);
         var deals = NarrowDealsToContract(allDeals, contract360.Overview.Currency, geography);
 
@@ -144,7 +178,7 @@ public sealed partial class AskCopilotService
         items.AddRange(BuildLeverItems(namedContractItem.ContractId, supplierName, evidence.Plan, keyPrefix: null));
         items.AddRange(BuildLeverGroundingItems(namedContractItem.ContractId, supplierName, evidence));
 
-        items.AddRange(await BuildNegotiationPointsPackAsync(
+        items.AddRange(await negotiationPoints.BuildNegotiationPointsPackAsync(
                 contractId, includeRenewalUrgency: false, persistTodos: false, string.Empty, cancellationToken)
             .ConfigureAwait(false));
 
@@ -171,7 +205,7 @@ public sealed partial class AskCopilotService
 
     /// <summary>The lever items (target verdict + levers) appended to a scoped renewal-strategy
     /// pack so "come affrontare il rinnovo" also carries the money.</summary>
-    private async Task<IReadOnlyList<PackItem>> BuildLeverAddendumAsync(
+    internal async Task<IReadOnlyList<PackItem>> BuildLeverAddendumAsync(
         PortfolioListItem namedContractItem, SavingsGoal? goal, CancellationToken cancellationToken)
     {
         var evidence = await ComputeLeverEvidenceAsync(namedContractItem, goal, cancellationToken).ConfigureAwait(false);
@@ -661,26 +695,6 @@ public sealed partial class AskCopilotService
         return items;
     }
 
-    /// <summary>The supplier's deals that speak to this contract: same currency and geography
-    /// when the corpus has them, else same currency, else everything — a wide corpus must
-    /// benchmark a CHF contract against CHF peers, not against the cheapest region.</summary>
-    internal static IReadOnlyList<MarketDeal> NarrowDealsToContract(IReadOnlyList<MarketDeal> deals, string currency, string? geography)
-    {
-        var sameCurrency = deals.Where(d => string.Equals(d.Currency, currency, StringComparison.OrdinalIgnoreCase)).ToList();
-        if (sameCurrency.Count == 0)
-        {
-            return deals;
-        }
-
-        if (geography is null)
-        {
-            return sameCurrency;
-        }
-
-        var sameGeography = sameCurrency.Where(d => string.Equals(d.Geography, geography, StringComparison.OrdinalIgnoreCase)).ToList();
-        return sameGeography.Count > 0 ? sameGeography : sameCurrency;
-    }
-
     private static MarketDealSnapshot ToMarketDealSnapshot(MarketDeal deal) =>
         new(
             deal.RecordId,
@@ -697,5 +711,4 @@ public sealed partial class AskCopilotService
             deal.PaymentTerms,
             deal.SampleSize,
             deal.ClosingPeriod);
-
 }
