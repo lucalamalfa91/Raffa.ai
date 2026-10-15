@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Logging;
 using Raffa.AiGateway.Telemetry;
 using Raffa.AiFlows.Shared.Audit;
 using Raffa.AiFlows.Ask.Answering;
@@ -30,7 +31,7 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 /// The one <c>chat.*</c> audit row an Ask turn writes (R-ASK-09). Moved verbatim from
 /// <see cref="AskCopilotService"/> (F1 Ask split, PR-1): same actions, same detail string.
 /// </summary>
-public sealed class AskTurnAudit(IAuditWriter auditWriter, IClock clock)
+public sealed class AskTurnAudit(IAuditWriter auditWriter, IClock clock, IQueryHasher? queryHasher = null)
 {
     private const string AuditAnsweredAction = "chat.answered";
     private const string AuditRedirectedAction = "chat.redirected";
@@ -61,7 +62,7 @@ public sealed class AskTurnAudit(IAuditWriter auditWriter, IClock clock)
             _ => AuditAnsweredAction,
         };
 
-        var packHash = ComputeHash(string.Join('|', reply.Citations.Select(c => c.N + ":" + c.Corpus)));
+        var packHash = Hash(string.Join('|', reply.Citations.Select(c => c.N + ":" + c.Corpus)));
 
         // AC-7 / R-ASK-09: "audit records abstainGuardIntervened=true" when Guards.RegenerateOnce's
         // retry-then-downgrade path fired — the field name every Ask audit entry carries,
@@ -83,9 +84,15 @@ public sealed class AskTurnAudit(IAuditWriter auditWriter, IClock clock)
                 $"gapInvestigation={gapInvestigation} " +
                 $"webMode={webMode} " +
                 $"turnId={RunContext.Current?.TurnId ?? "none"} " +
+                // A-05: a run id on every turn, also the ones that never call a model (the flow's own
+                // fragment repeats it, same value, on agentic turns).
+                $"runId={RunContext.Current?.RunId ?? "none"} " +
                 (RunContext.TurnDetail ?? "flow=none")),
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static string ComputeHash(string input) => QueryHasher.ComputeHash(input);
+    /// <summary>F3-T11: the hash every site writing a digest into an audit row shares. With no key
+    /// configured (<c>AiGateway:QueryHash:Key</c>, the default) it is the unkeyed SHA-256 the platform
+    /// always wrote, so the value does not change until an operator sets the key.</summary>
+    private string Hash(string input) => queryHasher?.Compute(input) ?? QueryHasher.ComputeHash(input);
 }

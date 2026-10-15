@@ -118,6 +118,13 @@ public sealed class AgentPhase(AskAgentFlow askAgentFlow, MarketDataCheck market
 
         var boundedPack = packBudget.Apply(packItems);
 
+        // F1-T03 (observe only): what the budget cut, and which of the council's items went with it,
+        // so a play that vanishes is never silent. A second fragment, appended after the flow's own
+        // (whose text the telemetry tests pin); no decision depends on it.
+        var boundedKeys = boundedPack.Select(i => i.CitationKey).ToHashSet(StringComparer.Ordinal);
+        var councilItemsDropped = flow.CouncilItems.Count(i => !boundedKeys.Contains(i.CitationKey));
+        RunContext.AddTurnDetail(BudgetDetail(packItems.Count, boundedPack.Count, councilItemsDropped, flow.PlaysDropped));
+
         // A question about a period ("this quarter", "fine trimestre") gets today's date and the
         // calendar quarter as one more citable item -- appended after the budget (it is a few
         // dozen tokens) so the model can state the quarter's end as a pack value instead of
@@ -130,6 +137,13 @@ public sealed class AgentPhase(AskAgentFlow askAgentFlow, MarketDataCheck market
 
         return new AgentPhaseResult(boundedPack, dataChecks, flow);
     }
+
+    /// <summary>The turn-row fragment that makes the budget's cuts visible (F1-T03, observe only).</summary>
+    internal static string BudgetDetail(int merged, int kept, int councilItemsDropped, int playsDropped) =>
+        string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"packItems={merged} budgetKept={kept} budgetDropped={merged - kept} " +
+            $"councilItemsDropped={councilItemsDropped} playsDropped={playsDropped}");
 
     /// <summary>Council plays go right after the calculators' target verdict (or the first item
     /// when there is none), ahead of the raw evidence they summarize.</summary>

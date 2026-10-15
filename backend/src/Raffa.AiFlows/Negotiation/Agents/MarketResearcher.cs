@@ -1,11 +1,9 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Raffa.AiFlows.Negotiation.Options;
 using Raffa.AiFlows.Negotiation.Tools;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiFlows.Shared.Planning;
 using Raffa.AiGateway;
-using Raffa.AiGateway.Contracts;
+using Raffa.AiGateway.Agents;
 
 namespace Raffa.AiFlows.Negotiation.Agents;
 
@@ -36,17 +34,30 @@ public sealed record MarketResearchOutcome(
 /// deal as this supplier's. A failed call or search degrades the flow, never the turn.
 /// </para>
 /// </summary>
-public sealed class MarketResearcher(IAiGateway aiGateway, CouncilOptions options, IMarketRagSearch? marketRag = null)
+public sealed class MarketResearcher
 {
     public const string SimilarContractsScope = "similar-contracts";
 
     private const int MaxQueryLength = 160;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private readonly CouncilOptions options;
+    private readonly IMarketRagSearch? marketRag;
+    private readonly StepRunner runner;
+    private readonly MarketResearcherStep step;
+
+    /// <param name="aiGateway">The gateway the researcher's call goes through (the runner never bypasses it).</param>
+    /// <param name="options">The council's options (the researcher's switches, bounds and deadline).</param>
+    /// <param name="marketRag">The market RAG the queries run against; none: the researcher is skipped.</param>
+    /// <param name="runner">The request's Scoped step runner; one over <paramref name="aiGateway"/> when omitted.</param>
+    public MarketResearcher(IAiGateway aiGateway, CouncilOptions options, IMarketRagSearch? marketRag = null, StepRunner? runner = null)
     {
-        Converters = { new JsonStringEnumConverter() },
-        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-    };
+        ArgumentNullException.ThrowIfNull(aiGateway);
+        ArgumentNullException.ThrowIfNull(options);
+        this.options = options;
+        this.marketRag = marketRag;
+        this.runner = runner ?? new StepRunner(aiGateway);
+        step = new MarketResearcherStep(options.AgentDeadline);
+    }
 
     public async Task<MarketResearchOutcome> QueryMarketRagAsync(
         string question,
@@ -64,36 +75,22 @@ public sealed class MarketResearcher(IAiGateway aiGateway, CouncilOptions option
             return MarketResearchOutcome.Skipped;
         }
 
-        var input = new ResearcherInput(
+        var input = new ResearcherStepInput(
             question,
-            goal is null || !goal.HasTarget ? null : new GoalDto(goal.TargetAmount, goal.TargetPercent, goal.Currency, goal.WindowDays, goal.WindowLabel),
+            goal is null || !goal.HasTarget ? null : new ResearcherGoal(goal.TargetAmount, goal.TargetPercent, goal.Currency, goal.WindowDays, goal.WindowLabel),
             missingFields,
-            pack.Where(i => i.Corpus != PackCorpus.Raffa).Take(options.MaxItemsPerAgent).Select(ToItemDto).ToList());
+            pack.Where(i => i.Corpus != PackCorpus.Raffa).Take(options.MaxItemsPerAgent).Select(ToItem).ToList());
 
-        var result = await aiGateway.AnalyzeAsync(
-                new AiAnalysisRequest(
-                    CouncilAgents.MarketResearcherName,
-                    CouncilAgents.MarketResearcherPrompt,
-                    JsonSerializer.Serialize(input, JsonOptions),
-                    CouncilAgents.QueriesSchema,
-                    CouncilAgents.Version),
-                cancellationToken)
-            .ConfigureAwait(false);
+        var result = await runner.RunAsync(step, input, cancellationToken).ConfigureAwait(false);
 
-        if (result.IsFailure)
+        // A failed call (gateway error, unusable payload, deadline) still counts as a run, with the
+        // reason as the failure line, exactly as the hand-built call reported it.
+        if (!result.IsSuccess)
         {
-            return new MarketResearchOutcome([], [], true, result.Error);
+            return new MarketResearchOutcome([], [], true, result.Error ?? result.Reason.ToString());
         }
 
-        QueriesPayload? payload;
-        try
-        {
-            payload = JsonSerializer.Deserialize<QueriesPayload>(result.Value.PayloadJson, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            return new MarketResearchOutcome([], [], true, $"payload was not valid JSON — {ex.Message}");
-        }
+        var payload = result.Value;
 
         var queries = (payload?.Queries ?? [])
             .Where(q => !string.IsNullOrWhiteSpace(q.Query))
@@ -154,21 +151,7 @@ public sealed class MarketResearcher(IAiGateway aiGateway, CouncilOptions option
         return trimmed.Length <= MaxQueryLength ? trimmed : trimmed[..MaxQueryLength];
     }
 
-    private static ItemDto ToItemDto(PackItem item) =>
+    private static ResearcherItem ToItem(PackItem item) =>
         new(item.CitationKey, item.Corpus, item.Title, item.Subtitle, item.Snippet,
-            item.Values.Select(v => new ValueDto(v.Key, v.Value, v.Kind.ToString(), v.Currency)).ToList());
-
-    // ----- wire shapes (camelCase JSON; the fixture gateway mirrors "question"/"items") -----
-
-    private sealed record GoalDto(decimal? TargetAmount, decimal? TargetPercent, string? Currency, int? WindowDays, string? WindowLabel);
-
-    private sealed record ValueDto(string Key, string Value, string Kind, string? Currency);
-
-    private sealed record ItemDto(string CitationKey, string Corpus, string Title, string? Subtitle, string Snippet, IReadOnlyList<ValueDto> Values);
-
-    private sealed record ResearcherInput(string Question, GoalDto? Goal, IReadOnlyList<string> MissingFields, IReadOnlyList<ItemDto> Items);
-
-    private sealed record QueriesPayload(IReadOnlyList<ResearchQuery>? Queries);
-
-    private sealed record ResearchQuery(string Query, string? Scope);
+            item.Values.Select(v => new ResearcherValue(v.Key, v.Value, v.Kind.ToString(), v.Currency)).ToList());
 }

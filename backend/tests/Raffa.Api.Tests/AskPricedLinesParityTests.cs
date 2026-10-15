@@ -1,3 +1,4 @@
+using Raffa.AiFlows.Ask.Packs;
 using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiFlows.Shared.ContractContext;
 using System.Globalization;
@@ -42,7 +43,7 @@ namespace Raffa.Api.Tests;
 /// provenance-bearing entry rather than silently dropping the line.</item>
 /// </list>
 ///
-/// <see cref="AskCopilotService.BuildRenewalStrategyPackAsync"/>/
+/// <see cref="RenewalStrategyPackBuilder.BuildRenewalStrategyPackAsync"/>/
 /// <see cref="AskCopilotService.BuildMarketComparePackAsync"/> are called directly (both made
 /// <c>internal</c> by this task, <c>Raffa.Api.Tests</c>' own <c>InternalsVisibleTo</c> grant makes
 /// them reachable -- same precedent as <c>AskCopilotServiceTests.ResolveTenantClauseLinks</c>)
@@ -258,7 +259,7 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
 
     /// <summary>Resolves <see cref="AskCopilotService"/> and its own tenant scope from
     /// <paramref name="factory"/>'s container, fetches the one seeded contract's
-    /// <see cref="PortfolioListItem"/>, calls <see cref="AskCopilotService.BuildRenewalStrategyPackAsync"/>
+    /// <see cref="PortfolioListItem"/>, calls <see cref="RenewalStrategyPackBuilder.BuildRenewalStrategyPackAsync"/>
     /// directly, and returns the single <c>calc:target[...]</c> item -- see this type's own doc
     /// comment for why this bypasses <c>AskAsync</c>/HTTP.</summary>
     private static async Task<PackItem> BuildSingleRenewalTargetAsync(WebApplicationFactory<Program> factory, TenantId tenantId)
@@ -266,14 +267,14 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
         using var scope = factory.Services.CreateScope();
         var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
         var portfolioQueryService = scope.ServiceProvider.GetRequiredService<PortfolioQueryService>();
-        var askCopilotService = scope.ServiceProvider.GetRequiredService<AskCopilotService>();
+        var renewalStrategy = scope.ServiceProvider.GetRequiredService<RenewalStrategyPackBuilder>();
 
         using var tenantScope = tenantContext.BeginScope(tenantId);
         var portfolio = await portfolioQueryService.GetPortfolioAsync(
             tenantId, PortfolioFilter.None, new PortfolioPageRequest(1, PortfolioPageRequest.MaxPageSize), CancellationToken.None);
         var namedContractItem = Assert.Single(portfolio.Items);
 
-        var pack = await askCopilotService.BuildRenewalStrategyPackAsync(namedContractItem, CancellationToken.None);
+        var pack = await renewalStrategy.BuildRenewalStrategyPackAsync(namedContractItem, CancellationToken.None);
         return Assert.Single(pack, item => item.CitationKey.StartsWith("calc:target[", StringComparison.Ordinal));
     }
 
@@ -283,14 +284,14 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
         using var scope = factory.Services.CreateScope();
         var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
         var portfolioQueryService = scope.ServiceProvider.GetRequiredService<PortfolioQueryService>();
-        var askCopilotService = scope.ServiceProvider.GetRequiredService<AskCopilotService>();
+        var marketCompare = scope.ServiceProvider.GetRequiredService<MarketComparePackBuilder>();
 
         using var tenantScope = tenantContext.BeginScope(tenantId);
         var portfolio = await portfolioQueryService.GetPortfolioAsync(
             tenantId, PortfolioFilter.None, new PortfolioPageRequest(1, PortfolioPageRequest.MaxPageSize), CancellationToken.None);
         var namedContractItem = Assert.Single(portfolio.Items, item => item.ContractId == contractId.Value);
 
-        return await askCopilotService.BuildMarketComparePackAsync(namedContractItem, CancellationToken.None);
+        return await marketCompare.BuildMarketComparePackAsync(namedContractItem, CancellationToken.None);
     }
 
     private static decimal GetAmount(PackItem item, string key) =>

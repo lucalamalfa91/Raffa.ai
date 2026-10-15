@@ -253,6 +253,11 @@ var interviewOptions = new Raffa.AiFlows.Ask.Interview.InterviewOptions();
 builder.Configuration.GetSection(Raffa.AiFlows.Ask.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
 builder.Services.AddSingleton(interviewOptions);
 
+// F1 Ask turn options (Chat:AskTurn): every default reproduces today's behaviour.
+var askTurnOptions = new Raffa.AiFlows.Ask.Orchestration.AskTurnOptions();
+builder.Configuration.GetSection(Raffa.AiFlows.Ask.Orchestration.AskTurnOptions.SectionName).Bind(askTurnOptions);
+builder.Services.AddSingleton(askTurnOptions);
+
 // ADR-030: Chat:WebResearch — the kill switch (default OFF), the workspace opt-in requirement,
 // the daily budget and the query bounds of the one path that may reach the public web.
 var webResearchOptions = new Raffa.AiFlows.WebResearch.Configuration.WebResearchOptions();

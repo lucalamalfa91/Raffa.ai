@@ -45,7 +45,8 @@ public sealed record AskFlowOutcome(
     IReadOnlyList<string> StepsRun,
     IReadOnlyList<string> Failures,
     IReadOnlyList<string> MarketQueries,
-    string? RunId = null)
+    string? RunId = null,
+    int PlaysDropped = 0)
 {
     private static readonly Regex StepNamePattern = new("^[a-z][a-z0-9-]{0,39}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
@@ -155,6 +156,7 @@ public sealed class AskAgentFlow(MarketResearcher marketResearcher, NegotiationC
 
         // ----- Step 3: the negotiation council, over everything the market steps found -----
         var councilItems = (IReadOnlyList<PackItem>)[];
+        var playsDropped = 0;
         if (request.ConveneCouncil)
         {
             var council = await negotiationCouncil
@@ -164,8 +166,9 @@ public sealed class AskAgentFlow(MarketResearcher marketResearcher, NegotiationC
             steps.AddRange(council.AgentsRun);
             failures.AddRange(council.Failures);
             councilItems = council.Items;
+            playsDropped = council.PlaysDropped;
         }
 
-        return new AskFlowOutcome(marketItems, councilItems, steps, failures, queries, runId);
+        return new AskFlowOutcome(marketItems, councilItems, steps, failures, queries, runId, playsDropped);
     }
 }

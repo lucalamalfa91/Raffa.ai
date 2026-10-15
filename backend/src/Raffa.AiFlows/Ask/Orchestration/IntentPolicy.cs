@@ -69,6 +69,11 @@ internal static class IntentPolicy
     public static bool IsQ3PersistTurn(AskIntent intent, PortfolioListItem? namedContractItem) =>
         intent == AskIntent.RenewalStrategy && namedContractItem is not null;
 
+    /// <summary>The intents whose handler ends the turn before the interview is decided (web
+    /// research, navigate, quote route): the interview and the notice check run after them.</summary>
+    public static bool IsPreInterviewShortCircuit(AskIntent intent) =>
+        intent is AskIntent.WebResearch or AskIntent.Navigate or AskIntent.QuoteRoute;
+
     public static bool InjectsSavingsActions(AskIntent intent) =>
         intent is AskIntent.Savings or AskIntent.PortfolioSavingsTarget;
 }
