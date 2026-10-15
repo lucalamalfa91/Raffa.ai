@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.AiFlows.QuoteExtraction.Agents;
@@ -32,6 +33,11 @@ public static class QuoteExtractionFlowServiceCollectionExtensions
         {
             return services;
         }
+
+        // Task F6-T07: the flow's settings, from the QuoteExtraction configuration section.
+        services.AddOptions<QuoteExtractionOptions>()
+            .Configure<IConfiguration>((options, configuration) =>
+                configuration.GetSection(QuoteExtractionOptions.SectionName).Bind(options));
 
         services.TryAddScoped<QuoteLineExtractionService>();
         services.TryAddScoped<QuoteExtractionPipeline>();

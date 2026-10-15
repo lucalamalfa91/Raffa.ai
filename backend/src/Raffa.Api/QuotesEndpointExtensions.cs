@@ -3,6 +3,7 @@ using Raffa.Api.Infrastructure;
 using Raffa.Documents.Contracts.Application.Admission;
 using Raffa.Quotes.Application;
 using Raffa.Quotes.Application.Assessment;
+using Raffa.Quotes.Application.Header;
 using Raffa.Quotes.Application.Normalization;
 using Raffa.Quotes.Domain;
 using Raffa.SharedKernel;
@@ -39,6 +40,8 @@ public static class QuotesEndpointExtensions
         endpoints.MapPost("/api/quotes", UploadQuoteAsync);
         // Task F6-T03: Admin-only re-run over the stored bytes (parity with POST /api/documents/{id}/reprocess).
         endpoints.MapPost("/api/quotes/{id}/reprocess", ReprocessQuoteAsync);
+        // Task F6-T07 (user confirmation): set or correct the header fields the benchmark match is built from.
+        endpoints.MapPut("/api/quotes/{id}/header", UpdateHeaderAsync);
         // Task E19/F02/US01/T01 (quote-read-api) AC-1; ADR-028 §D2.
         endpoints.MapGet("/api/quotes", ListQuotesAsync);
         // Task E19/F02/US01/T01 (quote-read-api) AC-2/AC-3/AC-4; ADR-028 §D2 — the quote with its
@@ -207,6 +210,9 @@ public static class QuotesEndpointExtensions
             // value outside its valid range); invalidLineCount is the out-of-range subset.
             skippedLineCount = summary.SkippedCount,
             invalidLineCount = summary.InvalidCount,
+            // Task F6-T07: header fields the header stage read from the document, for the person to
+            // confirm (PUT /api/quotes/{id}/header). Empty when the stage is off or found nothing.
+            headerFilled = summary.HeaderFilled ?? [],
             deduplicated = uploaded.IsDuplicate,
             // Task F6-T01: true when the Worker, not this request, runs the extraction.
             extractionQueued = uploaded.ExtractionQueued,
@@ -298,6 +304,60 @@ public static class QuotesEndpointExtensions
             unmatchedSkuCount = summary.UnmatchedSkuCount,
             skippedLineCount = summary.SkippedCount,
             invalidLineCount = summary.InvalidCount,
+            headerFilled = summary.HeaderFilled ?? [],
+        });
+    }
+
+    /// <summary>
+    /// Task F6-T07 ("conferma utente"): <c>PUT /api/quotes/{id}/header</c> with
+    /// <c>{ supplier?, currency?, geography?, purchaseDate? }</c> records a person's confirmation or
+    /// correction of the fields the benchmark match is built from, overriding whatever the upload or the
+    /// header stage put there. Omitted fields are left alone. Any member of the workspace may do it
+    /// (like the SKU-mapping correction); the next <c>GET .../assessment</c> reflects it. 404 for an
+    /// unknown quote (another tenant's included), 400 for a non-GUID id, a request that changes nothing
+    /// or an invalid value.
+    /// </summary>
+    private static async Task<IResult> UpdateHeaderAsync(
+        string id,
+        QuoteHeaderUpdate update,
+        HttpRequest request,
+        QuoteHeaderUpdateService headerService,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+
+        if (!Guid.TryParse(id, out var quoteGuid))
+        {
+            return Results.BadRequest("The quote id in the route must be a GUID.");
+        }
+
+        var result = await headerService.UpdateAsync(
+            caller.TenantId, new EntityId(quoteGuid), update, caller.Identity!, cancellationToken);
+        if (result is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (result.IsFailure)
+        {
+            return Results.BadRequest(result.Error);
+        }
+
+        var header = result.Value;
+        return Results.Ok(new
+        {
+            id = header.QuoteId.Value,
+            supplier = header.Supplier,
+            currency = header.Currency,
+            geography = header.Geography,
+            purchaseDate = header.PurchaseDate,
         });
     }
 

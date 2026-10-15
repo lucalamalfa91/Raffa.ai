@@ -13,6 +13,7 @@ using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Raffa.AiFlows.QuoteExtraction.Orchestration;
 
@@ -77,8 +78,11 @@ public sealed class QuoteExtractionPipeline(
     ITenantContext tenantContext,
     IClock clock,
     IAuditWriter auditWriter,
-    ILogger<QuoteExtractionPipeline>? logger = null)
+    ILogger<QuoteExtractionPipeline>? logger = null,
+    IOptions<QuoteExtractionOptions>? options = null)
 {
+    private readonly QuoteExtractionOptions _options = options?.Value ?? new QuoteExtractionOptions();
+
     /// <summary>Recorded actor for this pipeline's own audit entry — same "no human caller, label
     /// it as automation" convention as
     /// <c>ExtractionRunStore.SystemActor</c>/<c>DocumentProcessingPipeline</c>'s own
@@ -134,6 +138,40 @@ public sealed class QuoteExtractionPipeline(
 
             await FailAsync(run, tenantId, quoteId, kind, detail).ConfigureAwait(false);
             return Result<QuoteProcessingSummary>.Failure(detail);
+        }
+    }
+
+    /// <summary>
+    /// Task F6-T07: one extra `extract` call with the header schema, applied to the tracked quote by
+    /// <see cref="QuoteHeaderApplier"/>. Any failure (gateway error, malformed answer) is logged and
+    /// swallowed: the lines are what the run is for, and a missing header is something a person fills
+    /// in. Cancellation is not swallowed.
+    /// </summary>
+    private async Task<QuoteHeaderOutcome?> RunHeaderStageAsync(
+        Quote quote, string documentText, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await aiGateway
+                .ExtractAsync(
+                    new AiExtractionRequest(
+                        QuoteExtractionStages.HeaderStageName, documentText, QuoteHeaderJsonSchema.Header()),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (result.IsFailure)
+            {
+                logger?.LogWarning(
+                    "Quote {QuoteId} header stage failed; leaving the header as it is: {Error}", quote.Id, result.Error);
+                return null;
+            }
+
+            return QuoteHeaderApplier.Apply(quote, result.Value.PayloadJson, now, _options.HeaderMinConfidence);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger?.LogWarning(
+                exception, "Quote {QuoteId} header stage threw; leaving the header as it is.", quote.Id);
+            return null;
         }
     }
 
@@ -272,6 +310,12 @@ public sealed class QuoteExtractionPipeline(
             }
         }
 
+        // Task F6-T07: fill the blank header fields from the document. Best effort and before the
+        // transaction opens (it is a model call): a failure here never fails the quote.
+        var headerOutcome = _options.HeaderStageEnabled && QuoteHeaderApplier.IsIncomplete(quote)
+            ? await RunHeaderStageAsync(quote, documentText, completedAt, cancellationToken).ConfigureAwait(false)
+            : null;
+
         // Task F6-T03 (reprocess: replace, never add): a quote that already holds lines from an
         // earlier run (reprocess, or a retry of a NeedsReview quote) swaps them for this run's
         // lines instead of keeping both -- the same replace-not-add rule F5-T01 gives the document
@@ -358,6 +402,23 @@ public sealed class QuoteExtractionPipeline(
                 cancellationToken)
             .ConfigureAwait(false);
 
+        if (headerOutcome is { Filled.Count: > 0 })
+        {
+            // Names the fields, never the values: this is the provenance a person reviewing the quote
+            // can ask for ("which of these did the system fill?").
+            await auditWriter.WriteAsync(
+                    new AuditEntry(
+                        tenantId,
+                        SystemActor,
+                        "quote.header.extracted",
+                        "quote",
+                        quoteId.Value.ToString(),
+                        completedAt,
+                        string.Join(',', headerOutcome.Filled)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         return Result<QuoteProcessingSummary>.Success(new QuoteProcessingSummary(
             quoteId,
             quote.ProcessingStatus,
@@ -367,7 +428,8 @@ public sealed class QuoteExtractionPipeline(
             lineNormalizationOutcome.NormalizedCount,
             lineNormalizationOutcome.UnresolvedCount,
             skuNormalizationOutcome.UnmatchedCount,
-            outcome.InvalidCount));
+            outcome.InvalidCount,
+            headerOutcome?.Filled));
     }
 
     /// <summary>

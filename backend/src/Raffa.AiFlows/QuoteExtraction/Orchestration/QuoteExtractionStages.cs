@@ -11,4 +11,10 @@ public static class QuoteExtractionStages
     /// <c>IAiGateway.ExtractAsync</c>'s own doc comment: "mirrors, but does not reference,
     /// ExtractionStage; the gateway must not depend on a domain module's enum").</summary>
     public const string StageName = "QuoteLineItems";
+
+    /// <summary>Task F6-T07: caller-owned stage label of the header call (supplier, quote date,
+    /// currency, geography), with its own schema (<c>QuoteHeaderJsonSchema</c>). A new label, not a
+    /// rename of <see cref="StageName"/>; the extract prompt is the gateway's generic one, keyed on
+    /// this label only for telemetry and the fixture gateway.</summary>
+    public const string HeaderStageName = "QuoteHeader";
 }
