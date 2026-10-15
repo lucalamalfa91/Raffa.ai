@@ -207,6 +207,9 @@ public sealed class StepRunner
                 }
 
                 intervened = true;
+                AgentMetrics.RecordVerifierIntervention(
+                    definition.Name, verifier!.Name,
+                    attempts < maxAttempts ? AgentMetrics.OutcomeRetried : AgentMetrics.OutcomeRejected);
                 if (attempts < maxAttempts)
                 {
                     // The generalization of RegenerateOnce: one more attempt, the violation named.
