@@ -30,4 +30,16 @@ public sealed class MarketIngestionOptions
     /// default: a failed run then persists nothing, as before.
     /// </summary>
     public bool CheckpointPerBatch { get; set; }
+
+    /// <summary>
+    /// F7-T08: build the corpus as a new version next to the live one and switch to it atomically at
+    /// the end (blue/green), instead of updating the live corpus in place. The new version is a
+    /// server-side copy of the active one, updated to match the feed, so records absent from the feed
+    /// disappear with the switch and embeddings are only paid for what changed. A run that changes
+    /// nothing discards its copy. Off by default: in-place ingestion, as before.
+    /// </summary>
+    public bool BlueGreen { get; set; }
+
+    /// <summary>How many retired corpus versions are kept for rollback after a switch (blue/green only).</summary>
+    public int RetiredVersionsToKeep { get; set; } = 1;
 }

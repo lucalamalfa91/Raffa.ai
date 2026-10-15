@@ -20,6 +20,10 @@ public sealed class MarketRecordEntity
 {
     public required string RecordId { get; set; }
 
+    /// <summary>F7-T08: the corpus version this row belongs to (with <see cref="RecordId"/> the key).
+    /// Readers only see the active version.</summary>
+    public string CorpusVersion { get; set; } = MarketCorpusVersions.Initial;
+
     /// <summary>
     /// The feed version this row was last (re)written under (<see cref="Contracts.MarketFeedSnapshot.FeedVersion"/>)
     /// — <see cref="Ingestion.MarketIngestionService"/>'s own idempotency key half: "a second run

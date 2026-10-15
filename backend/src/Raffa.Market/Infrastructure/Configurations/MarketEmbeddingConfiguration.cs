@@ -26,7 +26,9 @@ public sealed class MarketEmbeddingConfiguration : IEntityTypeConfiguration<Mark
             .HasColumnType($"vector({MarketEmbeddingEntity.VectorDimensions})")
             .IsRequired();
 
-        builder.HasIndex(e => e.RecordId);
+        builder.Property(e => e.CorpusVersion).HasMaxLength(100).HasDefaultValue(MarketCorpusVersions.Initial);
+        builder.HasIndex(e => new { e.RecordId, e.CorpusVersion });
+        builder.HasIndex(e => e.CorpusVersion);
 
         // F7-T01: approximate nearest-neighbour index for the cosine query
         // (`ORDER BY vector <=> @q LIMIT k`, PgVectorMarketKnowledgeRetrieval). Without it every
@@ -52,7 +54,7 @@ public sealed class MarketEmbeddingConfiguration : IEntityTypeConfiguration<Mark
         // for Conversation -> ConversationMessage.
         builder.HasOne<MarketRecordEntity>()
             .WithMany()
-            .HasForeignKey(e => e.RecordId)
+            .HasForeignKey(e => new { e.RecordId, e.CorpusVersion })
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

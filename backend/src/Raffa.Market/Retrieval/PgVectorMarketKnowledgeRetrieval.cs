@@ -124,7 +124,23 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         // columns -- cheap next to the vector query it protects. A query embedded with another model
         // (or a fixture query against a real index, and the reverse) has no meaningful distance to
         // these rows; ranking it anyway would return noise that looks like an answer, so refuse.
+        // F7-T08: readers see the active corpus version only. Resolved once per search and applied as a
+        // plain equality on the row (not the EXISTS of the model-level filter), which keeps the
+        // statement a simple filtered nearest-neighbour scan the HNSW index can serve.
+        var activeVersion = await dbContext.CorpusVersions
+            .AsNoTracking()
+            .Where(v => v.State == MarketCorpusStates.Active)
+            .Select(v => v.Version)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (activeVersion is null)
+        {
+            return Result<IReadOnlyList<MarketNote>>.Success([]);
+        }
+
         var populations = await dbContext.MarketEmbeddings
+            .IgnoreQueryFilters()
+            .Where(e => e.CorpusVersion == activeVersion)
             .AsNoTracking()
             .GroupBy(e => new { e.Model, e.IsFixture })
             .Select(g => new MarketEmbeddingPopulation(g.Key.Model, g.Key.IsFixture, g.Count()))
@@ -171,7 +187,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
 
             var scannedWithIndex = useIndex;
             var neighbours = await FetchNeighboursAsync(
-                    queryVector, queryIdentity, window, scannedWithIndex, restrictToComparable: mixed, filters, cancellationToken)
+                    queryVector, queryIdentity, window, scannedWithIndex, restrictToComparable: mixed, filters, activeVersion, cancellationToken)
                 .ConfigureAwait(false);
 
             var hits = CollectHits(neighbours, topK, filters);
@@ -200,6 +216,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         bool useIndex,
         bool restrictToComparable,
         MarketKnowledgeSearchFilters? filters,
+        string activeVersion,
         CancellationToken cancellationToken)
     {
         // SET LOCAL needs a transaction; it also keeps the setting from leaking onto the pooled
@@ -227,7 +244,7 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         }
 
         var neighbours = await NearestNeighbours(
-                dbContext, queryVector, window, restrictToComparable ? queryIdentity : null, filters)
+                dbContext, queryVector, window, restrictToComparable ? queryIdentity : null, filters, activeVersion)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
@@ -252,11 +269,19 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         Vector queryVector,
         int limit,
         MarketEmbeddingIdentity? restrictTo = null,
-        MarketKnowledgeSearchFilters? filters = null)
+        MarketKnowledgeSearchFilters? filters = null,
+        string? corpusVersion = null)
     {
         ArgumentNullException.ThrowIfNull(db);
 
+        // F7-T08: with an explicit corpus version the model-level "active only" filter is replaced by
+        // an equality on that version (see SearchIndexAsync); without one the model filter applies.
         IQueryable<MarketEmbeddingEntity> source = db.MarketEmbeddings.AsNoTracking();
+        if (corpusVersion is not null)
+        {
+            source = db.MarketEmbeddings.IgnoreQueryFilters().AsNoTracking().Where(e => e.CorpusVersion == corpusVersion);
+        }
+
         if (restrictTo is { } identity)
         {
             var model = identity.Model;
@@ -272,6 +297,11 @@ public sealed class PgVectorMarketKnowledgeRetrieval(
         // F7-T02: category / geography are filtered in SQL on the denormalised columns. A NULL column
         // (a record that predates them) is kept and decided by CollectHits' exact in-memory check.
         IQueryable<MarketRecordEntity> records = db.MarketRecords.AsNoTracking();
+        if (corpusVersion is not null)
+        {
+            records = db.MarketRecords.IgnoreQueryFilters().AsNoTracking().Where(r => r.CorpusVersion == corpusVersion);
+        }
+
         if (filters?.Category is { } category)
         {
             var folded = MarketFilterColumns.Category(category);

@@ -62,6 +62,7 @@ public sealed class MarketCorpusCache(MarketCorpusCacheOptions? options = null)
                        coalesce(md5(string_agg(coalesce(payload_hash, md5(payload_json::text)), '' ORDER BY record_id)), '')
                        AS "Value"
                 FROM market_record
+                WHERE corpus_version = (SELECT version FROM market_corpus_version WHERE state = 'active')
                 """)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

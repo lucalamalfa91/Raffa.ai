@@ -13,7 +13,10 @@ public sealed class MarketRecordConfiguration : IEntityTypeConfiguration<MarketR
         // Natural key (task objective: "recordId PK") -- MarketDeal.RecordId itself, not a
         // generated surrogate uuid. ValueGeneratedNever: nothing about this string is
         // database-generated.
-        builder.HasKey(r => r.RecordId);
+        // F7-T08: the key is (record, corpus version) so the next corpus can be built next to the live one.
+        builder.HasKey(r => new { r.RecordId, r.CorpusVersion });
+        builder.Property(r => r.CorpusVersion).HasMaxLength(100).HasDefaultValue(MarketCorpusVersions.Initial);
+        builder.HasIndex(r => r.CorpusVersion);
         builder.Property(r => r.RecordId).HasMaxLength(200).ValueGeneratedNever();
 
         builder.Property(r => r.FeedVersion).HasMaxLength(100);

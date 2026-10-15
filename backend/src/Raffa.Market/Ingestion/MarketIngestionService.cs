@@ -83,7 +83,17 @@ public sealed class MarketIngestionService(
 
         var snapshot = feedResult.Value;
 
+        // F7-T08: the corpus version this run writes into -- the active one (in place, the default) or a
+        // new one built next to it (blue/green). Rows are always addressed by version explicitly, so
+        // the "active only" read filter is bypassed here.
+        var versions = new MarketCorpusVersionService(dbContext, clock);
+        var corpusVersion = _options.BlueGreen
+            ? await versions.BeginBuildAsync(snapshot.FeedVersion, cancellationToken).ConfigureAwait(false)
+            : await versions.GetActiveVersionAsync(cancellationToken).ConfigureAwait(false);
+
         var existingByRecordId = await dbContext.MarketRecords
+            .IgnoreQueryFilters()
+            .Where(r => r.CorpusVersion == corpusVersion)
             .ToDictionaryAsync(r => r.RecordId, StringComparer.Ordinal, cancellationToken)
             .ConfigureAwait(false);
 
@@ -92,8 +102,9 @@ public sealed class MarketIngestionService(
         // non-narrative field, such as industry or unitMetric) keep its embedding instead of paying
         // for a new embed call.
         var existingEmbeddings = (await dbContext.MarketEmbeddings
+                .IgnoreQueryFilters()
                 .AsNoTracking()
-                .Where(e => e.ChunkIndex == 0)
+                .Where(e => e.CorpusVersion == corpusVersion && e.ChunkIndex == 0)
                 .Select(e => new EmbeddingSource(e.RecordId, e.ChunkText, e.Model, e.IsFixture))
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false))
@@ -183,7 +194,7 @@ public sealed class MarketIngestionService(
             }
 
             var flushed = await FlushAsync(
-                    pending, snapshot.FeedVersion, existingEmbeddings, runIdentity, cancellationToken)
+                    pending, snapshot.FeedVersion, corpusVersion, existingEmbeddings, runIdentity, cancellationToken)
                 .ConfigureAwait(false);
             if (flushed.IsFailure)
             {
@@ -199,7 +210,7 @@ public sealed class MarketIngestionService(
         if (pending.Count > 0)
         {
             var flushed = await FlushAsync(
-                    pending, snapshot.FeedVersion, existingEmbeddings, runIdentity, cancellationToken)
+                    pending, snapshot.FeedVersion, corpusVersion, existingEmbeddings, runIdentity, cancellationToken)
                 .ConfigureAwait(false);
             if (flushed.IsFailure)
             {
@@ -216,8 +227,36 @@ public sealed class MarketIngestionService(
         // rows" the idempotency proof asserts.
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
+        if (!_options.BlueGreen)
+        {
+            return Result<IngestionSummary>.Success(
+                new IngestionSummary(snapshot.FeedVersion, inserted, updated, unchanged, corpusVersion));
+        }
+
+        // Blue/green: the building version should mirror the feed, so a record the feed no longer
+        // carries is dropped from it (its embeddings go by cascade); the live version is untouched.
+        var feedIds = snapshot.Deals.Select(d => d.RecordId).ToHashSet(StringComparer.Ordinal);
+        var removed = await dbContext.MarketRecords
+            .IgnoreQueryFilters()
+            .Where(r => r.CorpusVersion == corpusVersion && !feedIds.Contains(r.RecordId))
+            .ExecuteDeleteAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (inserted + updated + removed == 0)
+        {
+            // Nothing differs from the live corpus: discard the copy instead of switching to an
+            // identical one.
+            await versions.DeleteAsync(corpusVersion, cancellationToken).ConfigureAwait(false);
+            return Result<IngestionSummary>.Success(
+                new IngestionSummary(
+                    snapshot.FeedVersion, 0, 0, unchanged, await versions.GetActiveVersionAsync(cancellationToken).ConfigureAwait(false)));
+        }
+
+        await versions.SwitchAsync(corpusVersion, cancellationToken).ConfigureAwait(false);
+        await versions.PurgeRetiredAsync(_options.RetiredVersionsToKeep, cancellationToken).ConfigureAwait(false);
+
         return Result<IngestionSummary>.Success(
-            new IngestionSummary(snapshot.FeedVersion, inserted, updated, unchanged));
+            new IngestionSummary(snapshot.FeedVersion, inserted, updated, unchanged, corpusVersion, removed));
     }
 
     private sealed record EmbeddingSource(string RecordId, string ChunkText, string Model, bool? IsFixture);
@@ -235,6 +274,7 @@ public sealed class MarketIngestionService(
     private async Task<Result<FlushOutcome>> FlushAsync(
         List<PendingRecord> batch,
         string feedVersion,
+        string corpusVersion,
         IReadOnlyDictionary<string, EmbeddingSource> existingEmbeddings,
         MarketEmbeddingIdentity? runIdentity,
         CancellationToken cancellationToken)
@@ -344,6 +384,7 @@ public sealed class MarketIngestionService(
                 var added = new MarketRecordEntity
                 {
                     RecordId = deal.RecordId,
+                    CorpusVersion = corpusVersion,
                     FeedVersion = feedVersion,
                     Provider = deal.Provider,
                     PayloadJson = payloadJson,
@@ -372,7 +413,8 @@ public sealed class MarketIngestionService(
                 if (!reuse[i])
                 {
                     var staleEmbeddings = await dbContext.MarketEmbeddings
-                        .Where(e => e.RecordId == deal.RecordId)
+                        .IgnoreQueryFilters()
+                        .Where(e => e.RecordId == deal.RecordId && e.CorpusVersion == corpusVersion)
                         .ToListAsync(cancellationToken)
                         .ConfigureAwait(false);
                     dbContext.MarketEmbeddings.RemoveRange(staleEmbeddings);
@@ -387,6 +429,7 @@ public sealed class MarketIngestionService(
                 {
                     Id = EntityId.New(),
                     RecordId = deal.RecordId,
+                    CorpusVersion = corpusVersion,
                     ChunkIndex = 0,
                     ChunkText = note.Snippet,
                     Vector = new Vector(vectors[vectorIndex++].ToArray()),
