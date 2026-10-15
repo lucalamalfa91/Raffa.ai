@@ -37,6 +37,8 @@ public static class QuotesEndpointExtensions
     public static IEndpointRouteBuilder MapQuotesEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/quotes", UploadQuoteAsync);
+        // Task F6-T03: Admin-only re-run over the stored bytes (parity with POST /api/documents/{id}/reprocess).
+        endpoints.MapPost("/api/quotes/{id}/reprocess", ReprocessQuoteAsync);
         // Task E19/F02/US01/T01 (quote-read-api) AC-1; ADR-028 §D2.
         endpoints.MapGet("/api/quotes", ListQuotesAsync);
         // Task E19/F02/US01/T01 (quote-read-api) AC-2/AC-3/AC-4; ADR-028 §D2 — the quote with its
@@ -205,6 +207,74 @@ public static class QuotesEndpointExtensions
             geography = uploaded.Geography,
             purchaseDate = uploaded.PurchaseDate,
             createdAt = uploaded.CreatedAt,
+        });
+    }
+
+    /// <summary>
+    /// Task F6-T03: Admin-only re-run of the extraction over a quote's stored bytes. The previous
+    /// lines are replaced by the new ones, never added to (see <see cref="QuoteReprocessService"/>).
+    /// 404 for an unknown quote (another tenant's included), 400 for a non-GUID id or a quote that
+    /// is still being processed, 403 for a non-admin. Until the durable queue of task F6-T01 the run
+    /// happens in this request, like a first upload; the response is the same summary shape.
+    /// </summary>
+    private static async Task<IResult> ReprocessQuoteAsync(
+        string id,
+        HttpContext httpContext,
+        QuoteReprocessService reprocessService,
+        QuoteExtractionPipeline extractionPipeline,
+        WorkspaceRoleResolver roleResolver,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(httpContext.Request, cancellationToken);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var callerTenantScope = caller.Scope;
+        var tenantId = caller.TenantId;
+
+        if (!Guid.TryParse(id, out var quoteGuid))
+        {
+            return Results.BadRequest("The quote id in the route must be a GUID.");
+        }
+
+        if (!await roleResolver.IsAdminAsync(httpContext, tenantId, cancellationToken))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var queued = await reprocessService.ReprocessAsync(
+            tenantId, new EntityId(quoteGuid), caller.Identity!, cancellationToken);
+        if (queued is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (queued.IsFailure)
+        {
+            return Results.BadRequest(queued.Error);
+        }
+
+        var job = queued.Value;
+        var processingResult = await extractionPipeline.ProcessAsync(
+            tenantId, job.QuoteId, job.FileName, job.MimeType, job.Bytes, cancellationToken);
+        var summary = processingResult.IsSuccess
+            ? processingResult.Value
+            : new QuoteProcessingSummary(job.QuoteId, QuoteProcessingStatus.Failed, 0, 0, 0, 0, 0, 0);
+
+        return Results.Ok(new
+        {
+            id = job.QuoteId.Value,
+            extractionJobId = job.ExtractionJobId.Value,
+            processingStatus = summary.ProcessingStatus.ToString(),
+            lineItemCount = summary.LineItemCount,
+            normalizedLineItemCount = summary.NormalizedLineItemCount,
+            unresolvedNormalizationCount = summary.UnresolvedNormalizationCount,
+            unmatchedSkuCount = summary.UnmatchedSkuCount,
+            skippedLineCount = summary.SkippedCount,
+            invalidLineCount = summary.InvalidCount,
         });
     }
 
