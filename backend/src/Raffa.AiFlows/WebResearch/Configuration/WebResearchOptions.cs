@@ -36,6 +36,13 @@ public sealed class WebResearchOptions : IWebResearchBudgetLimit
     /// (<c>$36</c>, <c>ten euros</c>, <c>40k</c>) is never kept without a quote.</summary>
     public bool AllowReportedFigures { get; set; }
 
+    /// <summary>F3-T03: charge the daily budget only for an outcome that found sources. On: a research
+    /// call that ends with no source at all (an off-topic refusal, an abstain with an empty source list)
+    /// hands its reserved unit back, as a transport failure always has. Off by default: only a transport or
+    /// configuration failure is refunded, as it always was. Note that with it on an off-topic refusal costs
+    /// nothing, so it can be repeated until the model-side cost, not the budget, is the limit.</summary>
+    public bool ChargeOnlyWhenSourcesFound { get; set; }
+
     /// <summary>The source cap, clamped to the range the research role accepts.</summary>
     public int EffectiveMaxSources => Math.Clamp(MaxSources, 1, 10);
 
@@ -50,5 +57,6 @@ public sealed class WebResearchOptions : IWebResearchBudgetLimit
         MaxSources = other.MaxSources;
         MaxQueryChars = other.MaxQueryChars;
         AllowReportedFigures = other.AllowReportedFigures;
+        ChargeOnlyWhenSourcesFound = other.ChargeOnlyWhenSourcesFound;
     }
 }

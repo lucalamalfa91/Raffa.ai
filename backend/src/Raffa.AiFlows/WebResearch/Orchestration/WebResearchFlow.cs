@@ -203,7 +203,8 @@ public sealed class WebResearchFlow(
     /// transport or configuration reasons (<see cref="WebResearchOutcome.ReleaseBudget"/> — never a
     /// content-filter verdict, never unusable output), or throws, the reserved unit is handed back, so
     /// an outage never costs the tenant a call. A cancelled caller keeps the unit spent: the provider
-    /// may well have run the search. Shared by the consented and the toggle entry. The release is
+    /// may well have run the search. With <see cref="WebResearchOptions.ChargeOnlyWhenSourcesFound"/> an
+    /// outcome with no source is refunded too. Shared by the consented and the toggle entry. The release is
     /// best effort (never cancelled with the request, never fatal to the reply).
     /// </summary>
     internal async Task<(WebResearchOutcome Outcome, bool Released)> ComposeReservedAsync(
@@ -226,7 +227,7 @@ public sealed class WebResearchFlow(
             throw;
         }
 
-        var released = outcome.ReleaseBudget && await TryReleaseBudgetAsync(reservation).ConfigureAwait(false);
+        var released = outcome.ShouldReleaseBudget(webResearchOptions.ChargeOnlyWhenSourcesFound) && await TryReleaseBudgetAsync(reservation).ConfigureAwait(false);
         return (outcome, released);
     }
 
