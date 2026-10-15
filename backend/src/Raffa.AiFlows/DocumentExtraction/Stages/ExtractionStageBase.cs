@@ -36,7 +36,10 @@ internal abstract class ExtractionStageBase(ExtractionStage stage, string jsonSc
     /// <summary>Byte-identical to the pipeline's historic request when <see cref="ExtractionStageInput.Context"/>
     /// yields no block (always the case with context dependencies off).</summary>
     public AiExtractionRequest BuildRequest(ExtractionStageInput input) =>
-        new(StageName, ExtractionContextBlock.Prefix(input.Context, DependsOn) + input.DocumentText, JsonSchema);
+        input.DocumentFirst
+            // F5-T03: the document leads, so the prefix is shared by every stage; the context follows it.
+            ? new(StageName, input.DocumentText + ExtractionContextBlock.Prefix(input.Context, DependsOn), JsonSchema, DocumentFirst: true)
+            : new(StageName, ExtractionContextBlock.Prefix(input.Context, DependsOn) + input.DocumentText, JsonSchema);
 
     public abstract StageFacts Parse(string payloadJson);
 }

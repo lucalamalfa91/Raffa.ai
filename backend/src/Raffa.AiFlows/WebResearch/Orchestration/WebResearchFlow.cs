@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Raffa.AiFlows.Shared.Audit;
 using Raffa.AiFlows.Ask.Interview;
 using Raffa.AiFlows.Shared.Routing;
@@ -49,7 +50,7 @@ public delegate IReadOnlyList<CopilotAction> AbstainRecoveryResolver(
 /// order of the gates, the budget reservation and release, and every audit row are as they were.
 /// </summary>
 public sealed class WebResearchFlow(
-    WebResearchOptions webResearchOptions,
+    IOptionsMonitor<WebResearchOptions> webResearchOptionsMonitor,
     WebResearchComposer webResearchComposer,
     IWebResearchBudget webResearchBudget,
     IWorkspaceWebResearchPolicy workspaceWebResearchPolicy,
@@ -57,6 +58,9 @@ public sealed class WebResearchFlow(
     IClock clock,
     CapabilityRouting capabilityRouting)
 {
+    /// <summary>F3-T10: read on every use, so the kill switch applies without a restart.</summary>
+    private WebResearchOptions webResearchOptions => webResearchOptionsMonitor.CurrentValue;
+
     internal const string AuditAuthorizedAction = "chat.web_research_authorized";
     internal const string AuditDeclinedAction = "chat.web_research_declined";
     internal const string AuditResearchedAction = "chat.web_researched";
