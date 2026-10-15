@@ -161,7 +161,13 @@ public sealed partial class ExtractionRunStore
 
             var confidence = fact.Confidence;
             string decision;
-            if (ExtractionConfidencePolicy.IsExtractedStartDate(fact.Field) && TryParseDate(fact.Value, out _))
+            if (fact.SpanVerified == false)
+            {
+                // F5-T07 (Gate mode only): the evidence span could not be found where the model said it is.
+                // Never auto-accepted, never dropped: the value stays and the field goes to review.
+                decision = ExtractionConfidencePolicy.ReviewRequired;
+            }
+            else if (ExtractionConfidencePolicy.IsExtractedStartDate(fact.Field) && TryParseDate(fact.Value, out _))
             {
                 confidence = ExtractionConfidencePolicy.OfficialConfidence;
                 decision = ExtractionConfidencePolicy.AutoAccepted;
@@ -307,7 +313,11 @@ public sealed partial class ExtractionRunStore
     /// for review.
     /// </summary>
     private static StageApplyResult CollectRows<TItem, TRow>(
-        IEnumerable<TItem>? items, List<TRow> rows, Func<TItem, TRow?> toRow, Func<TRow, double?> confidenceOf)
+        IEnumerable<TItem>? items,
+        List<TRow> rows,
+        Func<TItem, TRow?> toRow,
+        Func<TRow, double?> confidenceOf,
+        Func<TItem, bool>? spanUnverified = null)
         where TRow : class
     {
         var skipped = 0;
@@ -322,6 +332,14 @@ public sealed partial class ExtractionRunStore
             }
 
             anyLowConfidence |= ExtractionConfidencePolicy.RequiresReview(confidenceOf(row));
+
+            // F5-T07 (Gate mode only: the flag is never set otherwise): an unverifiable span flags the stage
+            // for review exactly like a weak confidence does; the row is kept, never dropped.
+            if (spanUnverified?.Invoke(item) == true)
+            {
+                anyLowConfidence = true;
+            }
+
             rows.Add(row);
         }
 
@@ -358,7 +376,8 @@ public sealed partial class ExtractionRunStore
                     Confidence = item.Confidence,
                     CreatedAt = now,
                 },
-            row => row.Confidence);
+            row => row.Confidence,
+            item => item.SpanVerified == false);
 
         await ReplaceRowsAsync(
                 context,
@@ -400,7 +419,8 @@ public sealed partial class ExtractionRunStore
                     Confidence = item.Confidence,
                     CreatedAt = now,
                 },
-            row => row.Confidence);
+            row => row.Confidence,
+            item => item.SpanVerified == false);
 
         // A risk may point at a clause (Risk.ClauseId, restrict): such a clause is not ours to delete.
         var referenced = (await dbContext.Risks
@@ -455,7 +475,8 @@ public sealed partial class ExtractionRunStore
                     SourcePage = ClampPage(item.SourcePage, context.PageCount),
                     CreatedAt = now,
                 },
-            row => row.Confidence);
+            row => row.Confidence,
+            item => item.SpanVerified == false);
 
         await ReplaceRowsAsync(
                 context,
@@ -500,7 +521,8 @@ public sealed partial class ExtractionRunStore
                     SourcePage = ClampPage(item.SourcePage, context.PageCount),
                     IdentifiedAt = now,
                 },
-            row => row.Confidence);
+            row => row.Confidence,
+            item => item.SpanVerified == false);
 
         await ReplaceRowsAsync(
                 context,
