@@ -36,6 +36,18 @@ variable "ai_operator_principal_ids" {
   default     = ["ab5b6f66-1bd6-44e3-8ea0-2ceff69b62a6"]
 }
 
+# The seed-market-intelligence workflow (dev) runs the AI ingest curation
+# from the GitHub runner, authenticated as the OIDC deploy principal, which
+# has no data-plane role on aisvc-raffa by default. true grants it Cognitive
+# Services User + Cognitive Services OpenAI User there (dev root only).
+# Do not also list that principal's object id in ai_operator_principal_ids
+# (distinct() tolerates it). false = the job falls back to curation off.
+variable "ci_deploy_ai_access" {
+  description = "Grant the CI OIDC deploy principal Cognitive Services User + OpenAI User on the shared AI Services account so the dev market-ingest job can call Foundry (Market:Ingestion:Curation). false removes the grant."
+  type        = bool
+  default     = true
+}
+
 # Per-role AI Gateway knobs settled by the live probe (e.g.
 # AiGateway__Models__Extract__ReasoningEffort = "low"). Non-secret;
 # published only while ai_gateway_wired is true.
@@ -52,24 +64,28 @@ variable "ai_gateway_extra_env" {
 # ai_gateway_wired is true. Keys are the ASP.NET Core env form of the options
 # keys (":" -> "__"); backend/tests/Raffa.AiFlows.Tests/Configuration/
 # DevAiFlowsEnvBindingTests parses THIS default and binds it through the real
-# options classes, so a mistyped key fails CI. Flag -> purpose and the flags
-# deliberately NOT enabled: docs/ai-flows-dev-flags.md. Keep one
+# options classes, so a mistyped key fails CI. Flag -> purpose, the flags left
+# off (Jev, provenance label) and the owner's test checklist:
+# docs/ai-flows-dev-flags.md. Keep one
 # `Key = "value"` per line (the test reads the block as text).
 variable "ai_flows_env" {
   description = "Non-secret Raffa.AiFlows behaviour flags enabled in dev (env-var form of Documents:Extraction:*, QuoteExtraction:*, Chat:AskTurn:*, Chat:GapInvestigation:*, Chat:Council:*, Chat:Drafting:*, Chat:Interview:*, Chat:WebResearch:*). Merged into extra_gateway_env; published to both Container Apps only when ai_gateway_wired is true. Set to {} to return dev to the code defaults. Chat__WebResearch__Enabled and AiGateway__Jev__Enabled have their own variables and must not be set here."
   type        = map(string)
   default = {
     # F5 document extraction (Documents:Extraction). Span verification and
-    # cross-stage rules stay in Shadow: they log and meter without changing a
-    # value, which is the "on" state; Gate would route facts to review on
-    # unmeasured false positives.
+    # cross-stage rules run in Gate (owner decision for dev): a fact whose span
+    # is not found, or a violated rule, routes the involved fields to review
+    # (values are never edited). Flip back to Shadow if review volume explodes.
+    # TokensPerMinuteLimit is per Worker process: dev chat capacity 300K TPM
+    # (gpt-5.4-nano) / 5 Worker replicas (worker_max_replicas) = 60000.
     Documents__Extraction__UseContextDependencies   = "true"
     Documents__Extraction__MaxConcurrentStages      = "4"
     Documents__Extraction__TransientRetriesPerStage = "1"
-    Documents__Extraction__SpanVerification         = "Shadow"
-    Documents__Extraction__CrossStageValidation     = "Shadow"
+    Documents__Extraction__SpanVerification         = "Gate"
+    Documents__Extraction__CrossStageValidation     = "Gate"
     Documents__Extraction__DocumentFirstPrompt      = "true"
     Documents__Extraction__SecondOpinionShadow      = "true"
+    Documents__Extraction__TokensPerMinuteLimit     = "60000"
 
     # F6 quote extraction header stage.
     QuoteExtraction__HeaderStageEnabled = "true"
@@ -107,6 +123,42 @@ variable "ai_flows_env" {
     Chat__WebResearch__StripTrackingParameters      = "true"
     Chat__WebResearch__CiteSourcesOnAbstain         = "true"
     Chat__WebResearch__RedactSensitiveQueryPatterns = "true"
+    Chat__WebResearch__VendorMasterAsTier1          = "true"
+    Chat__WebResearch__MaxSourceTier                = "3"
+
+    # F3-D08 source policy data: official domains of the draft vendor master
+    # (backend/tests/Raffa.AiEval/golden/pending/vendor-master.v1.json) at
+    # tier 1; the code's own WebVendorMaster adds its domains at tier 1 too
+    # (VendorMasterAsTier1). An unlisted domain is tier 3, so MaxSourceTier 3
+    # ranks without dropping anything: lower it to 2 to keep ONLY listed
+    # domains. Left out on purpose because tenants host content there:
+    # atlassian.net, amazonaws.com, bare google.com. No DeniedDomains: none
+    # invented. Quoted keys because a domain contains dots.
+    "Chat__WebResearch__DomainTiers__adobe.com"            = "1"
+    "Chat__WebResearch__DomainTiers__atlassian.com"        = "1"
+    "Chat__WebResearch__DomainTiers__aws.amazon.com"       = "1"
+    "Chat__WebResearch__DomainTiers__azure.com"            = "1"
+    "Chat__WebResearch__DomainTiers__cloud.google.com"     = "1"
+    "Chat__WebResearch__DomainTiers__docusign.com"         = "1"
+    "Chat__WebResearch__DomainTiers__hubspot.com"          = "1"
+    "Chat__WebResearch__DomainTiers__microsoft.com"        = "1"
+    "Chat__WebResearch__DomainTiers__netsuite.com"         = "1"
+    "Chat__WebResearch__DomainTiers__office.com"           = "1"
+    "Chat__WebResearch__DomainTiers__oracle.com"           = "1"
+    "Chat__WebResearch__DomainTiers__salesforce.com"       = "1"
+    "Chat__WebResearch__DomainTiers__sap.com"              = "1"
+    "Chat__WebResearch__DomainTiers__servicenow.com"       = "1"
+    "Chat__WebResearch__DomainTiers__slack.com"            = "1"
+    "Chat__WebResearch__DomainTiers__workday.com"          = "1"
+    "Chat__WebResearch__DomainTiers__workspace.google.com" = "1"
+    "Chat__WebResearch__DomainTiers__zendesk.com"          = "1"
+    "Chat__WebResearch__DomainTiers__zoom.com"             = "1"
+    "Chat__WebResearch__DomainTiers__zoom.us"              = "1"
+
+    # F7 market retrieval (Market:Retrieval), read by the API. Hybrid and
+    # Diversify are enabled without the F7-D08 golden set (owner decision for dev).
+    Market__Retrieval__Hybrid    = "true"
+    Market__Retrieval__Diversify = "true"
   }
 
   validation {
@@ -163,6 +215,18 @@ variable "feedback_github_enabled" {
 # host -- see ServiceCollectionExtensions.AddAiGatewayModule.
 variable "jev_api_key" {
   description = "OpenRouter API key for the Jev classify-role pilot (dev only). Set as a sensitive HCP workspace variable of category Terraform; empty = every classify call fails gracefully even if jev_enabled is true."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+# F3-T11 / F3-D10: key of the keyed (HMAC-SHA256) web-query hash in audit
+# rows. SENSITIVE HCP workspace variable of category "Terraform variable",
+# never a .tf literal (ADR-011). Terraform writes it to Key Vault as the
+# secret `query-hash-key`, which the API app reads as AiGateway__QueryHash__Key.
+# Empty (the default) = no secret = the unkeyed SHA-256 plus one log warning.
+variable "query_hash_key" {
+  description = "Secret key for the keyed web-query hash in audit rows (AiGateway:QueryHash:Key). Set as a sensitive HCP workspace variable of category Terraform (e.g. `openssl rand -base64 48`); empty = unkeyed SHA-256."
   type        = string
   sensitive   = true
   default     = ""

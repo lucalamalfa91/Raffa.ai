@@ -134,6 +134,23 @@ resource "azurerm_key_vault_secret" "github_feedback_token" {
   ]
 }
 
+# F3-T11: count-gated on the key being set, same reasoning as the Jev key
+# below -- an environment without a key must still apply. Consumed by
+# modules/containerapps' `query-hash-key` handle, API app only (the only app
+# that writes web-research audit rows).
+resource "azurerm_key_vault_secret" "query_hash_key" {
+  count = var.query_hash_key == "" ? 0 : 1
+
+  name         = "query-hash-key"
+  value        = var.query_hash_key
+  key_vault_id = azurerm_key_vault.this.id
+
+  depends_on = [
+    azurerm_role_assignment.deployer_secrets_officer,
+    azurerm_role_assignment.workload_secrets_user,
+  ]
+}
+
 # Jev classify-role pilot (dev-only trial): count-gated on the key being set,
 # same reasoning as github_feedback_token above -- an environment with the
 # pilot off (or not yet given a key) must still apply. Consumed by

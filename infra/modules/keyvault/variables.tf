@@ -77,6 +77,17 @@ variable "github_feedback_token" {
   default     = ""
 }
 
+# F3-T11 / F3-D10: HMAC key of the web-query hash written to audit rows
+# (AiGateway:QueryHash:Key). Same "empty = no secret" lifecycle as
+# github_feedback_token: without it the hash is the unkeyed SHA-256 and the
+# API logs one warning.
+variable "query_hash_key" {
+  description = "Secret key of the keyed (HMAC-SHA256) web-query hash in audit rows, written to this vault as query-hash-key. Empty = no secret (audit rows keep the unkeyed SHA-256 and one warning is logged)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Jev (TypeSafe AI) classify-role pilot: an OpenRouter API key, same "empty = no
 # secret" lifecycle as github_feedback_token above -- this is a dev-only trial
 # (AiGatewayJevOptions's own doc comment), never a demo/prod secret.

@@ -87,6 +87,18 @@ resource "azurerm_container_app" "api" {
     }
   }
 
+  # F3-T11 keyed web-query hash: present only when this environment has a
+  # key (modules/keyvault count-gates the secret) -- API app only.
+  dynamic "secret" {
+    for_each = var.query_hash_key_secret_id == null ? [] : [1]
+
+    content {
+      name                = "query-hash-key"
+      key_vault_secret_id = var.query_hash_key_secret_id
+      identity            = var.workload_identity_id
+    }
+  }
+
   template {
     min_replicas = 0
     # ADR-005 w15 footer §2: default 3, up from 1 -- not cosmetic. A15-1
@@ -315,6 +327,14 @@ resource "azurerm_container_app" "api" {
         name        = "AiGateway__Jev__ApiKey"
         secret_name = var.jev_api_key_secret_id == null ? null : "jev-api-key"
         value       = var.jev_api_key_secret_id == null ? "" : null
+      }
+
+      # F3-T11: same shape. AiGateway:QueryHash:Key blank = the unkeyed
+      # SHA-256 (KeyedQueryHasher), so the empty literal is the safe default.
+      env {
+        name        = "AiGateway__QueryHash__Key"
+        secret_name = var.query_hash_key_secret_id == null ? null : "query-hash-key"
+        value       = var.query_hash_key_secret_id == null ? "" : null
       }
 
       # Task E16/F01/US01/T01 (NW-05, ADR-016 w15 footer clause 15):

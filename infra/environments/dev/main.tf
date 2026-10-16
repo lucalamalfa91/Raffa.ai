@@ -178,6 +178,8 @@ module "containerapps" {
   # instance only -- never demo's. AiGateway:Jev:Enabled itself rides
   # extra_gateway_env on module.foundry below, not this variable.
   jev_api_key_secret_id = module.keyvault.jev_api_key_secret_versionless_id
+  # F3-T11 keyed web-query hash: this root's OWN module.keyvault instance only.
+  query_hash_key_secret_id = module.keyvault.query_hash_key_secret_versionless_id
   # Task E16/F01/US01/T01 (NW-05, NW-67): this root's OWN module.identity
   # instance only -- never demo's.
   azuread_authority          = module.identity.issuer
@@ -207,7 +209,14 @@ module "foundry" {
   attach_shared_account = false
   publish_endpoint      = var.ai_gateway_wired
 
-  ai_operator_principal_ids = var.ai_operator_principal_ids
+  # The CI deploy principal is granted the same two data-plane roles when
+  # ci_deploy_ai_access is true: the seed-market-intelligence job runs the
+  # AI ingest curation (Market:Ingestion:Curation) from the runner and calls
+  # Foundry as that principal (az login -> DefaultAzureCredential).
+  ai_operator_principal_ids = distinct(concat(
+    var.ai_operator_principal_ids,
+    var.ci_deploy_ai_access ? [data.azuread_service_principal.ci_deploy.object_id] : [],
+  ))
   # ADR-030: the web-research kill switch rides the same published env map
   # as every other AiGateway__* knob (absent while unwired). Both roots
   # carry it -- demo is where the feature is being tested, not a later
@@ -278,6 +287,9 @@ module "keyvault" {
   # variable; empty keeps the secret uncreated, same lifecycle as
   # github_feedback_token above.
   jev_api_key = var.jev_api_key
+  # F3-T11: this root's own HCP workspace variable; empty keeps the secret
+  # uncreated (unkeyed query hash).
+  query_hash_key = var.query_hash_key
 }
 
 module "acr" {

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Raffa.AiFlows.Ask.Interview;
@@ -7,9 +8,11 @@ using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiFlows.CapabilityGaps.Drafting;
 using Raffa.AiFlows.CapabilityGaps.Investigation;
 using Raffa.AiFlows.DocumentExtraction.Orchestration;
+using Raffa.AiFlows.MarketKnowledge.Ingestion;
 using Raffa.AiFlows.Negotiation.Options;
 using Raffa.AiFlows.QuoteExtraction;
 using Raffa.AiFlows.WebResearch.Configuration;
+using Raffa.AiFlows.WebResearch.Pipeline;
 using Raffa.Market.Ingestion;
 using Raffa.Market.Retrieval;
 
@@ -39,11 +42,12 @@ public sealed class DevAiFlowsEnvBindingTests
         (InterviewOptions.SectionName, typeof(InterviewOptions)),
         (WebResearchOptions.SectionName, typeof(WebResearchOptions)),
         (MarketIngestionOptions.SectionName, typeof(MarketIngestionOptions)),
+        (MarketCurationOptions.SectionName, typeof(MarketCurationOptions)),
         (MarketRetrievalOptions.SectionName, typeof(MarketRetrievalOptions)),
     ];
 
     private static readonly Regex MapLine = new(
-        "^\\s+(?<key>[A-Za-z0-9_]+)\\s*=\\s*\"(?<value>[^\"]*)\"\\s*$", RegexOptions.Compiled);
+        "^\\s+\"?(?<key>[A-Za-z0-9_.\\-]+)\"?\\s*=\\s*\"(?<value>[^\"]*)\"\\s*$", RegexOptions.Compiled);
 
     private static readonly Regex WorkflowLine = new(
         "^\\s+(?<key>Market__Ingestion__\\w+):\\s*\\$\\{\\{\\s*inputs\\.target_environment == 'dev' && '(?<value>[^']*)' \\|\\| '[^']*'\\s*\\}\\}\\s*$",
@@ -66,76 +70,106 @@ public sealed class DevAiFlowsEnvBindingTests
     {
         foreach (var (key, value) in ReadDevMap().Concat(ReadWorkflowMap()))
         {
-            var (_, property, defaults) = Resolve(key);
-            if (property.PropertyType != typeof(bool) || !bool.Parse(value))
+            var r = Resolve(key);
+            if (r.Property.PropertyType != typeof(bool) || !bool.Parse(value))
             {
                 continue;
             }
 
             Assert.False(
-                (bool)property.GetValue(defaults)!,
+                (bool)r.Property.GetValue(r.Defaults)!,
                 $"{key}=true is already the code default; drop it from the dev map.");
         }
     }
 
     [Fact]
-    public void Enum_and_numeric_entries_are_not_silently_the_code_default_unless_they_pin_it_on_purpose()
+    public void Numeric_and_enum_entries_differ_from_the_code_default_unless_pinned_on_purpose()
     {
-        // The two pinned modes: Shadow is the intended "on" state of the verifiers (Gate stays off the
-        // map), Triggered is the investigator's default mode written down so a code change cannot flip it.
-        var pinned = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "Documents__Extraction__SpanVerification",
-            "Documents__Extraction__CrossStageValidation",
-            "Chat__GapInvestigation__Mode",
-        };
+        // Triggered is the investigator's default mode written down so a code change cannot flip it.
+        var pinned = new HashSet<string>(StringComparer.Ordinal) { "Chat__GapInvestigation__Mode" };
 
-        foreach (var (key, value) in ReadDevMap())
+        foreach (var (key, value) in ReadDevMap().Concat(ReadWorkflowMap()))
         {
-            var (_, property, defaults) = Resolve(key);
-            if (property.PropertyType == typeof(bool) || pinned.Contains(key))
+            var r = Resolve(key);
+            if (r.Property.PropertyType == typeof(bool) || r.DictionaryKey is not null || pinned.Contains(key))
             {
                 continue;
             }
 
-            Assert.NotEqual(Parse(property.PropertyType, value), property.GetValue(defaults));
+            Assert.NotEqual(Parse(r.Property.PropertyType, value), r.Property.GetValue(r.Defaults));
         }
     }
 
     [Fact]
-    public void The_modes_pinned_on_purpose_are_the_non_enforcing_ones()
+    public void The_verifiers_are_in_gate_mode_and_the_investigator_is_pinned_to_triggered()
     {
         var map = ReadDevMap();
 
-        Assert.Equal("Shadow", map["Documents__Extraction__SpanVerification"]);
-        Assert.Equal("Shadow", map["Documents__Extraction__CrossStageValidation"]);
+        Assert.Equal("Gate", map["Documents__Extraction__SpanVerification"]);
+        Assert.Equal("Gate", map["Documents__Extraction__CrossStageValidation"]);
         Assert.Equal("Triggered", map["Chat__GapInvestigation__Mode"]);
     }
 
     [Fact]
-    public void Switches_with_their_own_variable_or_a_missing_prerequisite_are_not_in_the_dev_map()
+    public void The_per_process_token_limit_is_the_dev_chat_quota_split_across_the_worker_replicas()
+    {
+        // 300K TPM (gpt-5.4-nano, infra/environments/dev/main.tf) / 5 replicas (worker_max_replicas).
+        Assert.Equal(300_000 / 5, int.Parse(ReadDevMap()["Documents__Extraction__TokensPerMinuteLimit"], CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void Switches_with_their_own_variable_or_secret_or_left_off_by_decision_are_not_in_the_dev_map()
     {
         var keys = ReadDevMap().Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // Own Terraform variables / Key Vault secrets.
+        // Own Terraform variables / Key Vault secrets (query-hash-key, jev-api-key).
         Assert.DoesNotContain("Chat__WebResearch__Enabled", keys);
-        Assert.DoesNotContain("AiGateway__Jev__Enabled", keys);
-        Assert.DoesNotContain("AiGateway__Jev__ApiKey", keys);
         Assert.DoesNotContain("AiGateway__QueryHash__Key", keys);
 
-        // Need a golden set (F7-D08), a source policy, a provider quota or the real AI agents.
-        Assert.DoesNotContain("Market__Retrieval__Hybrid", keys);
-        Assert.DoesNotContain("Market__Retrieval__Diversify", keys);
-        Assert.DoesNotContain("Chat__WebResearch__MaxSourceTier", keys);
-        Assert.DoesNotContain("Chat__WebResearch__VendorMasterAsTier1", keys);
-        Assert.DoesNotContain("Documents__Extraction__TokensPerMinuteLimit", keys);
-        Assert.DoesNotContain("Market__Ingestion__Curation__Enabled", keys);
+        // Left off: no real key (Jev), decision D5 = no visible label, no invented deny-list.
+        Assert.DoesNotContain(keys, k => k.StartsWith("AiGateway__Jev__", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(keys, k => k.StartsWith("Market__Provenance__", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(keys, k => k.StartsWith("Chat__WebResearch__DeniedDomains", StringComparison.OrdinalIgnoreCase));
 
         // Market ingestion is not read by the Container Apps at all (see the workflow test below).
         Assert.DoesNotContain(keys, k => k.StartsWith("Market__Ingestion__", StringComparison.OrdinalIgnoreCase));
+    }
 
-        // Gate is a decision after Shadow has been measured, not part of "enabled".
-        Assert.DoesNotContain(ReadDevMap().Values, v => string.Equals(v, "Gate", StringComparison.OrdinalIgnoreCase));
+    [Fact]
+    public void The_market_retrieval_and_web_policy_flags_are_on()
+    {
+        var map = ReadDevMap();
+
+        Assert.Equal("true", map["Market__Retrieval__Hybrid"]);
+        Assert.Equal("true", map["Market__Retrieval__Diversify"]);
+        Assert.Equal("true", map["Chat__WebResearch__VendorMasterAsTier1"]);
+        Assert.Equal("3", map["Chat__WebResearch__MaxSourceTier"]);
+    }
+
+    [Fact]
+    public void The_domain_tiers_come_from_the_vendor_master_and_skip_tenant_hosted_domains()
+    {
+        const string prefix = "Chat__WebResearch__DomainTiers__";
+        var mapped = ReadDevMap().Where(e => e.Key.StartsWith(prefix, StringComparison.Ordinal))
+            .ToDictionary(e => e.Key[prefix.Length..], e => e.Value, StringComparer.OrdinalIgnoreCase);
+        Assert.All(mapped.Values, v => Assert.Equal("1", v));
+
+        using var json = JsonDocument.Parse(File.ReadAllText(RepoFile("backend/tests/Raffa.AiEval/golden/pending/vendor-master.v1.json")));
+        var draft = json.RootElement.GetProperty("vendors").EnumerateArray()
+            .SelectMany(v => v.GetProperty("officialDomains").EnumerateArray().Select(d => d.GetString()!))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var tenantHosted = new[] { "atlassian.net", "amazonaws.com", "google.com" };
+
+        Assert.Equal(
+            draft.Except(tenantHosted, StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal),
+            mapped.Keys.Order(StringComparer.Ordinal));
+
+        // The code's own master (VendorMasterAsTier1) adds ibm, snowflake, databricks, ... at tier 1; where
+        // both name a domain they must agree, because the configuration wins over the master.
+        foreach (var domain in WebVendorMaster.All.SelectMany(v => v.OfficialDomains))
+        {
+            Assert.True(!mapped.TryGetValue(domain, out var tier) || tier == "1", $"{domain} must be tier 1");
+        }
     }
 
     [Fact]
@@ -144,16 +178,25 @@ public sealed class DevAiFlowsEnvBindingTests
         var workflow = ReadWorkflowMap();
 
         Assert.Equal(
-            ["Market__Ingestion__BlueGreen", "Market__Ingestion__CheckpointPerBatch", "Market__Ingestion__EmbedBatchSize"],
+            [
+                "Market__Ingestion__BlueGreen",
+                "Market__Ingestion__CheckpointPerBatch",
+                "Market__Ingestion__Curation__Enabled",
+                "Market__Ingestion__EmbedBatchSize",
+                "Market__Ingestion__EmbedTokensPerMinute",
+            ],
             workflow.Keys.Order(StringComparer.Ordinal).ToArray());
         AssertBinds(workflow);
     }
 
     // --------------------------------------------------------------------------------------------
 
+    private sealed record Resolved(
+        (string Section, Type Options) Target, PropertyInfo Property, object Defaults, string? DictionaryKey);
+
     private static void AssertBinds(IReadOnlyDictionary<string, string> env)
     {
-        // The environment-variable provider maps "__" to ":" and nothing else.
+        // The environment-variable provider maps "__" to ":" and nothing else (dots stay in the key).
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(env.ToDictionary(e => e.Key.Replace("__", ":", StringComparison.Ordinal), e => (string?)e.Value))
             .Build();
@@ -161,19 +204,28 @@ public sealed class DevAiFlowsEnvBindingTests
         var bound = new Dictionary<Type, object>();
         foreach (var (key, expected) in env)
         {
-            var (target, property, _) = Resolve(key);
-            if (!bound.TryGetValue(target.Options, out var options))
+            var r = Resolve(key);
+            if (!bound.TryGetValue(r.Target.Options, out var options))
             {
-                options = Activator.CreateInstance(target.Options)!;
-                configuration.GetSection(target.Section).Bind(options);
-                bound[target.Options] = options;
+                options = Activator.CreateInstance(r.Target.Options)!;
+                configuration.GetSection(r.Target.Section).Bind(options);
+                bound[r.Target.Options] = options;
             }
 
-            Assert.Equal(Parse(property.PropertyType, expected), property.GetValue(options));
+            var actual = r.Property.GetValue(options);
+            if (r.DictionaryKey is null)
+            {
+                Assert.Equal(Parse(r.Property.PropertyType, expected), actual);
+            }
+            else
+            {
+                var tiers = Assert.IsType<Dictionary<string, int>>(actual);
+                Assert.Equal(int.Parse(expected, CultureInfo.InvariantCulture), tiers[r.DictionaryKey]);
+            }
         }
     }
 
-    private static ((string Section, Type Options) Target, PropertyInfo Property, object Defaults) Resolve(string envKey)
+    private static Resolved Resolve(string envKey)
     {
         var path = envKey.Replace("__", ":", StringComparison.Ordinal);
         var target = Targets
@@ -182,13 +234,20 @@ public sealed class DevAiFlowsEnvBindingTests
         Assert.True(target.Options is not null, $"{envKey}: no options section matches (typo in the section name?).");
 
         var name = path[(target.Section.Length + 1)..];
-        var property = target.Options.GetProperty(
-            name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-        Assert.True(
-            property is not null && property.CanWrite && name.Equals(property.Name, StringComparison.OrdinalIgnoreCase),
-            $"{envKey}: {target.Options.Name} has no settable property '{name}' (typo in the key?).");
+        var separator = name.IndexOf(':', StringComparison.Ordinal);
+        var propertyName = separator < 0 ? name : name[..separator];
+        var dictionaryKey = separator < 0 ? null : name[(separator + 1)..];
 
-        return (target, property!, Activator.CreateInstance(target.Options)!);
+        var property = target.Options.GetProperty(
+            propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        Assert.True(
+            property is not null && property.CanWrite && propertyName.Equals(property.Name, StringComparison.OrdinalIgnoreCase),
+            $"{envKey}: {target.Options.Name} has no settable property '{propertyName}' (typo in the key?).");
+        Assert.True(
+            dictionaryKey is null || property!.PropertyType == typeof(Dictionary<string, int>),
+            $"{envKey}: '{propertyName}' is not a dictionary, so it cannot take a sub-key.");
+
+        return new Resolved(target, property!, Activator.CreateInstance(target.Options)!, dictionaryKey);
     }
 
     private static object? Parse(Type type, string text)

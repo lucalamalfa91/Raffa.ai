@@ -79,13 +79,18 @@ jobs:
     # Market:Ingestion:* is read only by this one-shot `ingest-market` command
     # (the Container Apps never ingest), so the F7 ingestion flags cannot ride
     # the Container Apps env map; they are switched on here, for dev only
-    # (docs/ai-flows-dev-flags.md). demo keeps the code defaults. Curation
-    # (Market:Ingestion:Curation:Enabled) is NOT enabled: it needs the AI
-    # agents, and this job deliberately runs the fixture gateway.
+    # (docs/ai-flows-dev-flags.md). demo keeps the code defaults and the
+    # fixture gateway. Curation needs the real agents: the step "Resolve the
+    # Foundry gateway (dev)" below copies the dev Worker's AiGateway__* env
+    # onto this job, and switches Curation back off (with a warning) when it
+    # cannot. EmbedTokensPerMinute 80000 = 80% of the 100K TPM text-embedding
+    # deployment of dev (infra/environments/dev/main.tf).
     env:
       Market__Ingestion__BlueGreen: ${{ inputs.target_environment == 'dev' && 'true' || 'false' }}
       Market__Ingestion__CheckpointPerBatch: ${{ inputs.target_environment == 'dev' && 'true' || 'false' }}
       Market__Ingestion__EmbedBatchSize: ${{ inputs.target_environment == 'dev' && '64' || '1' }}
+      Market__Ingestion__EmbedTokensPerMinute: ${{ inputs.target_environment == 'dev' && '80000' || '0' }}
+      Market__Ingestion__Curation__Enabled: ${{ inputs.target_environment == 'dev' && 'true' || 'false' }}
     permissions:
       id-token: write # required so GitHub issues the OIDC token azure/login exchanges
       contents: read
@@ -110,6 +115,35 @@ jobs:
 
       - name: Resolve resource group
         run: echo "RESOURCE_GROUP=rg-raffa-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      # Dev only: run the ingest on the real Foundry gateway so the curation
+      # agents (data quality, provenance) and the embeddings are real. The
+      # non-secret AiGateway__* values (endpoint, project, model ids) are read
+      # from the dev Worker Container App, which already holds them (the same
+      # `az containerapp show` read backend.yml performs with this principal);
+      # secret-backed entries have no literal value and are skipped. Calling
+      # Foundry from the runner needs the OIDC deploy principal to hold
+      # Cognitive Services User + OpenAI User on aisvc-raffa: granted by
+      # infra/environments/dev (ci_deploy_ai_access). Missing endpoint or an
+      # unreadable app => Curation is switched off and the run stays on the
+      # fixture gateway, loudly.
+      - name: Resolve the Foundry gateway (dev)
+        if: ${{ inputs.target_environment == 'dev' }}
+        run: |
+          set -uo pipefail
+          az extension add --name containerapp -y >/dev/null 2>&1 || true
+          ENV_LINES=$(az containerapp show \
+            --name "ca-raffa-${TARGET_ENVIRONMENT}-worker" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "properties.template.containers[0].env[?starts_with(name, 'AiGateway__') && value != null && value != '' && !starts_with(name, 'AiGateway__Jev__') && !starts_with(name, 'AiGateway__QueryHash__')].[name, value]" \
+            -o tsv 2>/tmp/ca_show.err | tr '\t' '=') || true
+          if printf '%s\n' "$ENV_LINES" | grep -q '^AiGateway__Endpoint='; then
+            printf '%s\n' "$ENV_LINES" >> "$GITHUB_ENV"
+            echo "Foundry gateway env copied: $(printf '%s\n' "$ENV_LINES" | cut -d= -f1 | tr '\n' ' ')"
+          else
+            echo "Market__Ingestion__Curation__Enabled=false" >> "$GITHUB_ENV"
+            echo "::warning::AiGateway__Endpoint is not published on ca-raffa-${TARGET_ENVIRONMENT}-worker (ai_gateway_wired false, or the app is unreadable: $(tail -c 300 /tmp/ca_show.err | tr '\n' ' ')). Ingest curation is OFF for this run and the fixture gateway is used."
+          fi
 
       - name: Install postgresql-client
         run: |
@@ -221,6 +255,8 @@ jobs:
       # registered instead, and its consumer never starts because the command
       # returns before host.Run().
       #
+      # (dev only: "Resolve the Foundry gateway (dev)" above exports the Foundry
+      # env into this job; everything below describes demo.)
       # AiGateway__Endpoint is deliberately not set: with it unset the gateway
       # DI swap keeps the fixture `embed` role (ADR-004 / R-AI-01), which is
       # deterministic and costs nothing -- the market *notes* index is
