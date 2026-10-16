@@ -1,0 +1,173 @@
+name: jev-benchmark
+
+# Manual before/after benchmark of the Jev integration (docs/jev-benchmark.md).
+#
+# Arm A = Foundry only, arm B = Jev with the Foundry fallback, the same labelled cases through both.
+# The run CALLS THE LIVE Foundry deployment and Jev (OpenRouter), and is billed. It is therefore:
+#   - workflow_dispatch only: never wired to push / pull_request / schedule, so CI never calls out;
+#   - dev only: it uses the `dev` GitHub Environment and the dev deploy principal (OIDC, ADR-015);
+#   - key-free in the repo: the Jev key is read at run time from the dev Key Vault secret `jev-api-key`
+#     (written by Terraform from the sensitive HCP variable `jev_api_key`) and masked. No GitHub secret
+#     and no value in this file.
+# Prerequisites (see docs/jev-benchmark.md): jev_api_key set in HCP workspace raffa-dev and applied,
+# ai_gateway_wired = true, ci_deploy_ai_access = true (the deploy principal needs the Foundry data-plane
+# roles, same as seed-market-intelligence).
+on:
+  workflow_dispatch:
+    inputs:
+      tracks:
+        description: 'Which comparison to run: classify (document type), gaps (capability investigator) or both.'
+        required: true
+        type: choice
+        options: [both, classify, gaps]
+        default: both
+      repetitions:
+        description: 'Repetitions per case and arm (run-to-run stability needs at least 2).'
+        required: true
+        type: string
+        default: '3'
+      warmup_calls:
+        description: 'Warm-up calls per arm that are made and then discarded.'
+        required: true
+        type: string
+        default: '2'
+      max_cases_per_track:
+        description: 'Use only the first N cases of each track (0 = all). Start small: every call is billed.'
+        required: true
+        type: string
+        default: '0'
+      foundry_usd_per_1m_input_tokens:
+        description: 'Optional: Foundry list price, USD per 1M input tokens, to estimate cost (blank = tokens only).'
+        required: false
+        type: string
+        default: ''
+      foundry_usd_per_1m_output_tokens:
+        description: 'Optional: Foundry list price, USD per 1M output tokens.'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jev-benchmark
+  cancel-in-progress: false
+
+env:
+  TARGET_ENVIRONMENT: dev
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  benchmark:
+    name: jev before/after (dev)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: dev
+    permissions:
+      id-token: write # required so GitHub issues the OIDC token azure/login exchanges
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Resolve resource group
+        run: echo "RESOURCE_GROUP=rg-raffa-${TARGET_ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      # Copies the NON-secret gateway configuration the dev API app runs with (Foundry endpoint, model
+      # ids, Jev model/thresholds, investigator flags) so the benchmark measures exactly what dev runs.
+      # Secrets are excluded by name; the Jev key is fetched separately below.
+      - name: Resolve the Foundry gateway configuration (dev)
+        run: |
+          set -uo pipefail
+          az extension add --name containerapp -y >/dev/null 2>&1 || true
+          ENV_LINES=$(az containerapp show \
+            --name "ca-raffa-${TARGET_ENVIRONMENT}-api" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "properties.template.containers[0].env[?(starts_with(name, 'AiGateway__') || starts_with(name, 'Chat__GapInvestigation__')) && value != null && value != '' && name != 'AiGateway__Jev__ApiKey' && !starts_with(name, 'AiGateway__QueryHash__')].[name, value]" \
+            -o tsv 2>/tmp/ca_show.err | tr '\t' '=') || true
+          if ! printf '%s\n' "$ENV_LINES" | grep -q '^AiGateway__Endpoint='; then
+            echo "::error::AiGateway__Endpoint is not published on ca-raffa-${TARGET_ENVIRONMENT}-api (ai_gateway_wired false, or the app is unreadable: $(tail -c 300 /tmp/ca_show.err | tr '\n' ' ')). The benchmark needs the Foundry deployment."
+            exit 1
+          fi
+          printf '%s\n' "$ENV_LINES" >> "$GITHUB_ENV"
+          echo "Gateway env copied: $(printf '%s\n' "$ENV_LINES" | cut -d= -f1 | tr '\n' ' ')"
+
+      - name: Fetch the Jev API key from Key Vault
+        run: |
+          set -euo pipefail
+          KV_NAME=$(az keyvault list --resource-group "$RESOURCE_GROUP" --query "[0].name" -o tsv)
+          if [ -z "$KV_NAME" ]; then
+            echo "::error::no Key Vault found in resource group $RESOURCE_GROUP."
+            exit 1
+          fi
+          set +e
+          JEV_KEY=$(az keyvault secret show --vault-name "$KV_NAME" --name jev-api-key --query value -o tsv 2>/tmp/kv_secret_show.err)
+          KV_STATUS=$?
+          set -e
+          if [ $KV_STATUS -ne 0 ] || [ -z "$JEV_KEY" ]; then
+            echo "::error::secret 'jev-api-key' is not readable in $KV_NAME. Set the sensitive HCP variable jev_api_key in workspace raffa-${TARGET_ENVIRONMENT} and apply it; also check the deploy principal has 'Key Vault Secrets User'. Azure CLI said: $(tail -c 300 /tmp/kv_secret_show.err | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::add-mask::$JEV_KEY"
+          echo "AiGateway__Jev__ApiKey=$JEV_KEY" >> "$GITHUB_ENV"
+
+      - name: dotnet restore + build (benchmark project only)
+        working-directory: backend
+        run: |
+          dotnet restore tests/Raffa.JevBenchmark.Tests/Raffa.JevBenchmark.Tests.csproj
+          dotnet build tests/Raffa.JevBenchmark.Tests/Raffa.JevBenchmark.Tests.csproj --configuration Release --no-restore
+
+      # Inputs reach the run only as environment variables (never interpolated into the script).
+      - name: Run the benchmark (LIVE calls, billed)
+        working-directory: backend
+        env:
+          RAFFA_JEV_BENCH: "1"
+          RAFFA_JEV_BENCH_OUT: ${{ runner.temp }}/jev-benchmark-out
+          RAFFA_JEV_BENCH_TRACKS_INPUT: ${{ inputs.tracks }}
+          RAFFA_JEV_BENCH_REPS: ${{ inputs.repetitions }}
+          RAFFA_JEV_BENCH_WARMUP: ${{ inputs.warmup_calls }}
+          RAFFA_JEV_BENCH_MAX_CASES: ${{ inputs.max_cases_per_track }}
+          RAFFA_JEV_BENCH_FOUNDRY_USD_PER_1M_IN: ${{ inputs.foundry_usd_per_1m_input_tokens }}
+          RAFFA_JEV_BENCH_FOUNDRY_USD_PER_1M_OUT: ${{ inputs.foundry_usd_per_1m_output_tokens }}
+          RAFFA_JEV_BENCH_GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$RAFFA_JEV_BENCH_TRACKS_INPUT" = "both" ]; then
+            export RAFFA_JEV_BENCH_TRACKS="classify,gaps"
+          else
+            export RAFFA_JEV_BENCH_TRACKS="$RAFFA_JEV_BENCH_TRACKS_INPUT"
+          fi
+          dotnet test tests/Raffa.JevBenchmark.Tests/Raffa.JevBenchmark.Tests.csproj \
+            --configuration Release --no-build \
+            --filter "Category=JevBenchmark" \
+            --logger "console;verbosity=detailed"
+
+      - name: Publish the report in the job summary
+        if: ${{ always() }}
+        run: |
+          REPORT="${RUNNER_TEMP}/jev-benchmark-out/jev-benchmark-report.md"
+          if [ -f "$REPORT" ]; then
+            cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report was written (the run failed before producing results)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload JSON + Markdown result
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: jev-benchmark-${{ github.run_id }}
+          path: ${{ runner.temp }}/jev-benchmark-out/
+          if-no-files-found: warn
+          retention-days: 90
