@@ -33,6 +33,7 @@
     <Project Path="tests/Raffa.Identity.Workspace.Tests/Raffa.Identity.Workspace.Tests.csproj" />
     <Project Path="tests/Raffa.Insights.Tests/Raffa.Insights.Tests.csproj" />
     <Project Path="tests/Raffa.IntegrationTests/Raffa.IntegrationTests.csproj" />
+    <Project Path="tests/Raffa.JevBenchmark.Tests/Raffa.JevBenchmark.Tests.csproj" />
     <Project Path="tests/Raffa.Market.Tests/Raffa.Market.Tests.csproj" />
     <Project Path="tests/Raffa.Quotes.Tests/Raffa.Quotes.Tests.csproj" />
     <Project Path="tests/Raffa.Renewals.Tests/Raffa.Renewals.Tests.csproj" />
