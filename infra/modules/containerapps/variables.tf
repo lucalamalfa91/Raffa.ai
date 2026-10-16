@@ -228,6 +228,15 @@ variable "jev_api_key_secret_id" {
   default     = null
 }
 
+# F3-T11 keyed web-query hash -- API app only (the app that writes web-research
+# audit rows). null when this environment has no key: the backend then falls
+# back to the unkeyed SHA-256, exactly as before.
+variable "query_hash_key_secret_id" {
+  description = "Versionless Key Vault secret ID for query-hash-key (modules/keyvault query_hash_key_secret_versionless_id), or null when this environment has no key."
+  type        = string
+  default     = null
+}
+
 variable "feedback_github_enabled" {
   description = "Publishes Feedback__GitHub__Enabled on the API app -- true only when this is true AND a token secret exists (true on both dev and demo -- infra/environments/{dev,demo}/variables.tf; the token's presence in each HCP workspace is the real gate)."
   type        = bool

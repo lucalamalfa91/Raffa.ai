@@ -41,6 +41,14 @@ output "github_feedback_token_secret_versionless_id" {
   sensitive   = true
 }
 
+# F3-T11: null when no key was supplied (the secret is count-gated), which
+# modules/containerapps reads as "no query-hash-key secret, unkeyed hash".
+output "query_hash_key_secret_versionless_id" {
+  description = "Versionless Key Vault secret ID for query-hash-key, consumed by the API Container App's secret { key_vault_secret_id }; null when no key was supplied."
+  value       = length(azurerm_key_vault_secret.query_hash_key) > 0 ? azurerm_key_vault_secret.query_hash_key[0].versionless_id : null
+  sensitive   = true
+}
+
 # Jev classify-role pilot: null when no key was supplied (the secret is
 # count-gated), which modules/containerapps reads as "no jev-api-key secret,
 # pilot cannot start even if AiGateway:Jev:Enabled is true".
