@@ -213,6 +213,10 @@ module "foundry" {
   # carry it -- demo is where the feature is being tested, not a later
   # promotion step.
   extra_gateway_env = merge(
+    # Raffa.AiFlows behaviour flags (dev only, var.ai_flows_env). Listed first
+    # so an operator's ai_gateway_extra_env can still override one key, and
+    # the dedicated switches below always win.
+    var.ai_flows_env,
     var.ai_gateway_extra_env,
     { Chat__WebResearch__Enabled = var.web_research_enabled ? "true" : "false" },
     # Jev classify-role pilot (dev-only trial, AiGatewayJevOptions): the kill

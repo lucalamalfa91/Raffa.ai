@@ -76,6 +76,16 @@ jobs:
     # Same GitHub Environment backend.yml's deploy job uses, so `demo`'s
     # required reviewers (ADR-014 / ADR-016) gate this exactly like a deploy.
     environment: ${{ inputs.target_environment }}
+    # Market:Ingestion:* is read only by this one-shot `ingest-market` command
+    # (the Container Apps never ingest), so the F7 ingestion flags cannot ride
+    # the Container Apps env map; they are switched on here, for dev only
+    # (docs/ai-flows-dev-flags.md). demo keeps the code defaults. Curation
+    # (Market:Ingestion:Curation:Enabled) is NOT enabled: it needs the AI
+    # agents, and this job deliberately runs the fixture gateway.
+    env:
+      Market__Ingestion__BlueGreen: ${{ inputs.target_environment == 'dev' && 'true' || 'false' }}
+      Market__Ingestion__CheckpointPerBatch: ${{ inputs.target_environment == 'dev' && 'true' || 'false' }}
+      Market__Ingestion__EmbedBatchSize: ${{ inputs.target_environment == 'dev' && '64' || '1' }}
     permissions:
       id-token: write # required so GitHub issues the OIDC token azure/login exchanges
       contents: read

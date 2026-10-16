@@ -45,6 +45,83 @@ variable "ai_gateway_extra_env" {
   default     = {}
 }
 
+# Raffa.AiFlows behaviour flags, ALL ON in dev only (demo and the code defaults
+# are untouched: every one of these ships Off / Shadow in the options classes).
+# Published through module.foundry's extra_gateway_env, so -- like every other
+# AiGateway__* knob -- they reach both Container Apps only while
+# ai_gateway_wired is true. Keys are the ASP.NET Core env form of the options
+# keys (":" -> "__"); backend/tests/Raffa.AiFlows.Tests/Configuration/
+# DevAiFlowsEnvBindingTests parses THIS default and binds it through the real
+# options classes, so a mistyped key fails CI. Flag -> purpose and the flags
+# deliberately NOT enabled: docs/ai-flows-dev-flags.md. Keep one
+# `Key = "value"` per line (the test reads the block as text).
+variable "ai_flows_env" {
+  description = "Non-secret Raffa.AiFlows behaviour flags enabled in dev (env-var form of Documents:Extraction:*, QuoteExtraction:*, Chat:AskTurn:*, Chat:GapInvestigation:*, Chat:Council:*, Chat:Drafting:*, Chat:Interview:*, Chat:WebResearch:*). Merged into extra_gateway_env; published to both Container Apps only when ai_gateway_wired is true. Set to {} to return dev to the code defaults. Chat__WebResearch__Enabled and AiGateway__Jev__Enabled have their own variables and must not be set here."
+  type        = map(string)
+  default = {
+    # F5 document extraction (Documents:Extraction). Span verification and
+    # cross-stage rules stay in Shadow: they log and meter without changing a
+    # value, which is the "on" state; Gate would route facts to review on
+    # unmeasured false positives.
+    Documents__Extraction__UseContextDependencies   = "true"
+    Documents__Extraction__MaxConcurrentStages      = "4"
+    Documents__Extraction__TransientRetriesPerStage = "1"
+    Documents__Extraction__SpanVerification         = "Shadow"
+    Documents__Extraction__CrossStageValidation     = "Shadow"
+    Documents__Extraction__DocumentFirstPrompt      = "true"
+    Documents__Extraction__SecondOpinionShadow      = "true"
+
+    # F6 quote extraction header stage.
+    QuoteExtraction__HeaderStageEnabled = "true"
+
+    # F1 Ask turn (Chat:AskTurn).
+    Chat__AskTurn__BudgetBeforeAgents         = "true"
+    Chat__AskTurn__AgentPackReserveTokens     = "1500"
+    Chat__AskTurn__RevalidatePlaysAfterBudget = "true"
+    Chat__AskTurn__MemoizeTurnReads           = "true"
+    Chat__AskTurn__AnswerOnRunner             = "true"
+    Chat__AskTurn__AgentPhaseDeadline         = "00:02:00"
+    Chat__AskTurn__AnswerDeadline             = "00:02:00"
+    Chat__AskTurn__TurnDeadline               = "00:04:00"
+
+    # F4 capability investigator (Chat:GapInvestigation).
+    Chat__GapInvestigation__Mode         = "Triggered"
+    Chat__GapInvestigation__ContextTurns = "2"
+
+    # F2 negotiation council (Chat:Council).
+    Chat__Council__MarketResearchParallelQueries = "true"
+    Chat__Council__SemanticPlayRetry             = "true"
+    Chat__Council__MarketNoteValues              = "true"
+
+    # F4 drafting (Chat:Drafting).
+    Chat__Drafting__ReuseCouncilPlays  = "true"
+    Chat__Drafting__EnforceTone        = "true"
+    Chat__Drafting__LocalizedTemplates = "true"
+
+    # Interview stage 2: model interpretations (Chat:Interview).
+    Chat__Interview__UseModelStage = "true"
+
+    # F3 web research refinements (the kill switch itself is web_research_enabled).
+    Chat__WebResearch__AllowReportedFigures         = "true"
+    Chat__WebResearch__ChargeOnlyWhenSourcesFound   = "true"
+    Chat__WebResearch__StripTrackingParameters      = "true"
+    Chat__WebResearch__CiteSourcesOnAbstain         = "true"
+    Chat__WebResearch__RedactSensitiveQueryPatterns = "true"
+  }
+
+  validation {
+    condition = alltrue([
+      for k, v in var.ai_flows_env : !contains(["Chat__WebResearch__Enabled", "AiGateway__Jev__Enabled", "AiGateway__Jev__ApiKey", "AiGateway__QueryHash__Key"], k)
+    ])
+    error_message = "ai_flows_env must not carry Chat__WebResearch__Enabled (web_research_enabled), AiGateway__Jev__* (jev_enabled / jev_api_key) or any secret such as AiGateway__QueryHash__Key."
+  }
+
+  validation {
+    condition     = alltrue([for k, v in var.ai_flows_env : length(split("__", k)) >= 2])
+    error_message = "ai_flows_env keys must be in ASP.NET Core env-var form with \"__\" as the section separator."
+  }
+}
+
 # ADR-030: Ask Raffa's web research (kill switch). Published as
 # Chat__WebResearch__Enabled through the same gated env map; even when
 # true, a search needs the workspace Admin's opt-in and the user's consent
