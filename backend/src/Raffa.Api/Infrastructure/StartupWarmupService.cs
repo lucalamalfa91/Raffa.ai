@@ -107,17 +107,22 @@ internal static class StartupWarmupServiceCollectionExtensions
 /// <see cref="DbContext.Model"/> builds and caches the model from the entity configurations alone,
 /// and no service resolved here is invoked. It sets no ambient tenant or identity scope, so it
 /// cannot create a path around the RLS claims. It never throws and never delays host start: the
-/// work runs on a background task started from <see cref="StartAsync"/>, every step is isolated in
-/// its own try/catch (a context or service that cannot be built in some host, such as a test
-/// double, is logged and skipped), and a time budget stops it from starting new steps once spent.
+/// work runs on its own background thread started from <see cref="StartAsync"/>, every step is
+/// isolated in its own try/catch (a context or service that cannot be built in some host, such as a
+/// test double, is logged and skipped), and a time budget stops it from starting new steps once spent.
 /// </para>
 ///
 /// <para>
 /// <b>It yields to real traffic.</b> At 0.25 vCPU the whole warm-up is several seconds of CPU, and
-/// speculative work must not slow the very first requests it exists to speed up. So before each
-/// step it waits until no request is in flight (<see cref="StartupWarmupGate"/>): on a replica
-/// started to serve a waiting request it mostly steps aside, on one that starts idle (deploy,
-/// scale-out, a warm minimum replica) it runs straight through.
+/// speculative work must not slow the very first requests it exists to speed up (measured: with
+/// the warm-up at normal priority, a replica started to serve a waiting request answered its first
+/// <c>/health</c> about 3 s later). Two things keep it out of their way. Before each step it waits
+/// until no request is in flight (<see cref="StartupWarmupGate"/>). And on Linux its thread runs at
+/// the lowest scheduling priority (nice 19, <c>setpriority</c> on the calling thread only -- which is
+/// why it has a thread of its own, never a pool thread that would keep the low priority for real
+/// work), so while a request is running the warm-up only takes the CPU the request leaves free, for
+/// instance while it waits on the database. On a replica that starts idle (a deploy, a scale-out, a
+/// warm minimum replica) neither applies and it runs straight through.
 /// </para>
 ///
 /// <para>
@@ -139,6 +144,9 @@ internal sealed class StartupWarmupService(
 
     private static readonly TimeSpan IdlePollInterval = TimeSpan.FromMilliseconds(100);
 
+    private const int PrioProcess = 0;
+    private const int LowestPriorityNice = 19;
+
     // The scoped services every SPA screen goes through on its first calls (the shell's workspace,
     // documents and portfolio reads, and the caller/tenant resolution in front of them). Resolving
     // one builds its dependency-injection call site and constructs it; constructing performs no I/O.
@@ -151,8 +159,9 @@ internal sealed class StartupWarmupService(
         typeof(Contract360QueryService),
     ];
 
+    private readonly TaskCompletionSource _finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private CancellationTokenSource? _budget;
-    private Task _run = Task.CompletedTask;
+    private bool _started;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -170,12 +179,20 @@ internal sealed class StartupWarmupService(
 
             gate.StartTracking();
 
-            // Task.Run so a slow warm-up can never hold up Kestrel or another hosted service.
-            _run = Task.Run(() => RunAsync(budget), CancellationToken.None);
+            // A thread of its own, so a slow warm-up can never hold up Kestrel or another hosted
+            // service, and so lowering its priority cannot leak to a pool thread.
+            var thread = new Thread(() => RunOnDedicatedThread(budget))
+            {
+                IsBackground = true,
+                Name = "startup-warmup",
+            };
+            _started = true;
+            thread.Start();
         }
         catch (Exception exception)
         {
             // Never fail the host over an optimisation (bad config value, disposed provider, ...).
+            _started = false;
             gate.StopTracking();
             logger.LogWarning(exception, "Startup warm-up could not be started; continuing without it.");
         }
@@ -188,22 +205,69 @@ internal sealed class StartupWarmupService(
         try
         {
             _budget?.Cancel();
-            await _run.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (_started)
+            {
+                await _finished.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                _budget?.Dispose();
+                _budget = null;
+            }
         }
         catch (Exception exception)
         {
             // Includes the host's shutdown token firing; either way there is nothing to wait for.
+            // The thread is a background thread and its budget is already cancelled, so it ends on
+            // its own; the budget is then simply left for the finalizer.
             logger.LogDebug(exception, "Startup warm-up did not stop cleanly.");
         }
         finally
         {
             gate.StopTracking();
-            _budget?.Dispose();
-            _budget = null;
         }
     }
 
-    private async Task RunAsync(CancellationToken budget)
+    private void RunOnDedicatedThread(CancellationToken budget)
+    {
+        try
+        {
+            LowerThreadPriority();
+            Run(budget);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Startup warm-up stopped early.");
+        }
+        finally
+        {
+            gate.StopTracking();
+            _finished.TrySetResult();
+        }
+    }
+
+    // Linux only: nice 19 for the calling thread (setpriority with who = 0 addresses the calling
+    // thread, not the process). Raising one's own niceness needs no privilege, so it works for the
+    // non-root user the image runs as. Anything unexpected (musl, a sandbox, no libc.so.6) just
+    // leaves the thread at normal priority.
+    private void LowerThreadPriority()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        try
+        {
+            if (NativeMethods.SetPriority(PrioProcess, 0, LowestPriorityNice) != 0)
+            {
+                logger.LogDebug("Startup warm-up keeps its normal thread priority (setpriority failed).");
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
+        {
+            logger.LogDebug(exception, "Startup warm-up keeps its normal thread priority (libc not available).");
+        }
+    }
+
+    private void Run(CancellationToken budget)
     {
         var stopwatch = Stopwatch.StartNew();
         var models = 0;
@@ -220,7 +284,7 @@ internal sealed class StartupWarmupService(
             // connection.
             foreach (var contextType in plan.DbContextTypes)
             {
-                if (!await WaitForIdleAsync(budget).ConfigureAwait(false))
+                if (!WaitForIdle(budget))
                 {
                     skipped++;
                     continue;
@@ -241,7 +305,7 @@ internal sealed class StartupWarmupService(
             // 2) Key scoped services (DI call sites; construction only, no I/O).
             foreach (var serviceType in KeyServiceTypes)
             {
-                if (!await WaitForIdleAsync(budget).ConfigureAwait(false))
+                if (!WaitForIdle(budget))
                 {
                     skipped++;
                     continue;
@@ -263,7 +327,7 @@ internal sealed class StartupWarmupService(
             // 3) The serializer the endpoints answer with: first use pays for converter and
             // metadata construction. The host's own options instance is used, so the converters
             // warmed are the ones the responses will use.
-            if (await WaitForIdleAsync(budget).ConfigureAwait(false))
+            if (WaitForIdle(budget))
             {
                 try
                 {
@@ -284,10 +348,6 @@ internal sealed class StartupWarmupService(
             logger.LogWarning(exception, "Startup warm-up stopped early.");
             return;
         }
-        finally
-        {
-            gate.StopTracking();
-        }
 
         logger.LogInformation(
             "Startup warm-up finished in {ElapsedMs} ms: {Models} EF models, {Services} services, {Skipped} steps skipped (busy or out of time).",
@@ -301,7 +361,7 @@ internal sealed class StartupWarmupService(
     /// Waits until no request is in flight. <see langword="false"/> when the time budget ran out
     /// (or the host is stopping) first, in which case the caller skips its step.
     /// </summary>
-    private async Task<bool> WaitForIdleAsync(CancellationToken budget)
+    private bool WaitForIdle(CancellationToken budget)
     {
         while (!budget.IsCancellationRequested)
         {
@@ -310,14 +370,8 @@ internal sealed class StartupWarmupService(
                 return true;
             }
 
-            try
-            {
-                await Task.Delay(IdlePollInterval, budget).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return false;
-            }
+            // Wakes early when the budget is cancelled (budget expiry or host shutdown).
+            budget.WaitHandle.WaitOne(IdlePollInterval);
         }
 
         return false;
@@ -338,6 +392,14 @@ internal sealed class StartupWarmupService(
         var json = JsonSerializer.Serialize(sample, options);
         _ = JsonSerializer.Deserialize<WarmupPayload>(json, options);
         _ = JsonSerializer.SerializeToUtf8Bytes(new { ok = true, items = new[] { 1, 2, 3 } }, options);
+    }
+
+    private static class NativeMethods
+    {
+        // glibc by its versioned name: the plain "libc" probe needs the libc6-dev linker script,
+        // which the runtime images do not ship.
+        [System.Runtime.InteropServices.DllImport("libc.so.6", EntryPoint = "setpriority")]
+        public static extern int SetPriority(int which, int who, int priority);
     }
 
     private enum WarmupKind
