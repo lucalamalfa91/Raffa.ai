@@ -42,10 +42,13 @@ public static class MarketSupplierMatch
     private static readonly string[] LegalSuffixes =
         ["inc", "inc.", "llc", "ltd", "ltd.", "gmbh", "ag", "sa", "s.a.", "spa", "s.p.a.", "srl", "s.r.l.", "plc", "corp", "corporation", "co", "co."];
 
-    public static bool Matches(string dealSupplier, string wanted)
+    public static bool Matches(string dealSupplier, string wanted) =>
+        MatchesNormalized(Normalize(dealSupplier), Normalize(wanted));
+
+    /// <summary><see cref="Matches"/> for two names already folded with <see cref="Normalize"/>, so a
+    /// caller that holds the folded form (the corpus index) does not fold it again per comparison.</summary>
+    public static bool MatchesNormalized(string a, string b)
     {
-        var a = Normalize(dealSupplier);
-        var b = Normalize(wanted);
         if (a.Length == 0 || b.Length == 0)
         {
             return false;

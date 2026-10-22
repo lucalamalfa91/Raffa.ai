@@ -152,7 +152,8 @@ public static class ServiceCollectionExtensions
             services.TryAddEnumerable(ServiceDescriptor.Singleton<IBenchmarkProviderAdapter, MarketFeedBenchmarkAdapter>(sp =>
                 new MarketFeedBenchmarkAdapter(
                     sp.GetRequiredService<IDbContextFactory<MarketDbContext>>(),
-                    sp.GetRequiredService<IClock>())));
+                    sp.GetRequiredService<IClock>(),
+                    sp.GetRequiredService<MarketCorpusCache>())));
 
             // T-05: batch size / TPM budget / per-batch checkpoint of the ingestion job
             // (Market:Ingestion). Defaults are the pre-batching behaviour.
