@@ -50,6 +50,16 @@ public sealed record LineItemMarketPrice(
 /// </list>
 ///
 /// <para>
+/// <b>One refresh at a time per contract.</b> Contract 360 and its strategy pack read the same
+/// contract at once, so two requests may both find a line stale. The refresh (matcher, estimator,
+/// save) runs under a process-wide lock keyed by (tenant, contract): the second request waits, re-reads
+/// what the first stored and finds nothing left to do -- one estimate call and one write instead of
+/// two racing ones. A read that has nothing to refresh never takes the lock. Another process (the
+/// Worker's extraction pass) is not covered by an in-process lock; the unique index below still
+/// keeps one row there.
+/// </para>
+///
+/// <para>
 /// The matching itself is <see cref="IMarketPriceMatcher"/>'s (implemented in <c>Raffa.Market</c>,
 /// which this module may not reference — ADR-002). Both ports are optional: a host without the
 /// Market or Suppliers module composed in keeps whatever is stored and prices nothing new. A
@@ -68,6 +78,9 @@ public sealed class LineItemMarketPriceService(
 {
     /// <summary>How long a stored comparison is trusted before a read re-prices the line.</summary>
     public static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(6);
+
+    // Process-wide: the racing readers are different requests, each with its own scope and DbContext.
+    private static readonly KeyedAsyncLock<(Guid Tenant, Guid Contract)> RefreshLocks = new();
 
     private readonly ILogger _logger = logger ?? NullLogger<LineItemMarketPriceService>.Instance;
 
@@ -132,13 +145,34 @@ public sealed class LineItemMarketPriceService(
         // product of a bundle line read as the whole line's price. So is any line compared against
         // an older corpus: a re-ingested feed reaches the screen on the next read.
         var staleBefore = clock.UtcNow - RefreshAfter;
-        var toPrice = lineItems
-            .Where(l => force
-                || !stored.TryGetValue(l.Id, out var row)
-                || row.CheckedAt < staleBefore
-                || (row.RecordId is not null && row.MatchKind is null)
-                || (corpusVersion is not null && row.CorpusVersion != corpusVersion))
-            .ToList();
+        // Reads `stored` as it is when called: the lock below swaps it for a fresh read.
+        bool IsStale(EntityId lineItemId) => force
+            || !stored.TryGetValue(lineItemId, out var row)
+            || row.CheckedAt < staleBefore
+            || (row.RecordId is not null && row.MatchKind is null)
+            || (corpusVersion is not null && row.CorpusVersion != corpusVersion);
+        var toPrice = lineItems.Where(l => IsStale(l.Id)).ToList();
+        if (toPrice.Count == 0)
+        {
+            return ToResult(stored.Values);
+        }
+
+        // Only one refresh per contract at a time (see the type's remarks). Whoever waited re-reads
+        // what the refresh ahead of it stored -- this scope's tracked rows are stale by then -- and
+        // prices only what that refresh left undone.
+        using var refreshLock = await RefreshLocks
+            .AcquireAsync((tenantId.Value, contractId.Value), cancellationToken)
+            .ConfigureAwait(false);
+        foreach (var entry in dbContext.ChangeTracker.Entries<ContractLineItemMarketPrice>().ToList())
+        {
+            entry.State = EntityState.Detached;
+        }
+
+        stored = await dbContext.ContractLineItemMarketPrices
+            .Where(p => p.TenantId == tenantId && p.ContractId == contractId)
+            .ToDictionaryAsync(p => p.LineItemId, cancellationToken)
+            .ConfigureAwait(false);
+        toPrice = lineItems.Where(l => IsStale(l.Id)).ToList();
         if (toPrice.Count == 0)
         {
             return ToResult(stored.Values);
@@ -340,4 +374,91 @@ public sealed class LineItemMarketPriceService(
                 r.CheckedAt,
                 r.RecordId is null ? null : r.MatchKind ?? MarketMatchKind.Exact,
                 ToEstimate(r)));
+}
+
+/// <summary>
+/// An async mutual-exclusion lock per key, process-wide. A key's entry exists only while someone holds
+/// or waits for it, so a long-running process does not accumulate one per contract it ever saw; a waiter
+/// that is cancelled gives its place back.
+/// </summary>
+internal sealed class KeyedAsyncLock<TKey>
+    where TKey : notnull
+{
+    private readonly Dictionary<TKey, Entry> _entries = [];
+
+    /// <summary>Keys currently held or waited for (for tests).</summary>
+    public int ActiveKeys
+    {
+        get
+        {
+            lock (_entries)
+            {
+                return _entries.Count;
+            }
+        }
+    }
+
+    /// <summary>Waits until no one else holds <paramref name="key"/>, then holds it until the result is disposed.</summary>
+    public async Task<IDisposable> AcquireAsync(TKey key, CancellationToken cancellationToken)
+    {
+        Entry entry;
+        lock (_entries)
+        {
+            if (!_entries.TryGetValue(key, out entry!))
+            {
+                _entries[key] = entry = new Entry();
+            }
+
+            entry.Users++;
+        }
+
+        try
+        {
+            await entry.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            Leave(key, entry, held: false);
+            throw;
+        }
+
+        return new Releaser(this, key, entry);
+    }
+
+    private void Leave(TKey key, Entry entry, bool held)
+    {
+        if (held)
+        {
+            entry.Gate.Release();
+        }
+
+        lock (_entries)
+        {
+            // Nobody holds or waits for it any more: drop it. A caller arriving later makes a new one.
+            if (--entry.Users == 0)
+            {
+                _entries.Remove(key);
+            }
+        }
+    }
+
+    private sealed class Entry
+    {
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+
+        public int Users { get; set; }
+    }
+
+    private sealed class Releaser(KeyedAsyncLock<TKey> owner, TKey key, Entry entry) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                owner.Leave(key, entry, held: true);
+            }
+        }
+    }
 }

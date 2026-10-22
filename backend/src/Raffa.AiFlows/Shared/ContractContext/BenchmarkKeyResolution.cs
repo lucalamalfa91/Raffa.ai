@@ -62,23 +62,72 @@ public sealed class BenchmarkKeyResolution(
             return new BenchmarkKeyResult.Incomplete();
         }
 
-        // Geography — WorkspaceTenant.Country (ISO 3166-1 alpha-2). The workspace row's own
-        // TenantId equals the tenant id (WorkspaceFactory invariant), so RLS plus the explicit
-        // Where predicate both independently narrow to this tenant. The scope must be open for RLS;
-        // we open it here rather than assuming one is already active (same rule as AuditQueryService).
-        using var workspaceScope = tenantContext.BeginScope(tenantId);
-        var country = await identityDbContext.Workspaces
-            .Where(w => w.TenantId == tenantId)
-            .Select(w => w.Country)
-            .FirstOrDefaultAsync(cancellationToken)
-            .ConfigureAwait(false);
-
+        var country = await ReadWorkspaceCountryAsync(tenantId, cancellationToken).ConfigureAwait(false);
         if (country is null)
         {
             return new BenchmarkKeyResult.Incomplete();
         }
 
         return new BenchmarkKeyResult.Complete(supplierName, country);
+    }
+
+    /// <summary>
+    /// <see cref="ResolveAsync"/> for many suppliers of one tenant at once -- what a list screen
+    /// (Renewals) needs: one batched <see cref="ISupplierNameLookup"/> call and one workspace-country
+    /// read for the whole list, instead of two queries per row. Each entry is exactly what
+    /// <see cref="ResolveAsync"/> returns for that supplier id (a supplier whose name does not resolve,
+    /// or a workspace with no country, is <see cref="BenchmarkKeyResult.Incomplete"/>); a row with no
+    /// supplier id has no entry and reads as incomplete. Per tenant on purpose: nothing is kept
+    /// between calls, so no tenant's names or country can reach another's.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<EntityId, BenchmarkKeyResult>> ResolveManyAsync(
+        TenantId tenantId,
+        IReadOnlyCollection<EntityId> supplierIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(supplierIds);
+
+        var distinct = supplierIds.Distinct().ToList();
+        var keys = new Dictionary<EntityId, BenchmarkKeyResult>(distinct.Count);
+        if (distinct.Count == 0)
+        {
+            return keys;
+        }
+
+        IReadOnlyDictionary<EntityId, string> names;
+        using (tenantContext.BeginScope(tenantId))
+        {
+            names = await supplierNameLookup
+                .GetNamesAsync(tenantId, distinct, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // As in ResolveAsync, the workspace is only consulted once some supplier name resolved.
+        var country = distinct.Any(names.ContainsKey)
+            ? await ReadWorkspaceCountryAsync(tenantId, cancellationToken).ConfigureAwait(false)
+            : null;
+        foreach (var id in distinct)
+        {
+            keys[id] = names.TryGetValue(id, out var name) && country is not null
+                ? new BenchmarkKeyResult.Complete(name, country)
+                : new BenchmarkKeyResult.Incomplete();
+        }
+
+        return keys;
+    }
+
+    // Geography — WorkspaceTenant.Country (ISO 3166-1 alpha-2). The workspace row's own
+    // TenantId equals the tenant id (WorkspaceFactory invariant), so RLS plus the explicit
+    // Where predicate both independently narrow to this tenant. The scope must be open for RLS;
+    // we open it here rather than assuming one is already active (same rule as AuditQueryService).
+    private async Task<string?> ReadWorkspaceCountryAsync(TenantId tenantId, CancellationToken cancellationToken)
+    {
+        using var workspaceScope = tenantContext.BeginScope(tenantId);
+        return await identityDbContext.Workspaces
+            .Where(w => w.TenantId == tenantId)
+            .Select(w => w.Country)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 }
 
