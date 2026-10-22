@@ -152,6 +152,28 @@ variable "api_max_replicas" {
   default     = 3
 }
 
+# Warm-replica floor for the API app ONLY. 0 (the default) keeps scale-to-zero,
+# so a root that does not set it -- `dev` -- is unchanged. A floor of 1 keeps
+# one replica running (no ~23 s cold start for the first request after an idle
+# spell) at roughly $14/month on Consumption; ADR-005's amendment footer
+# records why only `demo` sets it. The worker has no such variable on purpose:
+# its `min_replicas` stays 0 (KEDA scales it from the queue; ADR-005 w15
+# footer §2 / ADR-027 reject a worker floor).
+#
+# `<= api_max_replicas` is enforced by a `precondition` on the API app
+# (main.tf), not here: a variable validation that reads another variable
+# needs Terraform >= 1.9 and this repo supports >= 1.8.0 (versions.tf).
+variable "api_min_replicas" {
+  description = "Minimum API replicas (warm floor). Default 0 = scale-to-zero. Must be a whole number between 0 and api_max_replicas. The worker's min_replicas is not configurable and stays 0."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.api_min_replicas >= 0 && var.api_min_replicas == floor(var.api_min_replicas)
+    error_message = "api_min_replicas must be a whole number >= 0."
+  }
+}
+
 variable "worker_max_replicas" {
   description = "Maximum worker replicas (ADR-005 w15 footer §2). min_replicas stays 0 -- raising that floor to 1 is rejected outright as a new fixed monthly cost line."
   type        = number

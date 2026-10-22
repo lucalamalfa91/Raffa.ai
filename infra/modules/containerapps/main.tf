@@ -100,7 +100,9 @@ resource "azurerm_container_app" "api" {
   }
 
   template {
-    min_replicas = 0
+    # Warm floor, default 0 (scale-to-zero). Only the `demo` root raises it
+    # (ADR-005 amendment footer); the worker below stays at 0.
+    min_replicas = var.api_min_replicas
     # ADR-005 w15 footer §2: default 3, up from 1 -- not cosmetic. A15-1
     # uploads three files in flight and one 0.25-vCPU replica serialising
     # fifteen blob writes is the likeliest way that target fails once the
@@ -396,6 +398,15 @@ resource "azurerm_container_app" "api" {
   # Do not let a later HCP apply revert API/worker to the MCR placeholder.
   lifecycle {
     ignore_changes = [template[0].container[0].image]
+
+    # Cross-variable bound for var.api_min_replicas, kept here rather than in
+    # the variable's validation block so the module still works on
+    # Terraform 1.8 (versions.tf allows >= 1.8.0; a validation that reads
+    # another variable needs >= 1.9).
+    precondition {
+      condition     = var.api_min_replicas <= var.api_max_replicas
+      error_message = "api_min_replicas must not exceed api_max_replicas."
+    }
   }
 }
 

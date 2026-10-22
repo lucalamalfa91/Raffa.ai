@@ -162,7 +162,9 @@ module "containerapps" {
   # documents in flight is what the user feels. 5 replicas x ServiceBus__MaxConcurrentCalls 4
   # = 20 in flight for a twenty-file drop; a replica exists only while the queue is
   # non-empty, so this is a burst ceiling, not a fixed cost. demo stays at 3 until its own
-  # promotion. min_replicas stays 0 (ADR-005 w15 footer S2).
+  # promotion. min_replicas stays 0 (ADR-005 w15 footer S2). api_min_replicas
+  # is deliberately NOT set: only demo keeps a warm API replica (ADR-005
+  # amendment footer, 2026-10-22), so dev keeps the module default of 0.
   api_max_replicas    = 3
   worker_max_replicas = 5
   # Task E16/F01/US01/T01 (NW-68): this root's OWN module.communication and

@@ -292,7 +292,27 @@ secret** (`grep -R servicebus infra/modules/keyvault/` must stay empty).
 The worker's KEDA `azure-servicebus` scale rule authenticates with that
 same identity (`custom_scale_rule.identity_id`, proved against the pinned
 `azurerm ~> 4.0` schema) — also no secret. `min_replicas` stays `0` on the
-worker; `max_replicas` is `3` on both apps.
+worker in both environments; `max_replicas` is `3` on both apps. (The **API**
+is the one exception, on `demo` only: `api_min_replicas = 1`, a warm replica —
+see "Warm API replica (demo only)" below.)
+
+**Warm API replica (demo only).** `modules/containerapps` takes
+`api_min_replicas` (default `0`, whole number, must not exceed
+`api_max_replicas`; the `<=` bound is a `precondition` on the API app because a
+variable validation that reads another variable needs Terraform ≥ 1.9 and
+`versions.tf` allows ≥ 1.8). It sets the API app's `template.min_replicas`
+only; there is no such knob for the worker. `environments/demo/main.tf` passes
+`api_min_replicas = 1`; `environments/dev/main.tf` leaves it unset, so `dev`
+keeps scale-to-zero exactly as before. Why: `demo` is the stakeholder-facing
+environment, and with the API at zero the first request after a few idle
+minutes waits ~23 s for a cold start (measured on `dev`, same module and SKUs). Cost: about **$14/month** (one
+0.25 vCPU / 0.5 GiB replica always on, Consumption), the figure ADR-027 priced
+for a `min_replicas = 1` line; it is accepted for the API on `demo` only. The
+worker stays scale-to-zero (KEDA raises it from the queue), and ADR-027's
+rejection of a worker floor stands. See the 2026-10-22 amendment footer in
+`.helix/reports/architecture/ADR-005-azure-skus.md`. `tests/test_terraform_env_roots.py`
+pins the effective values (API: demo 1, dev 0; worker: 0 in both). The change
+reaches `demo` through its normal HCP apply; nothing here runs `terraform apply`.
 
 **Invitation mail (NW-68).** `modules/communication` creates one Azure
 Communication Services Email set per environment (never shared — mail has

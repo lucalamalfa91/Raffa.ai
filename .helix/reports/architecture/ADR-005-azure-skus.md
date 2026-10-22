@@ -1242,3 +1242,50 @@ What it changes on **this** ADR's plane — cost and SKUs — and what it does n
   *rate* while a replica is alive) but it must not be discovered as a surprise
   during the client pilot: the raised SKU sits on `demo` first, doing nothing, and
   that is expected rather than a failed apply.
+
+## Amendment (2026-10-22, latency work — one warm API replica on `demo`, and only there)
+
+**Owner**: cloud-architect. **Scope**: `infra/modules/containerapps` (new variable
+`api_min_replicas`), `infra/environments/demo/main.tf`. Everything above stands
+except the one narrow exception below to the API half of the scale-to-zero rule.
+
+**Decision.** The **API** Container App on **`demo`** runs with `min_replicas = 1`.
+Nothing else changes:
+
+| App | `dev` | `demo` |
+| --- | --- | --- |
+| API | `min_replicas = 0` (**unchanged** — the root leaves `api_min_replicas` unset, so it takes the module default `0`) | `min_replicas = 1` (**new**) |
+| Worker | `min_replicas = 0` (unchanged) | `min_replicas = 0` (unchanged) |
+
+**Why.** `demo` is the stakeholder-facing environment. With the API at zero, the
+first request after a few idle minutes waits **~23 s** for a cold start (measured on
+`dev` on 2026-10-22, which is built from the same module and SKUs: `GET /health`
+23.07 s cold against 0.4–0.6 s warm), which is the first thing anyone opening the
+demo sees. The cause is the platform scaling the app to zero, not the
+application, so the remedy is a floor, not code.
+
+**Cost.** One always-on replica at the existing 0.25 vCPU / 0.5 GiB. The ceiling
+on record is **≈ $14/month** (w15 footer §2 above and ADR-027 C3, same
+arithmetic); it is accepted here as the budget for this one line and is **not
+re-priced in this footer** (the cost researcher should re-check it at the idle
+rate if the number matters). `dev` pays nothing more. This is the only always-on
+compute line in either environment.
+
+**What this does not reopen.**
+
+- **ADR-027's rejection of a *worker* floor stands, verbatim.** The worker is still
+  scaled from zero by the KEDA `azure-servicebus` rule, and the module deliberately
+  has **no** variable for a worker floor, so no root can set one.
+- **`dev` keeps scale-to-zero.** A warm replica is a fixed cost with a stakeholder
+  audience as its justification; `dev` has neither.
+- **No SKU, CPU/memory, Postgres or `max_replicas` change.** `api_max_replicas`
+  stays `3` and the module enforces `api_min_replicas <= api_max_replicas` (a
+  `precondition` on the API app rather than a variable validation, because
+  `versions.tf` still allows Terraform 1.8, where a validation cannot read another
+  variable).
+
+**Apply path.** Per ADR-007 w17 §9 a merge touching `infra/` queues a VCS run on
+both HCP workspaces; `raffa-dev`'s plan is expected to show **no change** to the API
+app, and `raffa-demo`'s to show `min_replicas 0 → 1` on `ca-raffa-demo-api`.
+`tests/test_terraform_env_roots.py` pins the effective values (API: demo 1, dev 0;
+worker: 0 in both).
