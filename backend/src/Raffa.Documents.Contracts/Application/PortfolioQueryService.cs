@@ -111,62 +111,85 @@ public sealed class PortfolioQueryService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        // Bulk-load risks for exactly the matched contracts (one extra query, not N+1) to compute
-        // each row's "Risk" column as its highest-severity recorded risk. Grouping/Max happen
-        // in-memory below (this list is already materialized), not translated to SQL, so
-        // RiskSeverity's declared enum order (Low < Medium < High < Critical) — not its
-        // `HasConversion<string>()` column representation — is what Max compares.
-        var contractIds = contracts.Select(c => c.Id).ToList();
-        var risksByContract = await dbContext.Risks
-            .AsNoTracking()
-            .Where(r => r.TenantId == tenantId && contractIds.Contains(r.ContractId))
-            .Select(r => new { r.ContractId, r.Severity })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        // The contracts whose risk and latest-document rows are needed below. Without a Risk filter
+        // the page is already decided at this point: TotalCount is the number of matched contracts
+        // and the page is a slice of this ordered list (the same Skip/Take arithmetic as the paging
+        // step further down), so the rows of every contract outside the page would be loaded,
+        // grouped and thrown away -- and the RailNav's `pageSize=100` read is the common case. With
+        // a Risk filter the filter is a function of exactly those rows, so every matched contract
+        // needs them.
+        IReadOnlyList<Contract> needEnrichment = contracts;
+        if (filter.Risk is null)
+        {
+            var pageStart = (int)Math.Min((long)(pageRequest.Page - 1) * pageRequest.PageSize, (long)contracts.Count);
+            needEnrichment = contracts.Skip(pageStart).Take(pageRequest.PageSize).ToList();
+        }
 
-        var maxSeverityByContract = risksByContract
-            .GroupBy(r => r.ContractId)
-            .ToDictionary(g => g.Key, g => g.Max(r => r.Severity));
+        var contractIds = needEnrichment.Select(c => c.Id).ToList();
 
-        // Bulk-load the most-recently-created document per contract (one extra query, not N+1)
-        // to surface the filename and document processing status — the identifying info needed
-        // to display pending (Uploaded / Processing) rows in Portfolio before extraction runs
-        // (w17 immediate-visibility requirement). "Most recently created" is chosen so that a
-        // re-uploaded contract shows the newest file's name and status, matching the upload
-        // timestamp ordering already established for the outer contracts query.
-        //
-        // IMPORTANT: do NOT use contractIds.Contains(d.ContractId!.Value) here.
-        // d.ContractId is EntityId? (nullable) and contractIds is List<EntityId> (non-nullable).
-        // Npgsql's NpgsqlArrayConverter tries to build an EntityId?[] array parameter, but the
-        // list elements are EntityId — the type mismatch throws at runtime. Instead, use a
-        // correlated subquery (IQueryable<EntityId>.Contains): the inner query filters on the
-        // non-nullable c.Id (contractIds.Contains(c.Id) works fine there) and produces an
-        // IN (SELECT …) clause rather than an array ANY() parameter, sidestepping the converter.
-        var contractIdSubquery = dbContext.Contracts
-            .AsNoTracking()
-            .Where(c => c.TenantId == tenantId && contractIds.Contains(c.Id))
-            .Select(c => c.Id); // IQueryable<EntityId> — non-nullable, no converter clash
+        var maxSeverityByContract = new Dictionary<EntityId, RiskSeverity>();
+        var latestDocByContract = new Dictionary<EntityId, LatestDocument>();
 
-        var documentMetaByContract = await dbContext.Documents
-            .AsNoTracking()
-            .Where(d =>
-                d.TenantId == tenantId
-                && d.ContractId.HasValue
-                && contractIdSubquery.Contains(d.ContractId!.Value))
-            .Select(d => new { d.ContractId, d.FileName, d.ProcessingStatus, d.CreatedAt })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        // Nothing to enrich (an empty portfolio -- a fresh workspace -- or a page past the end):
+        // both queries below could only come back empty, so their round trips are skipped.
+        if (contractIds.Count > 0)
+        {
+            // Bulk-load risks for exactly those contracts (one extra query, not N+1) to compute
+            // each row's "Risk" column as its highest-severity recorded risk. Grouping/Max happen
+            // in-memory below (this list is already materialized), not translated to SQL, so
+            // RiskSeverity's declared enum order (Low < Medium < High < Critical) — not its
+            // `HasConversion<string>()` column representation — is what Max compares.
+            var risksByContract = await dbContext.Risks
+                .AsNoTracking()
+                .Where(r => r.TenantId == tenantId && contractIds.Contains(r.ContractId))
+                .Select(r => new { r.ContractId, r.Severity })
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
 
-        // Pick the most-recently-created document per contract (same "newest first" convention
-        // used for the outer contracts query). GroupBy + MaxBy is in-memory, so the already-
-        // materialized list avoids a second round trip. ContractId is non-null here because the
-        // WHERE clause above required HasValue — .Value unwraps EntityId? to EntityId so the
-        // Dictionary<EntityId, …> key satisfies the notnull constraint.
-        var latestDocByContract = documentMetaByContract
-            .GroupBy(d => d.ContractId!.Value)
-            .ToDictionary(
-                g => g.Key,
-                g => g.OrderByDescending(d => d.CreatedAt).First());
+            maxSeverityByContract = risksByContract
+                .GroupBy(r => r.ContractId)
+                .ToDictionary(g => g.Key, g => g.Max(r => r.Severity));
+
+            // Bulk-load the most-recently-created document per contract (one extra query, not N+1)
+            // to surface the filename and document processing status — the identifying info needed
+            // to display pending (Uploaded / Processing) rows in Portfolio before extraction runs
+            // (w17 immediate-visibility requirement). "Most recently created" is chosen so that a
+            // re-uploaded contract shows the newest file's name and status, matching the upload
+            // timestamp ordering already established for the outer contracts query.
+            //
+            // IMPORTANT: do NOT use contractIds.Contains(d.ContractId!.Value) here.
+            // d.ContractId is EntityId? (nullable) and contractIds is List<EntityId> (non-nullable).
+            // Npgsql's NpgsqlArrayConverter tries to build an EntityId?[] array parameter, but the
+            // list elements are EntityId — the type mismatch throws at runtime. Instead, use a
+            // correlated subquery (IQueryable<EntityId>.Contains): the inner query filters on the
+            // non-nullable c.Id (contractIds.Contains(c.Id) works fine there) and produces an
+            // IN (SELECT …) clause rather than an array ANY() parameter, sidestepping the converter.
+            var contractIdSubquery = dbContext.Contracts
+                .AsNoTracking()
+                .Where(c => c.TenantId == tenantId && contractIds.Contains(c.Id))
+                .Select(c => c.Id); // IQueryable<EntityId> — non-nullable, no converter clash
+
+            var documentMetaByContract = await dbContext.Documents
+                .AsNoTracking()
+                .Where(d =>
+                    d.TenantId == tenantId
+                    && d.ContractId.HasValue
+                    && contractIdSubquery.Contains(d.ContractId!.Value))
+                .Select(d => new LatestDocument(d.ContractId, d.FileName, d.ProcessingStatus, d.CreatedAt))
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            // Pick the most-recently-created document per contract (same "newest first" convention
+            // used for the outer contracts query). GroupBy + MaxBy is in-memory, so the already-
+            // materialized list avoids a second round trip. ContractId is non-null here because the
+            // WHERE clause above required HasValue — .Value unwraps EntityId? to EntityId so the
+            // Dictionary<EntityId, …> key satisfies the notnull constraint.
+            latestDocByContract = documentMetaByContract
+                .GroupBy(d => d.ContractId!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(d => d.CreatedAt).First());
+        }
 
         // Preserves `contracts`' own order (LINQ-to-Objects Select is order-preserving), so the
         // deterministic ORDER BY above still holds after this projection.
@@ -306,4 +329,9 @@ public sealed class PortfolioQueryService(
             .CountAsync(cancellationToken)
             .ConfigureAwait(false);
     }
+
+    /// <summary>The four document columns <see cref="GetPortfolioAsync"/> reads per contract; a named
+    /// type (not an anonymous one) so the result can be declared before the query that fills it.</summary>
+    private sealed record LatestDocument(
+        EntityId? ContractId, string FileName, DocumentProcessingStatus ProcessingStatus, DateTimeOffset CreatedAt);
 }
