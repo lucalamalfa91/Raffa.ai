@@ -62,4 +62,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The corpus cache reads through an internal seam (IMarketCorpusSource) so its revalidation
+         timing and single-flight can be tested without a database. -->
+    <InternalsVisibleTo Include="Raffa.Market.Tests" />
+  </ItemGroup>
+
 </Project>

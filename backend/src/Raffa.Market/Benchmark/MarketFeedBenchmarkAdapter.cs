@@ -4,6 +4,7 @@ using Raffa.Benchmark.Contracts;
 using Raffa.Market.Contracts;
 using Raffa.Market.Infrastructure;
 using Raffa.Market.Ingestion;
+using Raffa.Market.Retrieval;
 using Raffa.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
@@ -65,6 +66,7 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
 
     private readonly IMarketIntelligenceProvider? _provider;
     private readonly IDbContextFactory<MarketDbContext>? _dbContextFactory;
+    private readonly MarketCorpusCache? _corpusCache;
     private readonly IClock _clock;
 
     /// <summary>
@@ -96,10 +98,15 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     /// this task) — see <see cref="Retrieval.PgVectorMarketKnowledgeRetrieval"/>'s own doc comment
     /// for the identical captive-dependency reasoning.
     /// </summary>
-    public MarketFeedBenchmarkAdapter(IDbContextFactory<MarketDbContext> dbContextFactory, IClock clock)
+    /// <param name="corpusCache">When given (and enabled), the candidates are looked up in the cached
+    /// snapshot of the corpus (<see cref="MarketCorpusIndex.Candidates"/>) instead of being selected
+    /// from the table on every call; the result is the same rows in the same order.</param>
+    public MarketFeedBenchmarkAdapter(
+        IDbContextFactory<MarketDbContext> dbContextFactory, IClock clock, MarketCorpusCache? corpusCache = null)
     {
         _dbContextFactory = dbContextFactory;
         _clock = clock;
+        _corpusCache = corpusCache;
     }
 
     /// <summary>Registry key (<c>IBenchmarkProviderAdapter.Name</c>) and
@@ -195,6 +202,12 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
             // columns were never written (NULL) are kept for that exact match to decide.
             var supplier = MarketFilterColumns.SupplierNorm(query.Supplier);
             var product = MarketFilterColumns.ProductNorm(query.Product);
+
+            if (await TrySnapshotAsync(dbContext, cancellationToken).ConfigureAwait(false) is { } snapshot)
+            {
+                return Result<IReadOnlyList<MarketDeal>>.Success(snapshot.Index.Candidates(supplier, product));
+            }
+
             var records = await dbContext.MarketRecords
                 .AsNoTracking()
                 .Where(r => (r.SupplierNorm == null || r.SupplierNorm == supplier)
@@ -215,6 +228,28 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
         return feedResult.IsFailure
             ? Result<IReadOnlyList<MarketDeal>>.Failure(feedResult.Error)
             : Result<IReadOnlyList<MarketDeal>>.Success(feedResult.Value.Deals);
+    }
+
+    /// <summary>
+    /// The cached snapshot when a cache is wired and enabled; <see langword="null"/> otherwise, or when
+    /// a stored payload does not deserialize -- the table query then answers, which only parses the
+    /// candidates it selects (see <see cref="MarketRecordQueryService"/>'s identical fallback).
+    /// </summary>
+    private async Task<MarketCorpusSnapshot?> TrySnapshotAsync(MarketDbContext dbContext, CancellationToken cancellationToken)
+    {
+        if (_corpusCache is not { Enabled: true })
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _corpusCache.GetAsync(dbContext, cancellationToken).ConfigureAwait(false);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -362,6 +397,11 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
         await using var dbContext = await _dbContextFactory
             .CreateDbContextAsync(cancellationToken)
             .ConfigureAwait(false);
+        if (await TrySnapshotAsync(dbContext, cancellationToken).ConfigureAwait(false) is { } snapshot)
+        {
+            return snapshot.Index.LatestUpdatedAt ?? _clock.UtcNow;
+        }
+
         var latest = await dbContext.MarketRecords
             .MaxAsync(r => (DateTimeOffset?)r.UpdatedAt, cancellationToken)
             .ConfigureAwait(false);
