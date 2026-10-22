@@ -63,6 +63,7 @@ public static class WorkspaceEndpointExtensions
         ICallerIdentityContext callerIdentityContext,
         WorkspaceDirectoryService directoryService,
         PortfolioQueryService portfolioQueryService,
+        MarketRepriceScheduler marketRepriceScheduler,
         CancellationToken cancellationToken)
     {
         // ADR-025 §B: absence of identity is an authentication failure (401), the same posture
@@ -95,6 +96,10 @@ public static class WorkspaceEndpointExtensions
             var contractCount = await portfolioQueryService
                 .CountValidatedContractsAsync(workspace.TenantId, cancellationToken)
                 .ConfigureAwait(false);
+
+            // Entering a workspace is when its due market comparisons are re-priced ahead of any read
+            // (in memory only: nothing here waits, and nothing reaches the response).
+            marketRepriceScheduler.Request(workspace.TenantId);
 
             rows.Add(new
             {

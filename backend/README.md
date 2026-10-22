@@ -3470,6 +3470,28 @@ unexplained 500 — on whichever endpoint asked next (demo, 2026-09-22).
   `max_connections` server parameter in `infra/modules/postgres` — and is
   deliberately not part of this code-side guarantee.
 
+## Latency — what keeps the read path fast
+
+None of this changes what an endpoint returns; each item has a switch that restores the earlier
+behaviour. All are environment variables on the container app.
+
+| Setting | Default | What it does | Switch back |
+|---------|---------|--------------|-------------|
+| Images | ReadyToRun, `linux-x64` | The API and Worker images are published ReadyToRun, so a replica started from zero spends far less time in the JIT. | Remove `-p:PublishReadyToRun=true` from the Dockerfiles. |
+| `Startup__Warmup__Enabled` | `true` | Builds every EF model and resolves the key services on a lowest-priority thread right after start. No database access, never throws, yields to requests. | `false`. |
+| `Startup__Warmup__LowPriority` | `true` | Runs that thread at nice 19. Only a test needs `false`, on a CPU-saturated runner. | `false`. |
+| `Market__CorpusCache__RevalidateInterval` | `00:00:30` | How often the API re-checks the market corpus for changes written by the Worker's ingest job. The ingest reaches the API within this interval. | `00:00:00` checks on every call, as before. |
+| `Market__Pricing__ReadWaitBudgetMs` | `2000` | How long a contract read waits for a due market re-pricing before answering with the stored comparison. Matching against the cached corpus always fits; only a model estimate can exceed it. The re-pricing carries on in its own scope and concurrent reads of one contract share one run. | `-1` waits for the whole re-pricing, as before. |
+| `Market__Pricing__PrewarmOnWorkspaceEntry` | `true` | Entering a workspace queues a `market-reprice` job (Service Bus, consumed by the Worker) when one of its contracts has a market comparison due, so a read finds it ready. Considered at most once per `Market__Pricing__PrewarmMinIntervalMinutes` (10) per workspace per API process, at most `Market__Pricing__MaxContractsPerJob` (200) contracts per job. Inert when the transport is not the durable queue. | `false`. |
+
+The job runs the same code a read would (`LineItemMarketPriceService`), so it stores exactly what a read
+would have stored, only earlier. It costs a few model calls for contracts nobody opens that day.
+
+Also in place, with no setting: JSON responses are compressed (Brotli, Gzip); the RLS connection
+interceptor sets both claims in one round trip on open and clears them in one on close; EF SQL is logged at
+Warning in the base `appsettings.json` (the Development files keep Information); the web client shares
+identical in-flight GETs. On `demo` only, Terraform keeps one API replica warm (`api_min_replicas = 1`).
+
 ## Dependency direction (ADR-002)
 
 Allowed Raffa project references (enforced by

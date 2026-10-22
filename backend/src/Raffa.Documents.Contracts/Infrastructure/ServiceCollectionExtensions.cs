@@ -5,6 +5,7 @@ using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Application.Preview;
 using Raffa.Documents.Contracts.Infrastructure.Extraction;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Jobs;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -113,6 +114,17 @@ public static class ServiceCollectionExtensions
         // a host that composes Raffa.Market / Raffa.Suppliers.Products in supplies them, any other
         // host keeps what is stored.
         services.AddScoped<LineItemMarketPriceService>();
+
+        // Market:Pricing (read wait budget, workspace-entry pre-warm) and the job that does the pre-warm.
+        // The job is consumed by the Worker; registering it here as well is harmless in the API, which
+        // never dispatches jobs. Bound once, defaults from the options' own initializers.
+        services.TryAddSingleton(sp =>
+        {
+            var options = new MarketPricingOptions();
+            sp.GetService<IConfiguration>()?.GetSection(MarketPricingOptions.SectionName).Bind(options);
+            return options;
+        });
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IJobHandler, MarketRepriceJobHandler>());
 
         // Task E13/F04/US01/T01 (documents-admission): the admission gate's thresholds (the gate itself,
         // DocumentAdmissionGate, is registered by Raffa.AiFlows).
