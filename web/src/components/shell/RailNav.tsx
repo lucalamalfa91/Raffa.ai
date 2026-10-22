@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import type { ApiClient, PortfolioListItem } from "../../api/client";
 import {
@@ -96,18 +96,34 @@ export default function RailNav({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameError, setRenameError] = useState<{ conversationId: string; message: string } | null>(null);
   const [portfolioItems, setPortfolioItems] = useState<readonly PortfolioListItem[]>([]);
+  const portfolioById = useMemo(() => indexPortfolioByContractId(portfolioItems), [portfolioItems]);
 
+  // The portfolio is read only to turn a chat's `scopeContractId` into "Supplier — Contract type".
+  // It is read once per (client, workspace) and again only when a listed chat points at a contract
+  // the rail cannot name yet (a new chat on a contract uploaded since, or a read that failed) --
+  // not on every re-read of the conversation list, which happens on every navigation and returns a
+  // new array each time. A contract the rail can already name is not read again; its name is
+  // refreshed by the next full load.
+  const portfolioLoadedFor = useRef<{ apiClient: ApiClient; workspaceId: string } | null>(null);
   useEffect(() => {
     if (!workspace) {
+      portfolioLoadedFor.current = null;
       setPortfolioItems([]);
       return;
     }
+    const loaded = portfolioLoadedFor.current;
+    const firstLoad = loaded === null || loaded.apiClient !== apiClient || loaded.workspaceId !== workspace.id;
+    const unresolvedScope = [...conversations, ...archivedConversations].some((conversation) => {
+      const scopeId = conversation.scopeContractId?.trim() ?? "";
+      return scopeId !== "" && !portfolioById.has(scopeId);
+    });
+    if (!firstLoad && !unresolvedScope) return;
+    portfolioLoadedFor.current = { apiClient, workspaceId: workspace.id };
     void apiClient.getPortfolio(workspace.id, { pageSize: 100 }).then((result) => {
       setPortfolioItems(result.ok && result.portfolio ? result.portfolio.items : []);
     });
-  }, [apiClient, workspace?.id, conversations]);
-
-  const portfolioById = useMemo(() => indexPortfolioByContractId(portfolioItems), [portfolioItems]);
+    // portfolioById is read, not a trigger: a landed portfolio must not start another load.
+  }, [apiClient, workspace?.id, conversations, archivedConversations]);
   // A name given in this tab shows at once, ahead of the list's next reload.
   const titleOf = (conversation: (typeof conversations)[number]) =>
     conversationDisplayTitle(

@@ -256,6 +256,14 @@ from `markup.html`.
   for the full provenance and the `requirements.md` R-CMP-03 citation). A
   contract that becomes validated mid-session only updates the rail on the
   next full shell mount (fetched once, not polled).
+- **Chat titles and the portfolio read** (`RailNav.tsx`). A chat bound to a contract
+  (`scopeContractId`) is titled "Supplier — Contract type" from `GET /api/contracts?pageSize=100`.
+  The rail reads that page once per (client, workspace) and again only when a listed chat -- in use or
+  archived -- points at a contract it cannot name yet (a chat on a contract uploaded since, or an
+  earlier read that failed). It does **not** read it again each time the conversation list is
+  re-fetched on navigation, which used to put the whole portfolio on the wire at every page change.
+  The one visible consequence: the supplier/type shown in the title of a chat whose contract is
+  already named is refreshed by the next full load, not at the next navigation.
 - **Role guard (AC-2)** -- "Workspace & members" is a footer link
   (`navItems.ts#canManageMembers`, unit-tested), not a row in the flat list.
   `src/components/shell/RequireRole.tsx` used to wrap the `workspace/members`
@@ -1207,6 +1215,19 @@ Task E01/F07/US01/T02 ("Generate TS API client from OpenAPI; wire /health"):
   valid expected answers, not client errors) or on a network failure
   (resolves with `statusCode: null` instead), so callers can render the
   result directly without a try/catch.
+- **In-flight GET coalescing** (`src/api/coalescingFetch.ts`; latency work). Every request of one
+  `createApiClient` instance goes through one wrapper around the global `fetch` (looked up at call
+  time, so a test's `vi.stubGlobal("fetch", ...)` keeps working). Identical GETs that are *in flight
+  at the same instant* -- same URL and query, same effective headers (so the same `Authorization` and
+  `X-Tenant-Id`), same `cache` mode -- share one network request, and each caller reads its own
+  `Response` (`clone()`). Nothing is cached: the entry disappears the moment the request settles, so a
+  GET made afterwards is a fresh request and the screens' refresh cadence (the 2 s poll, the
+  five-minute budget) is untouched. A request that carries an `AbortSignal` (or any init member other
+  than `method`/`headers`/`cache`) is never shared, and any write (POST/PUT/PATCH/DELETE) drops what is
+  in flight when it starts and when it settles, so a read issued after a write cannot join a read that
+  predates it (e.g. the read-back after `PUT .../negotiation-steps`). This is what stops the shell
+  (`AppShell`, `RailNav`) and the routed screen from sending the same `GET /api/workspaces`,
+  `GET /api/documents?pageSize=1` or `GET /api/contracts?pageSize=100` twice when they mount together.
 - `src/App.tsx` calls `getHealth()` on mount and renders the result
   (`data-testid="api-health-status"`) independent of sign-in state -- the
   "wire /health" half of task E01/F07/US01/T02, and this static SPA's
@@ -1436,6 +1457,7 @@ web/
   src/
     api/
       generated/schema.ts     # AUTO-GENERATED; do not edit by hand
+      coalescingFetch.ts       # createCoalescingFetch() -- identical in-flight GETs share one request (see "API client" above)
       client.ts                # createApiClient(baseUrl, getAccessToken?) -> { getHealth(), createWorkspace({ name }), uploadDocument(tenantId, file), getDocument(tenantId, id), listDocuments(tenantId, query?), getDocumentPreviewUrl(tenantId, id), reprocessDocument(tenantId, id), deleteDocument(tenantId, id), getPortfolio(tenantId, query?), getContract360(tenantId, id), getRenewals(tenantId), getRenewalPriority(tenantId, contractId), getCorrectionHistory(tenantId, id), correctContract(tenantId, id, request), postRenewalAction(tenantId, contractId, request), askRaffa(tenantId, request), uploadQuote(tenantId, file, fields?), getQuoteAssessment(tenantId, id), recalculateQuoteAssessment(tenantId, id, mappings?), captureNegotiationOutcome(tenantId, request), getSavingsKpis(tenantId), getSavingsOpportunities(tenantId), listConversations(tenantId), createConversation(tenantId, request?), getConversation(tenantId, id), postMessage(tenantId, conversationId, request), postConversationFeedback(tenantId, conversationId, request), getCapabilities(), getMarketRecord(id) } -- every method attaches `Authorization: Bearer <token>` when getAccessToken resolves one (task E18/F01/US02/T01, NW-05), through the one `authHeaders` choke point
     config/appConfig.ts       # fetch + validate runtime config
     auth/msalConfig.ts        # AppConfig -> MSAL Configuration (no secret, ever); acquireApiAccessToken(instance, appConfig) -- acquireTokenSilent, falling back to acquireTokenPopup (task E18/F01/US02/T01)

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import RailNav from "../../../src/components/shell/RailNav";
@@ -607,6 +607,176 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
 
       expect(await screen.findByRole("searchbox", { name: "Search chats" })).toBeInTheDocument();
     });
+  });
+});
+
+describe("RailNav: the portfolio is read to name chats, not on every navigation (latency work)", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
+  });
+
+  function portfolioItem(contractId: string, supplierName: string, type: string) {
+    return {
+      contractId,
+      supplierId: null,
+      supplierName,
+      type,
+      annualSpend: null,
+      currency: "CHF",
+      startDate: null,
+      endDate: null,
+      renewalDate: null,
+      cancellationDeadline: null,
+      autoRenewal: false,
+      status: "active",
+      risk: null,
+    };
+  }
+
+  function portfolioResult(...items: ReturnType<typeof portfolioItem>[]) {
+    return {
+      ok: true,
+      statusCode: 200,
+      portfolio: { items, page: 1, pageSize: 100, totalCount: items.length, processingDocumentCount: 0 },
+      error: null,
+    };
+  }
+
+  function chatsResult(...conversations: ConversationSummaryBody[]) {
+    return { ok: true, statusCode: 200, conversations, error: null };
+  }
+
+  /** Every navigation re-reads both conversation lists (a new array each time): wait for that. */
+  async function navigateAndWaitForReload(listConversations: ReturnType<typeof vi.fn>, linkName: string) {
+    const before = listConversations.mock.calls.length;
+    await userEvent.click(screen.getByRole("link", { name: new RegExp(linkName) }));
+    await waitFor(() => expect(listConversations.mock.calls.length).toBeGreaterThanOrEqual(before + 2));
+    // let the reloaded lists land (and any effect they trigger run)
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
+  it("reads it once for the first load and not again when navigation re-reads a conversation list whose chats are all named", async () => {
+    const listConversations = vi.fn().mockResolvedValue(chatsResult(conversation({ id: "conv-1", scopeContractId: "contract-sf" })));
+    const getPortfolio = vi.fn().mockResolvedValue(portfolioResult(portfolioItem("contract-sf", "Salesforce", "Msa")));
+    const apiClient = mockApiClient(listConversations);
+    apiClient.getPortfolio = getPortfolio;
+    renderRail({ apiClient });
+
+    expect(await screen.findByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+    const firstLoadReads = getPortfolio.mock.calls.length;
+    expect(firstLoadReads).toBeGreaterThanOrEqual(1);
+    expect(firstLoadReads).toBeLessThanOrEqual(2);
+
+    await navigateAndWaitForReload(listConversations, "Portfolio");
+    await navigateAndWaitForReload(listConversations, "Renewals");
+    await navigateAndWaitForReload(listConversations, "Savings");
+
+    expect(getPortfolio).toHaveBeenCalledTimes(firstLoadReads);
+    expect(getPortfolio).toHaveBeenCalledWith(WORKSPACE_ID, { pageSize: 100 });
+    expect(screen.getByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+  });
+
+  it("reads it once on mount and never again when no chat is bound to a contract", async () => {
+    const listConversations = vi.fn().mockResolvedValue(chatsResult(conversation({ id: "conv-1" }), conversation({ id: "conv-2", customTitle: "Atlassian renewal" })));
+    const getPortfolio = vi.fn().mockResolvedValue(portfolioResult());
+    const apiClient = mockApiClient(listConversations);
+    apiClient.getPortfolio = getPortfolio;
+    renderRail({ apiClient });
+
+    await screen.findByRole("link", { name: "Atlassian renewal" });
+    await navigateAndWaitForReload(listConversations, "Portfolio");
+    await navigateAndWaitForReload(listConversations, "Renewals");
+
+    expect(getPortfolio).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads it again when a new chat is bound to a contract the rail cannot name yet, and names it", async () => {
+    const listConversations = vi.fn().mockResolvedValue(chatsResult(conversation({ id: "conv-1", scopeContractId: "contract-sf" })));
+    const getPortfolio = vi
+      .fn()
+      .mockResolvedValueOnce(portfolioResult(portfolioItem("contract-sf", "Salesforce", "Msa")))
+      .mockResolvedValue(portfolioResult(portfolioItem("contract-sf", "Salesforce", "Msa"), portfolioItem("contract-aws", "AWS", "OrderForm")));
+    const apiClient = mockApiClient(listConversations);
+    apiClient.getPortfolio = getPortfolio;
+    renderRail({ apiClient });
+
+    expect(await screen.findByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+    const readsBefore = getPortfolio.mock.calls.length;
+
+    // The user starts a chat on a contract uploaded since: the next re-read lists it.
+    listConversations.mockResolvedValue(
+      chatsResult(conversation({ id: "conv-2", scopeContractId: "contract-aws" }), conversation({ id: "conv-1", scopeContractId: "contract-sf" })),
+    );
+    await navigateAndWaitForReload(listConversations, "Portfolio");
+
+    expect(await screen.findByRole("link", { name: "AWS — Order Form" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+    expect(getPortfolio.mock.calls.length).toBeGreaterThan(readsBefore);
+  });
+
+  it("reads it again for an archived chat bound to a contract it cannot name", async () => {
+    const archived = conversation({ id: "conv-old", scopeContractId: "contract-aws", archived: true });
+    const listConversations = vi.fn().mockImplementation(async (_tenant: string, _take: number, options?: { archived?: boolean }) =>
+      options?.archived === true ? chatsResult(archived) : chatsResult(),
+    );
+    const getPortfolio = vi
+      .fn()
+      .mockResolvedValueOnce(portfolioResult())
+      .mockResolvedValue(portfolioResult(portfolioItem("contract-aws", "AWS", "OrderForm")));
+    const apiClient = mockApiClient(listConversations);
+    apiClient.getPortfolio = getPortfolio;
+    renderRail({ apiClient });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Archive/ }));
+
+    expect(await screen.findByRole("link", { name: /AWS — Order Form/ })).toBeInTheDocument();
+  });
+
+  it("retries a failed read when a chat needs naming, and shows the fallback title meanwhile", async () => {
+    const listConversations = vi.fn().mockResolvedValue(chatsResult(conversation({ id: "conv-1", scopeContractId: "contract-sf" })));
+    const getPortfolio = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, statusCode: 503, portfolio: null, error: "unavailable" })
+      .mockResolvedValue(portfolioResult(portfolioItem("contract-sf", "Salesforce", "Msa")));
+    const apiClient = mockApiClient(listConversations);
+    apiClient.getPortfolio = getPortfolio;
+    renderRail({ apiClient });
+
+    expect(await screen.findByRole("link", { name: "Ask Raffa" })).toBeInTheDocument();
+    await navigateAndWaitForReload(listConversations, "Portfolio");
+
+    expect(await screen.findByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+  });
+
+  it("reads it for a new workspace", async () => {
+    const listConversations = vi.fn().mockResolvedValue(chatsResult());
+    const getPortfolio = vi.fn().mockResolvedValue(portfolioResult());
+    const apiClient = mockApiClient(listConversations);
+    apiClient.getPortfolio = getPortfolio;
+    const view = renderRail({ apiClient });
+    await waitFor(() => expect(getPortfolio).toHaveBeenCalledWith(WORKSPACE_ID, { pageSize: 100 }));
+
+    const OTHER = "22222222-2222-2222-2222-222222222222";
+    window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: OTHER, name: "Other" }));
+    view.rerender(
+      <MemoryRouter initialEntries={["/ask"]}>
+        <RailNav
+          workspaceName="Other"
+          role="admin"
+          userLabel="user@example.test"
+          kbReady={false}
+          validatedContractCount={0}
+          documentCounts={null}
+          onSignOut={vi.fn()}
+          apiClient={apiClient}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getPortfolio).toHaveBeenCalledWith(OTHER, { pageSize: 100 }));
   });
 });
 
