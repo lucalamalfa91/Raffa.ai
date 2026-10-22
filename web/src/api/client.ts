@@ -1864,6 +1864,27 @@ export interface ApiClient {
 }
 
 
+/** Successful `correctContract` calls per client (a counter that only grows). Kept beside the
+ * client rather than on `ApiClient`, so the interface -- and every test double of it -- is
+ * unchanged. */
+const contractCorrections = new WeakMap<object, number>();
+
+/**
+ * How many `correctContract` calls this client has seen succeed (`200`); 0 for a client that has
+ * seen none (a test double included). A correction can change what the rail shows for a contract
+ * (supplier, type), so `RailNav` compares it with the value it saw at its last portfolio read to
+ * know that read is out of date.
+ */
+export function contractCorrectionCount(client: object): number {
+  return contractCorrections.get(client) ?? 0;
+}
+
+/** Records one successful contract correction made through `client`. `createApiClient` calls it on
+ * every `200` from `correctContract`; it is exported for test doubles that stand in for that call. */
+export function noteContractCorrection(client: object): void {
+  contractCorrections.set(client, contractCorrectionCount(client) + 1);
+}
+
 /**
  * Builds the API client from runtime config (ADR-012 "config, not code";
  * `AppConfig.apiBaseUrl`, see src/config/appConfig.ts). `baseUrl` is expected
@@ -1881,7 +1902,7 @@ export function createApiClient(
   // request settles, and any write drops what is in flight). One instance per client, so nothing
   // leaks between clients.
   const apiFetch = createCoalescingFetch();
-  return {
+  const client: ApiClient = {
     async getHealth() {
       let response: Response;
       try {
@@ -2851,6 +2872,7 @@ export function createApiClient(
       }
 
       if (response.status === 200) {
+        noteContractCorrection(client);
         const correction = (await response.json()) as ContractCorrectionBody;
         return { ok: true, statusCode: 200, correction, error: null };
       }
@@ -3924,4 +3946,5 @@ export function createApiClient(
       };
     },
   };
+  return client;
 }

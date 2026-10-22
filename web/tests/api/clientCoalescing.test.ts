@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createApiClient } from "../../src/api/client";
+import { contractCorrectionCount, createApiClient } from "../../src/api/client";
 
 // Latency work: the shell and the routed screen fire the same reads at the same instant. Identical
 // concurrent GETs of one client share one network request (src/api/coalescingFetch.ts); nothing is
@@ -123,6 +123,37 @@ describe("createApiClient: identical concurrent GETs share one request", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(readBack.steps).toEqual(["call-supplier"]);
     expect((await poll).steps).toEqual([]);
+  });
+
+  it("counts successful contract corrections, per client, and nothing else", async () => {
+    const outcomes = [
+      new Response(JSON.stringify({ version: 2, correctedFields: ["supplier"] }), { status: 200 }),
+      new Response(JSON.stringify("No-op correction."), { status: 400 }),
+      new Response(null, { status: 404 }),
+    ];
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async () => outcomes[0])
+      .mockImplementationOnce(async () => outcomes[1])
+      .mockImplementationOnce(async () => outcomes[2])
+      .mockRejectedValueOnce(new TypeError("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient(BASE);
+    const other = createApiClient(BASE);
+    const request = { corrections: { supplier: "Salesforce Ltd" } };
+    expect(contractCorrectionCount(client)).toBe(0);
+
+    expect((await client.correctContract("tenant-1", "contract-1", request)).ok).toBe(true);
+    expect(contractCorrectionCount(client)).toBe(1);
+
+    await client.correctContract("tenant-1", "contract-1", request); // 400
+    await client.correctContract("tenant-1", "contract-1", request); // 404
+    await client.correctContract("tenant-1", "contract-1", request); // network failure
+    await client.getNegotiationSteps("tenant-1", "contract-1").catch(() => undefined);
+
+    expect(contractCorrectionCount(client)).toBe(1);
+    expect(contractCorrectionCount(other)).toBe(0);
+    expect(contractCorrectionCount({})).toBe(0); // a test double that never corrected anything
   });
 
   it("two clients never share a request", async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import type { ApiClient, PortfolioListItem } from "../../api/client";
+import { contractCorrectionCount, type ApiClient, type PortfolioListItem } from "../../api/client";
 import {
   buildPrimaryNavItems,
   buildSecondaryNavItems,
@@ -23,6 +23,10 @@ import { useAskSessionStore, useAskSessionsSnapshot } from "../../routes/ask/Ask
 import { customTitleFor } from "../../routes/ask/askSessions";
 import ConversationRenameField from "../../routes/ask/ConversationRenameField";
 import type { DocumentCountsBody } from "./useDocumentCounts";
+
+/** How long the rail trusts its last good read of the portfolio (chat titles) before the next
+ * navigation reads it again. */
+export const PORTFOLIO_MAX_AGE_MS = 30_000;
 
 export interface RailNavProps {
   workspaceName: string;
@@ -99,27 +103,49 @@ export default function RailNav({
   const portfolioById = useMemo(() => indexPortfolioByContractId(portfolioItems), [portfolioItems]);
 
   // The portfolio is read only to turn a chat's `scopeContractId` into "Supplier — Contract type".
-  // It is read once per (client, workspace) and again only when a listed chat points at a contract
-  // the rail cannot name yet (a new chat on a contract uploaded since, or a read that failed) --
-  // not on every re-read of the conversation list, which happens on every navigation and returns a
-  // new array each time. A contract the rail can already name is not read again; its name is
-  // refreshed by the next full load.
+  // The conversation list is re-read on every navigation and returns a new array each time, so the
+  // portfolio is NOT read each time that happens. It is read:
+  //   * once per (client, workspace), at the first load;
+  //   * when a listed chat points at a contract the rail cannot name yet (a new chat on a contract
+  //     uploaded since, or a read that failed);
+  //   * on the first navigation after the last good read is older than PORTFOLIO_MAX_AGE_MS, so a
+  //     supplier/type changed by someone else still reaches the titles;
+  //   * on the first navigation after this client corrected a contract (`correctContract`), so a
+  //     supplier/type the user just changed shows at once.
+  // The last two only matter while a chat is bound to a contract: with none, no title uses it.
   const portfolioLoadedFor = useRef<{ apiClient: ApiClient; workspaceId: string } | null>(null);
+  const portfolioRead = useRef<{ revision: number; landedAt: number | null } | null>(null);
   useEffect(() => {
     if (!workspace) {
       portfolioLoadedFor.current = null;
+      portfolioRead.current = null;
       setPortfolioItems([]);
       return;
     }
     const loaded = portfolioLoadedFor.current;
     const firstLoad = loaded === null || loaded.apiClient !== apiClient || loaded.workspaceId !== workspace.id;
-    const unresolvedScope = [...conversations, ...archivedConversations].some((conversation) => {
-      const scopeId = conversation.scopeContractId?.trim() ?? "";
-      return scopeId !== "" && !portfolioById.has(scopeId);
-    });
-    if (!firstLoad && !unresolvedScope) return;
+    const scopeIds = [...conversations, ...archivedConversations]
+      .map((conversation) => conversation.scopeContractId?.trim() ?? "")
+      .filter((scopeId) => scopeId !== "");
+    const unresolvedScope = scopeIds.some((scopeId) => !portfolioById.has(scopeId));
+    const revision = contractCorrectionCount(apiClient);
+    const previous = portfolioRead.current;
+    const outOfDate =
+      scopeIds.length > 0 &&
+      previous !== null &&
+      (previous.revision !== revision || (previous.landedAt !== null && Date.now() - previous.landedAt > PORTFOLIO_MAX_AGE_MS));
+    if (!firstLoad && !unresolvedScope && !outOfDate) return;
     portfolioLoadedFor.current = { apiClient, workspaceId: workspace.id };
+    // Marked when it starts, not when it lands: the two conversation lists land one after the other
+    // and each landing runs this effect again -- the second run must see this read as the current one.
+    const read = { revision, landedAt: null as number | null };
+    portfolioRead.current = read;
     void apiClient.getPortfolio(workspace.id, { pageSize: 100 }).then((result) => {
+      if (result.ok && result.portfolio) {
+        read.landedAt = Date.now();
+      } else if (portfolioRead.current === read) {
+        portfolioRead.current = null;
+      }
       setPortfolioItems(result.ok && result.portfolio ? result.portfolio.items : []);
     });
     // portfolioById is read, not a trigger: a landed portfolio must not start another load.

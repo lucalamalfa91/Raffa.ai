@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import RailNav from "../../../src/components/shell/RailNav";
 import type { DocumentCountsBody } from "../../../src/components/shell/useDocumentCounts";
-import type { ApiClient, ConversationSummaryBody } from "../../../src/api/client";
+import { noteContractCorrection, type ApiClient, type ConversationSummaryBody } from "../../../src/api/client";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -749,6 +749,91 @@ describe("RailNav: the portfolio is read to name chats, not on every navigation 
     await navigateAndWaitForReload(listConversations, "Portfolio");
 
     expect(await screen.findByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+  });
+
+  describe("titles stay as fresh as they were when every navigation re-read the portfolio", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function renamedSupplierRail(supplierAfter: string) {
+      const listConversations = vi.fn().mockResolvedValue(chatsResult(conversation({ id: "conv-1", scopeContractId: "contract-sf" })));
+      const getPortfolio = vi
+        .fn()
+        .mockResolvedValueOnce(portfolioResult(portfolioItem("contract-sf", "Salesforce", "Msa")))
+        .mockResolvedValue(portfolioResult(portfolioItem("contract-sf", supplierAfter, "Msa")));
+      const apiClient = mockApiClient(listConversations);
+      apiClient.getPortfolio = getPortfolio;
+      return { listConversations, getPortfolio, apiClient };
+    }
+
+    it("reads it on the first navigation after this client corrected a contract, and shows the corrected supplier", async () => {
+      const { listConversations, getPortfolio, apiClient } = renamedSupplierRail("Salesforce Ltd");
+      renderRail({ apiClient });
+
+      expect(await screen.findByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+      await navigateAndWaitForReload(listConversations, "Portfolio");
+      const readsBeforeCorrection = getPortfolio.mock.calls.length;
+      expect(screen.getByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+
+      noteContractCorrection(apiClient); // the user corrected the supplier on the review screen
+      await navigateAndWaitForReload(listConversations, "Renewals");
+
+      expect(await screen.findByRole("link", { name: "Salesforce Ltd — MSA" })).toBeInTheDocument();
+      expect(getPortfolio.mock.calls.length).toBe(readsBeforeCorrection + 1);
+
+      // One read per correction, not one per navigation.
+      await navigateAndWaitForReload(listConversations, "Savings");
+      expect(getPortfolio.mock.calls.length).toBe(readsBeforeCorrection + 1);
+    });
+
+    it("reads it on the first navigation after the last good read is more than 30 s old, and not before", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const start = new Date("2026-10-22T10:00:00Z").getTime();
+      vi.setSystemTime(start);
+      const { listConversations, getPortfolio, apiClient } = renamedSupplierRail("Salesforce Ltd");
+      renderRail({ apiClient });
+
+      expect(await screen.findByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+      const firstLoadReads = getPortfolio.mock.calls.length;
+
+      vi.setSystemTime(start + 29_000);
+      await navigateAndWaitForReload(listConversations, "Portfolio");
+      expect(getPortfolio.mock.calls.length).toBe(firstLoadReads);
+      expect(screen.getByRole("link", { name: "Salesforce — MSA" })).toBeInTheDocument();
+
+      vi.setSystemTime(start + 31_000);
+      await navigateAndWaitForReload(listConversations, "Renewals");
+      expect(await screen.findByRole("link", { name: "Salesforce Ltd — MSA" })).toBeInTheDocument();
+      expect(getPortfolio.mock.calls.length).toBe(firstLoadReads + 1);
+
+      // The age restarts from that read: 9 s later nothing is read, 31 s later it is again.
+      vi.setSystemTime(start + 40_000);
+      await navigateAndWaitForReload(listConversations, "Savings");
+      expect(getPortfolio.mock.calls.length).toBe(firstLoadReads + 1);
+
+      vi.setSystemTime(start + 62_000);
+      await navigateAndWaitForReload(listConversations, "Portfolio");
+      await waitFor(() => expect(getPortfolio.mock.calls.length).toBe(firstLoadReads + 2));
+    });
+
+    it("does not read it just because it is old when no chat is bound to a contract", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const start = new Date("2026-10-22T10:00:00Z").getTime();
+      vi.setSystemTime(start);
+      const listConversations = vi.fn().mockResolvedValue(chatsResult(conversation({ id: "conv-1" })));
+      const getPortfolio = vi.fn().mockResolvedValue(portfolioResult());
+      const apiClient = mockApiClient(listConversations);
+      apiClient.getPortfolio = getPortfolio;
+      renderRail({ apiClient });
+      await screen.findByRole("searchbox", { name: "Search chats" });
+
+      noteContractCorrection(apiClient);
+      vi.setSystemTime(start + 120_000);
+      await navigateAndWaitForReload(listConversations, "Portfolio");
+
+      expect(getPortfolio).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("reads it for a new workspace", async () => {

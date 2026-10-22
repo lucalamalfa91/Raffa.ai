@@ -258,12 +258,17 @@ from `markup.html`.
   next full shell mount (fetched once, not polled).
 - **Chat titles and the portfolio read** (`RailNav.tsx`). A chat bound to a contract
   (`scopeContractId`) is titled "Supplier — Contract type" from `GET /api/contracts?pageSize=100`.
-  The rail reads that page once per (client, workspace) and again only when a listed chat -- in use or
-  archived -- points at a contract it cannot name yet (a chat on a contract uploaded since, or an
-  earlier read that failed). It does **not** read it again each time the conversation list is
-  re-fetched on navigation, which used to put the whole portfolio on the wire at every page change.
-  The one visible consequence: the supplier/type shown in the title of a chat whose contract is
-  already named is refreshed by the next full load, not at the next navigation.
+  The conversation list is re-fetched on every navigation; the portfolio is **not**, which used to put
+  the whole portfolio on the wire at every page change. The rail reads it: once per (client,
+  workspace); when a listed chat -- in use or archived -- points at a contract it cannot name yet (a
+  chat on a contract uploaded since, or an earlier read that failed); on the first navigation after
+  the last good read is more than 30 s old (`PORTFOLIO_MAX_AGE_MS`), so a supplier/type changed by
+  someone else reaches the titles; and on the first navigation after this client corrected a
+  contract (`PATCH /api/contracts/{id}`, `correctContract`), so a supplier/type the user just
+  changed shows at once. The last two apply only while some chat is bound to a contract. The
+  correction signal is a per-client counter (`client.ts#contractCorrectionCount`, bumped on a `200`
+  from `correctContract`) that the rail compares with the value it saw at its last read; a test
+  double that never corrects anything reads as 0.
 - **Role guard (AC-2)** -- "Workspace & members" is a footer link
   (`navItems.ts#canManageMembers`, unit-tested), not a row in the flat list.
   `src/components/shell/RequireRole.tsx` used to wrap the `workspace/members`
