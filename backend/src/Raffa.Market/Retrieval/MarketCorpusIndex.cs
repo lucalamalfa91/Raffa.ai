@@ -70,6 +70,25 @@ public sealed class MarketCorpusIndex
             position.TryAdd(recordIdsInQueryOrder[i], i);
         }
 
+        // The same few supplier / product / category strings repeat across thousands of rows: keep one
+        // copy of each, and fold each distinct supplier name once.
+        var shared = new Dictionary<string, string>(StringComparer.Ordinal);
+        string? Share(string? value)
+        {
+            if (value is null)
+            {
+                return null;
+            }
+
+            if (!shared.TryGetValue(value, out var known))
+            {
+                shared[value] = known = value;
+            }
+
+            return known;
+        }
+
+        var folded = new Dictionary<string, string>(StringComparer.Ordinal);
         var rows = new Row[records.Count];
         var rank = new int[records.Count];
         List<int>? unranked = null;
@@ -81,7 +100,8 @@ public sealed class MarketCorpusIndex
         for (var i = 0; i < records.Count; i++)
         {
             var (entity, deal) = records[i];
-            rows[i] = new Row(deal, entity.SupplierNorm, entity.ProductNorm, entity.Category);
+            var supplierNorm = Share(entity.SupplierNorm);
+            rows[i] = new Row(deal, supplierNorm, Share(entity.ProductNorm), Share(entity.Category));
 
             if (position.TryGetValue(entity.RecordId, out var p))
             {
@@ -96,7 +116,11 @@ public sealed class MarketCorpusIndex
             // A deal without a supplier or category can never pass the exact check, so it is not indexed.
             if (deal.Supplier is not null)
             {
-                var name = MarketSupplierMatch.Normalize(deal.Supplier);
+                if (!folded.TryGetValue(deal.Supplier, out var name))
+                {
+                    folded[deal.Supplier] = name = MarketSupplierMatch.Normalize(deal.Supplier);
+                }
+
                 if (name.Length > 0)
                 {
                     Add(bySupplierName, name, i);
@@ -108,13 +132,13 @@ public sealed class MarketCorpusIndex
                 Add(byCategory, deal.Category, i);
             }
 
-            if (entity.SupplierNorm is null)
+            if (supplierNorm is null)
             {
                 nullSupplierColumn.Add(i);
             }
             else
             {
-                Add(bySupplierColumn, entity.SupplierNorm, i);
+                Add(bySupplierColumn, supplierNorm, i);
             }
         }
 

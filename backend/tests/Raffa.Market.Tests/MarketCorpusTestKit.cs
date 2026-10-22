@@ -172,9 +172,17 @@ internal sealed class FakeCorpusSource : IMarketCorpusSource
         return Task.FromResult(Table.Count == 0 ? "empty" : $"feed-{Generation}:{Table.Count}");
     }
 
+    /// <summary>When set, reading the corpus throws it (an unreadable payload).</summary>
+    public Exception? FailRead { get; set; }
+
     public Task<MarketCorpusRead> ReadAsync(MarketDbContext db, CancellationToken cancellationToken)
     {
         Reads++;
+        if (FailRead is { } failure)
+        {
+            throw failure;
+        }
+
         return Task.FromResult(new MarketCorpusRead(
             Table.ToList(),
             MarketCorpusTestKit.QueryOrder(Table),

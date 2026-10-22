@@ -1,6 +1,7 @@
+using System.Runtime.ExceptionServices;
+using System.Text.Json;
 using Raffa.Market.Contracts;
 using Raffa.Market.Infrastructure;
-using Microsoft.EntityFrameworkCore;
 
 namespace Raffa.Market.Retrieval;
 
@@ -72,12 +73,23 @@ public sealed class MarketCorpusCache
     private readonly IMarketCorpusSource _source;
     private volatile Validated? _current;
     private volatile VersionToken? _token;
+    private volatile LoadFailure? _failure;
 
     /// <summary>A snapshot and the moment it was last confirmed to match the table.</summary>
     private sealed record Validated(MarketCorpusSnapshot Snapshot, DateTimeOffset At);
 
-    /// <summary>The corpus version string (<see cref="IMarketDealLookup.GetCorpusVersionAsync"/>) and when it was read.</summary>
+    /// <summary>
+    /// The corpus version string (<see cref="IMarketDealLookup.GetCorpusVersionAsync"/>) and when it was read.
+    /// Whatever confirms a snapshot also refreshes this, so it is never older than the snapshot's last
+    /// confirmation: a version read only goes to the database once the snapshot is past its interval
+    /// too, and the pricing that follows revalidates the snapshot -- a stored comparison is never
+    /// labelled with a newer corpus version than the data it was computed from.
+    /// </summary>
     private sealed record VersionToken(string Value, DateTimeOffset At);
+
+    /// <summary>A payload that did not deserialize, remembered for one interval so a corrupt row costs
+    /// one failed whole-table read per interval, not one per call.</summary>
+    private sealed record LoadFailure(JsonException Error, DateTimeOffset At);
 
     public MarketCorpusCache(MarketCorpusCacheOptions? options = null, TimeProvider? timeProvider = null)
         : this(options, timeProvider, SqlMarketCorpusSource.Instance)
@@ -104,6 +116,7 @@ public sealed class MarketCorpusCache
     {
         _current = null;
         _token = null;
+        _failure = null;
     }
 
     /// <summary>
@@ -218,6 +231,11 @@ public sealed class MarketCorpusCache
                 return snapshot;
             }
 
+            if (_failure is { } failure && IsFresh(failure.At))
+            {
+                ExceptionDispatchInfo.Capture(failure.Error).Throw();
+            }
+
             var version = await _source.FingerprintAsync(db, cancellationToken).ConfigureAwait(false);
             if (_current is { } hit && string.Equals(hit.Snapshot.Version, version, StringComparison.Ordinal))
             {
@@ -238,7 +256,18 @@ public sealed class MarketCorpusCache
     // Reads the table and builds the snapshot. Called with _gate held.
     private async Task<MarketCorpusSnapshot> LoadAsync(MarketDbContext db, string version, CancellationToken cancellationToken)
     {
-        var read = await _source.ReadAsync(db, cancellationToken).ConfigureAwait(false);
+        MarketCorpusRead read;
+        try
+        {
+            read = await _source.ReadAsync(db, cancellationToken).ConfigureAwait(false);
+        }
+        catch (JsonException ex) when (_enabled && _revalidateAfter > TimeSpan.Zero)
+        {
+            _failure = new LoadFailure(ex, _time.GetUtcNow());
+            throw;
+        }
+
+        _failure = null;
         var deals = read.Records.Select(r => r.Deal).ToList();
         var snapshot = new MarketCorpusSnapshot(
             version,

@@ -219,6 +219,62 @@ public sealed class MarketCorpusCacheRevalidationTests
         Assert.Equal(1, source.Versions);
     }
 
+    [Fact]
+    public async Task A_version_read_past_the_interval_is_followed_by_a_snapshot_check_never_by_stale_data()
+    {
+        var (cache, source, time) = Create();
+        using var db = MarketCorpusTestKit.OfflineDb();
+        var first = await cache.GetAsync(db);
+
+        // The Worker ingests a new record and the interval passes: the version read sees the new
+        // corpus, so work priced right after must not be priced from the old snapshot.
+        source.Generation = 2;
+        source.Table = [.. source.Table, .. MarketCorpusTestKit.Rows([SampleDeal.Create(recordId: "C", supplier: "SAP")])];
+        time.Advance(TimeSpan.FromSeconds(31));
+        var version = await cache.GetCorpusVersionAsync(db);
+        var pricedFrom = await cache.GetAsync(db);
+
+        Assert.Equal("feed-2:3", version);
+        Assert.NotSame(first, pricedFrom);
+        Assert.Contains(pricedFrom.Deals, d => d.RecordId == "C");
+        Assert.Equal(version, MarketCorpusCache.CorpusVersionOf(pricedFrom.Version));
+    }
+
+    [Fact]
+    public async Task An_unreadable_payload_fails_once_per_interval_not_once_per_call()
+    {
+        var (cache, source, time) = Create();
+        source.FailRead = new JsonException("not a MarketDeal");
+        using var db = MarketCorpusTestKit.OfflineDb();
+
+        await Assert.ThrowsAsync<JsonException>(() => cache.GetAsync(db));
+        await Assert.ThrowsAsync<JsonException>(() => cache.GetAsync(db));
+        await Assert.ThrowsAsync<JsonException>(() => cache.GetAsync(db));
+
+        Assert.Equal((1, 1), (source.Fingerprints, source.Reads));
+
+        // Once the interval passes the table is read again, and a repaired row is picked up.
+        source.FailRead = null;
+        time.Advance(TimeSpan.FromSeconds(31));
+        var snapshot = await cache.GetAsync(db);
+
+        Assert.Equal(2, snapshot.Deals.Count);
+        Assert.Equal((2, 2), (source.Fingerprints, source.Reads));
+    }
+
+    [Fact]
+    public async Task With_an_interval_of_zero_an_unreadable_payload_is_retried_on_every_call()
+    {
+        var (cache, source, _) = Create(TimeSpan.Zero);
+        source.FailRead = new JsonException("not a MarketDeal");
+        using var db = MarketCorpusTestKit.OfflineDb();
+
+        await Assert.ThrowsAsync<JsonException>(() => cache.GetAsync(db));
+        await Assert.ThrowsAsync<JsonException>(() => cache.GetAsync(db));
+
+        Assert.Equal(2, source.Reads);
+    }
+
     [Theory]
     [InlineData("25727:mock-2026.09.3:0a1b2c3d4e5f60718293a4b5c6d7e8f9", "mock-2026.09.3:25727")]
     [InlineData("1:v1:", "v1:1")]
