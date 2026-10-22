@@ -435,6 +435,106 @@ public sealed class LineItemMarketPriceServiceTests : IAsyncLifetime
         Assert.Equal(2, reingested.LinesPriced);
     }
 
+    [Fact]
+    public async Task Two_reads_racing_on_the_same_stale_contract_estimate_and_store_once()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var supplierId = EntityId.New();
+        var (contractId, unlimited, support) = await SeedAsync(tenantContext, tenantId, supplierId);
+
+        var clock = new MutableClock(T0);
+        var names = new FakeSupplierNames(supplierId, "Salesforce");
+        var matcher = new FakeMatcher(line => line.Description.Contains("Unlimited", StringComparison.Ordinal) ? UnlimitedBand() : null);
+        var estimator = new GatedEstimator();
+
+        // Contract 360 and the strategy pack read the same contract at once, each in its own scope.
+        await using var firstDb = CreateAppContext(tenantContext);
+        await using var secondDb = CreateAppContext(tenantContext);
+        var first = new LineItemMarketPriceService(firstDb, tenantContext, clock, matcher, names, estimator: estimator);
+        var second = new LineItemMarketPriceService(secondDb, tenantContext, clock, matcher, names, estimator: estimator);
+
+        var leading = first.GetCurrentAsync(tenantId, contractId, CancellationToken.None);
+        await estimator.Entered;
+        var following = second.GetCurrentAsync(tenantId, contractId, CancellationToken.None);
+        // Give the follower time to reach the lock the leader holds while it waits on the estimator.
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        estimator.Release();
+        var results = await Task.WhenAll(leading, following);
+
+        Assert.Equal(1, estimator.Calls);
+        Assert.Equal(1, estimator.LinesEstimated);
+        Assert.Equal(2, matcher.LinesPriced);
+        foreach (var priced in results)
+        {
+            Assert.True(priced[unlimited].Matched);
+            Assert.False(priced[support].Matched);
+            Assert.Equal(SupportEstimate(), priced[support].Estimate);
+        }
+
+        using (tenantContext.BeginScope(tenantId))
+        {
+            await using var db = CreateAppContext(tenantContext);
+            Assert.Equal(2, await db.ContractLineItemMarketPrices.CountAsync(p => p.ContractId == contractId));
+        }
+    }
+
+    [Fact]
+    public async Task A_forced_repricing_still_reprices_every_line_after_waiting_for_a_running_refresh()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var supplierId = EntityId.New();
+        var (contractId, _, _) = await SeedAsync(tenantContext, tenantId, supplierId);
+
+        var clock = new MutableClock(T0);
+        var names = new FakeSupplierNames(supplierId, "Salesforce");
+        var matcher = new FakeMatcher(_ => null);
+        var estimator = new GatedEstimator();
+
+        await using var readDb = CreateAppContext(tenantContext);
+        await using var extractionDb = CreateAppContext(tenantContext);
+        var read = new LineItemMarketPriceService(readDb, tenantContext, clock, matcher, names, estimator: estimator);
+        var extraction = new LineItemMarketPriceService(extractionDb, tenantContext, clock, matcher, names, estimator: estimator);
+
+        var reading = read.GetCurrentAsync(tenantId, contractId, CancellationToken.None);
+        await estimator.Entered;
+        var forcing = extraction.PriceContractAsync(tenantId, contractId, CancellationToken.None);
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        estimator.Release();
+        await Task.WhenAll(reading, forcing);
+
+        // force:true is not satisfied by the read ahead of it: both lines were priced again.
+        Assert.Equal(4, matcher.LinesPriced);
+        Assert.Equal(2, estimator.Calls);
+    }
+
+    private sealed class GatedEstimator : IMarketPriceEstimator
+    {
+        private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _calls;
+        private int _lines;
+
+        public int Calls => _calls;
+
+        public int LinesEstimated => _lines;
+
+        public Task Entered => _entered.Task;
+
+        public void Release() => _release.TrySetResult();
+
+        public async Task<IReadOnlyList<MarketPriceEstimate?>> EstimateAsync(
+            MarketPriceContext context, IReadOnlyList<MarketPriceLine> lines, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _calls);
+            Interlocked.Add(ref _lines, lines.Count);
+            _entered.TrySetResult();
+            await _release.Task.ConfigureAwait(false);
+            return lines.Select(_ => (MarketPriceEstimate?)SupportEstimate()).ToList();
+        }
+    }
+
     private sealed class MutableClock(DateTimeOffset now) : IClock
     {
         public DateTimeOffset Now { get; set; } = now;

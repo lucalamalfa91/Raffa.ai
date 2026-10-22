@@ -178,17 +178,30 @@ public sealed class WorkspaceDirectoryService(
                     cancellationToken).ConfigureAwait(false);
             }
 
-            var roleNames = await (
+            // The tenant's `workspace` row rides along on the same query (a LEFT join, so a live
+            // membership with no workspace row still yields its role rows, with a null workspace) --
+            // it used to be a second round trip per live workspace, and this runs once per workspace
+            // on every `GET /api/workspaces`. `workspace.tenant_id` is unique (WorkspaceTenantConfiguration),
+            // so the join adds a column set, never a row: every role row carries the same workspace.
+            // Same tenant scope, same RLS claims, same `TenantId == candidateTenantId` predicate as the
+            // separate `SingleOrDefault` it replaces.
+            var liveRows = await (
                 from user in db.WorkspaceUsers
                 join membership in db.WorkspaceMemberships on user.Id equals membership.WorkspaceUserId
                 join workspaceRole in db.WorkspaceRoles on membership.WorkspaceRoleId equals workspaceRole.Id
+                join tenantWorkspace in db.Workspaces.Where(w => w.TenantId == candidateTenantId)
+                    on user.TenantId equals tenantWorkspace.TenantId into tenantWorkspaces
+                from tenantWorkspace in tenantWorkspaces.DefaultIfEmpty()
                 where user.TenantId == candidateTenantId
                     && membership.TenantId == candidateTenantId
                     && workspaceRole.TenantId == candidateTenantId
                     && (user.Email.ToLower() == trimmedIdentityLower || user.ExternalSubjectId == trimmedIdentity)
-                select workspaceRole.Name)
+                select new { RoleName = workspaceRole.Name, Workspace = tenantWorkspace })
+                .AsNoTracking()
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
+
+            var roleNames = liveRows.Select(row => row.RoleName).ToList();
 
             // Rule F.1d: a live workspace_membership row is the grant, never workspace_user's own
             // existence. No recognized role among this identity's memberships in this tenant (most
@@ -236,10 +249,8 @@ public sealed class WorkspaceDirectoryService(
                 continue;
             }
 
-            var workspace = await db.Workspaces
-                .AsNoTracking()
-                .SingleOrDefaultAsync(w => w.TenantId == candidateTenantId, cancellationToken)
-                .ConfigureAwait(false);
+            // A role resolved, so `liveRows` is non-empty; the workspace is the one every row carries.
+            var workspace = liveRows[0].Workspace;
 
             if (workspace is null)
             {

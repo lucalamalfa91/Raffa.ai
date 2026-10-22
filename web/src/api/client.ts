@@ -50,6 +50,7 @@
 // T04, OQ-askv2-005/ADR-022) -- ADR-010's w14 footer clause 3 required that header stop being *read*
 // server-side; this is the client half, that it stops being *sent* at all.
 import type { paths } from "./generated/schema";
+import { createCoalescingFetch, type CoalescingFetch } from "./coalescingFetch";
 
 /** See this file's own header comment ("Task E18/F01/US02/T01", NW-05). Returns a bearer access
  * token scoped to `appConfig.oidcApiScopes` (acquired via `acquireTokenSilent`, falling back to
@@ -1384,6 +1385,7 @@ export interface GetMarketRecordResult {
  * outcomes the caller renders inline, never exceptions.
  */
 async function workspaceSettingsRequest(
+  apiFetch: CoalescingFetch,
   baseUrl: string,
   getAccessToken: GetAccessToken,
   tenantId: string,
@@ -1393,7 +1395,7 @@ async function workspaceSettingsRequest(
   let response: Response;
   try {
     const headers = { ...(init.headers ?? {}), ...await authHeaders(getAccessToken) };
-    response = await fetch(new URL(path, baseUrl), {
+    response = await apiFetch(new URL(path, baseUrl), {
       method: init.method,
       ...(Object.keys(headers).length > 0 ? { headers } : {}),
       ...(init.body !== undefined ? { body: init.body } : {}),
@@ -1862,6 +1864,27 @@ export interface ApiClient {
 }
 
 
+/** Successful `correctContract` calls per client (a counter that only grows). Kept beside the
+ * client rather than on `ApiClient`, so the interface -- and every test double of it -- is
+ * unchanged. */
+const contractCorrections = new WeakMap<object, number>();
+
+/**
+ * How many `correctContract` calls this client has seen succeed (`200`); 0 for a client that has
+ * seen none (a test double included). A correction can change what the rail shows for a contract
+ * (supplier, type), so `RailNav` compares it with the value it saw at its last portfolio read to
+ * know that read is out of date.
+ */
+export function contractCorrectionCount(client: object): number {
+  return contractCorrections.get(client) ?? 0;
+}
+
+/** Records one successful contract correction made through `client`. `createApiClient` calls it on
+ * every `200` from `correctContract`; it is exported for test doubles that stand in for that call. */
+export function noteContractCorrection(client: object): void {
+  contractCorrections.set(client, contractCorrectionCount(client) + 1);
+}
+
 /**
  * Builds the API client from runtime config (ADR-012 "config, not code";
  * `AppConfig.apiBaseUrl`, see src/config/appConfig.ts). `baseUrl` is expected
@@ -1874,7 +1897,12 @@ export function createApiClient(
   baseUrl: string,
   getAccessToken: GetAccessToken = () => Promise.resolve(null),
 ): ApiClient {
-  return {
+  // Every request of this client goes through `apiFetch`: identical GETs that are in flight at the
+  // same instant share one network request (see ./coalescingFetch.ts -- nothing is cached after a
+  // request settles, and any write drops what is in flight). One instance per client, so nothing
+  // leaks between clients.
+  const apiFetch = createCoalescingFetch();
+  const client: ApiClient = {
     async getHealth() {
       let response: Response;
       try {
@@ -1884,7 +1912,7 @@ export function createApiClient(
         // this stays byte-for-byte what it was before task E18/F01/US02/T01 whenever no
         // getAccessToken is supplied (the default).
         const headers = await authHeaders(getAccessToken);
-        response = await fetch(new URL("/health", baseUrl), {
+        response = await apiFetch(new URL("/health", baseUrl), {
           ...(Object.keys(headers).length > 0 ? { headers } : {}),
           cache: "no-store",
         });
@@ -1903,7 +1931,7 @@ export function createApiClient(
     async createWorkspace(request) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/workspaces", baseUrl), {
+        response = await apiFetch(new URL("/api/workspaces", baseUrl), {
           method: "POST",
           headers: { "Content-Type": "application/json", ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
@@ -1941,7 +1969,7 @@ export function createApiClient(
     async inviteWorkspaceMember(tenantId, request) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites`, baseUrl),
           {
             method: "POST",
@@ -1996,7 +2024,7 @@ export function createApiClient(
       try {
         // No X-Tenant-Id, ever -- see this method's own doc comment on the ApiClient interface.
         const headers = await authHeaders(getAccessToken);
-        response = await fetch(new URL("/api/workspaces", baseUrl), {
+        response = await apiFetch(new URL("/api/workspaces", baseUrl), {
           ...(Object.keys(headers).length > 0 ? { headers } : {}),
           cache: "no-store",
         });
@@ -2044,7 +2072,7 @@ export function createApiClient(
         // why, even though the sibling invite call on this same route prefix is also tenant-scoped
         // by its path.
         const headers = await authHeaders(getAccessToken);
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/members`, baseUrl),
           {
             ...(Object.keys(headers).length > 0 ? { headers } : {}),
@@ -2082,11 +2110,11 @@ export function createApiClient(
     },
 
     async getWorkspaceSettings(tenantId) {
-      return workspaceSettingsRequest(baseUrl, getAccessToken, tenantId, { method: "GET" });
+      return workspaceSettingsRequest(apiFetch, baseUrl, getAccessToken, tenantId, { method: "GET" });
     },
 
     async updateWorkspaceSettings(tenantId, request) {
-      return workspaceSettingsRequest(baseUrl, getAccessToken, tenantId, {
+      return workspaceSettingsRequest(apiFetch, baseUrl, getAccessToken, tenantId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
@@ -2096,7 +2124,7 @@ export function createApiClient(
     async revokeInvitation(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites/${encodeURIComponent(id)}`, baseUrl),
           {
             method: "DELETE",
@@ -2138,7 +2166,7 @@ export function createApiClient(
     async removeMember(tenantId, membershipId) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(
             `/api/workspaces/${encodeURIComponent(tenantId)}/members/${encodeURIComponent(membershipId)}`,
             baseUrl,
@@ -2197,7 +2225,7 @@ export function createApiClient(
     async getInvitation(token) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/invites", baseUrl), {
+        response = await apiFetch(new URL("/api/invites", baseUrl), {
           headers: { "X-Invitation-Token": token, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2234,7 +2262,7 @@ export function createApiClient(
     async acceptInvitation(token) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/invites/accept", baseUrl), {
+        response = await apiFetch(new URL("/api/invites/accept", baseUrl), {
           method: "POST",
           headers: { "X-Invitation-Token": token, ...await authHeaders(getAccessToken) },
           cache: "no-store",
@@ -2298,7 +2326,7 @@ export function createApiClient(
     async acceptPendingInvitation(tenantId) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/workspaces/${encodeURIComponent(tenantId)}/invites/accept`, baseUrl),
           {
             method: "POST",
@@ -2349,7 +2377,7 @@ export function createApiClient(
 
       let response: Response;
       try {
-        response = await fetch(new URL("/api/documents", baseUrl), {
+        response = await apiFetch(new URL("/api/documents", baseUrl), {
           method: "POST",
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: formData,
@@ -2396,7 +2424,7 @@ export function createApiClient(
     async getDocument(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2443,7 +2471,7 @@ export function createApiClient(
 
       let response: Response;
       try {
-        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) }, cache: "no-store" });
+        response = await apiFetch(url, { headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) }, cache: "no-store" });
       } catch (cause) {
         return {
           ok: false,
@@ -2475,7 +2503,7 @@ export function createApiClient(
 
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await apiFetch(url, {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2512,7 +2540,7 @@ export function createApiClient(
     async reprocessDocument(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/reprocess`, baseUrl), {
+        response = await apiFetch(new URL(`/api/documents/${encodeURIComponent(id)}/reprocess`, baseUrl), {
           method: "POST",
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
@@ -2551,7 +2579,7 @@ export function createApiClient(
     async deleteDocument(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/documents/${encodeURIComponent(id)}`, baseUrl), {
           method: "DELETE",
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
@@ -2582,7 +2610,7 @@ export function createApiClient(
     async deleteAllDocuments(tenantId) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/documents", baseUrl), {
+        response = await apiFetch(new URL("/api/documents", baseUrl), {
           method: "DELETE",
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
@@ -2609,7 +2637,7 @@ export function createApiClient(
     async prioritiseDocument(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/prioritise`, baseUrl), {
+        response = await apiFetch(new URL(`/api/documents/${encodeURIComponent(id)}/prioritise`, baseUrl), {
           method: "POST",
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
@@ -2652,7 +2680,7 @@ export function createApiClient(
 
       let response: Response;
       try {
-        response = await fetch(url, { headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) }, cache: "no-store" });
+        response = await apiFetch(url, { headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) }, cache: "no-store" });
       } catch (cause) {
         return {
           ok: false,
@@ -2684,7 +2712,7 @@ export function createApiClient(
     async getContract360(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2722,7 +2750,7 @@ export function createApiClient(
     async getRenewals(tenantId) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/renewals", baseUrl), {
+        response = await apiFetch(new URL("/api/renewals", baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2754,7 +2782,7 @@ export function createApiClient(
     async getRenewalPriority(tenantId, contractId) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/priority`, baseUrl), {
+        response = await apiFetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/priority`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2790,7 +2818,7 @@ export function createApiClient(
     async getCorrectionHistory(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/corrections`, baseUrl), {
+        response = await apiFetch(new URL(`/api/contracts/${encodeURIComponent(id)}/corrections`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2828,7 +2856,7 @@ export function createApiClient(
     async correctContract(tenantId, id, request) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/contracts/${encodeURIComponent(id)}`, baseUrl), {
           method: "PATCH",
           headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
@@ -2844,6 +2872,7 @@ export function createApiClient(
       }
 
       if (response.status === 200) {
+        noteContractCorrection(client);
         const correction = (await response.json()) as ContractCorrectionBody;
         return { ok: true, statusCode: 200, correction, error: null };
       }
@@ -2868,7 +2897,7 @@ export function createApiClient(
     async getContractEvidence(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/evidence`, baseUrl), {
+        response = await apiFetch(new URL(`/api/contracts/${encodeURIComponent(id)}/evidence`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2909,7 +2938,7 @@ export function createApiClient(
     async getContractStrategy(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/contracts/${encodeURIComponent(id)}/strategy`, baseUrl), {
+        response = await apiFetch(new URL(`/api/contracts/${encodeURIComponent(id)}/strategy`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -2947,7 +2976,7 @@ export function createApiClient(
     async validateDocument(tenantId, id, request) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/documents/${encodeURIComponent(id)}/validate`, baseUrl), {
+        response = await apiFetch(new URL(`/api/documents/${encodeURIComponent(id)}/validate`, baseUrl), {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
@@ -2989,7 +3018,7 @@ export function createApiClient(
     async askRaffa(tenantId, request) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/chat/query", baseUrl), {
+        response = await apiFetch(new URL("/api/chat/query", baseUrl), {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
@@ -3024,7 +3053,7 @@ export function createApiClient(
     async postRenewalAction(tenantId, contractId, request) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/action`, baseUrl), {
+        response = await apiFetch(new URL(`/api/renewals/${encodeURIComponent(contractId)}/action`, baseUrl), {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
@@ -3060,7 +3089,7 @@ export function createApiClient(
     async getRenewalNegotiationTodos(tenantId, contractId) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/renewals/${encodeURIComponent(contractId)}/negotiation-todos`, baseUrl),
           {
             headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
@@ -3102,7 +3131,7 @@ export function createApiClient(
     async tickRenewalNegotiationTodo(tenantId, contractId, request) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/renewals/${encodeURIComponent(contractId)}/negotiation-todos`, baseUrl),
           {
             method: "PUT",
@@ -3167,7 +3196,7 @@ export function createApiClient(
     async getQuote(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/quotes/${encodeURIComponent(id)}`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -3203,7 +3232,7 @@ export function createApiClient(
     async getNegotiationSteps(tenantId, contractId) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/contracts/${encodeURIComponent(contractId)}/negotiation-steps`, baseUrl),
           {
             headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
@@ -3247,7 +3276,7 @@ export function createApiClient(
     async putNegotiationSteps(tenantId, contractId, request) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/contracts/${encodeURIComponent(contractId)}/negotiation-steps`, baseUrl),
           {
             method: "PUT",
@@ -3304,7 +3333,7 @@ export function createApiClient(
 
       let response: Response;
       try {
-        response = await fetch(new URL("/api/quotes", baseUrl), {
+        response = await apiFetch(new URL("/api/quotes", baseUrl), {
           method: "POST",
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: formData,
@@ -3339,7 +3368,7 @@ export function createApiClient(
     async getQuoteAssessment(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment`, baseUrl), {
+        response = await apiFetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -3375,7 +3404,7 @@ export function createApiClient(
     async recalculateQuoteAssessment(tenantId, id, mappings = []) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment/recalculate`, baseUrl), {
+        response = await apiFetch(new URL(`/api/quotes/${encodeURIComponent(id)}/assessment/recalculate`, baseUrl), {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify({ mappings }),
@@ -3412,7 +3441,7 @@ export function createApiClient(
     async captureNegotiationOutcome(tenantId, request) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/negotiations/outcomes", baseUrl), {
+        response = await apiFetch(new URL("/api/negotiations/outcomes", baseUrl), {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
@@ -3449,7 +3478,7 @@ export function createApiClient(
     async getQuoteBenchmarkHistory(tenantId) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/quotes/benchmark-history", baseUrl), {
+        response = await apiFetch(new URL("/api/quotes/benchmark-history", baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -3482,7 +3511,7 @@ export function createApiClient(
     async getSavingsKpis(tenantId) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/savings/kpis", baseUrl), {
+        response = await apiFetch(new URL("/api/savings/kpis", baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -3515,7 +3544,7 @@ export function createApiClient(
     async getSavingsOpportunities(tenantId) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/savings", baseUrl), {
+        response = await apiFetch(new URL("/api/savings", baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -3552,7 +3581,7 @@ export function createApiClient(
 
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await apiFetch(url, {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -3584,7 +3613,7 @@ export function createApiClient(
     async createConversation(tenantId, request = {}) {
       let response: Response;
       try {
-        response = await fetch(new URL("/api/conversations", baseUrl), {
+        response = await apiFetch(new URL("/api/conversations", baseUrl), {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify(request),
@@ -3618,7 +3647,7 @@ export function createApiClient(
     async getConversation(tenantId, id) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/conversations/${encodeURIComponent(id)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/conversations/${encodeURIComponent(id)}`, baseUrl), {
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
         });
@@ -3655,7 +3684,7 @@ export function createApiClient(
     async postMessage(tenantId, conversationId, request) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/conversations/${encodeURIComponent(conversationId)}/messages`, baseUrl),
           {
             method: "POST",
@@ -3701,7 +3730,7 @@ export function createApiClient(
     async postConversationFeedback(tenantId, conversationId, request) {
       let response: Response;
       try {
-        response = await fetch(
+        response = await apiFetch(
           new URL(`/api/conversations/${encodeURIComponent(conversationId)}/feedback`, baseUrl),
           {
             method: "POST",
@@ -3742,7 +3771,7 @@ export function createApiClient(
     async renameConversation(tenantId, conversationId, title) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}`, baseUrl), {
           method: "PATCH",
           headers: { "Content-Type": "application/json", "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           body: JSON.stringify({ title }),
@@ -3780,7 +3809,7 @@ export function createApiClient(
     async restoreConversation(tenantId, conversationId) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}/restore`, baseUrl), {
+        response = await apiFetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}/restore`, baseUrl), {
           method: "POST",
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
@@ -3817,7 +3846,7 @@ export function createApiClient(
     async deleteConversation(tenantId, conversationId) {
       let response: Response;
       try {
-        response = await fetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/conversations/${encodeURIComponent(conversationId)}`, baseUrl), {
           method: "DELETE",
           headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
           cache: "no-store",
@@ -3852,7 +3881,7 @@ export function createApiClient(
         // interface. Same conditional-headers shape as getHealth above: no `headers` key at all
         // when authHeaders(getAccessToken) has nothing to contribute.
         const headers = await authHeaders(getAccessToken);
-        response = await fetch(new URL("/api/capabilities", baseUrl), {
+        response = await apiFetch(new URL("/api/capabilities", baseUrl), {
           ...(Object.keys(headers).length > 0 ? { headers } : {}),
           cache: "no-store",
         });
@@ -3886,7 +3915,7 @@ export function createApiClient(
         // Tenant-agnostic (no X-Tenant-Id) -- see this method's own doc comment on the ApiClient
         // interface.
         const headers = await authHeaders(getAccessToken);
-        response = await fetch(new URL(`/api/market/records/${encodeURIComponent(id)}`, baseUrl), {
+        response = await apiFetch(new URL(`/api/market/records/${encodeURIComponent(id)}`, baseUrl), {
           ...(Object.keys(headers).length > 0 ? { headers } : {}),
           cache: "no-store",
         });
@@ -3917,4 +3946,5 @@ export function createApiClient(
       };
     },
   };
+  return client;
 }

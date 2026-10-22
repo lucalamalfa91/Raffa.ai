@@ -79,8 +79,6 @@ public sealed class DocumentQueryService(
             query = query.Where(d => d.ProcessingStatus == wanted);
         }
 
-        var totalCount = await query.CountAsync(cancellationToken).ConfigureAwait(false);
-
         // ADR-027 §D7 (task E16/F02/US03/T01): the counts are tenant-wide and unfiltered by
         // `?status=` -- one grouped query over every row of this tenant, never four round trips
         // and never a page-scoped number (a page-scoped count would be a new lie at page 2).
@@ -94,6 +92,17 @@ public sealed class DocumentQueryService(
             .ConfigureAwait(false);
         int Of(params DocumentProcessingStatus[] statuses) =>
             byStatus.Where(b => statuses.Contains(b.Status)).Sum(b => b.Count);
+
+        // `totalCount` (the size of the filtered list) is one of those same grouped counts -- the
+        // tenant's rows in the requested status, or all of them without a filter -- so it is read
+        // off `byStatus` instead of costing a COUNT query of its own. This endpoint is the SPA
+        // shell's per-navigation counts probe (`pageSize=1`), so the saved round trip is paid on
+        // every screen. Same table, same tenant predicate, same status equality: the number is the
+        // one the dedicated query returned, and now consistent with `counts` by construction.
+        var totalCount = status is { } wantedStatus
+            ? byStatus.Where(b => b.Status == wantedStatus).Sum(b => b.Count)
+            : byStatus.Sum(b => b.Count);
+
         // ADR-027 §C9: `needsAttention` is "not Completed and not Rejected" -- the set the screen's
         // own default filter lists -- so it contains `processing`; §C5's `needsReview` sits inside
         // both. Five overlapping projections of one grouped query, never a partition.

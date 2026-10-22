@@ -15,6 +15,7 @@ Run:
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -383,6 +384,95 @@ class BrokenFixtureTreeTests(unittest.TestCase):
         passed, detail = tfr.check_version_pin_parity("dev", envs_root, infra_root)
         self.assertFalse(passed, detail)
         self.assertIn("azurerm", detail)
+
+
+class ContainerAppsReplicaFloorTests(unittest.TestCase):
+    """Latency work: only `demo` keeps one warm API replica (ADR-005 amendment footer).
+
+    Pins the effective `min_replicas` of each Container App per environment, read from the real
+    `infra/` tree: API -> demo 1, dev 0; worker -> 0 in both (ADR-027's rejection of a worker floor
+    stands). Resolved the way Terraform does: the env root's explicit `api_min_replicas`, else the
+    module variable's default. No `terraform` binary needed.
+    """
+
+    MODULE_DIR = tfr.INFRA_ROOT / "modules" / "containerapps"
+
+    @staticmethod
+    def _read(path: Path) -> str:
+        return tfr._strip_line_comments(path.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _int_attribute(body: str, name: str) -> int | None:
+        m = re.search(rf"^\s*{re.escape(name)}\s*=\s*(\d+)\s*$", body, re.MULTILINE)
+        return int(m.group(1)) if m else None
+
+    def _containerapps_module_call(self, env: str) -> str:
+        body = tfr._find_block(self._read(tfr.ENVIRONMENTS_ROOT / env / "main.tf"), r'module\s+"containerapps"\s*')
+        self.assertIsNotNone(body, f"{env}: no module \"containerapps\" block")
+        return body
+
+    def _module_variable_default(self, name: str) -> int:
+        body = tfr._find_block(self._read(self.MODULE_DIR / "variables.tf"), rf'variable\s+"{name}"\s*')
+        self.assertIsNotNone(body, f"modules/containerapps has no variable \"{name}\"")
+        default = self._int_attribute(body, "default")
+        self.assertIsNotNone(default, f"variable \"{name}\" has no numeric default")
+        return default
+
+    def _effective_api_min_replicas(self, env: str) -> int:
+        explicit = self._int_attribute(self._containerapps_module_call(env), "api_min_replicas")
+        return explicit if explicit is not None else self._module_variable_default("api_min_replicas")
+
+    def _app_template(self, app: str) -> str:
+        resource = tfr._find_block(
+            self._read(self.MODULE_DIR / "main.tf"), rf'resource\s+"azurerm_container_app"\s+"{app}"\s*'
+        )
+        self.assertIsNotNone(resource, f"modules/containerapps has no azurerm_container_app \"{app}\"")
+        template = tfr._find_block(resource, r"template\s*")
+        self.assertIsNotNone(template, f"azurerm_container_app \"{app}\" has no template block")
+        return template
+
+    def test_demo_api_keeps_one_warm_replica(self) -> None:
+        self.assertEqual(self._effective_api_min_replicas("demo"), 1)
+        self.assertEqual(self._int_attribute(self._containerapps_module_call("demo"), "api_min_replicas"), 1)
+
+    def test_dev_api_still_scales_to_zero(self) -> None:
+        self.assertEqual(self._effective_api_min_replicas("dev"), 0)
+        # dev leaves the variable unset on purpose: nothing at the root can quietly raise dev's cost.
+        self.assertIsNone(self._int_attribute(self._containerapps_module_call("dev"), "api_min_replicas"))
+
+    def test_module_default_is_scale_to_zero(self) -> None:
+        self.assertEqual(self._module_variable_default("api_min_replicas"), 0)
+
+    def test_api_template_reads_the_variable_and_worker_template_is_literal_zero(self) -> None:
+        self.assertRegex(self._app_template("api"), r"min_replicas\s*=\s*var\.api_min_replicas\b")
+        self.assertEqual(self._int_attribute(self._app_template("worker"), "min_replicas"), 0)
+
+    def test_neither_environment_can_raise_a_worker_floor(self) -> None:
+        # ADR-005 w15 footer §2 / ADR-027: a worker floor is a rejected fixed cost line. There is no
+        # knob for it in the module, so no root can set one.
+        self.assertNotIn("worker_min_replicas", self._read(self.MODULE_DIR / "variables.tf"))
+        for env in ("dev", "demo"):
+            self.assertNotIn("worker_min_replicas", self._containerapps_module_call(env))
+
+    def test_floor_never_exceeds_the_ceiling_in_either_environment(self) -> None:
+        for env in ("dev", "demo"):
+            ceiling = self._int_attribute(self._containerapps_module_call(env), "api_max_replicas")
+            self.assertIsNotNone(ceiling, f"{env}: api_max_replicas not pinned at the root")
+            self.assertLessEqual(self._effective_api_min_replicas(env), ceiling)
+
+    def test_cross_variable_bound_is_a_precondition_so_terraform_1_8_still_works(self) -> None:
+        # versions.tf allows Terraform >= 1.8.0, where a variable validation may not read another
+        # variable (that arrived in 1.9). The `<= api_max_replicas` bound therefore lives in a
+        # precondition on the API app, and the variable's own validation stays self-contained.
+        variable = tfr._find_block(self._read(self.MODULE_DIR / "variables.tf"), r'variable\s+"api_min_replicas"\s*')
+        self.assertIsNotNone(variable)
+        validation = tfr._find_block(variable, r"validation\s*")
+        self.assertIsNotNone(validation, "api_min_replicas has no validation block")
+        self.assertNotIn("api_max_replicas", validation)
+        api = tfr._find_block(
+            self._read(self.MODULE_DIR / "main.tf"), r'resource\s+"azurerm_container_app"\s+"api"\s*'
+        )
+        self.assertRegex(api, r"precondition\s*{[^}]*var\.api_min_replicas\s*<=\s*var\.api_max_replicas")
 
 
 class RealRepoStructuralScanTests(unittest.TestCase):

@@ -23,7 +23,9 @@ using Raffa.SharedKernel;
 using Raffa.SharedKernel.Persistence;
 using Raffa.Suppliers.Products.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.IdentityModel.Tokens;
+using System.IO.Compression;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -419,6 +421,30 @@ builder.Services.AddAiFlows();
 
 builder.Services.AddHealthChecks();
 
+// Response compression for the JSON the SPA reads on every screen (portfolio, workspaces, documents
+// are tens of KB of repetitive property names). Brotli first, Gzip as the fallback a client that
+// does not advertise `br` gets; CompressionLevel.Fastest because the replica is 0.25 vCPU and the
+// win here is bytes on the wire, not the last few percent of ratio. Restricted to JSON and plain
+// text: the document preview endpoint answers a PNG (already compressed) and must not be re-encoded,
+// and nothing in this host streams `text/event-stream`, which compression would buffer. Enabled for
+// HTTPS because that is the only way this API is reached; BREACH needs a secret reflected next to
+// attacker-controlled input in a compressed body, and this API authenticates with a bearer header,
+// never a cookie or an anti-forgery token echoed into a response.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ["application/json", "application/problem+json", "text/plain"];
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
+
+// Builds the EF models and DI call sites in the background right after start so the first request
+// of a freshly started replica does not pay for them (Startup:Warmup:Enabled=false switches it
+// off). Must stay after every AddXxxModule above: it records the DbContext types registered so far.
+builder.Services.AddStartupWarmup();
+
 var app = builder.Build();
 
 // Task E18/F01/US01/T01 (wave w15, NW-05; ADR-010 w15 footer): the one middleware pair this wave
@@ -434,6 +460,13 @@ var app = builder.Build();
 // A saturated Postgres (the pool bound above waiting out its Timeout, or the server refusing a
 // connection) answers 503 + Retry-After instead of a bare 500; every other exception propagates
 // exactly as before. First in the pipeline so it wraps every endpoint below.
+//
+// Response compression is outermost, ahead of it, so even the 503 body that handler writes is
+// compressed like any other JSON answer.
+app.UseResponseCompression();
+// Tells the startup warm-up when a request is in flight, so it steps aside for real traffic; a
+// single volatile read per request once the warm-up is over.
+app.UseStartupWarmupYielding();
 app.UseDatabaseSaturationHandling();
 
 app.UseAuthentication();

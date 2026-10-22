@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { InteractionStatus } from "@azure/msal-browser";
 import App from "../src/App";
 import type { AppConfig } from "../src/config/appConfig";
@@ -410,7 +410,9 @@ describe("App", () => {
       // it never went through `display:none`.
       const status = await screen.findByTestId("api-health-status");
       expect(status).toHaveClass("visually-hidden");
-      expect(status).toHaveTextContent("API: reachable (Healthy)");
+      // The node exists from the first render ("API: checking..."), so findByTestId resolves before
+      // the health promise has settled; wait for the state update instead of racing it.
+      await waitFor(() => expect(status).toHaveTextContent("API: reachable (Healthy)"));
     });
 
     it("renders the reachable status once the health check resolves ok", async () => {
@@ -435,7 +437,8 @@ describe("App", () => {
       render(<App appConfig={appConfig} apiClient={apiClient} />);
 
       const status = await screen.findByTestId("api-health-status");
-      expect(status).toHaveTextContent("API: unreachable (network error:");
+      // Same as above: the status node is there while the check is still pending.
+      await waitFor(() => expect(status).toHaveTextContent("API: unreachable (network error:"));
       expect(status).toHaveTextContent("network down");
     });
   });

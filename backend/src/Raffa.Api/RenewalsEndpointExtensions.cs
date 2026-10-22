@@ -178,11 +178,27 @@ public static class RenewalsEndpointExtensions
         // phase 1 (E21/F01/US01/T01); here we call IBenchmarkService and determine the position
         // from the distribution. Abstentions (incomplete key, thin sample, no spend) produce a null
         // band that the builder maps to "insufficient market data" (ADR-001 w17 clause 4).
+        //
+        // The keys for the whole page are resolved up front -- one supplier-name lookup and one
+        // workspace-country read, not two queries per row -- and a benchmark answer is reused by the
+        // rows that ask the identical question (same supplier, contract type, currency and day). Both
+        // live for this request only. The rows themselves stay sequential: the benchmark service may
+        // share this request's scoped DbContext, which is not safe to use concurrently.
+        var benchmarkKeys = await benchmarkKeyResolution
+            .ResolveManyAsync(
+                tenantId,
+                [.. portfolioPage.Items
+                    .Where(item => item.SupplierId is not null)
+                    .Select(item => new EntityId(item.SupplierId!.Value))
+                    .Distinct()],
+                cancellationToken)
+            .ConfigureAwait(false);
+        var benchmarkAnswers = new Dictionary<BenchmarkQuery, Result<BenchmarkResult>>();
         var candidatesWithBands = new List<RenewalDashboardCandidate>(portfolioPage.Items.Count);
         foreach (var item in portfolioPage.Items)
         {
             var band = await ResolveMarketBandAsync(
-                tenantId, item, benchmarkService, benchmarkKeyResolution, clock, cancellationToken)
+                item, benchmarkKeys, benchmarkAnswers, benchmarkService, clock, cancellationToken)
                 .ConfigureAwait(false);
             candidatesWithBands.Add(ToCandidate(item, band));
         }
@@ -297,8 +313,9 @@ public static class RenewalsEndpointExtensions
     /// Resolves the market position band for one portfolio row (task E21/F02/US01/T01, NW-22).
     ///
     /// <list type="number">
-    /// <item>Calls <see cref="BenchmarkKeyResolution.ResolveAsync"/> to obtain the
-    ///   (supplier name, geography) key — the two dimensions a <c>BenchmarkQuery</c> requires
+    /// <item>Takes the (supplier name, geography) key <see cref="BenchmarkKeyResolution.ResolveManyAsync"/>
+    ///   resolved for the page (the same key <see cref="BenchmarkKeyResolution.ResolveAsync"/> gives per
+    ///   row) — the two dimensions a <c>BenchmarkQuery</c> requires
     ///   that only the host can supply (phase 1, E21/F01/US01/T01). An incomplete key → null.</item>
     /// <item>Calls <see cref="IBenchmarkService.GetBenchmarkAsync"/> with a query composed from
     ///   the resolved key plus the portfolio item's own currency and today's date as the purchase
@@ -313,21 +330,17 @@ public static class RenewalsEndpointExtensions
     /// loop in <see cref="GetRenewalsAsync"/> keeps processing the remaining candidates.
     /// </summary>
     private static async Task<ResolvedMarketBand?> ResolveMarketBandAsync(
-        TenantId tenantId,
         PortfolioListItem item,
+        IReadOnlyDictionary<EntityId, BenchmarkKeyResult> benchmarkKeys,
+        Dictionary<BenchmarkQuery, Result<BenchmarkResult>> benchmarkAnswers,
         IBenchmarkService benchmarkService,
-        BenchmarkKeyResolution benchmarkKeyResolution,
         IClock clock,
         CancellationToken cancellationToken)
     {
-        var keyResult = await benchmarkKeyResolution
-            .ResolveAsync(
-                tenantId,
-                item.SupplierId is { } sid ? new EntityId(sid) : null,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        if (keyResult is not BenchmarkKeyResult.Complete key)
+        // A row with no supplier id has no key at all (ResolveAsync: no supplier name → incomplete).
+        if (item.SupplierId is not { } sid
+            || !benchmarkKeys.TryGetValue(new EntityId(sid), out var keyResult)
+            || keyResult is not BenchmarkKeyResult.Complete key)
             return null; // incomplete key (no supplier name or no workspace country) → abstain
 
         var query = new BenchmarkQuery(
@@ -345,9 +358,14 @@ public static class RenewalsEndpointExtensions
             Currency: item.Currency,
             PurchaseDate: DateOnly.FromDateTime(clock.UtcNow.UtcDateTime));
 
-        var benchmarkResult = await benchmarkService
-            .GetBenchmarkAsync(query, cancellationToken)
-            .ConfigureAwait(false);
+        // The same query is the same question: asked once per request (BenchmarkQuery is a value record).
+        if (!benchmarkAnswers.TryGetValue(query, out var benchmarkResult))
+        {
+            benchmarkResult = await benchmarkService
+                .GetBenchmarkAsync(query, cancellationToken)
+                .ConfigureAwait(false);
+            benchmarkAnswers[query] = benchmarkResult;
+        }
 
         if (benchmarkResult.IsFailure || !benchmarkResult.Value.HasSufficientData)
             return null; // adapter abstained (thin sample or service error) → abstain

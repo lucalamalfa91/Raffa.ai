@@ -150,8 +150,9 @@ module "communication" {
 }
 
 # ADR-005: Container Apps Environment (consumption-only workload
-# profile) plus the API and worker Container Apps, both min_replicas =
-# 0 so idle demo costs nothing.
+# profile) plus the API and worker Container Apps. The worker keeps
+# min_replicas = 0 (KEDA scales it from the queue); the API keeps ONE warm
+# replica (api_min_replicas = 1 below) -- the only always-on line in this root.
 module "containerapps" {
   source = "../../modules/containerapps"
 
@@ -183,6 +184,15 @@ module "containerapps" {
   # so both ceilings are visible at the env root.
   api_max_replicas    = 3
   worker_max_replicas = 3
+  # Warm API replica, DEMO ONLY (ADR-005 amendment footer, 2026-10-22). Demo is
+  # the stakeholder-facing environment and, with the API at min_replicas = 0,
+  # the first request after a few idle minutes waits ~23 s for a cold start
+  # (measured on dev, same module and SKUs). One always-on 0.25 vCPU / 0.5 GiB replica costs about $14/month,
+  # which is the ceiling ADR-027 priced for a min_replicas = 1 line; that
+  # figure is accepted here for the API only. The worker stays scale-to-zero
+  # (ADR-027's rejection of a worker floor stands) and `dev` is unchanged: it
+  # leaves api_min_replicas unset, so it keeps the module default of 0.
+  api_min_replicas = 1
   # Task E16/F01/US01/T01 (NW-68): this root's OWN module.communication and
   # module.keyvault instances only -- never dev's.
   acs_connection_secret_id = module.keyvault.acs_connection_secret_versionless_id

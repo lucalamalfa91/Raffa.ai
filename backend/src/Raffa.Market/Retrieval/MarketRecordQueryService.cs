@@ -63,6 +63,14 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext, MarketCo
             return [];
         }
 
+        // With the corpus cache on, the answer comes from the in-memory index of the cached snapshot:
+        // the same predicate on the same stored columns, the same exact check and the same order as the
+        // SQL below (MarketCorpusIndex), without a table scan or a JSON parse per call.
+        if (await TrySnapshotAsync(cancellationToken).ConfigureAwait(false) is { } snapshot)
+        {
+            return snapshot.Index.BySupplier(supplierName!);
+        }
+
         // F7-T02: the supplier filter runs in SQL on the indexed `supplier_norm` column. The predicate
         // is the SQL form of MarketSupplierMatch (equal, or one contains the other on word
         // boundaries); rows whose column was never written (NULL) are included and decided by the
@@ -90,6 +98,11 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext, MarketCo
             return [];
         }
 
+        if (await TrySnapshotAsync(cancellationToken).ConfigureAwait(false) is { } snapshot)
+        {
+            return snapshot.Index.ByCategory(category);
+        }
+
         var folded = MarketFilterColumns.Category(category);
         var records = dbContext.MarketRecords
             .AsNoTracking()
@@ -109,6 +122,13 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext, MarketCo
     /// <inheritdoc />
     public async Task<string?> GetCorpusVersionAsync(CancellationToken cancellationToken = default)
     {
+        // Same value as the two queries below (row count and newest feed version of the active corpus),
+        // read at most once per revalidation interval and without loading the corpus.
+        if (corpusCache is { Enabled: true })
+        {
+            return await corpusCache.GetCorpusVersionAsync(dbContext, cancellationToken).ConfigureAwait(false);
+        }
+
         var count = await dbContext.MarketRecords.CountAsync(cancellationToken).ConfigureAwait(false);
         if (count == 0)
         {
@@ -119,6 +139,29 @@ public sealed class MarketRecordQueryService(MarketDbContext dbContext, MarketCo
             .MaxAsync(r => r.FeedVersion, cancellationToken)
             .ConfigureAwait(false);
         return $"{feedVersion}:{count}";
+    }
+
+    /// <summary>
+    /// The cached snapshot when the cache is on; <see langword="null"/> when it is off (the SQL path
+    /// answers, as before the cache) or when a stored payload does not deserialize. The latter keeps
+    /// the SQL path's tolerance: it only parses the rows it returns, so one unreadable row elsewhere
+    /// in the table must not take every supplier lookup down with it.
+    /// </summary>
+    private async Task<MarketCorpusSnapshot?> TrySnapshotAsync(CancellationToken cancellationToken)
+    {
+        if (corpusCache is not { Enabled: true })
+        {
+            return null;
+        }
+
+        try
+        {
+            return await corpusCache.GetAsync(dbContext, cancellationToken).ConfigureAwait(false);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static async Task<IReadOnlyList<MarketDeal>> ReadDealsAsync(
