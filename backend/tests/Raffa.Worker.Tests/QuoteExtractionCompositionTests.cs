@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Raffa.AiFlows.QuoteExtraction.Orchestration;
+using Raffa.Documents.Contracts.Application;
 using Raffa.Market;
 using Raffa.Messaging;
 using Raffa.SharedKernel.Jobs;
@@ -42,9 +43,23 @@ public sealed class QuoteExtractionCompositionTests
 
         var handlers = scope.ServiceProvider.GetServices<IJobHandler>().ToList();
 
-        var handler = Assert.Single(handlers);
+        var handler = Assert.Single(handlers, h => h.Kind == JobKinds.QuoteExtraction);
         Assert.IsType<QuoteExtractionJobHandler>(handler);
-        Assert.Equal(JobKinds.QuoteExtraction, handler.Kind);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void The_worker_owns_the_market_reprice_job_kind_with_or_without_quotes(bool withQuotes)
+    {
+        // The pre-warm job is queued by the API and consumed here; a Worker that did not compose it would
+        // boot green and dead-letter every one of them. It does not depend on the Quotes module.
+        using var host = BuildHost(withQuotes ? ConnectionString : null);
+        using var scope = host.Services.CreateScope();
+
+        var handler = Assert.Single(
+            scope.ServiceProvider.GetServices<IJobHandler>(), h => h.Kind == JobKinds.MarketReprice);
+        Assert.IsType<MarketRepriceJobHandler>(handler);
     }
 
     [Fact]
@@ -53,7 +68,7 @@ public sealed class QuoteExtractionCompositionTests
         using var host = BuildHost(quotesConnectionString: null);
         using var scope = host.Services.CreateScope();
 
-        Assert.Empty(scope.ServiceProvider.GetServices<IJobHandler>());
+        Assert.DoesNotContain(scope.ServiceProvider.GetServices<IJobHandler>(), h => h.Kind == JobKinds.QuoteExtraction);
         Assert.Null(scope.ServiceProvider.GetService<QuoteExtractionPipeline>());
     }
 }

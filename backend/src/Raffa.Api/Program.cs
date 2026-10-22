@@ -419,6 +419,12 @@ builder.Services.AddScoped<NegotiationOutcomePropagationService>();
 // flow (IMarketPriceEstimator and the market researcher's IMarketRagSearch).
 builder.Services.AddAiFlows();
 
+// Queues a market pre-warm job for a workspace when someone enters it (Market:Pricing, see
+// MarketRepriceScheduler); it is inert unless the job transport is the durable Service Bus one.
+builder.Services.AddScoped<IMarketRepriceProbe, LineItemMarketRepriceProbe>();
+builder.Services.AddSingleton<MarketRepriceScheduler>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MarketRepriceScheduler>());
+
 builder.Services.AddHealthChecks();
 
 // Response compression for the JSON the SPA reads on every screen (portfolio, workspaces, documents

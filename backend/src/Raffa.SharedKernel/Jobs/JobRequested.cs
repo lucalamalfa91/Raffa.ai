@@ -47,4 +47,9 @@ public static class JobKinds
 {
     /// <summary>Line-item extraction of one uploaded quote (task F6-T01).</summary>
     public const string QuoteExtraction = "quote-extraction";
+
+    /// <summary>Re-prices, for one tenant, the contract lines whose stored market comparison is due for
+    /// a refresh, so the next read finds it ready. Carries no durable job row: the work is idempotent
+    /// and re-derived from the stored comparisons, so a duplicate delivery finds nothing left to do.</summary>
+    public const string MarketReprice = "market-reprice";
 }

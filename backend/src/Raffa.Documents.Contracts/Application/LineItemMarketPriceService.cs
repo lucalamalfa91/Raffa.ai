@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Raffa.Documents.Contracts.Domain;
@@ -66,6 +67,17 @@ public sealed record LineItemMarketPrice(
 /// matcher failure never fails the caller — extraction must not unwind a durable upload, and a
 /// read falls back to the stored comparison.
 /// </para>
+///
+/// <para>
+/// <b>Keeping a read fast.</b> Matching against the market corpus is quick, but a line the corpus
+/// cannot match may need a model estimate, which takes seconds. Two things keep that off the read:
+/// <see cref="MarketRepriceJobHandler"/> re-prices a workspace's due contracts ahead of any read (the
+/// API queues it when someone enters the workspace), and a read that still finds a re-pricing due
+/// waits at most <see cref="MarketPricingOptions.ReadWaitBudgetMs"/> for it. The re-pricing itself is
+/// the same code in both cases, run in its own scope so it can outlive the request; concurrent reads of
+/// one contract share one run. If it finishes inside the budget the read returns exactly what it always
+/// did; if not, the read returns the stored comparison and the next one sees the finished result.
+/// </para>
 /// </summary>
 public sealed class LineItemMarketPriceService(
     DocumentsContractsDbContext dbContext,
@@ -74,7 +86,9 @@ public sealed class LineItemMarketPriceService(
     IMarketPriceMatcher? matcher = null,
     ISupplierNameLookup? supplierNames = null,
     ILogger<LineItemMarketPriceService>? logger = null,
-    IMarketPriceEstimator? estimator = null)
+    IMarketPriceEstimator? estimator = null,
+    MarketPricingOptions? pricingOptions = null,
+    IServiceScopeFactory? scopeFactory = null)
 {
     /// <summary>How long a stored comparison is trusted before a read re-prices the line.</summary>
     public static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(6);
@@ -82,20 +96,82 @@ public sealed class LineItemMarketPriceService(
     // Process-wide: the racing readers are different requests, each with its own scope and DbContext.
     private static readonly KeyedAsyncLock<(Guid Tenant, Guid Contract)> RefreshLocks = new();
 
+    // Process-wide: the re-pricings started by a read that may stop waiting for them, one per contract.
+    // A read arriving while one runs joins it instead of starting another.
+    private static readonly Dictionary<(Guid Tenant, Guid Contract), Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>>> DetachedRefreshes = [];
+
     private readonly ILogger _logger = logger ?? NullLogger<LineItemMarketPriceService>.Instance;
+    private readonly MarketPricingOptions _pricing = pricingOptions ?? new MarketPricingOptions();
 
     /// <summary>Re-prices every line of <paramref name="contractId"/> now (the extraction path).</summary>
     public Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>> PriceContractAsync(
         TenantId tenantId, EntityId contractId, CancellationToken cancellationToken) =>
-        RefreshAsync(tenantId, contractId, force: true, cancellationToken);
+        RefreshAsync(tenantId, contractId, force: true, bounded: false, cancellationToken);
 
     /// <summary>The stored comparison per line item, re-pricing only lines never priced or stale.</summary>
     public Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>> GetCurrentAsync(
         TenantId tenantId, EntityId contractId, CancellationToken cancellationToken) =>
-        RefreshAsync(tenantId, contractId, force: false, cancellationToken);
+        RefreshAsync(tenantId, contractId, force: false, bounded: true, cancellationToken);
+
+    /// <summary>
+    /// The same re-pricing of only the lines never priced or stale, run to completion with no wait
+    /// budget (the pre-warm job's path: nobody is waiting on it).
+    /// </summary>
+    public Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>> RefreshIfStaleAsync(
+        TenantId tenantId, EntityId contractId, CancellationToken cancellationToken) =>
+        RefreshAsync(tenantId, contractId, force: false, bounded: false, cancellationToken);
+
+    /// <summary>
+    /// Up to <paramref name="max"/> contracts of the tenant with a line a read would re-price now: the
+    /// same four conditions <see cref="RefreshAsync"/> applies per line (never priced, compared longer
+    /// ago than <see cref="RefreshAfter"/>, a match stored before its kind was recorded, or compared
+    /// against an older corpus). Empty when no matcher is composed in: there is nothing to refresh.
+    /// </summary>
+    public async Task<IReadOnlyList<EntityId>> FindContractsNeedingRefreshAsync(
+        TenantId tenantId, int max, CancellationToken cancellationToken)
+    {
+        if (matcher is null || max <= 0)
+        {
+            return [];
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var corpusVersion = await TryGetCorpusVersionAsync(cancellationToken).ConfigureAwait(false);
+        var staleBefore = clock.UtcNow - RefreshAfter;
+
+        var prices = dbContext.ContractLineItemMarketPrices
+            .AsNoTracking()
+            .Where(p => p.TenantId == tenantId);
+        var due =
+            from line in dbContext.ContractLineItems.AsNoTracking().Where(l => l.TenantId == tenantId)
+            join price in prices on line.Id equals price.LineItemId into priced
+            from price in priced.DefaultIfEmpty()
+            where dbContext.Contracts.Any(c => c.TenantId == tenantId && c.Id == line.ContractId)
+                && (price == null
+                    || price.CheckedAt < staleBefore
+                    || (price.RecordId != null && price.MatchKind == null)
+                    || (corpusVersion != null && price.CorpusVersion != corpusVersion))
+            select line.ContractId;
+
+        return await due.Distinct().Take(max).ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string?> TryGetCorpusVersionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await matcher!.GetCorpusVersionAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Market corpus version unavailable; stored comparisons age out by time only.");
+            return null;
+        }
+    }
 
     private async Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>> RefreshAsync(
-        TenantId tenantId, EntityId contractId, bool force, CancellationToken cancellationToken)
+        TenantId tenantId, EntityId contractId, bool force, bool bounded, CancellationToken cancellationToken)
     {
         // Both this module's RLS-scoped context and the supplier-name lookup read the ambient
         // tenant claim; opened here like every sibling query service does (nesting is harmless).
@@ -131,15 +207,7 @@ public sealed class LineItemMarketPriceService(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        string? corpusVersion = null;
-        try
-        {
-            corpusVersion = await matcher.GetCorpusVersionAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogWarning(ex, "Market corpus version unavailable; stored comparisons age out by time only.");
-        }
+        var corpusVersion = await TryGetCorpusVersionAsync(cancellationToken).ConfigureAwait(false);
 
         // A match stored before the match kind was recorded is re-priced at once: it may be one
         // product of a bundle line read as the whole line's price. So is any line compared against
@@ -155,6 +223,13 @@ public sealed class LineItemMarketPriceService(
         if (toPrice.Count == 0)
         {
             return ToResult(stored.Values);
+        }
+
+        // A read does not wait for the re-pricing past its budget (see the type's remarks).
+        if (bounded && scopeFactory is not null && _pricing.ReadWaitBudgetMs != MarketPricingOptions.UnboundedReadWait)
+        {
+            return await ReadWithinBudgetAsync(tenantId, contractId, ToResult(stored.Values), cancellationToken)
+                .ConfigureAwait(false);
         }
 
         // Only one refresh per contract at a time (see the type's remarks). Whoever waited re-reads
@@ -335,6 +410,88 @@ public sealed class LineItemMarketPriceService(
 
         var names = await supplierNames.GetNamesAsync(tenantId, [id], cancellationToken).ConfigureAwait(false);
         return names.TryGetValue(id, out var name) ? name : null;
+    }
+
+    /// <summary>
+    /// Starts (or joins) the re-pricing of the contract in a scope of its own and waits for it at most
+    /// the budget. Finished in time: its result, which is what the synchronous path would have returned.
+    /// Otherwise <paramref name="stored"/>, what was on file when the read began; the re-pricing carries
+    /// on and the next read sees it.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>> ReadWithinBudgetAsync(
+        TenantId tenantId,
+        EntityId contractId,
+        IReadOnlyDictionary<EntityId, LineItemMarketPrice> stored,
+        CancellationToken cancellationToken)
+    {
+        var refresh = JoinOrStartDetachedRefresh(tenantId, contractId);
+
+        if (_pricing.ReadWaitBudgetMs <= 0)
+        {
+            return stored;
+        }
+
+        using var stopWaiting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var budget = Task.Delay(TimeSpan.FromMilliseconds(_pricing.ReadWaitBudgetMs), stopWaiting.Token);
+        var first = await Task.WhenAny(refresh, budget).ConfigureAwait(false);
+        await stopWaiting.CancelAsync().ConfigureAwait(false);
+
+        if (!ReferenceEquals(first, refresh))
+        {
+            // Either the budget ran out (answer with what is stored) or the request itself was aborted.
+            cancellationToken.ThrowIfCancellationRequested();
+            return stored;
+        }
+
+        // A re-pricing that failed was already logged where it ran; the read keeps the stored comparison.
+        return refresh.IsCompletedSuccessfully ? refresh.Result : stored;
+    }
+
+    private Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>> JoinOrStartDetachedRefresh(
+        TenantId tenantId, EntityId contractId)
+    {
+        var key = (tenantId.Value, contractId.Value);
+        lock (DetachedRefreshes)
+        {
+            if (DetachedRefreshes.TryGetValue(key, out var running))
+            {
+                return running;
+            }
+
+            // Task.Run: the work must not start on the request's thread, and the entry is inserted
+            // below under the same lock the task's own cleanup takes, so it cannot be removed first.
+            var started = Task.Run(() => RunDetachedRefreshAsync(tenantId, contractId, key));
+            DetachedRefreshes[key] = started;
+            return started;
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>> RunDetachedRefreshAsync(
+        TenantId tenantId, EntityId contractId, (Guid Tenant, Guid Contract) key)
+    {
+        try
+        {
+            // Not the request's token: this work has to outlive a read that stopped waiting for it.
+            using var timeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(Math.Max(1, _pricing.DetachedRefreshTimeoutSeconds)));
+            using var scope = scopeFactory!.CreateScope();
+            var service = scope.ServiceProvider.GetRequiredService<LineItemMarketPriceService>();
+            return await service
+                .RefreshAsync(tenantId, contractId, force: false, bounded: false, timeout.Token)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Background market re-pricing of contract {ContractId} failed; reads keep the stored comparison.", contractId);
+            throw;
+        }
+        finally
+        {
+            lock (DetachedRefreshes)
+            {
+                DetachedRefreshes.Remove(key);
+            }
+        }
     }
 
     private static void Apply(ContractLineItemMarketPrice row, MarketPriceMatch? match, DateTimeOffset now)
