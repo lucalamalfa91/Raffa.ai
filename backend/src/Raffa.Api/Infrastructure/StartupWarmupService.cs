@@ -127,8 +127,11 @@ internal static class StartupWarmupServiceCollectionExtensions
 ///
 /// <para>
 /// Configuration: <c>Startup:Warmup:Enabled</c> (default <see langword="true"/>) switches it off,
-/// <c>Startup:Warmup:TimeoutSeconds</c> (default 20) sets the budget, waits included. Both are read
-/// when the host starts, so a <c>WebApplicationFactory</c> override applies.
+/// <c>Startup:Warmup:TimeoutSeconds</c> (default 20) sets the budget, waits included, and
+/// <c>Startup:Warmup:LowPriority</c> (default <see langword="true"/>) keeps the thread at the lowest
+/// scheduling priority; a test that must see the warm-up complete on a CPU-saturated CI runner sets
+/// it to <see langword="false"/>, because a nice-19 thread is deliberately starved there. All are
+/// read when the host starts, so a <c>WebApplicationFactory</c> override applies.
 /// </para>
 /// </summary>
 internal sealed class StartupWarmupService(
@@ -140,6 +143,7 @@ internal sealed class StartupWarmupService(
 {
     internal const string EnabledKey = "Startup:Warmup:Enabled";
     internal const string TimeoutSecondsKey = "Startup:Warmup:TimeoutSeconds";
+    internal const string LowPriorityKey = "Startup:Warmup:LowPriority";
     internal const int DefaultTimeoutSeconds = 20;
 
     private static readonly TimeSpan IdlePollInterval = TimeSpan.FromMilliseconds(100);
@@ -176,12 +180,13 @@ internal sealed class StartupWarmupService(
             var seconds = Math.Clamp(configuration.GetValue(TimeoutSecondsKey, DefaultTimeoutSeconds), 1, 120);
             _budget = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
             var budget = _budget.Token;
+            var lowPriority = configuration.GetValue(LowPriorityKey, true);
 
             gate.StartTracking();
 
             // A thread of its own, so a slow warm-up can never hold up Kestrel or another hosted
             // service, and so lowering its priority cannot leak to a pool thread.
-            var thread = new Thread(() => RunOnDedicatedThread(budget))
+            var thread = new Thread(() => RunOnDedicatedThread(budget, lowPriority))
             {
                 IsBackground = true,
                 Name = "startup-warmup",
@@ -225,11 +230,15 @@ internal sealed class StartupWarmupService(
         }
     }
 
-    private void RunOnDedicatedThread(CancellationToken budget)
+    private void RunOnDedicatedThread(CancellationToken budget, bool lowPriority)
     {
         try
         {
-            LowerThreadPriority();
+            if (lowPriority)
+            {
+                LowerThreadPriority();
+            }
+
             Run(budget);
         }
         catch (Exception exception)

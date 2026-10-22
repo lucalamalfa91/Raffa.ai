@@ -214,13 +214,19 @@ public sealed class StartupWarmupTests
         using var factory = new RaffaApiFactory().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:Storage", "UseDevelopmentStorage=true");
+            // The production thread runs at nice 19 and is starved on a CPU-saturated CI runner
+            // (several test projects run at once), which skips every step by design. This test is
+            // about the composition root warming up completely, not about scheduling, so it runs at
+            // normal priority with a roomy budget.
+            builder.UseSetting(StartupWarmupService.LowPriorityKey, "false");
+            builder.UseSetting(StartupWarmupService.TimeoutSecondsKey, "90");
             builder.ConfigureServices(services => services.AddSingleton<ILoggerProvider>(logs));
         });
 
         using var client = factory.CreateClient(); // starts the host, and with it the warm-up
         var gate = factory.Services.GetRequiredService<StartupWarmupGate>();
 
-        await WaitForAsync(() => !gate.IsTracking, TimeSpan.FromSeconds(60));
+        await WaitForAsync(() => !gate.IsTracking, TimeSpan.FromSeconds(100));
 
         var warmupEntries = logs.Entries.Where(e => e.Category.Contains(nameof(StartupWarmupService), StringComparison.Ordinal)).ToList();
         Assert.DoesNotContain(warmupEntries, e => e.Level >= LogLevel.Warning);
