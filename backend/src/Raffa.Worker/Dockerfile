@@ -15,10 +15,21 @@ WORKDIR /src
 # problem.
 COPY . .
 
-RUN dotnet restore src/Raffa.Worker/Raffa.Worker.csproj
+# ReadyToRun, same as Raffa.Api's Dockerfile (see the rationale there): precompiled native code next
+# to the IL cuts the JIT work of every cold start of this host, with identical behaviour -- the JIT
+# still tiers hot methods up as before. `-r linux-x64` matches the Container Apps hosts,
+# `--self-contained false` keeps using the shared runtime of the image below, and
+# PublishReadyToRun must be passed to restore too (its packs are restore-time packages; without
+# them `publish --no-restore` fails with NETSDK1094).
+RUN dotnet restore src/Raffa.Worker/Raffa.Worker.csproj \
+    --runtime linux-x64 \
+    -p:PublishReadyToRun=true
 
 RUN dotnet publish src/Raffa.Worker/Raffa.Worker.csproj \
     --configuration Release \
+    --runtime linux-x64 \
+    --self-contained false \
+    -p:PublishReadyToRun=true \
     --no-restore \
     --output /app
 

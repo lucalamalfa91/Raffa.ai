@@ -15,10 +15,24 @@ WORKDIR /src
 # becomes a real problem.
 COPY . .
 
-RUN dotnet restore src/Raffa.Api/Raffa.Api.csproj
+# ReadyToRun: the replica is 0.25 vCPU and scales from zero, so JIT-compiling the whole startup path
+# (host, EF Core, Npgsql, the DI graph) was a large share of the cold start. R2R ships precompiled
+# native code next to the IL; the JIT still tiers hot methods up exactly as before, so behaviour is
+# unchanged -- only the first calls are cheaper. The cost is a longer image build and a larger
+# publish output.
+#   * `-r linux-x64` matches the Container Apps hosts; `--self-contained false` keeps using the
+#     shared ASP.NET Core runtime of the image below (no runtime is bundled).
+#   * PublishReadyToRun must be passed to restore as well: the crossgen2 and runtime packs are
+#     restore-time packages, and `publish --no-restore` without them fails with NETSDK1094.
+RUN dotnet restore src/Raffa.Api/Raffa.Api.csproj \
+    --runtime linux-x64 \
+    -p:PublishReadyToRun=true
 
 RUN dotnet publish src/Raffa.Api/Raffa.Api.csproj \
     --configuration Release \
+    --runtime linux-x64 \
+    --self-contained false \
+    -p:PublishReadyToRun=true \
     --no-restore \
     --output /app
 
