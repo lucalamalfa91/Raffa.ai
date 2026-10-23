@@ -96,7 +96,7 @@ export default function CaseHeader({ view, t, onAct, onHistory, onNewChat }: Cas
 }
 
 function Person({ person, manage, t, onAct }: { person: CasePerson; manage: boolean; t: Translate; onAct: CaseHeaderProps["onAct"] }) {
-  const canManage = manage && !person.isOwner;
+  const canManage = manage && person.responsibility !== "approver";
   return (
     <div className="rc-person">
       <strong>{person.name}</strong>
@@ -111,7 +111,7 @@ function Person({ person, manage, t, onAct }: { person: CasePerson; manage: bool
           {person.canClose ? t("removeClosing") : t("allowClosing")}
         </button>
       )}
-      {canManage && (
+      {canManage && person.responsibility !== "owner" && (
         <button type="button" className="btn btn-ghost" onClick={() => onAct("transfer", { who: person.name })}>
           {t("reassign")}
         </button>

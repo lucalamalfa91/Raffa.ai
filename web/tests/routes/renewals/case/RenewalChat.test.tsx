@@ -187,7 +187,10 @@ describe("RenewalChat: what each person may do", () => {
     const { unmount } = render(<Wired initial={fresh("1", [L, M, EVA])} cid="1" viewer={L} />);
     await user.click(screen.getByRole("button", { name: /Team & delegations/ }));
     expect(screen.getByText("Eva Roth")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Make delegate" })); // the approver and the owner are not offered it
+    // Everyone but the approver can be made a delegate; only non-owners can be made the owner.
+    expect(screen.getAllByRole("button", { name: "Make delegate" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Reassign ownership" })).toHaveLength(1);
+    await user.click(screen.getAllByRole("button", { name: "Make delegate" })[1] as HTMLElement);
     expect(screen.getByRole("button", { name: "Remove delegation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Allow closing" })).toBeInTheDocument();
     unmount();

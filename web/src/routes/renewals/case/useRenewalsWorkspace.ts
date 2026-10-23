@@ -97,6 +97,7 @@ export function useRenewalsWorkspace(userLabel: string) {
     assignee: DEMO_OWNER,
     summaries,
     queue,
+    queueAll,
     snoozed,
     act,
     openChat,

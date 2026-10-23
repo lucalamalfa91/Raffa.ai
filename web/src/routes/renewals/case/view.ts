@@ -819,13 +819,15 @@ export function view(c: Case, ctx: CaseContext): CaseView {
   const renewed = c.outcome?.kind === "renewed" ? c.outcome : null;
   const people: CasePerson[] = c.members.map((name) => {
     const responsibility = responsibilityOf(c, name);
+    // A delegation is independent of the main responsibility: the owner can also be a delegate.
+    const delegated = !!c.delegates[name];
     const closes = !!c.delegates[name]?.close;
     const role =
       responsibility === "approver"
         ? S("Approver · CPO", "Approvatore · CPO")
         : responsibility === "owner"
-          ? S("Owner · works the case", "Responsabile · lavora il caso")
-          : responsibility === "delegate"
+          ? S("Owner · works the case", "Responsabile · lavora il caso") + (delegated ? (closes ? S(" · delegate, can close", " · delegato, può chiudere") : S(" · delegate", " · delegato")) : "")
+          : delegated
             ? closes
               ? S("Delegate · can close", "Delegato · può chiudere")
               : S("Delegate", "Delegato")
@@ -835,8 +837,8 @@ export function view(c: Case, ctx: CaseContext): CaseView {
       role,
       responsibility,
       isOwner: responsibility === "owner" || responsibility === "approver",
-      isDelegate: responsibility === "delegate",
-      canClose: responsibility === "delegate" && closes,
+      isDelegate: delegated,
+      canClose: closes,
       viewing: name === v,
     };
   });

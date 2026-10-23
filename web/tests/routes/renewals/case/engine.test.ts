@@ -278,6 +278,15 @@ describe("responsibilities and permissions", () => {
     expect(permissionsOf(run(delegated, L, "delegateClose", { who: EVA }), EVA).close).toBe(true);
   });
 
+  it("an owner can also be a delegate: the person list shows both", () => {
+    const delegated = run(planned, L, "delegate", { who: M, on: true });
+    const marta = view(delegated, ctxAs(L)).hdr.people.find((x) => x.name === M);
+    expect(marta).toMatchObject({ responsibility: "owner", isDelegate: true, canClose: false, role: "Owner · works the case · delegate" });
+    const closer = run(delegated, L, "delegateClose", { who: M });
+    expect(view(closer, ctxAs(L)).hdr.people.find((x) => x.name === M)).toMatchObject({ canClose: true, role: "Owner · works the case · delegate, can close" });
+    expect(permissionsOf(closer, M)).toMatchObject({ approve: true, close: true });
+  });
+
   it("only the approver manages delegations and reassigns the owner", () => {
     expect(run(planned, M, "delegate", { who: EVA, on: true }).delegates).toEqual({});
     expect(run(planned, M, "delegate", { who: EVA, on: true }).ui.warn).toBe("Only the approver (CPO) manages delegations.");
