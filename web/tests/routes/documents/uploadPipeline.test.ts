@@ -6,7 +6,9 @@ import {
   MAX_FILES_PER_BATCH,
   MAX_FILE_BYTES,
   UPLOAD_DEADLINE_MS,
+  getDuplicateCopy,
   getOversizedCopy,
+  getUploadFailureCopy,
   getRefusalCopy,
   getRejectionReasonCopy,
   getTransportFailureCopy,
@@ -223,7 +225,43 @@ describe("runUploadBatch", () => {
       outcomes.push(outcome),
     );
 
-    expect(outcomes).toEqual([{ kind: "failed", key: "a", fileName: "A.pdf", message: "Unable to reach the API. Cause: network down" }]);
+    expect(outcomes).toEqual([{ kind: "failed", key: "a", fileName: "A.pdf", message: "Raffa.ai could not process A.pdf. Try again." }]);
+  });
+
+  it("never shows a raw server body: a 500 with a JSON error gets the designed sentence", async () => {
+    const uploadDocument = vi.fn(async () => ({
+      ok: false,
+      statusCode: 500,
+      document: null,
+      rejection: null,
+      error: '{"title":"boom","status":500}',
+    }));
+    const outcomes: UploadBatchOutcome[] = [];
+
+    await runUploadBatch([{ key: "a", file: pdfFile("A.pdf") }], mockApiClient(uploadDocument), "tenant-1", (outcome) =>
+      outcomes.push(outcome),
+    );
+
+    expect(outcomes).toEqual([{ kind: "failed", key: "a", fileName: "A.pdf", message: getUploadFailureCopy("A.pdf", 500) }]);
+    expect(getUploadFailureCopy("A.pdf", 500)).not.toContain("{");
+  });
+
+  it("reports an already-uploaded file as a 'duplicate', never as a failure", async () => {
+    const uploadDocument = vi.fn(async () => ({
+      ok: false,
+      statusCode: 200,
+      document: null,
+      rejection: null,
+      error: null,
+      alreadyUploaded: true,
+    }));
+    const outcomes: UploadBatchOutcome[] = [];
+
+    await runUploadBatch([{ key: "a", file: pdfFile("A.pdf") }], mockApiClient(uploadDocument), "tenant-1", (outcome) =>
+      outcomes.push(outcome),
+    );
+
+    expect(outcomes).toEqual([{ kind: "duplicate", key: "a", fileName: "A.pdf", message: getDuplicateCopy() }]);
   });
 
   // ADR-012 w15 §5: one client-owned deadline; a request that hangs is aborted and lands in the

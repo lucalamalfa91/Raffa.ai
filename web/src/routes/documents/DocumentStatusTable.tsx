@@ -47,12 +47,14 @@ export interface DocumentStatusTableProps {
  * never a bar. This is the one place a screen states something not yet true end-to-end (the bytes
  * may still be in flight to the browser's own fetch call); it is deliberate, scoped to this label
  * alone, and only for as long as the request is in flight -- a failure still lands on `"failed"`. */
-function localRowStatus(phase: LocalUploadEntry["phase"]): RowStatus {
+function localRowStatus(phase: LocalUploadEntry["phase"]): RowStatus | "not_uploaded" {
   switch (phase) {
     case "failed":
       return "failed";
     case "rejected":
       return "rejected";
+    case "duplicate":
+      return "not_uploaded";
     case "queued":
     case "uploading":
       return "uploaded";
@@ -188,10 +190,10 @@ function LocalUploadRow({ entry, isAdmin }: { entry: LocalUploadEntry; isAdmin: 
       <td className="micro-meta">—</td>
       <td>
         <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
-        {entry.phase !== "rejected" && entry.phase !== "failed" && <UploadingBar />}
+        {entry.phase !== "rejected" && entry.phase !== "failed" && entry.phase !== "duplicate" && <UploadingBar />}
       </td>
       <td className="document-status-table-next-step">
-        {entry.phase === "rejected" || entry.phase === "failed" ? null : (
+        {entry.phase === "rejected" || entry.phase === "failed" || entry.phase === "duplicate" ? null : (
           <span className="micro-meta">
             <PendingSpinner />
             Processing in the background
