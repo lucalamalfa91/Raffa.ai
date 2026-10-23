@@ -341,12 +341,24 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/renewals");
 
-    // The shared mockApiClient() above resolves getRenewals to an empty pipeline -- proves the real
-    // route (which renders its own named empty state) is mounted, not the scaffold; the fetch-outcome
-    // matrix itself (populated/loading/error/empty/no-window) is covered in depth by
-    // tests/routes/renewals/*.test.tsx.
-    expect(await screen.findByText("No renewal dates yet")).toBeInTheDocument();
+    // The Renewals screen (cards, KPI strip, case panel) is mounted -- not the scaffold. Its own
+    // behaviour is covered in depth by tests/routes/renewals/*.test.tsx.
+    expect(await screen.findByRole("heading", { level: 2, name: "Renewals" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Renewal KPIs" })).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-08\/feature-01-renewal-pipeline-ui/i)).not.toBeInTheDocument();
+  });
+
+  it("mounts the renewal wizard chat at /renewals/:contractId/chat", async () => {
+    window.sessionStorage.setItem(
+      "raffa.signin.currentWorkspace",
+      JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
+    );
+
+    renderShell("admin", "/renewals/4/chat");
+
+    // The wizard's own header (not the Renewals list): case title and the seven-step stepper.
+    expect(await screen.findByRole("heading", { name: /Renewal · DocuSign/ })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Renewal steps" })).toBeInTheDocument();
   });
 
   it("renders the real Savings screen at /savings, moved from / (task E13/F09/US01/T01, gap G-IA-V2)", async () => {

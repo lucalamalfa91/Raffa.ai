@@ -57,7 +57,7 @@ export interface NavBadge {
 }
 
 export interface PrimaryNavItem {
-  id: "ask" | "documents";
+  id: "today" | "ask" | "documents";
   label: string;
   path: string;
   badge: NavBadge | null;
@@ -108,8 +108,14 @@ export function getDocumentsBadge(counts: DocumentCounts): NavBadge | null {
   return null;
 }
 
-export function buildPrimaryNavItems(documentsBadge: NavBadge | null): readonly PrimaryNavItem[] {
+/** Today's badge: how many things wait on this person. Absent at zero -- never a fabricated "0". */
+export function getTodayBadge(waitingOnYou: number): NavBadge | null {
+  return waitingOnYou > 0 ? { text: String(waitingOnYou), tone: "attention" } : null;
+}
+
+export function buildPrimaryNavItems(documentsBadge: NavBadge | null, todayBadge: NavBadge | null = null): readonly PrimaryNavItem[] {
   return [
+    { id: "today", label: "Today", path: "/today", badge: todayBadge, hasConversationSlot: false },
     { id: "ask", label: "Ask Raffa", path: "/ask", badge: ASK_BADGE, hasConversationSlot: true },
     { id: "documents", label: "Documents", path: "/documents", badge: documentsBadge, hasConversationSlot: false },
   ];

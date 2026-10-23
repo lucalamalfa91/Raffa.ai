@@ -1,682 +1,219 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { beforeEach, describe, expect, it } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { I18nProvider } from "../../../src/i18n/I18nProvider";
 import RenewalsRoute from "../../../src/routes/renewals";
-import type {
-  ApiClient,
-  GetRenewalsResult,
-  PostRenewalActionResult,
-  RenewalPipelineItemBody,
-  RenewalPriorityBody,
-} from "../../../src/api/client";
+import { forgetDemoViewer } from "../../../src/routes/renewals/case/demoSession";
+import { getCaseStore } from "../../../src/routes/renewals/case/useCaseStore";
 
-const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
-const USER_LABEL = "user@example.test";
-
-function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
-  return {
-    getHealth: vi.fn(),
-    createWorkspace: vi.fn(),
-    inviteWorkspaceMember: vi.fn(),
-    listWorkspaces: vi.fn(),
-    getWorkspaceMembers: vi.fn(),
-    getWorkspaceSettings: vi.fn(),
-    updateWorkspaceSettings: vi.fn(),
-    revokeInvitation: vi.fn(),
-    removeMember: vi.fn(),
-    getInvitation: vi.fn(),
-    acceptInvitation: vi.fn(),
-    acceptPendingInvitation: vi.fn(),
-    uploadDocument: vi.fn(),
-    getDocument: vi.fn(),
-    listDocuments: vi.fn(),
-    getDocumentPreviewUrl: vi.fn(),
-    reprocessDocument: vi.fn(),
-    deleteDocument: vi.fn(),
-    deleteAllDocuments: vi.fn(),
-    prioritiseDocument: vi.fn(),
-    // The portfolio only adds contract type and currency; by default it is honestly unavailable,
-    // so rows keep their id-fragment contract label.
-    getPortfolio: vi.fn().mockResolvedValue({ ok: false, statusCode: 503, portfolio: null, error: "Service Unavailable" }),
-    getContract360: vi.fn(),
-    getRenewals: vi.fn(),
-    getRenewalPriority: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, priority: null, error: "No contract found." }),
-    listConversations: vi.fn(),
-    createConversation: vi.fn(),
-    getConversation: vi.fn(),
-    postMessage: vi.fn(),
-    postConversationFeedback: vi.fn(),
-    deleteConversation: vi.fn(),
-    renameConversation: vi.fn(),
-    restoreConversation: vi.fn(),
-    getCapabilities: vi.fn(),
-    getMarketRecord: vi.fn(),
-    getQuoteBenchmarkHistory: vi.fn(),
-    getCorrectionHistory: vi.fn(),
-    correctContract: vi.fn(),
-    getContractEvidence: vi.fn(),
-    getContractStrategy: vi.fn(),
-    validateDocument: vi.fn(),
-    postRenewalAction: vi.fn(),
-    // Task E29/F04/US01/T01 (todo-web): InsightCard now always renders NegotiationTodoList, which
-    // fetches on mount for every "once populated" test below -- an unstubbed method here would
-    // reject `.then()` on `undefined` and crash all of them, not just ones about the TODO list
-    // itself. None of the tests in this file exercise the list's own content or the tick, so an
-    // honest empty list is enough (same fix as src/routes/renewals/index.test.tsx's own mock).
-    getRenewalNegotiationTodos: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, todos: [], error: null }),
-    tickRenewalNegotiationTodo: vi.fn(),
-    getQuote: vi.fn(),
-    getNegotiationSteps: vi.fn(),
-    putNegotiationSteps: vi.fn(),
-    uploadQuote: vi.fn(),
-    getQuoteAssessment: vi.fn(),
-    recalculateQuoteAssessment: vi.fn(),
-    captureNegotiationOutcome: vi.fn(),
-    askRaffa: vi.fn(),
-    getSavingsKpis: vi.fn(),
-    getSavingsOpportunities: vi.fn(),
-    ...overrides,
-  };
+function Where() {
+  const l = useLocation();
+  return <p>at {l.pathname}</p>;
 }
 
-function pipelineItem(overrides: Partial<RenewalPipelineItemBody> = {}): RenewalPipelineItemBody {
-  return {
-    contractId: "22222222-2222-2222-2222-222222222222",
-    supplierId: "33333333-3333-3333-3333-333333333333",
-    supplierName: null,
-    status: "Determined",
-    contractStatus: "active",
-    documentProcessingStatus: "Completed",
-    renewalDate: "2026-12-01",
-    daysUntilRenewal: 20,
-    annualSpend: 500_000,
-    cancellationDeadline: "2026-10-01",
-    daysUntilCancellationDeadline: 14,
-    autoRenewal: true,
-    action: "Finalize decision now",
-    priority: priority(),
-    insightCard: {
-      facts: {
-        supplierId: "33333333-3333-3333-3333-333333333333",
-        supplierName: null,
-        renewalDate: "2026-12-01",
-        daysUntilRenewal: 20,
-        annualSpend: 500_000,
-        cancellationDeadline: "2026-10-01",
-        daysUntilCancellationDeadline: 14,
-      },
-      recommendations: {
-        recommendedAction: "Finalize decision now",
-        explanation: "The cancellation deadline is 14 day(s) away.",
-        annualUpliftPercent: null,
-        marketPosition: null,
-        potentialSavingsRange: null,
-      },
-    },
-    ...overrides,
-  };
-}
-
-function priority(overrides: Partial<RenewalPriorityBody> = {}): RenewalPriorityBody {
-  return {
-    contractId: "22222222-2222-2222-2222-222222222222",
-    totalScore: 85,
-    components: {
-      spendWeight: { score: 20, explanation: "x" },
-      timeUrgency: { score: 20, explanation: "x" },
-      benchmarkOpportunity: { score: 10, explanation: "x" },
-      priceIncreaseRisk: { score: 20, explanation: "x" },
-      contractRisk: { score: 15, explanation: "x" },
-    },
-    ...overrides,
-  };
-}
-
-function ok(items: RenewalPipelineItemBody[]): GetRenewalsResult {
-  return { ok: true, statusCode: 200, renewals: { items, totalCount: items.length }, error: null };
-}
-
-/** A row scored `totalScore` by the server -- the `priority` object every `GET /api/renewals` row carries. */
-function scored(item: RenewalPipelineItemBody, totalScore: number): RenewalPipelineItemBody {
-  return { ...item, priority: priority({ contractId: item.contractId, totalScore }) };
-}
-
-function renderRenewals(apiClient: ApiClient) {
+function renderAt(path = "/renewals", userLabel = "someone@example.test") {
   return render(
-    <MemoryRouter initialEntries={["/renewals"]}>
-      <Routes>
-        <Route path="/renewals" element={<RenewalsRoute apiClient={apiClient} userLabel={USER_LABEL} />} />
-        <Route path="/contracts/:contractId" element={<div>CONTRACT_360_SCREEN</div>} />
-        <Route path="/documents" element={<div>DOCUMENTS_SCREEN</div>} />
-      </Routes>
+    <MemoryRouter initialEntries={[path]}>
+      <I18nProvider>
+        <Routes>
+          <Route path="/renewals" element={<RenewalsRoute userLabel={userLabel} />} />
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </I18nProvider>
     </MemoryRouter>,
   );
 }
 
-describe("RenewalsRoute (V2, ADR-024 / screens-v2.md #7)", () => {
+const cards = () => within(screen.getByRole("region", { name: "Renewals · by notice date" })).getAllByRole("listitem");
+
+describe("Renewals: compact cards", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     window.sessionStorage.clear();
-    window.sessionStorage.setItem(
-      "raffa.signin.currentWorkspace",
-      JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }),
-    );
+    forgetDemoViewer();
+    getCaseStore().reset();
   });
 
-  it("guards on no current workspace instead of sending an undefined X-Tenant-Id", () => {
-    window.sessionStorage.clear();
-    const getRenewals = vi.fn();
-
-    renderRenewals(mockApiClient({ getRenewals }));
-
-    expect(screen.getByText(/no workspace selected/i)).toBeInTheDocument();
-    expect(getRenewals).not.toHaveBeenCalled();
-  });
-
-  it("shows a skeleton while the request is in flight, then replaces it", async () => {
-    let resolveFetch!: (value: GetRenewalsResult) => void;
-    const pending = new Promise<GetRenewalsResult>((resolve) => {
-      resolveFetch = resolve;
-    });
-    const { container } = renderRenewals(mockApiClient({ getRenewals: vi.fn().mockReturnValue(pending) }));
-
-    expect(container.querySelector(".renewal-skeleton")).toBeInTheDocument();
+  it("shows one card per contract, nearest notice deadline first, with the days to notice", () => {
+    renderAt();
     expect(screen.getByRole("heading", { level: 2, name: "Renewals" })).toBeInTheDocument();
-
-    await act(async () => {
-      resolveFetch(ok([]));
-    });
-
-    expect(container.querySelector(".renewal-skeleton")).not.toBeInTheDocument();
+    expect(screen.getByText("3 renewals open · 1 not started · sorted by notice deadline")).toBeInTheDocument();
+    expect(cards().map((c) => c.querySelector(".rn-supplier")?.textContent)).toEqual(["DocuSign", "Salesforce", "Microsoft", "AWS"]);
+    const docusign = cards()[0] as HTMLElement;
+    expect(within(docusign).getByText("24")).toBeInTheDocument();
+    expect(within(docusign).getByText("ends in 53 d")).toBeInTheDocument();
+    expect(within(docusign).getByText("eSignature Business Pro")).toBeInTheDocument();
+    expect(within(docusign).getByText("Email to approve")).toHaveClass("tag-accent");
+    expect(within(docusign).getByText("Marta Keller")).toBeInTheDocument();
   });
 
-  it("a 503 renders a plain-language error with a Retry that re-fetches", async () => {
-    const getRenewals = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, statusCode: 503, renewals: null, error: "Service Unavailable" })
-      .mockResolvedValueOnce(ok([]));
-    renderRenewals(mockApiClient({ getRenewals }));
-
-    expect(await screen.findByText(/renewal engine.*temporarily unavailable/i)).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-
-    expect(await screen.findByText("No renewal dates yet")).toBeInTheDocument();
-    expect(getRenewals).toHaveBeenCalledTimes(2);
+  it("each card draws the seven steps and says which one in words", () => {
+    renderAt();
+    const docusign = cards()[0] as HTMLElement;
+    expect(within(docusign).getByRole("img", { name: "step 3 of 7" }).children).toHaveLength(7);
+    const salesforce = cards()[1] as HTMLElement;
+    expect(within(salesforce).getByRole("img", { name: "not started" })).toBeInTheDocument();
+    expect(within(salesforce).getByText("Not started", { selector: ".tag" })).toHaveClass("tag-outline");
+    expect(within(salesforce).getByText("No owner")).toBeInTheDocument();
   });
 
-  it("R-WEB-02 reroute: with nothing validated the screen explains itself and sends the reader to upload", async () => {
-    renderRenewals(mockApiClient({ getRenewals: vi.fn().mockResolvedValue(ok([])) }));
-
-    expect(await screen.findByText("No renewal dates yet")).toBeInTheDocument();
-    expect(
-      screen.getByText("Renewals are computed from validated end dates and notice periods. Upload a contract to start."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Upload a contract" })).toHaveAttribute("href", "/documents");
-    // The header summary is the prototype's own `rnSummary` for the off tier.
-    expect(screen.getByText("Computed from validated end dates and notice periods")).toBeInTheDocument();
-    // No V1 leftovers: no threshold strip, no "View portfolio".
-    expect(screen.queryByRole("button", { name: /0–30 d/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /view portfolio/i })).not.toBeInTheDocument();
+  it("the first card is selected and its case is shown beside the list", () => {
+    renderAt();
+    expect(within(cards()[0] as HTMLElement).getByRole("button")).toHaveAttribute("aria-pressed", "true");
+    const panel = screen.getByRole("region", { name: "Selected renewal" });
+    expect(within(panel).getByRole("heading", { level: 3, name: "DocuSign — eSignature Business Pro" })).toBeInTheDocument();
   });
 
-  describe("once populated", () => {
-    function renderPopulated(items: RenewalPipelineItemBody[], overrides: Partial<ApiClient> = {}) {
-      return renderRenewals(
-        mockApiClient({
-          getRenewals: vi.fn().mockResolvedValue(ok(items)),
-          ...overrides,
-        }),
-      );
-    }
-
-    it("renders the V2 five-column list, the resolved score, the default 'Open' status and the lit summary", async () => {
-      renderPopulated([pipelineItem({ supplierName: "Salesforce" })]);
-
-      const table = await screen.findByRole("table");
-      const headerCells = within(table).getAllByRole("columnheader").map((cell) => cell.textContent);
-      expect(headerCells).toEqual(["", "Score", "Supplier · contract", "Annual spend", "Renews in", "Notice in", "Status"]);
-      expect(within(table).getByText("85")).toBeInTheDocument();
-      expect(within(table).getByText("Salesforce")).toBeInTheDocument();
-      expect(within(table).getByText("· Contract 22222222")).toBeInTheDocument();
-      expect(within(table).getByText("20 d")).toBeInTheDocument();
-      expect(within(table).getByText("14 d")).toBeInTheDocument();
-      expect(within(table).getByText("Open")).toBeInTheDocument();
-      expect(screen.getByText("1 contract with validated dates · sorted by priority")).toBeInTheDocument();
-    });
-
-    it("reads every score off the list itself and never calls the per-contract priority endpoint", async () => {
-      const getRenewalPriority = vi.fn();
-      renderPopulated([scored(pipelineItem({ contractId: "a" }), 70), scored(pipelineItem({ contractId: "b" }), 30)], { getRenewalPriority });
-
-      const table = await screen.findByRole("table");
-      expect(within(table).getByText("70")).toBeInTheDocument();
-      expect(within(table).getByText("30")).toBeInTheDocument();
-      // The old one-priority-read-per-row fan-out is gone: it alone could exhaust the demo server's
-      // 50 Postgres connections and turn the rows' own reads into 500s.
-      expect(getRenewalPriority).not.toHaveBeenCalled();
-    });
-
-    it("sorts by priority score, highest first; a row the server sent without a score shows '—' and sorts last", async () => {
-      const low = scored(pipelineItem({ contractId: "low", supplierName: "Low Co" }), 40);
-      const high = scored(pipelineItem({ contractId: "high", supplierName: "High Co" }), 91);
-      const unranked = pipelineItem({ contractId: "unranked", supplierName: "Unranked Co", priority: null });
-      renderPopulated([unranked, low, high]);
-
-      const table = await screen.findByRole("table");
-      const bodyRows = within(table).getAllByRole("row").slice(1);
-      expect(bodyRows.map((row) => within(row).getByRole("button").textContent)).toEqual(["91", "40", "—"]);
-      expect(bodyRows.map((row) => row.textContent)).toEqual([
-        expect.stringContaining("High Co"),
-        expect.stringContaining("Low Co"),
-        expect.stringContaining("Unranked Co"),
-      ]);
-      // Emphasis follows the prototype's own `score >= 80` rule, on top of the number itself.
-      expect(within(bodyRows[0]).getByRole("button")).toHaveClass("is-urgent");
-      expect(within(bodyRows[1]).getByRole("button")).not.toHaveClass("is-urgent");
-      expect(screen.getByText("3 contracts with validated dates · sorted by priority")).toBeInTheDocument();
-    });
-
-    it("marks a notice deadline inside the locked 45-day window, never colour alone", async () => {
-      const soon = scored(pipelineItem({ contractId: "soon", daysUntilCancellationDeadline: 14 }), 85);
-      const later = scored(pipelineItem({ contractId: "later", daysUntilCancellationDeadline: 200, daysUntilRenewal: 260 }), 30);
-      renderPopulated([soon, later]);
-
-      const table = await screen.findByRole("table");
-      expect(within(table).getByText("14 d")).toHaveClass("deadline-critical");
-      expect(within(table).getByText("200 d")).not.toHaveClass("deadline-critical");
-    });
-
-    it("the 'Why it is here' pane follows the top-priority row by default: heading, recommendation, rationale, two actions, facts link", async () => {
-      renderPopulated([pipelineItem({ supplierName: "Salesforce" })]);
-      await screen.findByRole("table");
-
-      const pane = screen.getByRole("complementary", { name: "Why it is here" });
-      expect(within(pane).getByRole("heading", { level: 3, name: "Salesforce — 14 days to notice" })).toBeInTheDocument();
-      expect(within(pane).getByText("Recommended action")).toBeInTheDocument();
-      expect(within(pane).getByText("Finalize decision now")).toBeInTheDocument();
-      expect(within(pane).getByText("The cancellation deadline is 14 day(s) away.")).toBeInTheDocument();
-      expect(within(pane).getByRole("button", { name: "Start negotiation" })).toHaveClass("btn-primary");
-      expect(within(pane).getByRole("button", { name: "Assign to me" })).toHaveClass("btn-secondary");
-      // The Day-1 third action is not part of V2.
-      expect(screen.queryByRole("button", { name: /snooze/i })).not.toBeInTheDocument();
-      expect(within(pane).getByRole("link", { name: "See the facts behind this →" })).toHaveAttribute(
-        "href",
-        "/contracts/22222222-2222-2222-2222-222222222222",
-      );
-    });
-
-    it("without a determined notice date the pane heading says so instead of counting to nothing", async () => {
-      renderPopulated([
-        pipelineItem({ supplierName: "Fabrikam", daysUntilCancellationDeadline: null, cancellationDeadline: null }),
-      ]);
-      await screen.findByRole("table");
-
-      expect(screen.getByRole("heading", { level: 3, name: "Fabrikam — notice date not determined" })).toBeInTheDocument();
-      expect(within(screen.getByRole("table")).getAllByText("—").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("selecting a different row (score button or the row itself) swaps the pane to that row's own recommendation", async () => {
-      const first = pipelineItem({ contractId: "first", supplierName: "First Co", action: "Finalize decision now" });
-      const second = pipelineItem({
-        contractId: "second",
-        supplierName: "Second Co",
-        action: "Prepare negotiation strategy",
-        insightCard: {
-          facts: first.insightCard.facts,
-          recommendations: { ...first.insightCard.recommendations, recommendedAction: "Prepare negotiation strategy" },
-        },
-      });
-      renderPopulated([scored(first, 90), scored(second, 60)]);
-      const table = await screen.findByRole("table");
-
-      expect(screen.getByText("Finalize decision now")).toBeInTheDocument();
-      const firstRow = within(table).getAllByRole("row")[1];
-      expect(firstRow).toHaveClass("row-selected");
-
-      const secondButton = screen.getByRole("button", { name: "Show why Second Co · Contract second is here" });
-      fireEvent.click(secondButton);
-
-      expect(await screen.findByText("Prepare negotiation strategy")).toBeInTheDocument();
-      expect(screen.queryByText("Finalize decision now")).not.toBeInTheDocument();
-      expect(secondButton).toHaveAttribute("aria-pressed", "true");
-      expect(within(table).getAllByRole("row")[2]).toHaveClass("row-selected");
-
-      // Row click (anywhere but the button) is the prototype's `cg-row` convenience on top.
-      fireEvent.click(within(table).getByText("First Co"));
-      expect(await screen.findByText("Finalize decision now")).toBeInTheDocument();
-      expect(firstRow).toHaveClass("row-selected");
-    });
-
-    it("an action posts the real write with the signed-in owner, then the pane and the Status column show the acted state", async () => {
-      const item = pipelineItem({ contractId: "contract-x", supplierName: "Salesforce" });
-      const saved = {
-        contractId: "contract-x",
-        owner: USER_LABEL,
-        status: "InProgress" as const,
-        action: "In negotiation",
-        updatedAt: "2026-09-06T09:00:00Z",
-      };
-      const postRenewalAction = vi.fn().mockResolvedValue({
-        ok: true,
-        statusCode: 200,
-        action: saved,
-        error: null,
-      } satisfies PostRenewalActionResult);
-      const getRenewals = vi.fn().mockResolvedValueOnce(ok([item])).mockResolvedValue(ok([{ ...item, savedAction: saved }]));
-
-      renderPopulated([item], { postRenewalAction, getRenewals });
-      await screen.findByRole("table");
-
-      fireEvent.click(screen.getByRole("button", { name: "Start negotiation" }));
-
-      expect(postRenewalAction).toHaveBeenCalledWith(WORKSPACE_ID, "contract-x", {
-        owner: USER_LABEL,
-        status: "InProgress",
-        action: "In negotiation",
-      });
-
-      const acted = await screen.findByRole("status");
-      expect(acted).toHaveClass("renewal-pane-acted");
-      expect(acted.textContent).toContain("In negotiation");
-      expect(acted.textContent).toContain(`owner ${USER_LABEL}`);
-      expect(within(acted).getByRole("link", { name: "Open contract →" })).toHaveAttribute("href", "/contracts/contract-x");
-      expect(screen.queryByRole("button", { name: "Start negotiation" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Assign to me" })).not.toBeInTheDocument();
-
-      const table = screen.getByRole("table");
-      expect(within(table).getByText("In negotiation")).toHaveClass("tag-accent");
-      expect(within(table).queryByText("Open")).not.toBeInTheDocument();
-      expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
-    });
-
-    it("'Assign to me' claims ownership without starting work (NotStarted / Assigned)", async () => {
-      const item = pipelineItem({ contractId: "contract-y" });
-      const postRenewalAction = vi.fn().mockResolvedValue({
-        ok: true,
-        statusCode: 200,
-        action: { contractId: "contract-y", owner: USER_LABEL, status: "NotStarted", action: "Assigned", updatedAt: "2026-09-06T09:00:00Z" },
-        error: null,
-      } satisfies PostRenewalActionResult);
-      const getRenewals = vi
-        .fn()
-        .mockResolvedValueOnce(ok([item]))
-        .mockResolvedValue(
-          ok([
-            {
-              ...item,
-              savedAction: {
-                contractId: "contract-y",
-                owner: USER_LABEL,
-                status: "NotStarted",
-                action: "Assigned",
-                updatedAt: "2026-09-06T09:00:00Z",
-              },
-            },
-          ]),
-        );
-      renderPopulated([item], { postRenewalAction, getRenewals });
-      await screen.findByRole("table");
-
-      fireEvent.click(screen.getByRole("button", { name: "Assign to me" }));
-
-      expect(postRenewalAction).toHaveBeenCalledWith(WORKSPACE_ID, "contract-y", {
-        owner: USER_LABEL,
-        status: "NotStarted",
-        action: "Assigned",
-      });
-      expect(await screen.findByRole("button", { name: "Start negotiation" })).toBeInTheDocument();
-      expect(within(screen.getByRole("table")).getByText("Open")).toBeInTheDocument();
-    });
-
-    it("shows an inline error and records nothing when the write fails", async () => {
-      const postRenewalAction = vi
-        .fn()
-        .mockResolvedValue({ ok: false, statusCode: 400, action: null, error: "'owner' is required." });
-      renderPopulated([pipelineItem()], { postRenewalAction });
-      await screen.findByRole("table");
-
-      fireEvent.click(screen.getByRole("button", { name: "Assign to me" }));
-
-      expect(await screen.findByRole("alert")).toHaveTextContent("'owner' is required.");
-      expect(screen.getByRole("button", { name: "Start negotiation" })).toBeEnabled();
-      expect(window.sessionStorage.getItem("raffa.renewals.actions")).toBeNull();
-    });
-
-    it("names the contract type and puts the portfolio's currency on the spend, in the list and the pane", async () => {
-      const item = pipelineItem({ supplierName: "Salesforce" });
-      renderPopulated([item], {
-        getPortfolio: vi.fn().mockResolvedValue({
-          ok: true,
-          statusCode: 200,
-          portfolio: {
-            items: [
-              {
-                contractId: item.contractId,
-                supplierId: null,
-                supplierName: "Salesforce",
-                type: "Msa",
-                annualSpend: 500_000,
-                currency: "CHF",
-                startDate: null,
-                endDate: null,
-                renewalDate: null,
-                cancellationDeadline: null,
-                autoRenewal: true,
-                status: "active",
-                risk: null,
-              },
-            ],
-            page: 1,
-            pageSize: 100,
-            totalCount: 1,
-            processingDocumentCount: 0,
-          },
-          error: null,
-        }),
-      });
-
-      const table = await screen.findByRole("table");
-      expect(await within(table).findByText("· MSA")).toBeInTheDocument();
-      expect(within(table).getByText("CHF 500k")).toBeInTheDocument();
-      const pane = screen.getByRole("complementary", { name: "Why it is here" });
-      expect(within(pane).getByText("Annual spend").nextSibling).toHaveTextContent("CHF 500k");
-      expect(within(pane).getByText("Priority").nextSibling).toHaveTextContent("85 / 100");
-    });
-
-    it("the KPI strip counts what is due and who is on it, and each cell filters the list", async () => {
-      const soon = scored(pipelineItem({ contractId: "soon", supplierName: "Soon Co", daysUntilCancellationDeadline: 10, annualSpend: 100_000 }), 90);
-      const later = scored(pipelineItem({ contractId: "later", supplierName: "Later Co", daysUntilCancellationDeadline: 60, annualSpend: 50_000 }), 70);
-      const far = scored(
-        pipelineItem({
-          contractId: "far",
-          supplierName: "Far Co",
-          daysUntilCancellationDeadline: 200,
-          savedAction: { contractId: "far", owner: USER_LABEL, status: "InProgress", action: "In negotiation", updatedAt: "2026-09-06T09:00:00Z" },
-        }),
-        50,
-      );
-      renderPopulated([soon, later, far]);
-
-      const strip = await screen.findByRole("group", { name: "Renewal KPIs" });
-      const cell = (name: RegExp) => within(strip).getByRole("button", { name });
-      expect(cell(/Notice in 30 days/)).toHaveTextContent("1");
-      expect(cell(/Notice in 30 days/)).toHaveClass("is-urgent");
-      expect(cell(/Notice in 90 days/)).toHaveTextContent("2");
-      expect(cell(/Spend renewing in 90 days/)).toHaveTextContent("150k");
-      expect(cell(/Not started/)).toHaveTextContent("2");
-      expect(cell(/In negotiation/)).toHaveTextContent("1");
-
-      const bodyRows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
-      expect(bodyRows()).toHaveLength(3);
-
-      fireEvent.click(cell(/Notice in 30 days/));
-      expect(cell(/Notice in 30 days/)).toHaveAttribute("aria-pressed", "true");
-      expect(bodyRows()).toHaveLength(1);
-      expect(bodyRows()[0]).toHaveTextContent("Soon Co");
-
-      fireEvent.click(cell(/Notice in 30 days/));
-      expect(bodyRows()).toHaveLength(3);
-
-      fireEvent.click(cell(/In negotiation/));
-      expect(bodyRows()).toHaveLength(1);
-      expect(bodyRows()[0]).toHaveTextContent("Far Co");
-      // The pane follows the filter: the only visible row is the one shown.
-      expect(screen.getByRole("heading", { level: 3, name: "Far Co — 200 days to notice" })).toBeInTheDocument();
-
-      fireEvent.click(screen.getAllByRole("button", { name: "Clear filters" })[0]);
-      fireEvent.change(screen.getByRole("searchbox", { name: "Search renewals" }), { target: { value: "later" } });
-      expect(bodyRows()).toHaveLength(1);
-      expect(bodyRows()[0]).toHaveTextContent("Later Co");
-
-      fireEvent.change(screen.getByRole("searchbox", { name: "Search renewals" }), { target: { value: "nobody" } });
-      expect(screen.getByText("No renewal matches these filters.")).toBeInTheDocument();
-    });
-
-    it("the pane launches Ask Raffa bound to the contract, opens the other screens with it in context, and lists what is coming", async () => {
-      renderPopulated([pipelineItem({ supplierName: "Salesforce" })]);
-      const pane = await screen.findByRole("complementary", { name: "Why it is here" });
-      const launcher = within(pane).getByRole("region", { name: "What you can do from here" });
-      const contractId = "22222222-2222-2222-2222-222222222222";
-
-      expect(within(launcher).getByRole("link", { name: /Plan the negotiation/ })).toHaveAttribute("href", `/ask?scope=${contractId}`);
-      expect(within(launcher).getByRole("link", { name: /Plan the negotiation/ })).toHaveAttribute(
-        "title",
-        "How should we approach the Salesforce renewal?",
-      );
-      expect(within(launcher).getByRole("link", { name: /Draft the negotiation email/ })).toHaveAttribute(
-        "title",
-        "Draft the renewal negotiation email for Salesforce",
-      );
-      expect(within(launcher).getByRole("link", { name: /Open Contract 360/ })).toHaveAttribute("href", `/contracts/${contractId}`);
-      expect(within(launcher).getByRole("link", { name: /Open Savings/ })).toHaveAttribute("href", `/savings?contract=${contractId}`);
-      expect(within(launcher).getByRole("link", { name: /Open Portfolio/ })).toHaveAttribute("href", `/contracts?ids=${contractId}&from=renewals`);
-      expect(within(launcher).getByRole("link", { name: /Open Quote check/ })).toHaveAttribute("href", "/quotes");
-
-      // Not built yet: still offered, marked, and routed to Ask, which says so and can file the request.
-      const reminder = within(launcher).getByRole("link", { name: /Remind me before the notice date/ });
-      expect(within(reminder).getByText("Soon")).toHaveClass("tag-outline");
-      expect(reminder).toHaveAttribute("title", "Remind me before the Salesforce notice deadline");
-      expect(within(launcher).getByText("Coming to Raffa.ai")).toBeInTheDocument();
-    });
-
-    it("ticked rows get bulk actions: assign the open ones to me, show them in Portfolio, ask which to start first", async () => {
-      const a = scored(pipelineItem({ contractId: "a", supplierName: "Alpha" }), 90);
-      const b = scored(pipelineItem({ contractId: "b", supplierName: "Beta" }), 80);
-      const c = scored(
-        pipelineItem({
-          contractId: "c",
-          supplierName: "Gamma",
-          savedAction: { contractId: "c", owner: "someone@example.test", status: "InProgress", action: "In negotiation", updatedAt: "2026-09-06T09:00:00Z" },
-        }),
-        70,
-      );
-      const postRenewalAction = vi.fn().mockImplementation((_tenant: string, contractId: string) =>
-        Promise.resolve({
-          ok: true,
-          statusCode: 200,
-          action: { contractId, owner: USER_LABEL, status: "NotStarted", action: "Assigned", updatedAt: "2026-09-06T09:00:00Z" },
-          error: null,
-        } satisfies PostRenewalActionResult),
-      );
-      const getRenewals = vi.fn().mockResolvedValue(ok([a, b, c]));
-      renderPopulated([a, b, c], { postRenewalAction, getRenewals });
-      await screen.findByRole("table");
-      expect(screen.queryByRole("region", { name: "Selected renewals" })).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByRole("checkbox", { name: "Select all 3 renewals in this list" }));
-      const bar = screen.getByRole("region", { name: "Selected renewals" });
-      expect(bar).toHaveTextContent("3 selected");
-      expect(within(bar).getByRole("link", { name: "Show 3 in Portfolio →" })).toHaveAttribute("href", "/contracts?ids=a,b,c&from=renewals");
-      expect(within(bar).getByRole("link", { name: "Ask Raffa which to start first →" })).toHaveAttribute(
-        "title",
-        "Which of these renewals should we start first: Alpha, Beta, Gamma?",
-      );
-
-      // Gamma is already being negotiated by someone else: "Assign" never overwrites it.
-      fireEvent.click(within(bar).getByRole("button", { name: "Assign 2 to me" }));
-      await waitFor(() => expect(postRenewalAction).toHaveBeenCalledTimes(2));
-      expect(postRenewalAction).toHaveBeenNthCalledWith(1, WORKSPACE_ID, "a", { owner: USER_LABEL, status: "NotStarted", action: "Assigned" });
-      expect(postRenewalAction).toHaveBeenNthCalledWith(2, WORKSPACE_ID, "b", { owner: USER_LABEL, status: "NotStarted", action: "Assigned" });
-      await waitFor(() => expect(screen.queryByRole("region", { name: "Selected renewals" })).not.toBeInTheDocument());
-      expect(getRenewals).toHaveBeenCalledTimes(2);
-    });
+  it("picking a card shows that renewal, and a contract with no case offers to start it", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(within(cards()[1] as HTMLElement).getByRole("button"));
+    const panel = screen.getByRole("region", { name: "Selected renewal" });
+    expect(within(panel).getByText("Not started", { selector: ".rn-case-status" })).toBeInTheDocument();
+    expect(within(panel).getByText("Auto-renews for 12 months at +7% if nothing happens.")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Start & assign to Marta" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "I’ll handle it" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Prepare non-renewal notice" })).toBeInTheDocument();
   });
 
-  it("defaults to validated Ready rows; dated-but-unvalidated contracts sit in To review", async () => {
-    const ready = pipelineItem({
-      contractId: "ready",
-      supplierName: "Salesforce",
-      status: "Determined",
-      contractStatus: "active",
-      documentProcessingStatus: "Completed",
-    });
-    const inReview = pipelineItem({
-      contractId: "pending",
-      supplierName: "Review Co",
-      status: "Determined",
-      contractStatus: "needs_review",
-      documentProcessingStatus: "NeedsReview",
-    });
-    const notAnalyzed = pipelineItem({
-      contractId: "uploading",
-      supplierName: "Uploading Co",
-      status: "CannotDetermine",
-      contractStatus: "processing",
-      documentProcessingStatus: "Uploaded",
-      renewalDate: null,
-      daysUntilRenewal: null,
-      cancellationDeadline: null,
-      daysUntilCancellationDeadline: null,
-    });
-    renderRenewals(
-      mockApiClient({
-        getRenewals: vi.fn().mockResolvedValue(ok([scored(ready, 85), scored(inReview, 40), scored(notAnalyzed, 10)])),
-      }),
-    );
-
-    const table = await screen.findByRole("table");
-    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
-    expect(within(table).queryByText("Review Co")).not.toBeInTheDocument();
-    expect(within(table).queryByText("Uploading Co")).not.toBeInTheDocument();
-    expect(screen.getByText("1 contract with validated dates · sorted by priority")).toBeInTheDocument();
-
-    const group = screen.getByRole("group", { name: "Filter renewals by readiness" });
-    expect(within(group).getByRole("button", { name: "Ready · 1" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(group).getByRole("button", { name: "To review · 2" })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByText("Contracts still in review are hidden — they are not ready to use yet.")).toBeInTheDocument();
-
-    fireEvent.click(within(group).getByRole("button", { name: "To review · 2" }));
-    expect(within(table).queryByText("Salesforce")).not.toBeInTheDocument();
-    expect(within(table).getByText("Review Co")).toBeInTheDocument();
-    expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
-
-    fireEvent.click(within(group).getByRole("button", { name: "All · 3" }));
-    expect(within(table).getByText("Salesforce")).toBeInTheDocument();
-    expect(within(table).getByText("Review Co")).toBeInTheDocument();
-    expect(within(table).getByText("Uploading Co")).toBeInTheDocument();
+  it("'Start & assign' creates the case for the buyer and the card moves into negotiation", async () => {
+    const user = userEvent.setup();
+    renderAt("/renewals?select=1");
+    await user.click(screen.getByRole("button", { name: "Start & assign to Marta" }));
+    expect(getCaseStore().getState().cases["1"]).toMatchObject({ owner: "Marta Keller", approver: "Luca Lamalfa", phase: "interview" });
+    const salesforce = cards().find((c) => c.textContent?.includes("Salesforce")) as HTMLElement;
+    expect(within(salesforce).getByText("Interview")).toHaveClass("tag-accent");
+    expect(within(salesforce).getByText("Marta Keller")).toBeInTheDocument();
   });
 
-  it("with only still-to-review rows, default Ready is empty but To review reveals them — no reroute", async () => {
-    const inReview = pipelineItem({
-      contractId: "pending",
-      supplierName: "Review Co",
-      status: "Determined",
-      contractStatus: "needs_review",
-      documentProcessingStatus: "NeedsReview",
-    });
-    renderRenewals(
-      mockApiClient({
-        getRenewals: vi.fn().mockResolvedValue(ok([scored(inReview, 40)])),
-      }),
-    );
+  it("anyone but the approver just starts the renewal, and goes to its chat", async () => {
+    const user = userEvent.setup();
+    renderAt("/renewals?select=1&as=Marta%20Keller");
+    expect(screen.queryByRole("button", { name: /Start & assign/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start renewal" }));
+    expect(screen.getByText("at /renewals/1/chat")).toBeInTheDocument();
+    expect(getCaseStore().getState().cases["1"]?.owner).toBe("Marta Keller");
+  });
+});
 
-    expect(await screen.findByText("No ready contracts in this list. Switch to To review to see uploads still being analyzed.")).toBeInTheDocument();
-    expect(screen.queryByText("No renewal dates yet")).toBeNull();
-    expect(screen.queryByRole("table")).toBeNull();
+describe("Renewals: the KPI strip filters the list", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    forgetDemoViewer();
+    getCaseStore().reset();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "To review · 1" }));
-    const table = await screen.findByRole("table");
-    expect(within(table).getByText("Review Co")).toBeInTheDocument();
+  it("shows the five thresholds with their counts", () => {
+    renderAt();
+    const strip = screen.getByRole("group", { name: "Renewal KPIs" });
+    expect(within(strip).getAllByRole("button").map((b) => b.textContent)).toEqual(["1Notice in 30 days", "2Notice in 90 days", "1Not started", "3In negotiation", "0Closed"]);
+  });
+
+  it("a cell filters the list, and pressing it again clears the filter", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    const cell = screen.getByRole("button", { name: /Notice in 90 days/ });
+    await user.click(cell);
+    expect(cell).toHaveAttribute("aria-pressed", "true");
+    expect(cards().map((c) => c.querySelector(".rn-supplier")?.textContent)).toEqual(["DocuSign", "Salesforce"]);
+    await user.click(cell);
+    expect(cell).toHaveAttribute("aria-pressed", "false");
+    expect(cards()).toHaveLength(4);
+  });
+
+  it("an empty filter says so in words", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(screen.getByRole("button", { name: /Closed/ }));
+    expect(screen.getByText("No renewal matches this filter.")).toBeInTheDocument();
+  });
+
+  it("the red number is only the urgent cell", () => {
+    renderAt();
+    expect(screen.getByRole("button", { name: /Notice in 30 days/ })).toHaveClass("is-urgent");
+    expect(screen.getByRole("button", { name: /Notice in 90 days/ })).not.toHaveClass("is-urgent");
+  });
+
+  it("Mine / Team / Unassigned narrow the list and recount the strip", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(screen.getByRole("button", { name: "Unassigned" }));
+    expect(cards().map((c) => c.querySelector(".rn-supplier")?.textContent)).toEqual(["Salesforce"]);
+    expect(screen.getByRole("button", { name: /Notice in 30 days/ }).textContent).toBe("0Notice in 30 days");
+    await user.click(screen.getByRole("button", { name: "Mine" }));
+    expect(cards().map((c) => c.querySelector(".rn-supplier")?.textContent)).toEqual(["DocuSign", "Salesforce", "AWS"]);
+  });
+});
+
+describe("Renewals: views", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    forgetDemoViewer();
+    getCaseStore().reset();
+  });
+
+  it("Pipeline has a column for not started and one per wizard step, with the cards in their step", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(screen.getByRole("button", { name: "Pipeline" }));
+    const columns = screen.getAllByRole("region").filter((r) => r.className === "rn-column");
+    expect(columns.map((c) => c.getAttribute("aria-label"))).toEqual(["— · Not started", "1 · Start", "2 · Plan", "3 · Negotiation", "4 · Agreement", "5 · Draft", "6 · Signature", "7 · Acquisition"]);
+    expect(within(columns[3] as HTMLElement).getByText("DocuSign")).toBeInTheDocument();
+    expect(within(columns[0] as HTMLElement).getByText("Salesforce")).toBeInTheDocument();
+    expect(within(columns[3] as HTMLElement).getByText("24 days")).toBeInTheDocument();
+  });
+
+  it("picking a card in the Pipeline goes back to Cases with that renewal selected", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(screen.getByRole("button", { name: "Pipeline" }));
+    await user.click(screen.getByRole("button", { name: /AWS/ }));
+    expect(screen.getByRole("button", { name: "Cases" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { level: 3, name: "AWS — Enterprise Discount Program" })).toBeInTheDocument();
+  });
+
+  it("Action queue lists what needs doing, grouped by kind, with one primary button each", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(screen.getByRole("button", { name: "Action queue" }));
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent).filter((t) => t !== "Renewals")).toEqual(["Approvals2", "Plans & notices1", "Deadlines without owner1"]);
+    const approvals = screen.getByRole("region", { name: "Approvals" });
+    expect(within(approvals).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(approvals).getByText("Approve the counter-proposal")).toBeInTheDocument();
+    expect(within(approvals).getAllByRole("button", { name: "Open at this step" })).toHaveLength(2);
+  });
+
+  it("an action can be snoozed or marked done and leaves the queue", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(screen.getByRole("button", { name: "Action queue" }));
+    const row = screen.getByText("Approve the counter-proposal").closest("li") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Snooze 3 days" }));
+    expect(screen.queryByText("Approve the counter-proposal")).not.toBeInTheDocument();
+    const done = screen.getByText("Notice deadline without an owner").closest("li") as HTMLElement;
+    await user.click(within(done).getByRole("button", { name: "Done" }));
+    expect(screen.queryByText("Notice deadline without an owner")).not.toBeInTheDocument();
+    expect(getCaseStore().getState().queue.dismissed).toEqual({ "1:unassigned": true });
+  });
+
+  it("the approver can delegate an approval from the queue, and it moves on", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(screen.getByRole("button", { name: "Action queue" }));
+    const row = screen.getByText("Approve the counter-proposal").closest("li") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Delegate to Marta" }));
+    expect(getCaseStore().getState().cases["4"]?.delegates).toEqual({ "Marta Keller": { close: false } });
+  });
+
+  it("opening from the queue goes to the chat at that step", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(screen.getByRole("button", { name: "Action queue" }));
+    const row = screen.getByText("Approve the counter-proposal").closest("li") as HTMLElement;
+    await user.click(within(row).getByRole("button", { name: "Open at this step" }));
+    expect(screen.getByText("at /renewals/4/chat")).toBeInTheDocument();
   });
 });

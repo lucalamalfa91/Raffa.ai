@@ -4,28 +4,41 @@ import {
   buildSecondaryNavItems,
   canManageMembers,
   getDocumentsBadge,
+  getTodayBadge,
 } from "../../../src/components/shell/navItems";
 
 describe("navItems (V2 two-tier model, ADR-024 amendment; task E13/F09/US01/T01, gap G-IA-V2)", () => {
   describe("buildPrimaryNavItems", () => {
-    it("lists Ask Raffa then Documents, in that order, with no Home item", () => {
+    it("lists Today, Ask Raffa, then Documents, in that order, with no Home item", () => {
       const items = buildPrimaryNavItems(null);
-      expect(items.map((item) => item.label)).toEqual(["Ask Raffa", "Documents"]);
+      expect(items.map((item) => item.label)).toEqual(["Today", "Ask Raffa", "Documents"]);
       expect(items.map((item) => item.label)).not.toContain("Home");
     });
 
     it("Ask Raffa always carries the constant ⌘K badge and the conversation slot flag", () => {
-      const [ask] = buildPrimaryNavItems(null);
+      const [, ask] = buildPrimaryNavItems(null);
       expect(ask.badge).toEqual({ text: "⌘K", tone: "muted" });
       expect(ask.hasConversationSlot).toBe(true);
       expect(ask.path).toBe("/ask");
     });
 
     it("Documents renders whatever badge it is handed (RailNav computes it from tracked documents) and never has a conversation slot", () => {
-      const [, documents] = buildPrimaryNavItems({ text: "3 to review", tone: "attention" });
+      const [, , documents] = buildPrimaryNavItems({ text: "3 to review", tone: "attention" });
       expect(documents.badge).toEqual({ text: "3 to review", tone: "attention" });
       expect(documents.hasConversationSlot).toBe(false);
       expect(documents.path).toBe("/documents");
+    });
+  });
+
+  describe("Today", () => {
+    it("is the first item, at /today, with no conversation slot", () => {
+      const [today] = buildPrimaryNavItems(null, getTodayBadge(2));
+      expect(today).toMatchObject({ id: "today", label: "Today", path: "/today", hasConversationSlot: false, badge: { text: "2", tone: "attention" } });
+    });
+
+    it("has no badge when nothing waits on the person (never a fabricated 0)", () => {
+      expect(getTodayBadge(0)).toBeNull();
+      expect(buildPrimaryNavItems(null)[0]?.badge).toBeNull();
     });
   });
 
