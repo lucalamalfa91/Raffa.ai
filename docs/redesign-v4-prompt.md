@@ -25,6 +25,29 @@ azioni contemporanee, e l'utente non capisce dove guardare né cosa fare adesso.
 
 Non si aggiungono funzioni. Si **riorganizza, riduce e guida**.
 
+## 1b. Punto di partenza: cosa contiene oggi la v3 (audit del prototipo)
+
+Fonte: prototipo v3 (artifact `claude.ai/artifact/2h8ufejnnp2QbHKfTzGu14`, "Modernist" design system,
+IT/EN, dati fittizi Helvetia Foods). Nota: il prototipo ha **Today** come coda di lavoro e una **guida**
+integrata; il `README.md` del repo descrive invece un'app che atterra su Ask. Il redesign deve
+riconciliare le due cose (vedi §3.1).
+
+| Area | Cosa mostra oggi | Dove sta il rumore |
+|------|------------------|--------------------|
+| **Shell** | Barra "Pilot demo" (atti, View as, IT/EN, Reset) + guide strip scura + coach overlay + drawer "Raffa.ai guide" + rail con Workspace, New chat, "From your contracts", guida, Workspace & members | Tre livelli di guida/chrome sovrapposti sopra ogni schermata; la guida è un'aggiunta, non il modo in cui si naviga |
+| **Today** | Coda per urgenza: *Notice in*, contratto + prossimo step, *Stage*, *With*; azioni Open in Renewals / Snooze / Done; blocco "Start here" a 3 passi (Upload · Process · Ask) | È già il punto giusto, ma mescola onboarding e coda di lavoro; 4 colonne per riga + 3 azioni |
+| **Documents / Review** | Attention vs All, tabella (documento · fornitore/tipo · stato · next step), poi Review a tabella campo/valore/confidenza/decisione con legenda soglie (>95, 80–95, <80) | Review mostra tutti i campi insieme; la logica delle soglie è spiegata a testo invece che guidata (uno alla volta, solo i deboli) |
+| **Renewals** | Lista per data di disdetta + filtri + vista a stati; pannello caso con ~14 blocchi: Days to notice, Notice by, Ends, Owner, Approver, Market check, Offers vs contract, Current vs proposed (tabella), Plan goals, Timeline, Decision log, Emails, Documents & versions, What to expect, Team & delegation | È la pagina più densa: tutte le informazioni del caso sono visibili insieme; il "cosa fare adesso" è uno dei 14 blocchi |
+| **Renewal chat** | Header con 5 meta (Next, Notice by, Ends, Owner, Approver·ruolo) + Steps so far + Vendor thread + paste reply + chip azione + bozze mail con Accept/Correct | Il flusso a passi esiste già qui: è il modello da generalizzare |
+| **Contract 360** | 6 sezioni numerate impilate: Leverage, Products & pricing, Clauses that matter, Obligations, Risk factors, Key terms | Pagina lunga a scroll; nessuna gerarchia tra "da fare" e "da sapere" |
+| **Portfolio** | Tabella a 8 colonne (Supplier, Contract, Annual spend, Ends, Give notice by, Start, Auto, Risk, Status) | Colonne di dettaglio visibili di default |
+| **Savings** | Barra filtri (supplier, category, owner, Clear) + goal ("Tell Raffa your goal") + 3 sezioni numerate (Verified/Where you can still save/When you saved) + 4 KPI con tooltip + by supplier + verified outcomes | 4 KPI + 3 filtri + obiettivo + 3 sezioni nella stessa vista |
+| **Quote check** | Landing (drop + "Compared with" + "When to use it" ×3 + saved checks) e risultato con: verdict, supplier quote, similar customers, vs median, target, what to do now, negotiation brief, counter-proposal, signature, blocco stato a 6 campi, tabella righe a 7 colonne | Il risultato mette in una pagina verdetto, 5 blocchi di contesto, 3 azioni e la tabella completa |
+
+**Pattern già buoni da preservare e generalizzare:** Today come coda ordinata per urgenza; la
+chat di rinnovo a passi con "Steps so far"; "Standard terms stay out of the way" in Contract 360;
+"Target and negotiation levers are one step further"; i tooltip `i` sui KPI; lo stato salvato di ogni Quote check.
+
 ## 2. Principi di design (vincolanti)
 
 1. **Un solo focus per schermata.** Ogni vista ha *una* domanda a cui risponde e
@@ -51,22 +74,21 @@ Non si aggiungono funzioni. Si **riorganizza, riduce e guida**.
 
 ## 3. Nuova architettura dell'informazione
 
-### 3.1 Home / "Cosa vuoi fare?" (nuova porta d'ingresso)
-Oggi il sign-in atterra su Ask. In 4.0 l'utente atterra su una **Home guidata** con
-quattro percorsi principali, sotto forma di grandi card d'intento, più una riga di
-"cose che richiedono attenzione ora" (max 3 voci):
+### 3.1 Home = Today evoluto in "Cosa vuoi fare?"
+La v3 ha già **Today** (coda di lavoro). In 4.0 diventa la porta d'ingresso in due fasce:
+1. **Quattro card d'intento** (grandi, sempre visibili): **Rinnovi** ("Cosa devo rinnovare e quando?"),
+   **Preventivi** ("Questa offerta è buona?"), **Portfolio** ("Cosa ho firmato e con chi?"),
+   **Chiedi a Raffa** ("Ho una domanda / un'attività"). Ognuna avvia il rispettivo wizard.
+2. **"Richiede la tua attenzione ora"** = la coda di Today ridotta a max 3–5 voci
+   (contratto · scadenza · prossimo step · un solo pulsante).
 
-| Card | Domanda dell'utente | Avvia il flusso |
-|------|--------------------|-----------------|
-| **Rinnovi** | "Cosa devo rinnovare e quando?" | Wizard Renewals |
-| **Preventivi** | "Questa offerta è buona?" | Wizard Quote check |
-| **Portfolio** | "Cosa ho firmato e con chi?" | Portfolio a 3 livelli |
-| **Chiedi a Raffa** | "Ho una domanda / un'attività" | Ask strutturato |
-
-Sotto: "Riprendi" (ultimo flusso interrotto) e, se il workspace è vuoto,
-l'onboarding "Carica i tuoi primi contratti". Savings e Documents restano
-raggiungibili dal rail ma sono *conseguenze* dei flussi, non destinazioni da cercare.
-Il rail si semplifica: Home · Chiedi a Raffa · Rinnovi · Preventivi · Portfolio · Documenti (Savings dentro Portfolio/Rinnovi come "Risparmi").
+Sotto: "Riprendi" (ultimo flusso interrotto). Se il workspace è vuoto, al posto di tutto
+resta solo l'onboarding "Carica i tuoi primi contratti" (i 3 passi Upload · Process · Ask di oggi).
+La **guida** non è più uno strato separato (strip + coach + drawer): è assorbita dai wizard
+(stepper + testo di aiuto al passo) e da un unico "Aiuto" nel rail. La barra "Pilot demo" resta
+solo in modalità demo e non conta come chrome del prodotto.
+Rail 4.0: Home · Chiedi a Raffa · Rinnovi · Preventivi · Portfolio · Documenti
+(Savings come "Risparmi" dentro Portfolio/Rinnovi) · Workspace & members nel footer.
 
 ### 3.2 Renewals — flusso unico a imbuto
 - **Livello 1 (lista):** solo "Cosa richiede azione ora", ordinata per urgenza,
@@ -175,7 +197,7 @@ mostra di default solo "Richiedono attenzione".
 
 ## 9. Domande aperte da chiarire all'inizio
 
-1. La Home sostituisce Ask come landing, o convivono?
+1. Today diventa la Home guidata (consigliato) o resta una voce separata accanto a una nuova Home? Il repo oggi atterra su Ask, il prototipo v3 su Today: quale vale?
 2. Savings resta voce di rail o diventa lente di Portfolio/Rinnovi?
 3. Quali ruoli (Admin/membro) vedono quali scorciatoie in Home?
 4. Serve una modalità "esperto" che riporta la densità attuale?
