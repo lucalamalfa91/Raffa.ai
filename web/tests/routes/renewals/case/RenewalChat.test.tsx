@@ -6,7 +6,7 @@ import RenewalChat, { type ChatTarget } from "../../../../src/routes/renewals/ca
 import { seedDemoCases } from "../../../../src/routes/renewals/case/demoCases";
 import { act, create, view } from "../../../../src/routes/renewals/case/engine";
 import { DEMO_APPROVER, DEMO_OWNER, demoContext } from "../../../../src/routes/renewals/case/fixtures";
-import type { Lang } from "../../../../src/routes/renewals/case/text";
+import type { Lang } from "../../../../src/i18n/translate";
 import type { ActPayload, ActionType, Case } from "../../../../src/routes/renewals/case/types";
 
 const L = DEMO_APPROVER;

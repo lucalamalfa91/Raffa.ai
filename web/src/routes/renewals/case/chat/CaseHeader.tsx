@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import type { ActPayload, ActionType, CasePerson, CaseView } from "../types";
-import type { Translate } from "./chatCopy";
+import type { Translate } from "../../../../i18n/translate";
 
 export interface CaseHeaderProps {
   view: CaseView;
@@ -29,26 +29,26 @@ export default function CaseHeader({ view, t, onAct, onHistory, onNewChat }: Cas
       <div className="rc-facts">
         <strong className="rc-status">{hdr.status}</strong>
         <span>
-          <span className="rc-label">{t("next")}</span> {hdr.next}
+          <span className="rc-label">{t("Next")}</span> {hdr.next}
         </span>
         <span>
-          <span className="rc-label">{t("noticeBy")}</span>{" "}
+          <span className="rc-label">{t("Notice by")}</span>{" "}
           <strong>
             {hdr.noticeBy} · {hdr.noticeDays} {t("days")}
           </strong>
         </span>
         <span>
-          <span className="rc-label">{t("ends")}</span> {hdr.end}
+          <span className="rc-label">{t("Ends")}</span> {hdr.end}
         </span>
         <span>
-          <span className="rc-label">{t("owner")}</span> {hdr.owner}
+          <span className="rc-label">{t("Owner")}</span> {hdr.owner}
         </span>
         <span>
-          <span className="rc-label">{t("approver")}</span> {hdr.approver} · {t("you")}: {hdr.youRole}
+          <span className="rc-label">{t("Approver")}</span> {hdr.approver} · {t("you")}: {hdr.youRole}
         </span>
       </div>
 
-      <ol className="rc-stepper" aria-label={t("stepper")}>
+      <ol className="rc-stepper" aria-label={t("Renewal steps")}>
         {view.steps7.map((step) => (
           <li key={step.n} className={step.now ? "is-now" : step.done ? "is-done" : undefined} aria-current={step.now ? "step" : undefined}>
             <span className="rc-step-n">{step.n}</span>
@@ -73,13 +73,13 @@ export default function CaseHeader({ view, t, onAct, onHistory, onNewChat }: Cas
 
       <div className="rc-links">
         <button type="button" className="btn btn-ghost" onClick={onHistory}>
-          {t("history")}
+          {t("History →")}
         </button>
         <button type="button" className="btn btn-ghost" aria-expanded={teamOpen} aria-controls={teamId} onClick={() => setTeamOpen((o) => !o)}>
-          {t("team")} {teamOpen ? "▴" : "▾"}
+          {t("Team & delegations")} {teamOpen ? "▴" : "▾"}
         </button>
         <button type="button" className="btn btn-ghost rc-links-end" onClick={onNewChat}>
-          {t("newChat")}
+          {t("+ New chat")}
         </button>
       </div>
 
@@ -88,7 +88,7 @@ export default function CaseHeader({ view, t, onAct, onHistory, onNewChat }: Cas
           {hdr.people.map((person) => (
             <Person key={person.name} person={person} manage={view.permissions.manageTeam} t={t} onAct={onAct} />
           ))}
-          <p className="rc-note">{t("teamNote")}</p>
+          <p className="rc-note">{t("Delegates are people already allowed in this workspace. The chat never widens access to documents.")}</p>
         </div>
       )}
     </header>
@@ -103,17 +103,17 @@ function Person({ person, manage, t, onAct }: { person: CasePerson; manage: bool
       <span className="rc-person-role">{person.role}</span>
       {canManage && (
         <button type="button" className="btn btn-ghost" onClick={() => onAct("delegate", { who: person.name, on: !person.isDelegate })}>
-          {person.isDelegate ? t("removeDelegation") : t("makeDelegate")}
+          {person.isDelegate ? t("Remove delegation") : t("Make delegate")}
         </button>
       )}
       {canManage && person.isDelegate && (
         <button type="button" className="btn btn-ghost" onClick={() => onAct("delegateClose", { who: person.name })}>
-          {person.canClose ? t("removeClosing") : t("allowClosing")}
+          {person.canClose ? t("Remove closing right") : t("Allow closing")}
         </button>
       )}
       {canManage && person.responsibility !== "owner" && (
         <button type="button" className="btn btn-ghost" onClick={() => onAct("transfer", { who: person.name })}>
-          {t("reassign")}
+          {t("Reassign ownership")}
         </button>
       )}
     </div>

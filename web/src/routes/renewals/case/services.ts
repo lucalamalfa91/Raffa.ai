@@ -7,13 +7,13 @@
  * scripted scenario behind it.
  */
 
-import type { Bilingual } from "./text";
+import type { Text } from "../../../i18n/translate";
 import type { AltOffer, Case, CaseContext, DraftRow, Email, Pipe, ReplyRow, TermStatus } from "./types";
 
 export interface ReplyAnalysis {
   rows: ReplyRow[];
   /** Term updates the analysis implies (the engine applies them to `case.terms`). */
-  terms: Array<{ key: string; label: Bilingual; state: TermStatus; val: string | null }>;
+  terms: Array<{ key: string; label: Text; state: TermStatus; val: string | null }>;
 }
 
 export interface CaseServices {

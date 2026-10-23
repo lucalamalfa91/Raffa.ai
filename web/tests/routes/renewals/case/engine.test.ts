@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { msg } from "../../../../src/i18n/translate";
 import { act, checklist, create, permissionsOf, responsibilityOf, shortStatus, stage, todo, view } from "../../../../src/routes/renewals/case/engine";
 import { DEMO_APPROVER, DEMO_OWNER, demoContext } from "../../../../src/routes/renewals/case/fixtures";
 import { scriptedServices } from "../../../../src/routes/renewals/case/mockServices";
@@ -156,7 +157,7 @@ describe("emails: Raffa drafts, people approve and send", () => {
     const approved = play(planned, [[M, "ui", { k: "to:0", v: "a@b.test" }], [L, "approve", { eid: 0 }]]);
     const edited = play(approved, [[M, "edit", { eid: 0 }], [M, "ui", { k: "editBody", v: "New body" }], [M, "saveEdit", { eid: 0 }]]);
     expect(edited.emails[0]).toMatchObject({ state: "draft", ver: 2, approvedBy: null, body: "New body" });
-    expect(edited.decs.some((d) => typeof d.text !== "string" && d.text.en.includes("approval invalidated"))).toBe(true);
+    expect(edited.decs.some((d) => typeof d.text !== "string" && d.text.id.includes("approval invalidated"))).toBe(true);
   });
 
   it("an example address exists only if the service offers one", () => {
@@ -217,7 +218,7 @@ describe("negotiation and agreement (steps 3-4)", () => {
     expect(refused.ui.warn).toBe("Record who authorized the exception to the policy first.");
     const ok = play(withPolicy, [[M, "ui", { k: "auth", v: "Dana Frei, CFO" }], [M, "agreeOk", { did: 1 }]]);
     expect(ok.agreed).toMatchObject({ auth: "Dana Frei, CFO" });
-    expect(ok.decs.at(-1)?.text).toMatchObject({ en: expect.stringContaining("recorded outside Raffa") });
+    expect(ok.decs.at(-1)?.text).toMatchObject({ id: expect.stringContaining("recorded outside Raffa") });
   });
 
   it("Today does not raise the policy item once an authoriser is recorded", () => {
@@ -260,7 +261,7 @@ describe("responsibilities and permissions", () => {
     expect(denied.planOk).toBe(false);
     expect(denied.ui.warn).toBe("Only people working on this renewal can do this.");
     const comment = run(planned, EVA, "say", { text: "Looks fine to me" });
-    expect(comment.feed.at(-1)).toMatchObject({ k: "user", by: EVA, tag: { en: "internal comment" } });
+    expect(comment.feed.at(-1)).toMatchObject({ k: "user", by: EVA, tag: { id: "internal comment" } });
   });
 
   it("disabled buttons stay in the view with the reason", () => {
@@ -411,7 +412,7 @@ describe("the service boundary", () => {
       ...scriptedServices,
       analyzeReply: (_c, _ctx, rid) => {
         calls.push(rid);
-        return { rows: [{ label: "Custom", said: "said", plan: "plan", state: "proposed", warn: "" }], terms: [{ key: "price", label: { en: "Unit price", it: "Prezzo unitario" }, state: "proposed", val: "CHF 1" }] };
+        return { rows: [{ label: "Custom", said: "said", plan: "plan", state: "proposed", warn: "" }], terms: [{ key: "price", label: msg("Unit price"), state: "proposed", val: "CHF 1" }] };
       },
     };
     const ctx: CaseContext = { ...ctxAs(M), services: custom };

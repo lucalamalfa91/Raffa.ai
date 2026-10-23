@@ -1,12 +1,12 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ActPayload, ActionType, CardButton, CardChip, CaseView } from "../types";
-import type { Lang } from "../text";
+import type { Lang } from "../../../../i18n/translate";
 import CaseHeader from "./CaseHeader";
 import Composer from "./Composer";
 import HistoryDrawer from "./HistoryDrawer";
 import StepCard from "./StepCard";
 import StepsSoFar from "./StepsSoFar";
-import { translator } from "./chatCopy";
+import { translator } from "../../../../i18n/translate";
 import { splitFeed } from "./chatModel";
 import "./renewalChat.css";
 
@@ -71,15 +71,15 @@ export default function RenewalChat({ view, lang, onAct, onNavigate }: RenewalCh
       <div className="rc-feed" ref={feedRef}>
         <div className="rc-column">
           {view.since && (
-            <section className="rc-since" aria-label={t("sinceTitle")}>
-              <div className="rc-label">{t("sinceTitle")}</div>
+            <section className="rc-since" aria-label={t("Since your last visit")}>
+              <div className="rc-label">{t("Since your last visit")}</div>
               <ul>
                 {view.since.lines.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
               <button type="button" className="btn btn-ghost" onClick={() => dispatch("sinceOk")}>
-                {t("sinceOk")}
+                {t("Got it")}
               </button>
             </section>
           )}

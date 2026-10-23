@@ -9,7 +9,7 @@
  */
 
 import { figures, POLICY, priceLabel, productList, type Figures } from "./model";
-import { B, pick } from "./text";
+import { msg, translator, type Text } from "../../../i18n/translate";
 import type { CaseServices, ReplyAnalysis } from "./services";
 import type { AltOffer, Case, CaseContext, DraftRow, ReplyRow } from "./types";
 
@@ -39,7 +39,7 @@ function sampleReply(c: Readonly<Case>, ctx: CaseContext, round: number): string
 }
 
 function analyzeReply(c: Readonly<Case>, ctx: CaseContext, rid: number): ReplyAnalysis {
-  const S = pick(ctx.lang);
+  const tr = translator(ctx.lang);
   const f = figures(ctx);
   const round = c.reps[rid]?.round ?? 1;
   const cap = concededCap(ctx);
@@ -47,11 +47,11 @@ function analyzeReply(c: Readonly<Case>, ctx: CaseContext, rid: number): ReplyAn
   const rows: ReplyRow[] = [];
   const terms: ReplyAnalysis["terms"] = [];
   const target =
-    c.goals.target === "p5" ? S("−5% target", "target −5%") : c.goals.target === "p10" ? S("−10% target", "target −10%") : c.goals.target === "budget" ? S("budget target", "target di budget") : S("no target set", "nessun target");
+    c.goals.target === "p5" ? tr("−5% target") : c.goals.target === "p10" ? tr("−10% target") : c.goals.target === "budget" ? tr("budget target") : tr("no target set");
   const row = (label: string, said: string, plan: string, state: ReplyRow["state"], warn = ""): void => {
     rows.push({ label, said, plan, state, warn });
   };
-  const term = (key: string, label: ReturnType<typeof B>, state: ReplyAnalysis["terms"][number]["state"], val: string | null): void => {
+  const term = (key: string, label: Text, state: ReplyAnalysis["terms"][number]["state"], val: string | null): void => {
     terms.push({ key, label, state, val });
   };
   const policyActive = c.goals.policy;
@@ -59,61 +59,61 @@ function analyzeReply(c: Readonly<Case>, ctx: CaseContext, rid: number): ReplyAn
   if (round === 1) {
     const price = firstOffer(f);
     const pct = Math.round(((f.p0 - price) / f.p0) * 100);
-    row(S("Unit price", "Prezzo unitario"), `${priceLabel(f, price)} (${pct ? `−${pct}%` : "="})${S(" — only with 24 months", " — solo con 24 mesi")}`, target, "proposed");
-    term("price", B("Unit price", "Prezzo unitario"), "proposed", priceLabel(f, price));
+    row(tr("Unit price"), tr("{price} ({change}) — only with 24 months", { price: priceLabel(f, price), change: pct ? `−${pct}%` : "=" }), target, "proposed");
+    term("price", msg("Unit price"), "proposed", priceLabel(f, price));
     row(
-      S("Term", "Durata"),
-      S("24 months required", "24 mesi richiesti"),
-      c.goals.term === "custom" ? (c.goals.termText ?? "") : `${c.goals.term}${S(" months", " mesi")}`,
+      tr("Term"),
+      tr("24 months required"),
+      c.goals.term === "custom" ? (c.goals.termText ?? "") : tr("{n} months", { n: c.goals.term ?? "" }),
       String(c.goals.term) === "24" ? "proposed" : "conflict",
     );
-    term("term", B("Term", "Durata"), "proposed", "24");
+    term("term", msg("Term"), "proposed", "24");
     if (hasUplift) {
-      row(S("Uplift", "Aumento annuo"), S(`cap at ${cap}%`, `tetto al ${cap}%`), c.terms.uplift ? S("cap at 3% or freeze", "tetto al 3% o blocco") : S("not in your plan", "non nel tuo piano"), "proposed");
-      term("uplift", B("Uplift", "Aumento annuo"), "proposed", `${cap}%`);
+      row(tr("Uplift"), tr("cap at {cap}%", { cap }), c.terms.uplift ? tr("cap at 3% or freeze") : tr("not in your plan"), "proposed");
+      term("uplift", msg("Uplift"), "proposed", `${cap}%`);
     }
-    row(S("Payment terms", "Pagamenti"), S("“may be flexible, subject to credit review”", "«forse flessibili, previa verifica di credito»"), c.terms.payment ? S("quarterly", "trimestrale") : S("not in your plan", "non nel tuo piano"), "unclear");
-    term("payment", B("Payment terms", "Pagamenti"), "unclear", null);
+    row(tr("Payment terms"), tr("“may be flexible, subject to credit review”"), c.terms.payment ? tr("quarterly") : tr("not in your plan"), "unclear");
+    term("payment", msg("Payment terms"), "unclear", null);
     row(
-      S("Liability cap", "Limite di responsabilità"),
-      S("standard cap, not negotiable", "tetto standard, non negoziabile"),
-      c.terms.liab ? S("24 months", "24 mesi") : S("not in your plan", "non nel tuo piano"),
+      tr("Liability cap"),
+      tr("standard cap, not negotiable"),
+      c.terms.liab ? tr("24 months") : tr("not in your plan"),
       "rejected",
-      policyActive && POLICY.liab ? S("Conflicts with policy (min. 24 months)", "In conflitto con la policy (min. 24 mesi)") : "",
+      policyActive && POLICY.liab ? tr("Conflicts with policy (min. 24 months)") : "",
     );
-    term("liab", B("Liability cap", "Limite di responsabilità"), "rejected", "12");
+    term("liab", msg("Liability cap"), "rejected", "12");
   } else {
     const months = c.limits?.term ?? 24;
     const price = counterOffer(f, months);
     row(
-      S("Unit price", "Prezzo unitario"),
+      tr("Unit price"),
       priceLabel(f, price),
-      c.limits?.priceMax ? S(`your limit: ≤ ${priceLabel(f, c.limits.priceMax)}`, `tuo limite: ≤ ${priceLabel(f, c.limits.priceMax)}`) : target,
+      c.limits?.priceMax ? tr("your limit: ≤ {priceLabel}", { priceLabel: priceLabel(f, c.limits.priceMax) }) : target,
       "proposed",
     );
-    term("price", B("Unit price", "Prezzo unitario"), "proposed", priceLabel(f, price));
-    row(S("Term", "Durata"), `${months}${S(" months", " mesi")}`, `${S("your limit: ", "tuo limite: ")}${months}${S(" months", " mesi")}`, "proposed");
-    term("term", B("Term", "Durata"), "proposed", String(months));
+    term("price", msg("Unit price"), "proposed", priceLabel(f, price));
+    row(tr("Term"), tr("{n} months", { n: months }), tr("your limit: {n} months", { n: months }), "proposed");
+    term("term", msg("Term"), "proposed", String(months));
     if (hasUplift) {
-      row(S("Uplift", "Aumento annuo"), S("capped at 3%", "tetto al 3%"), S("cap at 3%", "tetto al 3%"), "proposed");
-      term("uplift", B("Uplift", "Aumento annuo"), "proposed", "3%");
+      row(tr("Uplift"), tr("capped at 3%"), tr("cap at 3%"), "proposed");
+      term("uplift", msg("Uplift"), "proposed", "3%");
     }
-    row(S("Payment terms", "Pagamenti"), S("quarterly in advance", "trimestrale anticipato"), S("quarterly", "trimestrale"), "proposed");
-    term("payment", B("Payment terms", "Pagamenti"), "proposed", "quarterly");
+    row(tr("Payment terms"), tr("quarterly in advance"), tr("quarterly"), "proposed");
+    term("payment", msg("Payment terms"), "proposed", "quarterly");
     row(
-      S("Liability cap", "Limite di responsabilità"),
-      S("18 months of fees (not 24)", "18 mesi di canone (non 24)"),
-      S("24 months", "24 mesi"),
+      tr("Liability cap"),
+      tr("18 months of fees (not 24)"),
+      tr("24 months"),
       "proposed",
-      policyActive ? S("Conflicts with policy (min. 24 months) — needs authorization", "In conflitto con la policy (min. 24 mesi) — serve autorizzazione") : "",
+      policyActive ? tr("Conflicts with policy (min. 24 months) — needs authorization") : "",
     );
-    term("liab", B("Liability cap", "Limite di responsabilità"), "proposed", "18");
+    term("liab", msg("Liability cap"), "proposed", "18");
   }
   return { rows, terms };
 }
 
 function verifyDraft(c: Readonly<Case>, ctx: CaseContext, version: number): DraftRow[] {
-  const S = pick(ctx.lang);
+  const tr = translator(ctx.lang);
   const f = figures(ctx);
   const A = c.agreed;
   if (!A) return [];
@@ -122,23 +122,23 @@ function verifyDraft(c: Readonly<Case>, ctx: CaseContext, version: number): Draf
   const point = (label: string, agreed: string, draft: string, res: DraftRow["res"], src: string): void => {
     rows.push({ label, agreed, draft, res, src });
   };
-  point(S("Quantities", "Quantità"), productList(ctx), S("same", "uguali"), "ok", "p.2 §1");
-  point(S("Unit price", "Prezzo unitario"), priceLabel(f, A.price), priceLabel(f, A.price), "ok", "p.3 §2");
-  point(S("Term", "Durata"), `${A.term}${S(" months", " mesi")}`, `${A.term}${S(" months", " mesi")}`, "ok", "p.2 §3");
-  if (A.cap) point(S("Uplift cap", "Tetto aumento"), `${A.cap}%`, first ? "5%" : `${A.cap}%`, first ? "diff" : "ok", "p.9 §6.2");
+  point(tr("Quantities"), productList(ctx), tr("same"), "ok", "p.2 §1");
+  point(tr("Unit price"), priceLabel(f, A.price), priceLabel(f, A.price), "ok", "p.3 §2");
+  point(tr("Term"), tr("{n} months", { n: A.term }), tr("{n} months", { n: A.term }), "ok", "p.2 §3");
+  if (A.cap) point(tr("Uplift cap"), `${A.cap}%`, first ? "5%" : `${A.cap}%`, first ? "diff" : "ok", "p.9 §6.2");
   point(
-    S("Payment", "Pagamenti"),
-    S("quarterly in advance", "trimestrale anticipato"),
-    first ? S("annual in advance, Net 30", "annuale anticipato, Net 30") : S("quarterly in advance", "trimestrale anticipato"),
+    tr("Payment"),
+    tr("quarterly in advance"),
+    first ? tr("annual in advance, Net 30") : tr("quarterly in advance"),
     first ? "diff" : "ok",
     "p.5 §5.1",
   );
-  point(S("Liability cap", "Limite di responsabilità"), `${A.liab}${S(" months of fees", " mesi di canone")}`, `${A.liab}${S(" months of fees", " mesi di canone")}`, "ok", "p.27 §17.2");
-  point(S("Governing law", "Legge applicabile"), ctx.detail.terms.find((t) => t.label === "Governing law")?.value ?? "—", S("same as previous contract", "come contratto precedente"), "ok", "p.32 §22");
+  point(tr("Liability cap"), tr("{n} months of fees", { n: A.liab }), tr("{n} months of fees", { n: A.liab }), "ok", "p.27 §17.2");
+  point(tr("Governing law"), ctx.detail.terms.find((t) => t.label === "Governing law")?.value ?? "—", tr("same as previous contract"), "ok", "p.32 §22");
   point(
-    S("Annex — SLA schedule", "Allegato — SLA"),
-    S("to be checked", "da verificare"),
-    first ? S("not read: scanned page unreadable", "non letto: pagina scansionata illeggibile") : S("read; matches 99.9% uptime", "letto; coerente con uptime 99,9%"),
+    tr("Annex — SLA schedule"),
+    tr("to be checked"),
+    first ? tr("not read: scanned page unreadable") : tr("read; matches 99.9% uptime"),
     first ? "unread" : "ok",
     "Annex B",
   );
@@ -164,8 +164,8 @@ export const scriptedServices: CaseServices = {
   startExtraction: () => ({
     stage: 0,
     weak: [
-      { n: "uplift", name: B("Price increase cap", "Tetto aumento prezzo"), val: "3% (years 2–3)", conf: 76, state: "open" },
-      { n: "pay", name: B("Payment terms", "Pagamenti"), val: "Quarterly in advance, Net 30", conf: 78, state: "open" },
+      { n: "uplift", name: msg("Price increase cap"), val: "3% (years 2–3)", conf: 76, state: "open" },
+      { n: "pay", name: msg("Payment terms"), val: "Quarterly in advance, Net 30", conf: 78, state: "open" },
     ],
     facts: { total: 41, aboveThreshold: 39 },
   }),

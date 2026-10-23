@@ -6,59 +6,59 @@
 
 import { daysBetween } from "./dates";
 import { EMAIL_KIND, liabilityConflict, STEPS, stage } from "./model";
-import { B, pick, tx, type Bilingual } from "./text";
+import { msg, resolveText, translator, type Msg, type Vars } from "../../../i18n/translate";
 import type { Case, CaseContext, ChecklistItem, EmailKind, TodoItem, TodoKind } from "./types";
 
 export function checklist(c: Case, ctx: CaseContext): ChecklistItem[] {
-  const S = pick(ctx.lang);
+  const tr = translator(ctx.lang);
   const st = stage(c);
   const out: ChecklistItem[] = [];
-  const item = (done: unknown, en: string, it: string, who = ""): void => {
-    out.push({ done: !!done, label: S(en, it), who });
+  const item = (done: unknown, id: string, who = "", vars?: Vars): void => {
+    out.push({ done: !!done, label: tr(id, vars), who });
   };
 
   if (st === 0) {
-    item(c.owner, "Owner assigned", "Responsabile assegnato", c.approver);
-    item(c.goals.prod, "Products and quantities", "Prodotti e quantità", c.owner);
-    item(c.goals.term, "Term", "Durata", c.owner);
-    item(c.goals.target !== undefined, "Economic goal (or “no target”)", "Obiettivo economico (o «nessun target»)", c.owner);
-    item(c.planVer > 0, "Clauses to change", "Clausole da cambiare", c.owner);
+    item(c.owner, "Owner assigned", c.approver);
+    item(c.goals.prod, "Products and quantities", c.owner);
+    item(c.goals.term, "Term", c.owner);
+    item(c.goals.target !== undefined, "Economic goal (or “no target”)", c.owner);
+    item(c.planVer > 0, "Clauses to change", c.owner);
   }
   if (st === 1) {
-    item(c.planVer > 0, "Plan drafted by Raffa", "Piano preparato da Raffa");
-    item(c.planOk, "Plan confirmed", "Piano confermato", c.owner);
+    item(c.planVer > 0, "Plan drafted by Raffa", "");
+    item(c.planOk, "Plan confirmed", c.owner);
   }
   if (st === 2) {
     const cur = [...c.emails].reverse().find((e) => e.state !== "superseded" && e.kind !== "notice" && e.kind !== "rfq");
-    if (cur?.state === "draft" && !cur.to) item(false, "Recipient added", "Destinatario aggiunto", c.owner);
-    item(cur && cur.state !== "draft", `Email approved by ${c.approver}`, `Email approvata da ${c.approver}`, c.approver);
-    item(cur?.state === "sent", "Send confirmed", "Invio confermato", c.owner);
-    item(c.rems.some((x) => x.state !== "proposed") && !c.rems.some((x) => x.state === "proposed"), "Check date set", "Data di controllo impostata", c.owner);
-    item(c.reps.length >= (cur?.state === "sent" ? c.round + 1 : c.round), "Supplier reply registered", "Risposta del fornitore registrata", c.owner);
+    if (cur?.state === "draft" && !cur.to) item(false, "Recipient added", c.owner);
+    item(cur && cur.state !== "draft", "Email approved by {approver}", c.approver, { approver: c.approver });
+    item(cur?.state === "sent", "Send confirmed", c.owner);
+    item(c.rems.some((x) => x.state !== "proposed") && !c.rems.some((x) => x.state === "proposed"), "Check date set", c.owner);
+    item(c.reps.length >= (cur?.state === "sent" ? c.round + 1 : c.round), "Supplier reply registered", c.owner);
     if (c.qs.some((q) => q.state === "open" || q.opt)) {
-      item(c.qs.every((q) => q.state !== "open"), "Trade-off decided", "Compromesso deciso", c.owner);
+      item(c.qs.every((q) => q.state !== "open"), "Trade-off decided", c.owner);
     }
   }
   if (st === 3) {
-    if (liabilityConflict(c)) item((c.ui.auth ?? "").trim(), "Policy exception authorized", "Deroga alla policy autorizzata", c.approver);
-    item(c.agreed, "Terms confirmed as agreed", "Condizioni confermate come concordate", c.owner);
+    if (liabilityConflict(c)) item((c.ui.auth ?? "").trim(), "Policy exception authorized", c.approver);
+    item(c.agreed, "Terms confirmed as agreed", c.owner);
   }
   if (st === 4) {
     const request = c.emails.find((e) => e.kind === "docreq");
     const last = c.docs[c.docs.length - 1];
-    item(request?.state === "sent", "Contract requested from the supplier", "Contratto richiesto al fornitore", c.owner);
-    item(c.docs.length > 0, "Draft received", "Bozza ricevuta", c.owner);
-    item(last && !last.rows.some((r) => r.res === "diff"), "No differences with the agreement", "Nessuna differenza con l’accordo", c.owner);
-    item(last && !last.rows.some((r) => r.res === "unread"), "Every point read", "Ogni punto letto", c.owner);
+    item(request?.state === "sent", "Contract requested from the supplier", c.owner);
+    item(c.docs.length > 0, "Draft received", c.owner);
+    item(last && !last.rows.some((r) => r.res === "diff"), "No differences with the agreement", c.owner);
+    item(last && !last.rows.some((r) => r.res === "unread"), "Every point read", c.owner);
   }
   if (st === 5) {
-    item(c.signed, "Signed file added", "File firmato aggiunto", c.owner);
-    item(c.signed?.confirmedBy, `Confirmed as final by ${c.approver}`, `Confermato come definitivo da ${c.approver}`, c.approver);
+    item(c.signed, "Signed file added", c.owner);
+    item(c.signed?.confirmedBy, "Confirmed as final by {approver}", c.approver, { approver: c.approver });
   }
   if (st === 6) {
-    item(c.pipe && c.pipe.stage >= 3, "Extraction done", "Estrazione completata");
-    item(c.pipe && !c.pipe.weak.some((w) => w.state === "open"), "Flagged fields decided", "Campi segnalati decisi", c.owner);
-    item(c.outcome, "New contract validated and scheduled", "Nuovo contratto validato e programmato");
+    item(c.pipe && c.pipe.stage >= 3, "Extraction done", "");
+    item(c.pipe && !c.pipe.weak.some((w) => w.state === "open"), "Flagged fields decided", c.owner);
+    item(c.outcome, "New contract validated and scheduled", "");
   }
   return out;
 }
@@ -73,17 +73,17 @@ export function todo(c: Case, ctx: CaseContext): TodoItem[] {
   // Approvals go to the first delegate if there is one, otherwise to the approver.
   const approverOrDelegate = Object.keys(c.delegates)[0] ?? c.approver;
 
-  const add = (kind: TodoKind, who: string, title: Bilingual, why: Bilingual, due?: string, ref = ""): void => {
+  const add = (kind: TodoKind, who: string, title: Msg, why: Msg, due?: string, ref = ""): void => {
     const date = due ?? C.cancel;
     out.push({
       kind,
       who,
-      title: tx(title, lang),
-      why: tx(why, lang),
+      title: resolveText(title, lang),
+      why: resolveText(why, lang),
       due: date,
       dueDays: daysBetween(ctx.today, date),
       stage: st,
-      stageLabel: tx(STEPS[st], lang),
+      stageLabel: resolveText(STEPS[st], lang),
       ref,
       stalled: 0,
     });
@@ -94,11 +94,11 @@ export function todo(c: Case, ctx: CaseContext): TodoItem[] {
     if (e.state === "superseded" || e.state === "sent") return;
     const n = noun(e.kind);
     if (e.state === "draft" && !e.to) {
-      add("recipient", c.owner, B(`Add the recipient: ${n.en}`, `Aggiungi il destinatario: ${n.it}`), B("Not in the contract — Raffa never invents addresses.", "Non è nel contratto — Raffa non inventa indirizzi."));
+      add("recipient", c.owner, msg("Add the recipient: {noun}", { noun: n }), msg("Not in the contract — Raffa never invents addresses."));
     } else if (e.state === "draft") {
-      add("approve", approverOrDelegate, B(`Approve the ${n.en}`, `Approva la ${n.it}`), B(`Drafted for ${c.owner}. Nothing is sent until you approve.`, `Preparata per ${c.owner}. Nulla parte finché non approvi.`));
+      add("approve", approverOrDelegate, msg("Approve the {noun}", { noun: n }), msg("Drafted for {owner}. Nothing is sent until you approve.", { owner: c.owner }));
     } else {
-      add("send", c.owner, B(`Send and confirm: ${n.en}`, `Invia e conferma: ${n.it}`), B(`Approved by ${e.approvedBy}. Copy, send from your mailbox, then confirm.`, `Approvata da ${e.approvedBy}. Copia, invia dalla tua casella, poi conferma.`));
+      add("send", c.owner, msg("Send and confirm: {noun}", { noun: n }), msg("Approved by {approvedBy}. Copy, send from your mailbox, then confirm.", { approvedBy: e.approvedBy ?? "" }));
     }
   });
 
@@ -108,41 +108,41 @@ export function todo(c: Case, ctx: CaseContext): TodoItem[] {
     add(
       "plan",
       c.owner,
-      B("Complete the renewal plan", "Completa il piano di rinnovo"),
-      c.phase === "plan" ? B("Raffa drafted the plan — confirm or edit it.", "Raffa ha preparato il piano — confermalo o modificalo.") : B(`Question ${c.q + 1} of 4 is open.`, `La domanda ${c.q + 1} di 4 è aperta.`),
+      msg("Complete the renewal plan"),
+      c.phase === "plan" ? msg("Raffa drafted the plan — confirm or edit it.") : msg("Question {q} of 4 is open.", { q: c.q + 1 }),
     );
   }
 
   c.rems.forEach((r) => {
-    if (r.state === "proposed") add("remind", c.owner, B("Confirm the check date", "Conferma la data di controllo"), B(`Proposed: ${r.date}`, `Proposta: ${r.date}`));
+    if (r.state === "proposed") add("remind", c.owner, msg("Confirm the check date"), msg("Proposed: {date}", { date: r.date }));
     if (r.state === "due") {
-      add("reply", c.owner, B("Register the supplier reply", "Registra la risposta del fornitore"), B(`Check date ${r.date} reached — no reply registered in Raffa.`, `Data di controllo ${r.date} raggiunta — nessuna risposta registrata in Raffa.`), r.date);
+      add("reply", c.owner, msg("Register the supplier reply"), msg("Check date {date} reached — no reply registered in Raffa.", { date: r.date }), r.date);
     }
   });
 
   c.qs.forEach((q) => {
     if (q.state === "open") {
-      add("decide", c.owner, B("Decide the price / term trade-off", "Decidi il compromesso prezzo / durata"), B("The supplier ties the discount to 24 months.", "Il fornitore lega lo sconto a 24 mesi."));
+      add("decide", c.owner, msg("Decide the price / term trade-off"), msg("The supplier ties the discount to 24 months."));
     }
     if (q.state === "agree") {
       if (liabilityConflict(c) && !(c.ui.auth ?? "").trim()) {
-        add("policy", approverOrDelegate, B("Policy exception: liability 18 vs 24 months", "Deroga alla policy: responsabilità 18 vs 24 mesi"), B("Binding rule in Procurement Policy v3.2. Record who authorizes it.", "Regola vincolante della Procurement Policy v3.2. Registra chi la autorizza."));
+        add("policy", approverOrDelegate, msg("Policy exception: liability 18 vs 24 months"), msg("Binding rule in Procurement Policy v3.2. Record who authorizes it."));
       } else {
-        add("agree", c.owner, B("Confirm the agreed terms", "Conferma le condizioni concordate"), B("The supplier confirmed in writing.", "Il fornitore ha confermato per iscritto."));
+        add("agree", c.owner, msg("Confirm the agreed terms"), msg("The supplier confirmed in writing."));
       }
     }
   });
 
-  if (c.phase === "doc_check") add("draft", c.owner, B("Resolve the draft differences", "Risolvi le differenze della bozza"), B("The draft differs from what was agreed.", "La bozza differisce da quanto concordato."));
-  if (c.phase === "sign_wait" || c.phase === "sign_declared") add("sign", c.owner, B("Add the signed contract", "Aggiungi il contratto firmato"), B("Signing happens outside Raffa.", "La firma avviene fuori da Raffa."));
-  if (c.phase === "sign_confirm") add("sigok", approverOrDelegate, B("Confirm the signed contract", "Conferma il contratto firmato"), B("Only you can close the negotiation.", "Solo tu puoi chiudere la negoziazione."));
+  if (c.phase === "doc_check") add("draft", c.owner, msg("Resolve the draft differences"), msg("The draft differs from what was agreed."));
+  if (c.phase === "sign_wait" || c.phase === "sign_declared") add("sign", c.owner, msg("Add the signed contract"), msg("Signing happens outside Raffa."));
+  if (c.phase === "sign_confirm") add("sigok", approverOrDelegate, msg("Confirm the signed contract"), msg("Only you can close the negotiation."));
   if (c.pipe?.stage === 3) {
     const n = c.pipe.weak.length;
-    add("fields", c.owner, B("Validate the flagged fields", "Valida i campi segnalati"), B(`${n} field${n === 1 ? "" : "s"} below 80% in the new contract.`, `${n} camp${n === 1 ? "o sotto" : "i sotto"} l’80% nel nuovo contratto.`));
+    add("fields", c.owner, msg("Validate the flagged fields"), msg(n === 1 ? "{n} field below 80% in the new contract." : "{n} fields below 80% in the new contract.", { n }));
   }
-  if (c.notice?.state === "check") add("notice", c.owner, B("Prepare the non-renewal notice", "Prepara la disdetta"), B("Clause and deadline already checked.", "Clausola e scadenza già verificate."));
-  if (c.notice?.state === "sent") add("nout", approverOrDelegate, B("Record the notice outcome", "Registra l’esito della disdetta"), B("Notice communicated — outcome to verify.", "Disdetta comunicata — esito da verificare."));
-  if (c.alt?.state === "compare") add("alt", approverOrDelegate, B("Choose an alternative", "Scegli un’alternativa"), B("Offers received — the current contract stays open.", "Offerte ricevute — il contratto attuale resta aperto."));
+  if (c.notice?.state === "check") add("notice", c.owner, msg("Prepare the non-renewal notice"), msg("Clause and deadline already checked."));
+  if (c.notice?.state === "sent") add("nout", approverOrDelegate, msg("Record the notice outcome"), msg("Notice communicated — outcome to verify."));
+  if (c.alt?.state === "compare") add("alt", approverOrDelegate, msg("Choose an alternative"), msg("Offers received — the current contract stays open."));
 
   const stalledDays = -daysBetween(ctx.today, c.updated || ctx.today);
   out.forEach((x) => {

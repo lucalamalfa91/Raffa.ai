@@ -76,7 +76,7 @@ describe("RenewalChatRoute", () => {
     renderAt("/renewals/4/chat");
     await user.click(screen.getByRole("button", { name: "Approve" }));
     expect(getCaseStore().getState().cases["4"]?.emails[1]?.state).toBe("approved");
-    expect(JSON.parse(window.localStorage.getItem("raffa.renewalCases.v2") ?? "{}").cases["4"].emails[1].state).toBe("approved");
+    expect(JSON.parse(window.localStorage.getItem("raffa.renewalCases.v3") ?? "{}").cases["4"].emails[1].state).toBe("approved");
   });
 
   it("an unknown contract says so and links back to Renewals", () => {

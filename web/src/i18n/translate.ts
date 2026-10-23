@@ -16,7 +16,11 @@ export type Lang = "en" | "it";
 export const LANGS: readonly Lang[] = ["en", "it"];
 export const DEFAULT_LANG: Lang = "en";
 
-export type Vars = Readonly<Record<string, string | number>>;
+/**
+ * The values of a message's placeholders. A value may itself be a message (translated with it); a
+ * missing one (`null` / `undefined`) fills in as nothing.
+ */
+export type Vars = Readonly<Record<string, string | number | Msg | null | undefined>>;
 
 /** A message by id (its English text) and its values, not yet in any language. */
 export interface Msg {
@@ -28,9 +32,14 @@ export function isLang(value: unknown): value is Lang {
   return value === "en" || value === "it";
 }
 
-export function format(template: string, vars?: Vars): string {
+export function format(template: string, vars?: Vars, lang: Lang = DEFAULT_LANG): string {
   if (!vars) return template;
-  return template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in vars ? String(vars[name]) : whole));
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) => {
+    if (!(name in vars)) return whole;
+    const value = vars[name];
+    if (value === null || value === undefined) return "";
+    return typeof value === "object" ? translate(lang, value.id, value.vars) : String(value);
+  });
 }
 
 /** The Italian text for `id`, or `undefined` when the catalogue has none (shown in English). */
@@ -45,11 +54,18 @@ export function trackMissingItalian(handler: ((id: string) => void) | null): voi
   onMissingItalian = handler;
 }
 
+/**
+ * Two messages that read the same in English but not in Italian get different ids by ending one with
+ * a context note in ⟦brackets⟧ ("Term⟦condition⟧"); the note is never shown.
+ */
+const CONTEXT_NOTE = /⟦[^⟧]*⟧$/;
+export const shownId = (id: string): string => id.replace(CONTEXT_NOTE, "");
+
 export function translate(lang: Lang, id: string, vars?: Vars): string {
-  if (lang !== "it") return format(id, vars);
+  if (lang !== "it") return format(shownId(id), vars, lang);
   const text = IT[id];
   if (text === undefined) onMissingItalian?.(id);
-  return format(text ?? id, vars);
+  return format(text ?? shownId(id), vars, lang);
 }
 
 export function msg(id: string, vars?: Vars): Msg {

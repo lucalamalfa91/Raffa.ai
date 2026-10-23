@@ -149,7 +149,7 @@ describe("Today: snooze and done", () => {
     await user.click(within(rows()[0] as HTMLElement).getByRole("button", { name: "Done" }));
     expect(titles()).not.toContain("Approve the counter-proposal");
     expect(screen.queryByRole("region", { name: "Snoozed" })).not.toBeInTheDocument();
-    expect(JSON.parse(window.localStorage.getItem("raffa.renewalCases.v2") ?? "{}").queue.dismissed).toEqual({ "4:approve:Approve the counter-proposal": true });
+    expect(JSON.parse(window.localStorage.getItem("raffa.renewalCases.v3") ?? "{}").queue.dismissed).toEqual({ "4:approve:Approve the counter-proposal": true });
   });
 
   it("an empty tab says why in words", async () => {

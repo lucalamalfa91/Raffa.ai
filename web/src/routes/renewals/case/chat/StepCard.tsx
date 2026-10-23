@@ -1,6 +1,6 @@
 import { useId, type CSSProperties } from "react";
 import type { Card, CardButton, CardChip, CardField, CardInput, CardTable } from "../types";
-import type { Translate } from "./chatCopy";
+import type { Translate } from "../../../../i18n/translate";
 
 export interface StepCardProps {
   card: Card;
@@ -111,13 +111,13 @@ export default function StepCard({ card, t, readOnly = false, onPress, onChip, o
             <div className="rc-email">
               <div className="rc-email-state">{card.email.state}</div>
               <div className="rc-email-head">
-                <span>{t("to")}</span>
+                <span>{t("To")}</span>
                 <div>
                   {card.email.toMissing && interactive ? (
                     <input
                       className="input rc-input"
-                      aria-label={t("recipient")}
-                      placeholder={t("recipient")}
+                      aria-label={t("Recipient — not in the contract")}
+                      placeholder={t("Recipient — not in the contract")}
                       value={card.email.to}
                       onChange={(e) => onField?.(card.email?.toKey ?? "", e.target.value)}
                     />
@@ -125,7 +125,7 @@ export default function StepCard({ card, t, readOnly = false, onPress, onChip, o
                     <span>{card.email.to || "—"}</span>
                   )}
                 </div>
-                <span>{t("subject")}</span>
+                <span>{t("Subject")}</span>
                 <strong>{card.title}</strong>
               </div>
               {card.email.showBody &&
@@ -248,17 +248,17 @@ function Fields({ fields, t, interactive, onField, onAct }: { fields: CardField[
           {field.open && interactive && (
             <>
               <button type="button" className="btn btn-secondary" onClick={() => onAct?.("acceptF", { i: field.i })}>
-                {t("accept")}
+                {t("Accept")}
               </button>
               <input
                 className="input rc-input rc-field-correct"
-                aria-label={`${t("correctedValue")} — ${field.name}`}
-                placeholder={t("correctedValue")}
+                aria-label={`${t("Corrected value")} — ${field.name}`}
+                placeholder={t("Corrected value")}
                 value={field.inVal}
                 onChange={(e) => onField?.(field.inKey, e.target.value)}
               />
               <button type="button" className="btn btn-ghost" onClick={() => onAct?.("correctF", { i: field.i })}>
-                {t("correct")}
+                {t("Correct")}
               </button>
             </>
           )}

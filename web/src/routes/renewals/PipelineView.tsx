@@ -1,7 +1,6 @@
 import { STEPS } from "./case/model";
-import { tx } from "./case/text";
 import type { RenewalSummary } from "./case/portfolio";
-import type { Lang, Translate } from "../../i18n/translate";
+import { resolveText, type Lang, type Translate } from "../../i18n/translate";
 
 export interface PipelineViewProps {
   items: readonly RenewalSummary[];
@@ -12,7 +11,7 @@ export interface PipelineViewProps {
 
 /** Columns: not started, then the seven wizard steps. A card is a renewal; closed ones leave. */
 export default function PipelineView({ items, lang, t, onPick }: PipelineViewProps) {
-  const columns = [{ stage: -1, n: "—", label: t("Not started") }, ...STEPS.map((step, i) => ({ stage: i, n: String(i + 1), label: tx(step, lang) }))];
+  const columns = [{ stage: -1, n: "—", label: t("Not started") }, ...STEPS.map((step, i) => ({ stage: i, n: String(i + 1), label: resolveText(step, lang) }))];
   return (
     <div className="rn-pipeline">
       {columns.map((column) => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import RenewalChat, { type ChatTarget } from "./chat/RenewalChat";
-import { translator } from "./chat/chatCopy";
+import { translator } from "../../../i18n/translate";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { rememberedViewer } from "./demoSession";
 import { DEMO_APPROVER, DEMO_CONTRACTS, DEMO_OWNER, demoContext } from "./fixtures";
@@ -56,10 +56,10 @@ export default function RenewalChatRoute({ userLabel }: RenewalChatRouteProps) {
     const t = translator(lang);
     return (
       <div className="empty-state" role="status">
-        <h3>{t("notFoundTitle")}</h3>
-        <p className="micro-meta">{t("notFoundBody")}</p>
+        <h3>{t("This renewal is not available")}</h3>
+        <p className="micro-meta">{t("No renewal case exists for this contract.")}</p>
         <Link to="/renewals" className="btn btn-primary">
-          {t("backToRenewals")}
+          {t("Back to Renewals")}
         </Link>
       </div>
     );

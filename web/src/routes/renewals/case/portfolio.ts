@@ -10,8 +10,7 @@ import { daysBetween, isAfter, type CaseDate } from "./dates";
 import { shortStatus, stage, todo } from "./engine";
 import { DEMO_APPROVER, DEMO_CONTRACTS, DEMO_OWNER, demoContext } from "./fixtures";
 import { STEPS } from "./model";
-import { tx } from "./text";
-import { translator, type Lang, type Translate } from "../../../i18n/translate";
+import { resolveText, translator, type Lang, type Translate } from "../../../i18n/translate";
 import type { Case, CaseContext, TodoItem, TodoKind } from "./types";
 
 export type Scope = "mine" | "team" | "unassigned";
@@ -171,7 +170,7 @@ export interface QueueState {
 export const EMPTY_QUEUE: QueueState = { snoozed: {}, dismissed: {} };
 
 const phaseLine = (stageIndex: number, lang: Lang, t: Translate): string =>
-  stageIndex >= 0 ? `${t("Step {n} / 7", { n: stageIndex + 1 })} · ${tx(STEPS[stageIndex], lang)}` : t("Not started");
+  stageIndex >= 0 ? `${t("Step {n} / 7", { n: stageIndex + 1 })} · ${resolveText(STEPS[stageIndex], lang)}` : t("Not started");
 
 /** A contract with no case, close to its deadline, is an item for the approver (CPO) to start. */
 function unassignedItem(cid: string, ctx: CaseContext, t: Translate): QueueItem {

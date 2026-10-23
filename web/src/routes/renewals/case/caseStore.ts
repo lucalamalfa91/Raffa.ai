@@ -52,7 +52,7 @@ export interface CaseStoreOptions {
   seed?: () => Record<string, Case>;
 }
 
-export const CASE_STORE_KEY = "raffa.renewalCases.v2";
+export const CASE_STORE_KEY = "raffa.renewalCases.v3";
 const NO_QUEUE: QueueState = { snoozed: {}, dismissed: {} };
 const TICK_MS = 900;
 

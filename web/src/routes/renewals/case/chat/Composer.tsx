@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ActPayload, ActionType, CaseView } from "../types";
-import type { Translate } from "./chatCopy";
+import type { Translate } from "../../../../i18n/translate";
 
 export interface ComposerProps {
   view: CaseView;
@@ -27,33 +27,33 @@ export default function Composer({ view, t, onAct }: ComposerProps) {
   return (
     <footer className="rc-composer">
       {view.reply.open && (
-        <section className="rc-reply" aria-label={t("pasteReply")}>
-          <div className="rc-label">{t("pasteReply")}</div>
-          <p className="rc-reply-hint">{t("pasteReplyHint", { from: view.reply.from })}</p>
+        <section className="rc-reply" aria-label={t("Paste the supplier reply")}>
+          <div className="rc-label">{t("Paste the supplier reply")}</div>
+          <p className="rc-reply-hint">{t("From: {from} · date: today — suggested from the thread.", { from: view.reply.from })}</p>
           <textarea
             className="input rc-input"
-            aria-label={t("pasteReply")}
-            placeholder={t("pastePlaceholder")}
+            aria-label={t("Paste the supplier reply")}
+            placeholder={t("Paste text or the whole thread — duplicates are detected")}
             value={view.reply.text}
             onChange={(e) => onAct("ui", { k: "replyText", v: e.target.value })}
           />
           <div className="rc-buttons">
             <button type="button" className="btn btn-primary" onClick={() => onAct("reply", {})}>
-              {t("addReply")}
+              {t("Add reply to the case")}
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => onAct("sampleReply")}>
-              {t("sampleReply")}
+              {t("Use sample reply")}
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => onAct("closeReply")}>
-              {t("cancel")}
+              {t("Cancel")}
             </button>
           </div>
         </section>
       )}
 
       {view.threads.length > 0 && (
-        <div className="rc-threads" role="group" aria-label={t("vendorThread")}>
-          <span className="rc-label">{t("vendorThread")}</span>
+        <div className="rc-threads" role="group" aria-label={t("Vendor thread")}>
+          <span className="rc-label">{t("Vendor thread")}</span>
           {view.threads.map((thread) => (
             <span className="rc-thread" key={thread.t}>
               <button type="button" className={`rc-thread-pick${thread.on ? " is-on" : ""}`} aria-pressed={thread.on} onClick={() => onAct("thread", { t: thread.t })}>
@@ -61,7 +61,7 @@ export default function Composer({ view, t, onAct }: ComposerProps) {
               </button>
               {thread.offer && (
                 <button type="button" className="btn btn-ghost" onClick={() => onAct("altOffer", { vendor: thread.t })}>
-                  {t("addOfferFrom", { vendor: thread.t })}
+                  {t("Add offer from {vendor} (sample)", { vendor: thread.t })}
                 </button>
               )}
             </span>
@@ -70,9 +70,9 @@ export default function Composer({ view, t, onAct }: ComposerProps) {
       )}
 
       <form className="rc-inputbar" onSubmit={submit}>
-        <input className="rc-say-input" aria-label={t("composerLabel")} placeholder={t("composerPlaceholder")} value={draft} onChange={(e) => setDraft(e.target.value)} autoComplete="off" />
+        <input className="rc-say-input" aria-label={t("Message")} placeholder={t("Answer, add a comment, or type approve / copy / I sent it…")} value={draft} onChange={(e) => setDraft(e.target.value)} autoComplete="off" />
         <button type="submit" className="btn btn-primary">
-          {t("send")}
+          {t("Send")}
         </button>
       </form>
 
@@ -85,7 +85,7 @@ export default function Composer({ view, t, onAct }: ComposerProps) {
           ))}
           {view.demo.length > 0 && (
             <span className="rc-demo">
-              <span className="rc-label">{t("demo")}</span>
+              <span className="rc-label">{t("Demo")}</span>
               {view.demo.map((item) => (
                 <button type="button" className="rc-demo-btn" key={item.act} onClick={() => onAct(item.act)}>
                   {item.label}

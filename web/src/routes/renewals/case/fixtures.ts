@@ -6,7 +6,7 @@
 
 import { scriptedServices } from "./mockServices";
 import type { CaseContext, ContractDetail, ContractFacts } from "./types";
-import type { Lang } from "./text";
+import type { Lang } from "../../../i18n/translate";
 
 export const DEMO_TODAY = "08 Sep 2026";
 export const DEMO_COMPANY = "Helvetia Foods AG";

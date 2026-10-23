@@ -9,7 +9,7 @@
 
 import type { CaseDate } from "./dates";
 import type { CaseServices } from "./services";
-import type { Bilingual, Lang, Text } from "./text";
+import type { Lang, Msg, Text } from "../../../i18n/translate";
 
 /* ---------- responsibilities ---------- */
 
@@ -142,7 +142,7 @@ export interface Reminder {
 
 export type TermStatus = "open" | "proposed" | "agreed" | "rejected" | "unclear";
 export interface Term {
-  label: Bilingual;
+  label: Text;
   state: TermStatus;
   /** True when the term comes from the user's plan (as opposed to one the supplier raised). */
   plan: boolean;
@@ -179,7 +179,7 @@ export interface Decision {
   state: "open" | "agree" | "done";
   opt?: "a" | "b" | "c";
   by?: string;
-  label?: Bilingual;
+  label?: Msg;
 }
 
 export interface Agreed {
@@ -216,7 +216,7 @@ export interface SignedFile {
 
 export interface WeakField {
   n: string;
-  name: Bilingual;
+  name: Msg;
   val: string;
   conf: number;
   state: "open" | "accepted" | "corrected";
@@ -330,7 +330,7 @@ export interface FeedItem {
   at: string;
   by: string;
   text?: Text;
-  tag?: Bilingual;
+  tag?: Msg;
   i?: number;
   ver?: number;
   eid?: number;

@@ -36,7 +36,8 @@ import {
   productList,
   stage,
 } from "./model";
-import { B, chf, pick, tx, type Bilingual } from "./text";
+import { chf } from "./text";
+import { msg, resolveText, translator, type Msg, type Text } from "../../../i18n/translate";
 import type {
   ActPayload,
   ActionType,
@@ -74,12 +75,12 @@ function push(c: Case, ctx: CaseContext, item: NewFeedItem): FeedItem {
   return entry;
 }
 
-function log(c: Case, ctx: CaseContext, by: string, text: Bilingual): void {
+function log(c: Case, ctx: CaseContext, by: string, text: Text): void {
   c.decs.push({ by, at: ctx.today, text });
 }
 
-function deny(c: Case, ctx: CaseContext, why: Bilingual): Case {
-  c.ui.warn = tx(why, ctx.lang);
+function deny(c: Case, ctx: CaseContext, why: Msg): Case {
+  c.ui.warn = resolveText(why, ctx.lang);
   return c;
 }
 
@@ -93,7 +94,7 @@ function cancelReminders(c: Case, states: Array<"proposed" | "set" | "due">): vo
   });
 }
 
-function setTerm(c: Case, key: string, label: Bilingual, state: TermStatus, val: string | null, ev: number | null): void {
+function setTerm(c: Case, key: string, label: Text, state: TermStatus, val: string | null, ev: number | null): void {
   const term = (c.terms[key] ??= { label, state: "open", plan: false });
   term.state = state;
   term.val = val;
@@ -158,10 +159,7 @@ export function create(cid: string, ctx: CaseContext, branch: "notice" | null, o
   const products = productList(ctx);
   push(c, ctx, {
     k: "say",
-    text: B(
-      `Renewal case opened for ${C.supplier} · ${C.name}. The term ends ${C.end} and notice is due by ${C.cancel} (${C.cancelDays} days). From the contract I already know: ${products}; annual spend ${chf(C.spend)}; uplift ${C.uplift}. I will ask four short questions, then propose a plan. Nothing is sent from here: I draft, the approver (CPO) approves, then you copy and send from your own mailbox.`,
-      `Caso di rinnovo aperto per ${C.supplier} · ${C.name}. Il termine scade il ${C.end} e la disdetta va data entro il ${C.cancel} (${C.cancelDays} giorni). Dal contratto so già: ${products}; spesa annua ${chf(C.spend)}; aumento ${C.uplift}. Ti faccio quattro domande brevi, poi propongo un piano. Da qui non parte nulla: preparo io, l’approvatore (CPO) approva, poi tu copi e invii dalla tua casella.`,
-    ),
+    text: msg("Renewal case opened for {supplier} · {name}. The term ends {end} and notice is due by {cancel} ({cancelDays} days). From the contract I already know: {products}; annual spend {chf}; uplift {uplift}. I will ask four short questions, then propose a plan. Nothing is sent from here: I draft, the approver (CPO) approves, then you copy and send from your own mailbox.", { supplier: C.supplier, name: C.name, end: C.end, cancel: C.cancel, cancelDays: C.cancelDays, products, chf: chf(C.spend), uplift: C.uplift }),
   });
   if (branch === "notice") {
     startNotice(c, ctx);
@@ -182,9 +180,9 @@ function makePlan(c: Case, ctx: CaseContext): void {
 }
 
 function initTerms(c: Case, ctx: CaseContext): void {
-  c.terms = { price: { label: B("Unit price", "Prezzo unitario"), state: "open", plan: false }, term: { label: B("Term", "Durata"), state: "open", plan: false } };
+  c.terms = { price: { label: msg("Unit price"), state: "open", plan: false }, term: { label: msg("Term"), state: "open", plan: false } };
   clausesOf(ctx).forEach((x) => {
-    if ((c.goals.clauses ?? []).includes(x.k)) c.terms[x.lk] = { label: B(x.type, x.type), state: "open", plan: true };
+    if ((c.goals.clauses ?? []).includes(x.k)) c.terms[x.lk] = { label: x.type, state: "open", plan: true };
   });
 }
 
@@ -307,10 +305,7 @@ function afterSent(c: Case, ctx: CaseContext, e: Email): void {
     push(c, ctx, {
       k: "say",
       thread: e.thread,
-      text: B(
-        `RFQ to ${e.vendor} recorded as sent. Paste or attach their offer here when it arrives — it stays in this thread.`,
-        `RFQ a ${e.vendor} registrata come inviata. Incolla o allega qui la sua offerta quando arriva — resta in questo filone.`,
-      ),
+      text: msg("RFQ to {vendor} recorded as sent. Paste or attach their offer here when it arrives — it stays in this thread.", { vendor: e.vendor }),
     });
     return;
   }
@@ -367,7 +362,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
   const p = payload ?? {};
   c.ui.warn = "";
   const v = ctx.viewer;
-  const S = pick(ctx.lang);
+  const tr = translator(ctx.lang);
   const f = figures(ctx);
   const C = ctx.contract;
   const sv = ctx.services;
@@ -428,7 +423,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       c.phase = "interview";
       push(c, ctx, {
         k: "say",
-        text: B("Okay — reopening the interview. Your previous answers stay; change what you need.", "Va bene — riapro l’intervista. Le risposte precedenti restano; cambia quello che serve."),
+        text: msg("Okay — reopening the interview. Your previous answers stay; change what you need."),
       });
       push(c, ctx, { k: "q", i: 0 });
       break;
@@ -437,13 +432,10 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       c.planOk = true;
       initTerms(c, ctx);
       c.phase = "email";
-      log(c, ctx, v, B(`Plan v${c.planVer} confirmed`, `Piano v${c.planVer} confermato`));
+      log(c, ctx, v, msg("Plan v{planVer} confirmed", { planVer: c.planVer }));
       push(c, ctx, {
         k: "say",
-        text: B(
-          `Plan v${c.planVer} confirmed by ${v}. Here is the first email. I do not have the supplier contact in the contract, so add the recipient before approving.`,
-          `Piano v${c.planVer} confermato da ${v}. Ecco la prima email. Nel contratto non ho il contatto del fornitore: aggiungi il destinatario prima di approvare.`,
-        ),
+        text: msg("Plan v{planVer} confirmed by {v}. Here is the first email. I do not have the supplier contact in the contract, so add the recipient before approving.", { planVer: c.planVer, v }),
       });
       mkEmail(c, ctx, "first", { to: "" });
       break;
@@ -454,13 +446,13 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       const e = emailOf(c, p.eid);
       if (!e) break;
       if (!e.to) {
-        c.ui.warn = S("Add the recipient first — I never invent addresses.", "Aggiungi prima il destinatario — non invento mai indirizzi.");
+        c.ui.warn = tr("Add the recipient first — I never invent addresses.");
         break;
       }
       e.state = "approved";
       e.approvedBy = v;
       e.approvedVer = e.ver;
-      log(c, ctx, v, B(`Email v${e.ver} approved`, `Email v${e.ver} approvata`));
+      log(c, ctx, v, msg("Email v{ver} approved", { ver: e.ver }));
       break;
     }
     case "edit": {
@@ -480,7 +472,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
         e.body = c.ui.editBody;
         e.ver += 1;
         if (e.state !== "draft") {
-          log(c, ctx, v, B("Email edited — previous approval invalidated", "Email modificata — approvazione precedente invalidata"));
+          log(c, ctx, v, msg("Email edited — previous approval invalidated"));
         }
         e.state = "draft";
         e.approvedBy = null;
@@ -517,10 +509,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
         c,
         ctx,
         v,
-        B(
-          `Send confirmed (declared by user)${edited ? " — text edited after approval" : ""}`,
-          `Invio confermato (dichiarato dall’utente)${edited ? " — testo modificato dopo l’approvazione" : ""}`,
-        ),
+        msg(edited ? "Send confirmed (declared by user) — text edited after approval" : "Send confirmed (declared by user)"),
       );
       afterSent(c, ctx, e);
       break;
@@ -539,13 +528,10 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       r.date = c.ui.remDate || r.date;
       r.state = "set";
       c.phase = "waiting";
-      log(c, ctx, v, B(`Check date set: ${r.date}`, `Data di controllo impostata: ${r.date}`));
+      log(c, ctx, v, msg("Check date set: {date}", { date: r.date }));
       push(c, ctx, {
         k: "say",
-        text: B(
-          `Check date ${r.date} confirmed. It stays active when the chat is closed and posts an app notice linked to this case. Your contractual notice date remains ${C.cancel}.`,
-          `Data di controllo ${r.date} confermata. Resta attiva a chat chiusa e genera un avviso nell’app collegato a questo caso. La scadenza contrattuale di disdetta resta il ${C.cancel}.`,
-        ),
+        text: msg("Check date {date} confirmed. It stays active when the chat is closed and posts an app notice linked to this case. Your contractual notice date remains {cancel}.", { date: r.date, cancel: C.cancel }),
       });
       break;
     }
@@ -566,10 +552,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
         c.phase = "waiting_due";
         push(c, ctx, {
           k: "say",
-          text: B(
-            `Check date reached (${r.date}). No reply has been registered in Raffa — I cannot see your mailbox, so I will not say the supplier did not answer.`,
-            `Data di controllo raggiunta (${r.date}). Nessuna risposta è registrata in Raffa — non vedo la tua casella, quindi non dico che il fornitore non ha risposto.`,
-          ),
+          text: msg("Check date reached ({date}). No reply has been registered in Raffa — I cannot see your mailbox, so I will not say the supplier did not answer.", { date: r.date }),
         });
       }
       break;
@@ -607,7 +590,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       c.emails.forEach((x) => {
         if (x.state !== "sent" && x.state !== "superseded" && x.kind !== "notice" && x.kind !== "rfq") {
           if (x.state === "approved" || x.state === "copied") {
-            log(c, ctx, "Raffa.ai", B(`Draft v${x.ver} superseded by a newer reply`, `Bozza v${x.ver} superata da una nuova risposta`));
+            log(c, ctx, "Raffa.ai", msg("Draft v{ver} superseded by a newer reply", { ver: x.ver }));
           }
           x.state = "superseded";
         }
@@ -627,10 +610,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
           c.limits = { term: 24, priceMax: sv.counterPrice(ctx, 24) };
           push(c, ctx, {
             k: "say",
-            text: B(
-              "Your plan already asks for 24 months, so no trade-off to decide. I drafted the counter-proposal.",
-              "Il tuo piano chiede già 24 mesi, quindi nessun compromesso da decidere. Ho preparato la controproposta.",
-            ),
+            text: msg("Your plan already asks for 24 months, so no trade-off to decide. I drafted the counter-proposal."),
           });
           mkEmail(c, ctx, "counter");
           c.phase = "email";
@@ -648,9 +628,9 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       if (!q || q.state !== "open" || !p.opt) break;
       const price24 = sv.counterPrice(ctx, 24);
       const options = {
-        a: { term: 24, priceMax: price24, exit: undefined, label: B(`Accept up to 24 months if the unit price is ≤ ${priceLabel(f, price24)}`, `Accetto fino a 24 mesi se il prezzo unitario è ≤ ${priceLabel(f, price24)}`) },
-        b: { term: 12, priceMax: undefined, exit: undefined, label: B("Stay at 12 months — decline the discount tied to 24", "Resto a 12 mesi — rifiuto lo sconto legato ai 24") },
-        c: { term: 24, priceMax: price24, exit: 12, label: B("Counter: 24 months with an exit option at month 12", "Controproposta: 24 mesi con uscita al mese 12") },
+        a: { term: 24, priceMax: price24, exit: undefined, label: msg("Accept up to 24 months if the unit price is ≤ {priceLabel}", { priceLabel: priceLabel(f, price24) }) },
+        b: { term: 12, priceMax: undefined, exit: undefined, label: msg("Stay at 12 months — decline the discount tied to 24") },
+        c: { term: 24, priceMax: price24, exit: 12, label: msg("Counter: 24 months with an exit option at month 12") },
       };
       const O = options[p.opt];
       q.state = "done";
@@ -658,13 +638,10 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       q.by = v;
       q.label = O.label;
       c.limits = { term: O.term, ...(O.priceMax !== undefined && { priceMax: O.priceMax }), ...(O.exit !== undefined && { exit: O.exit }) };
-      log(c, ctx, v, B(`Limit recorded: ${O.label.en}`, `Limite registrato: ${O.label.it}`));
+      log(c, ctx, v, msg("Limit recorded: {label}", { label: O.label }));
       push(c, ctx, {
         k: "say",
-        text: B(
-          "Registered. I will use this limit in the next turns. Here is the counter-proposal — it needs approval like any email.",
-          "Registrato. Userò questo limite nei prossimi turni. Ecco la controproposta — richiede approvazione come ogni email.",
-        ),
+        text: msg("Registered. I will use this limit in the next turns. Here is the counter-proposal — it needs approval like any email."),
       });
       mkEmail(c, ctx, "counter");
       c.phase = "email";
@@ -677,7 +654,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       const q = p.did === undefined ? undefined : c.qs[p.did];
       if (!q || q.state !== "agree") break;
       if (liabilityConflict(c) && !(c.ui.auth ?? "").trim()) {
-        c.ui.warn = S("Record who authorized the exception to the policy first.", "Registra prima chi ha autorizzato la deroga alla policy.");
+        c.ui.warn = tr("Record who authorized the exception to the policy first.");
         break;
       }
       q.state = "done";
@@ -698,18 +675,14 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
         c,
         ctx,
         v,
-        B(
-          `Terms confirmed as agreed (evidence: reply ${c.round})${auth ? ` · exception authorized by ${auth} (recorded outside Raffa)` : ""}`,
-          `Condizioni confermate come concordate (evidenza: risposta ${c.round})${auth ? ` · deroga autorizzata da ${auth} (registrata fuori da Raffa)` : ""}`,
-        ),
+        auth
+          ? msg("Terms confirmed as agreed (evidence: reply {round}) · exception authorized by {auth} (recorded outside Raffa)", { round: c.round, auth })
+          : msg("Terms confirmed as agreed (evidence: reply {round})", { round: c.round }),
       );
       c.phase = "doc_wait";
       push(c, ctx, {
         k: "say",
-        text: B(
-          "Agreed terms recorded. Next I need the contract draft. Here is the request email; when the draft arrives, add it with “Add contract” — it will not become an active contract.",
-          "Condizioni concordate registrate. Ora serve la bozza di contratto. Ecco l’email di richiesta; quando arriva, aggiungila con «Aggiungi contratto» — non diventerà un contratto attivo.",
-        ),
+        text: msg("Agreed terms recorded. Next I need the contract draft. Here is the request email; when the draft arrives, add it with “Add contract” — it will not become an active contract."),
       });
       mkEmail(c, ctx, "docreq");
       break;
@@ -720,17 +693,14 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       if (!c.agreed) {
         push(c, ctx, {
           k: "say",
-          text: B(
-            "I received a document before terms were confirmed as agreed. I cannot verify it against an agreed position yet — confirm the terms first.",
-            "Ho ricevuto un documento prima che le condizioni fossero confermate come concordate. Non posso ancora verificarlo su una posizione concordata — conferma prima le condizioni.",
-          ),
+          text: msg("I received a document before terms were confirmed as agreed. I cannot verify it against an agreed position yet — confirm the terms first."),
         });
         break;
       }
       if (c.phase === "sign_wait" || c.phase === "sign_confirm" || c.phase === "sign_declared") {
         c.signed = { file: `${C.supplier}_OrderForm_signed.pdf`, by: v, at: ctx.today };
         c.phase = "sign_confirm";
-        push(c, ctx, { k: "user", by: v, text: S(`Added signed contract: ${c.signed.file}`, `Aggiunto contratto firmato: ${c.signed.file}`) });
+        push(c, ctx, { k: "user", by: v, text: tr("Added signed contract: {file}", { file: c.signed.file }) });
         push(c, ctx, { k: "sig" });
         break;
       }
@@ -738,7 +708,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       const version = c.docs.length + 1;
       const file = `${C.supplier}_OrderForm_draft_v${version}.pdf`;
       c.docs.push({ v: version, file, by: v, at: ctx.today, rows: sv.verifyDraft(c, ctx, version), manual: false });
-      push(c, ctx, { k: "user", by: v, text: S(`Added contract draft: ${file}`, `Aggiunta bozza di contratto: ${file}`) });
+      push(c, ctx, { k: "user", by: v, text: tr("Added contract draft: {file}", { file }) });
       push(c, ctx, { k: "doc", v: version });
       c.phase = "doc_check";
       if (!c.docs[version - 1]?.rows.some((r) => r.res !== "ok")) {
@@ -758,20 +728,17 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       d.rows.forEach((r) => {
         if (r.res === "unread") {
           r.res = "manual";
-          r.draft = S(`verified manually by ${v}`, `verificato manualmente da ${v}`);
+          r.draft = tr("verified manually by {v}", { v });
         }
       });
-      log(c, ctx, v, B("Annex verified manually", "Allegato verificato manualmente"));
+      log(c, ctx, v, msg("Annex verified manually"));
       break;
     }
     case "signDeclared":
       c.phase = "sign_declared";
       push(c, ctx, {
         k: "say",
-        text: B(
-          "Status: signature declared — document to acquire. The task stays open until you add the signed file.",
-          "Stato: firma dichiarata — documento da acquisire. L’attività resta aperta finché non aggiungi il file firmato.",
-        ),
+        text: msg("Status: signature declared — document to acquire. The task stays open until you add the signed file."),
       });
       break;
     case "sigOk": {
@@ -781,7 +748,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       cancelReminders(c, ["set", "due", "proposed"]);
       c.phase = "pipeline";
       c.pipe = sv.startExtraction(ctx);
-      log(c, ctx, v, B("Signed document confirmed as final — negotiation completed", "Documento firmato confermato come definitivo — negoziazione completata"));
+      log(c, ctx, v, msg("Signed document confirmed as final — negotiation completed"));
       push(c, ctx, { k: "pipe" });
       c.tick = true;
       break;
@@ -845,13 +812,13 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       if (!c.notice) break;
       c.notice.evidence = true;
       c.notice.evFile = "Notice_receipt_confirmation.pdf";
-      push(c, ctx, { k: "user", by: v, text: S(`Added receipt: ${c.notice.evFile}`, `Aggiunta ricevuta: ${c.notice.evFile}`) });
+      push(c, ctx, { k: "user", by: v, text: tr("Added receipt: {evFile}", { evFile: c.notice.evFile }) });
       break;
     case "nOut": {
       if (!canClose(c, v)) return deny(c, ctx, NO_CLOSE);
       if (!c.notice) break;
       if (!c.notice.evidence && !c.ui.noEv) {
-        c.ui.warn = S("Attach evidence of receipt, or tick that you proceed without it.", "Allega la prova di ricezione, oppure spunta che procedi senza.");
+        c.ui.warn = tr("Attach evidence of receipt, or tick that you proceed without it.");
         break;
       }
       cancelReminders(c, ["set", "due", "proposed"]);
@@ -864,7 +831,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
         c.alt.exitDone = true;
         if (c.alt.newDone) c.outcome = { kind: "terminated", end: C.end, when: ctx.today, ...(c.alt.chosen && { replacedBy: c.alt.chosen }) };
       }
-      log(c, ctx, v, B("Outcome recorded: not renewed", "Esito registrato: non rinnovato"));
+      log(c, ctx, v, msg("Outcome recorded: not renewed"));
       push(c, ctx, { k: "nout" });
       break;
     }
@@ -876,7 +843,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
     case "altReqs":
       if (!c.alt) break;
       c.alt.state = "cand";
-      push(c, ctx, { k: "user", by: v, text: S("Requirements confirmed", "Requisiti confermati") });
+      push(c, ctx, { k: "user", by: v, text: tr("Requirements confirmed") });
       push(c, ctx, { k: "acand" });
       break;
     case "altAdd": {
@@ -910,7 +877,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       const alt = c.alt;
       if (!alt || !p.vendor) break;
       alt.offers[p.vendor] = sv.vendorOffer(ctx, p.vendor, v);
-      push(c, ctx, { k: "user", by: v, text: S(`Added offer from ${p.vendor}`, `Aggiunta offerta di ${p.vendor}`), thread: p.vendor });
+      push(c, ctx, { k: "user", by: v, text: tr("Added offer from {vendor}", { vendor: p.vendor }), thread: p.vendor });
       push(c, ctx, { k: "aoff", vendor: p.vendor, thread: p.vendor });
       const received = Object.keys(alt.offers).filter((k) => !k.endsWith("_rfq"));
       if (received.length >= 1 && !alt.cmp) {
@@ -925,7 +892,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       if (!c.alt || !p.vendor) break;
       c.alt.state = "selected";
       c.alt.chosen = p.vendor;
-      log(c, ctx, v, B(`Alternative selected: ${p.vendor} (current contract not closed)`, `Alternativa scelta: ${p.vendor} (contratto attuale non chiuso)`));
+      log(c, ctx, v, msg("Alternative selected: {vendor} (current contract not closed)", { vendor: p.vendor }));
       push(c, ctx, { k: "asel" });
       break;
     case "altNew": {
@@ -933,7 +900,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       if (!alt || !p.vendor) break;
       alt.newDone = true;
       alt.newFile = `${p.vendor}_Contract_signed.pdf`;
-      push(c, ctx, { k: "user", by: v, text: S(`Added new vendor contract: ${alt.newFile}`, `Aggiunto contratto del nuovo fornitore: ${alt.newFile}`) });
+      push(c, ctx, { k: "user", by: v, text: tr("Added new vendor contract: {newFile}", { newFile: alt.newFile }) });
       c.pipeNew = true;
       if (alt.exitDone) c.outcome = { kind: "terminated", end: C.end, when: ctx.today, ...(alt.chosen && { replacedBy: alt.chosen }) };
       push(c, ctx, { k: "asel2" });
@@ -946,7 +913,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       if (!p.who) break;
       if (p.on) c.delegates[p.who] = { close: false };
       else delete c.delegates[p.who];
-      log(c, ctx, v, B(`${p.on ? "Delegate added: " : "Delegation removed: "}${p.who}`, `${p.on ? "Delega aggiunta: " : "Delega rimossa: "}${p.who}`));
+      log(c, ctx, v, p.on ? msg("Delegate added: {who}", { who: p.who }) : msg("Delegation removed: {who}", { who: p.who }));
       break;
     }
     case "delegateClose": {
@@ -961,7 +928,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
       c.owner = p.who;
       if (!c.members.includes(p.who)) c.members.push(p.who);
       c.history.push({ who: p.who, at: ctx.today });
-      log(c, ctx, v, B(`Ownership reassigned to ${p.who}`, `Responsabilità riassegnata a ${p.who}`));
+      log(c, ctx, v, msg("Ownership reassigned to {who}", { who: p.who }));
       break;
 
     /* ----- free text: answers the open question, or runs a typed command ----- */
@@ -994,7 +961,7 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
         break;
       }
       if (/^(conferma piano|confirm plan)/i.test(text) && c.phase === "plan") return act(c, "confirmPlan", {}, ctx);
-      push(c, ctx, { k: "user", by: v, text, tag: B("internal comment", "commento interno") });
+      push(c, ctx, { k: "user", by: v, text, tag: msg("internal comment") });
       break;
     }
   }
@@ -1003,5 +970,5 @@ export function act(c0: Case, type: ActionType, payload: ActPayload | undefined,
 
 /** Name of an email kind in the viewer's language (shared with the Today queue). */
 export function emailKindLabel(kind: EmailKind, lang: CaseContext["lang"]): string {
-  return tx(EMAIL_KIND[kind].noun, lang);
+  return resolveText(EMAIL_KIND[kind].noun, lang);
 }

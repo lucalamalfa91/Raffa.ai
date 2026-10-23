@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { Translate } from "./chatCopy";
+import type { Translate } from "../../../../i18n/translate";
 import type { HistoryGroup } from "./chatModel";
 
 export interface StepsSoFarProps {
@@ -24,8 +24,8 @@ export default function StepsSoFar({ groups, t, onOpen }: StepsSoFarProps) {
     });
 
   return (
-    <section className="rc-history" aria-label={t("stepsSoFar")}>
-      <h3 className="rc-label rc-history-title">{t("stepsSoFar")}</h3>
+    <section className="rc-history" aria-label={t("Steps so far")}>
+      <h3 className="rc-label rc-history-title">{t("Steps so far")}</h3>
       {groups.map((group) => {
         const isOpen = open.has(group.n);
         const panelId = `${uid}-${group.n}`;
@@ -35,7 +35,7 @@ export default function StepsSoFar({ groups, t, onOpen }: StepsSoFarProps) {
               <span className="rc-hmark" aria-hidden="true" />
               <span className="rc-hn">{group.n}</span>
               <strong>{group.label}</strong>
-              <span className="rc-hsum">{group.rows.length === 1 ? t("item") : t("items", { n: group.rows.length })}</span>
+              <span className="rc-hsum">{group.rows.length === 1 ? t("1 item") : t("{n} items", { n: group.rows.length })}</span>
               <span className="rc-harrow" aria-hidden="true">
                 {isOpen ? "▾" : "▸"}
               </span>
@@ -48,7 +48,7 @@ export default function StepsSoFar({ groups, t, onOpen }: StepsSoFarProps) {
                       <span className="rc-hat">{row.at}</span>
                       <span className="rc-hlabel">{row.label}</span>
                       {row.note && <span className="rc-hnote">{row.note}</span>}
-                      <span className="rc-hview">{t("viewStep")}</span>
+                      <span className="rc-hview">{t("View →")}</span>
                     </button>
                   </li>
                 ))}
