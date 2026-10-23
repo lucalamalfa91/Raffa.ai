@@ -219,11 +219,11 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
         return;
       }
 
-      if (outcome.kind === "rejected") {
+      if (outcome.kind === "rejected" || outcome.kind === "duplicate") {
         // Refused before storage (oversize, 413, 415): a local "Not added" row with the designed
         // sentence, no next step, no dismiss -- a reload clears it (ADR-020 w15 §6).
         setLocalUploads((current) =>
-          current.map((entry) => (entry.key === outcome.key ? { ...entry, phase: "rejected" as const, errorMessage: outcome.message } : entry)),
+          current.map((entry) => (entry.key === outcome.key ? { ...entry, phase: outcome.kind, errorMessage: outcome.message } : entry)),
         );
         return;
       }

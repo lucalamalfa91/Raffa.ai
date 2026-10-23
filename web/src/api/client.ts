@@ -358,6 +358,8 @@ export interface UploadDocumentResult {
   ok: boolean;
   /** HTTP status code, or `null` if the request never completed at all (e.g. DNS/network failure). */
   statusCode: number | null;
+  /** True when the server answered `200 OK` because the same file (same SHA-256) was already uploaded: nothing was created, `document` is null and `ok` is false. */
+  alreadyUploaded?: boolean;
   /** The stored, queued document (`processingStatus: "Uploaded"`, `contractId: null` -- see `ApiClient.uploadDocument`'s own doc comment), present only when `ok` is true. */
   document: UploadedDocument | null;
   /**
@@ -2397,6 +2399,12 @@ export function createApiClient(
       if (response.status === 201) {
         const document = (await response.json()) as UploadedDocument;
         return { ok: true, statusCode: 201, document, rejection: null, error: null };
+      }
+
+      // F5-D01: the same file was already uploaded. 200, not 201 -- nothing was created. Reported as
+      // its own outcome so the caller never has to read the body as an error string.
+      if (response.status === 200) {
+        return { ok: false, statusCode: 200, document: null, rejection: null, error: null, alreadyUploaded: true };
       }
 
       // Task E13/F04/US01/T01: the admission gate's own structured body (ADR-024 "gate before
