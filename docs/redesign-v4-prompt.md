@@ -29,8 +29,9 @@ Non si aggiungono funzioni. Si **riorganizza, riduce e guida**.
 
 Fonte: prototipo v3 (artifact `claude.ai/artifact/2h8ufejnnp2QbHKfTzGu14`, "Modernist" design system,
 IT/EN, dati fittizi Helvetia Foods). Nota: il prototipo ha **Today** come coda di lavoro e una **guida**
-integrata; il `README.md` del repo descrive invece un'app che atterra su Ask. Il redesign deve
-riconciliare le due cose (vedi §3.1).
+integrata; il `README.md` del repo descrive invece un'app che atterra su Ask.
+**Decisione presa: vale il prototipo. Dopo il sign-in si atterra su Today** (vedi §3.1); Ask diventa
+una voce del rail e una card della Home, e il codice/README del repo vanno allineati.
 
 | Area | Cosa mostra oggi | Dove sta il rumore |
 |------|------------------|--------------------|
@@ -87,7 +88,7 @@ resta solo l'onboarding "Carica i tuoi primi contratti" (i 3 passi Upload · Pro
 La **guida** non è più uno strato separato (strip + coach + drawer): è assorbita dai wizard
 (stepper + testo di aiuto al passo) e da un unico "Aiuto" nel rail. La barra "Pilot demo" resta
 solo in modalità demo e non conta come chrome del prodotto.
-Rail 4.0: Home · Chiedi a Raffa · Rinnovi · Preventivi · Portfolio · Documenti
+Rail 4.0: Today (Home, landing post sign-in) · Chiedi a Raffa · Rinnovi · Preventivi · Portfolio · Documenti
 (Savings come "Risparmi" dentro Portfolio/Rinnovi) · Workspace & members nel footer.
 
 ### 3.2 Renewals — flusso unico a imbuto
@@ -197,7 +198,8 @@ mostra di default solo "Richiedono attenzione".
 
 ## 9. Domande aperte da chiarire all'inizio
 
-1. Today diventa la Home guidata (consigliato) o resta una voce separata accanto a una nuova Home? Il repo oggi atterra su Ask, il prototipo v3 su Today: quale vale?
+1. ~~Landing~~ **Deciso:** atterraggio su Today (prototipo v3), che diventa la Home guidata di §3.1.
+   Da fare: cambiare la route di default dopo il sign-in e aggiornare `README.md` ("Sign-in lands on Ask Raffa").
 2. Savings resta voce di rail o diventa lente di Portfolio/Rinnovi?
 3. Quali ruoli (Admin/membro) vedono quali scorciatoie in Home?
 4. Serve una modalità "esperto" che riporta la densità attuale?
