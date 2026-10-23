@@ -47,7 +47,7 @@ export function getConfidenceTag(confidencePct: number, decision: ConfidenceDeci
   }
 }
 
-export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" | "processing" | "rejected" | "uploaded";
+export type DocumentStatus = "completed" | "ready" | "needs_review" | "failed" | "processing" | "rejected" | "uploaded" | "not_uploaded";
 
 /**
  * Status completed/Ready -> neutral; needs_review -> outline; failed -> accent; processing ->
@@ -80,6 +80,8 @@ export function getStatusTag(status: DocumentStatus): SemanticTag {
       return { variant: "outline", label: "Not added" };
     case "uploaded":
       return { variant: "neutral", label: "Uploaded" };
+    case "not_uploaded":
+      return { variant: "outline", label: "Not uploaded" };
   }
 }
 

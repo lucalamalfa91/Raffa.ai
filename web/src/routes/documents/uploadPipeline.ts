@@ -81,6 +81,30 @@ export function getRefusalCopy(statusCode: 413 | 415): string {
     : "Raffa.ai cannot open this file type. Try the original PDF, or a clear scan of the signed pages.";
 }
 
+/** A file whose bytes this workspace already holds (the server's 200 `alreadyUploaded`): not an
+ * error, so it is shown as "Not uploaded" with this sentence rather than a failure. */
+export function getDuplicateCopy(): string {
+  return "This file is already in your documents, so it was not uploaded again.";
+}
+
+/**
+ * Designed sentence for any upload that failed on the server or the network. The status code
+ * selects the sentence; the response body (which can be raw JSON or a stack-trace-like string) is
+ * never shown to the user.
+ */
+export function getUploadFailureCopy(fileName: string, statusCode: number | null): string {
+  if (statusCode === 401 || statusCode === 403) {
+    return `You do not have permission to upload ${fileName}. Sign in again or ask a workspace admin.`;
+  }
+  if (statusCode === 429) {
+    return "Too many uploads at once. Wait a moment, then try again.";
+  }
+  if (statusCode !== null && statusCode >= 500) {
+    return `Raffa.ai is temporarily unavailable and could not process ${fileName}. Try again in a few minutes.`;
+  }
+  return getTransportFailureCopy(fileName);
+}
+
 /** The retryable "failed" sentence for a request that never got an answer (deadline hit, network
  * down) -- Raffa.ai's own words, never a platform 502's. */
 export function getTransportFailureCopy(fileName: string): string {
@@ -100,7 +124,7 @@ export function getTransportFailureCopy(fileName: string): string {
 export interface LocalUploadEntry {
   key: string;
   file: File;
-  phase: "queued" | "uploading" | "failed" | "rejected";
+  phase: "queued" | "uploading" | "failed" | "rejected" | "duplicate";
   /** Set when `phase` is `"failed"` or `"rejected"` -- the client's own designed sentence (never a raw stack trace, never API prose). */
   errorMessage?: string;
   /** The server id from the 201, once the bytes are stored (`phase` stays `"uploading"` until the server row shows up). */
@@ -110,6 +134,7 @@ export interface LocalUploadEntry {
 export type UploadBatchOutcome =
   | { kind: "admitted"; key: string; document: NonNullable<UploadDocumentResult["document"]> }
   | { kind: "rejected"; key: string; fileName: string; message: string }
+  | { kind: "duplicate"; key: string; fileName: string; message: string }
   | { kind: "failed"; key: string; fileName: string; message: string };
 
 /**
@@ -157,6 +182,11 @@ export async function runUploadBatch(
         continue;
       }
 
+      if (result.alreadyUploaded) {
+        onSettled({ kind: "duplicate", key, fileName: file.name, message: getDuplicateCopy() });
+        continue;
+      }
+
       if (result.statusCode === 413 || result.statusCode === 415) {
         onSettled({ kind: "rejected", key, fileName: file.name, message: getRefusalCopy(result.statusCode) });
         continue;
@@ -166,7 +196,7 @@ export async function runUploadBatch(
         kind: "failed",
         key,
         fileName: file.name,
-        message: controller.signal.aborted ? getTransportFailureCopy(file.name) : (result.error ?? getTransportFailureCopy(file.name)),
+        message: controller.signal.aborted ? getTransportFailureCopy(file.name) : getUploadFailureCopy(file.name, result.statusCode),
       });
     }
   }

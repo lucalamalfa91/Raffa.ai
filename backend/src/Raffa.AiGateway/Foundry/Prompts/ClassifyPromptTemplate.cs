@@ -15,7 +15,7 @@ public static class ClassifyPromptTemplate
 {
     /// <summary>Bump when the prompt or schema text below changes — recorded in every
     /// <see cref="AiCallMetadata.PromptVersion"/> this role produces.</summary>
-    public const string Version = "foundry-classify-v3";
+    public const string Version = "foundry-classify-v4";
 
     /// <summary>Internal rather than private so the Jev classify pilot
     /// (<see cref="Jev.JevClassifyClient"/>) can build its own "choice" question over the same
@@ -28,14 +28,14 @@ public static class ClassifyPromptTemplate
     {
         [AiDocumentType.Msa] = "master, framework or umbrella agreement that governs a supplier relationship: master services agreement, master subscription agreement, enterprise or software license agreement, cloud services or cloud commitment agreement, SaaS terms, general terms and conditions (contratto quadro, accordo quadro, contratto di licenza, condizioni generali, Rahmenvertrag, Lizenzvertrag)",
         [AiDocumentType.OrderForm] = "order form, order schedule, purchase order or subscription order that buys specific products, quantities or seats, usually under a master agreement (ordine, modulo d'ordine, ordine di acquisto, Bestellung, Bestellschein)",
-        [AiDocumentType.Sow] = "statement of work, work order or service description that defines deliverables and activities (capitolato, descrizione dei servizi, ordine di lavoro, Leistungsbeschreibung)",
+        [AiDocumentType.Sow] = "a contractual statement of work, work order or service description between a buyer and a supplier that defines deliverables, activities and commercial terms; NOT a technical document that merely describes a product or answers a technical questionnaire (capitolato, descrizione dei servizi, ordine di lavoro, Leistungsbeschreibung)",
         [AiDocumentType.Amendment] = "amendment or addendum to an existing contract (atto integrativo, addendum, Nachtrag)",
         [AiDocumentType.Quote] = "quotation or commercial proposal (offerta, preventivo, Angebot)",
         [AiDocumentType.Invoice] = "invoice (fattura, Rechnung)",
         [AiDocumentType.PriceList] = "price list or rate card (listino prezzi, Preisliste)",
         [AiDocumentType.Nda] = "non-disclosure or confidentiality agreement (accordo di riservatezza, Geheimhaltungsvereinbarung)",
         [AiDocumentType.Dpa] = "data processing agreement (accordo sul trattamento dei dati, nomina a responsabile, Auftragsverarbeitungsvertrag)",
-        [AiDocumentType.Other] = "none of the above (for example a recipe, an article, a CV, a personal letter, a manual)",
+        [AiDocumentType.Other] = "none of the above (for example a recipe, an article, a CV, a personal letter, a manual, a tax form such as an F24, a technical specification, a technical response to a tender or questionnaire, a datasheet, a whitepaper, a presentation)",
     };
 
     public static readonly string SystemPrompt =
@@ -46,7 +46,7 @@ public static class ClassifyPromptTemplate
         "language, and never on a file name. Decide by what the document does, not by its title: a " +
         "framework agreement that also lists prices is still an Msa; a signed order under a framework " +
         "is an OrderForm; a document that is both a master agreement and its first order schedule is " +
-        "the type of the part that governs the relationship (Msa). Use Other only when the document " +
+        "the type of the part that governs the relationship (Msa). A technical document (specifications, technical answers, architecture or product descriptions) is Other even if it mentions services, deliverables or a project, unless it also sets out commercial or legal terms such as prices, fees, duration, obligations or signatures. Use Other only when the document " +
         "is clearly none of the listed types. Report confidence as a number between 0 and 1: your " +
         "probability that the chosen type is correct. Respond with strict JSON matching the given " +
         "schema only: no prose, no markdown fences.";

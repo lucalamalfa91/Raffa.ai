@@ -102,7 +102,7 @@ export function getRowStatus(processingStatus: DocumentListItemBody["processingS
  * Every `RowStatus` member is a real `DocumentStatus` value, `"rejected"` included since ADR-019
  * w15 clause 1 (`.tag-outline` "Not added" -- a decision about the file, never `failed`'s accent),
  * so there is no cast here any more and the switch there stays exhaustive under `tsc`. */
-export function getRowStatusTag(status: RowStatus): SemanticTag {
+export function getRowStatusTag(status: RowStatus | "not_uploaded"): SemanticTag {
   return getStatusTag(status);
 }
 
@@ -178,7 +178,9 @@ export function isStuckProcessing(
  * historical "not linked" sentence. */
 export function getFailedHint(errorDetail: string | null | undefined): string {
   const detail = errorDetail?.trim();
-  return detail ? detail : "Not yet linked to a contract";
+  if (!detail) return "Not yet linked to a contract";
+  // Raw payloads (JSON, exception text) are never shown: fall back to a designed sentence.
+  return /^[{[]|Exception|\bat \w+\./.test(detail) ? "Raffa.ai could not process this file. Try again." : detail;
 }
 
 /**
