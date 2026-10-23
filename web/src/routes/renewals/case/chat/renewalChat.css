@@ -1,7 +1,7 @@
 /**
  * Renewal chat -- the wizard as a chat (design handoff "Renewal wizard", Modernist).
  *
- * Flat, square, ink on ground: radius 0 everywhere (the tokens are 0; nothing here sets one), no
+ * Flat ink on ground like Ask Raffa: cards 12px, controls 8px (the composer bar stays square), no
  * shadows, 1-2px rules, one red accent, everything flush left and full width (the feed column is
  * capped at 900px for reading, never centred). Text always wraps -- nothing is truncated.
  *
@@ -16,6 +16,8 @@
   --rc-rule-strong: color-mix(in srgb, var(--color-text) 30%, transparent);
   --rc-scrim: color-mix(in srgb, var(--color-text) 35%, transparent);
   --rc-hover: color-mix(in srgb, var(--color-text) 5%, transparent);
+  --rc-radius-card: 12px; /* same corners as the Ask Raffa cards and controls */
+  --rc-radius-control: 8px;
 
   display: flex;
   flex-direction: column;
@@ -25,12 +27,14 @@
 
 /* Square, flat controls inside the chat: the shared .btn / .input are heavier (2px) than the handoff. */
 .renewal-chat .btn {
+  border-radius: var(--rc-radius-control);
   border-width: 1px;
   font-size: 13px;
   font-weight: var(--weight-heading);
 }
 
 .renewal-chat .input {
+  border-radius: var(--rc-radius-control);
   min-height: 36px;
   padding: 6px 10px;
   border: 1px solid var(--color-divider);
@@ -70,6 +74,7 @@
 }
 
 .rc-banner {
+  border-radius: var(--rc-radius-control);
   max-width: 72ch;
   padding: var(--space-2) var(--space-3);
   background: var(--color-accent-100);
@@ -249,6 +254,7 @@
 }
 
 .rc-since {
+  border-radius: var(--rc-radius-card);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--rc-rule-strong);
   background: var(--color-accent-100);
@@ -268,6 +274,7 @@
 /* ---- Steps so far ------------------------------------------------------------ */
 
 .rc-history {
+  border-radius: var(--rc-radius-card);
   max-width: 900px;
   padding: 6px var(--space-4) 0;
   border: 1px solid var(--rc-rule-soft);
@@ -426,6 +433,7 @@
 }
 
 .rc-card {
+  border-radius: var(--rc-radius-card);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -554,6 +562,7 @@
 }
 
 .rc-pill {
+  border-radius: var(--rc-radius-control);
   padding: 3px 10px;
   border: 1px solid var(--color-divider);
   font-size: 11px;
@@ -571,6 +580,7 @@
 }
 
 .rc-email {
+  border-radius: var(--rc-radius-card);
   max-width: 760px;
   border: 1px solid var(--color-divider);
   background: var(--rc-paper);
@@ -628,6 +638,7 @@
 }
 
 .rc-pre {
+  border-radius: var(--rc-radius-card);
   max-width: 760px;
   max-height: 150px;
   margin: 0;
@@ -698,6 +709,7 @@
 }
 
 .rc-chip {
+  border-radius: var(--rc-radius-control);
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -795,6 +807,7 @@
 }
 
 .rc-reply {
+  border-radius: var(--rc-radius-card);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -835,6 +848,7 @@
 }
 
 .rc-thread-pick {
+  border-radius: var(--rc-radius-control);
   padding: var(--space-1) 10px;
   border: 1px solid var(--color-text);
   background: transparent;
@@ -883,6 +897,7 @@
 }
 
 .rc-inputbar .btn {
+  border-radius: 0;
   min-height: 36px;
   padding: 0 var(--space-4);
   font-size: 14px;
@@ -899,6 +914,7 @@
 }
 
 .rc-extra {
+  border-radius: var(--rc-radius-control);
   padding: var(--space-1) 10px;
   border: 1px solid var(--rc-rule-soft);
   background: transparent;
@@ -921,6 +937,7 @@
 }
 
 .rc-demo-btn {
+  border-radius: var(--rc-radius-control);
   padding: 2px var(--space-2);
   border: 1px dashed var(--color-neutral-500);
   background: transparent;
@@ -946,6 +963,7 @@
 }
 
 .rc-panel {
+  border-radius: var(--rc-radius-card);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -955,6 +973,7 @@
   padding: 20px var(--space-6) 40px;
   overflow: auto;
   border-left: 1px solid var(--rc-rule-strong);
+  border-radius: 0;
   background: var(--color-bg);
 }
 

@@ -28,7 +28,7 @@ describe.each(SHEETS)("%s", (path) => {
   const all = lines(path);
 
   it("has no rounded corners", () => {
-    const rounded = all.filter(([, text]) => /border-radius\s*:/.test(text) && !/border-radius\s*:\s*(0|var\(--radius-(sm|md|lg)\))\s*;/.test(text));
+    const rounded = all.filter(([, text]) => /border-radius\s*:/.test(text) && !/border-radius\s*:\s*(0|var\(--(radius-(sm|md|lg)|rc-radius-(card|control))\))\s*;/.test(text));
     expect(rounded).toEqual([]);
   });
 
