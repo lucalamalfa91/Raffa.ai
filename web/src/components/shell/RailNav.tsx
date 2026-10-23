@@ -6,6 +6,7 @@ import {
   buildSecondaryNavItems,
   canManageMembers,
   getDocumentsBadge,
+  getTodayBadge,
   WORKSPACE_ROLE_LABEL,
   type NavBadge,
   type WorkspaceRole,
@@ -23,6 +24,7 @@ import { useAskSessionStore, useAskSessionsSnapshot } from "../../routes/ask/Ask
 import { customTitleFor } from "../../routes/ask/askSessions";
 import ConversationRenameField from "../../routes/ask/ConversationRenameField";
 import type { DocumentCountsBody } from "./useDocumentCounts";
+import { useQueue } from "../../routes/renewals/case/useQueue";
 
 /** How long the rail trusts its last good read of the portfolio (chat titles) before the next
  * navigation reads it again. */
@@ -220,7 +222,8 @@ export default function RailNav({
   // stays absent until the shell has confirmed a number (`getDocumentsBadge`'s honest-absence rule).
   const documentsBadge = documentCounts ? getDocumentsBadge({ total: documentCounts.all, needsReview: documentCounts.needsReview }) : null;
 
-  const primaryItems = buildPrimaryNavItems(documentsBadge);
+  const waitingOnYou = useQueue(userLabel).queue.filter((item) => item.mine).length;
+  const primaryItems = buildPrimaryNavItems(documentsBadge, getTodayBadge(waitingOnYou));
   const secondaryItems = buildSecondaryNavItems({ kbReady, validatedContractCount });
 
   const renderRow = (conversation: (typeof conversations)[number], archived: boolean) => {

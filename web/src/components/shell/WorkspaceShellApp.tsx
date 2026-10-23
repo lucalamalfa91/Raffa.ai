@@ -9,6 +9,7 @@ import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
 import RenewalsRoute from "../../routes/renewals";
 import RenewalChatRoute from "../../routes/renewals/case/RenewalChatRoute";
+import TodayRoute from "../../routes/today";
 import QuoteCheckRoute from "../../routes/quotes";
 import AskRoute from "../../routes/ask";
 import SavingsRoute from "../../routes/savings";
@@ -81,6 +82,7 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
         }
       >
         <Route index element={<Navigate to="/ask" replace />} />
+        <Route path="today" element={<TodayRoute userLabel={userLabel} />} />
         <Route path="ask" element={<AskRoute apiClient={apiClient} />} />
         <Route path="ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
         <Route path="savings" element={<SavingsRoute apiClient={apiClient} />} />

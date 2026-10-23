@@ -132,13 +132,13 @@ describe("RailNav (V2 two-tier rail, ADR-024 amendment; task E13/F09/US01/T01, g
     window.sessionStorage.setItem("raffa.signin.currentWorkspace", JSON.stringify({ id: WORKSPACE_ID, name: "Acme Procurement" }));
   });
 
-  it("renders the workspace name and the two tiers in order: Ask Raffa, Documents, then 'From your contracts' / Portfolio, Renewals, Savings, Quote check", () => {
+  it("renders the workspace name and the two tiers in order: Today, Ask Raffa, Documents, then 'From your contracts' / Portfolio, Renewals, Savings, Quote check", () => {
     const { container } = renderRail();
 
     expect(screen.getByText("Acme Procurement")).toBeInTheDocument();
 
     const labels = Array.from(container.querySelectorAll(".shell-rail-item-label")).map((node) => node.textContent);
-    expect(labels).toEqual(["Ask Raffa", "Documents", "Portfolio", "Renewals", "Savings", "Quote check"]);
+    expect(labels).toEqual(["Today", "Ask Raffa", "Documents", "Portfolio", "Renewals", "Savings", "Quote check"]);
   });
 
   it("Savings is a visible first-class rail destination at /savings, with the same secondary-item chrome as Portfolio", () => {

@@ -1,22 +1,10 @@
-import { useCallback, useMemo } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { useI18n } from "../../../i18n/I18nProvider";
+import { useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { addDays } from "./dates";
-import { rememberedViewer } from "./demoSession";
-import { DEMO_APPROVER, DEMO_OWNER, DEMO_PEOPLE, demoContext } from "./fixtures";
-import {
-  buildQueue,
-  buildSummaries,
-  rowActions,
-  snoozedItems,
-  visibleQueue,
-  type QueueItem,
-  type RowActions,
-  type RowCta,
-} from "./portfolio";
+import { DEMO_APPROVER, DEMO_OWNER, demoContext } from "./fixtures";
+import { rowActions, type QueueItem, type RowActions, type RowCta } from "./portfolio";
 import type { ActPayload, ActionType } from "./types";
-import { getCaseStore, useCaseStore } from "./useCaseStore";
-import { resolveViewer } from "./viewer";
+import { useQueue } from "./useQueue";
 
 /**
  * Everything Renewals and Today share: who is looking, the language, the portfolio and the action
@@ -24,19 +12,8 @@ import { resolveViewer } from "./viewer";
  * (Backed by the demo tenant's cases until the backend owns them -- see `caseStore.ts`.)
  */
 export function useRenewalsWorkspace(userLabel: string) {
-  const { lang, t } = useI18n();
-  const location = useLocation();
+  const { store, cases, viewer, lang, t, today, summaries, queueAll, queue, snoozed } = useQueue(userLabel);
   const navigate = useNavigate();
-  const store = getCaseStore();
-  const state = useCaseStore(store);
-
-  const viewer = resolveViewer({ userLabel, as: rememberedViewer(location.search), members: DEMO_PEOPLE, approver: DEMO_APPROVER });
-  const today = demoContext("1", viewer, lang).today;
-
-  const summaries = useMemo(() => buildSummaries(state.cases, viewer, lang), [state.cases, viewer, lang]);
-  const queueAll = useMemo(() => buildQueue(state.cases, viewer, lang), [state.cases, viewer, lang]);
-  const queue = useMemo(() => visibleQueue(queueAll, state.queue, today), [queueAll, state.queue, today]);
-  const snoozed = useMemo(() => snoozedItems(queueAll, state.queue, today), [queueAll, state.queue, today]);
 
   const act = useCallback(
     (cid: string, type: ActionType, payload?: ActPayload) => store.act(cid, type, payload, demoContext(cid, viewer, lang)),
@@ -44,6 +21,7 @@ export function useRenewalsWorkspace(userLabel: string) {
   );
 
   const openChat = useCallback((cid: string) => navigate(`/renewals/${cid}/chat`), [navigate]);
+  const openInRenewals = useCallback((cid: string) => navigate(`/renewals?select=${cid}&tab=now`), [navigate]);
 
   /** Starts a case owned by someone else: the approver opens it and assigns it. The screen stays put. */
   const startAssigned = useCallback(
@@ -63,8 +41,8 @@ export function useRenewalsWorkspace(userLabel: string) {
   );
 
   const actionsFor = useCallback(
-    (item: QueueItem): RowActions => rowActions(item, viewer, state.cases[item.cid], t),
-    [viewer, state.cases, t],
+    (item: QueueItem): RowActions => rowActions(item, viewer, cases[item.cid], t),
+    [viewer, cases, t],
   );
 
   const run = useCallback(
@@ -88,7 +66,7 @@ export function useRenewalsWorkspace(userLabel: string) {
 
   return {
     store,
-    cases: state.cases,
+    cases,
     viewer,
     lang,
     t,
@@ -101,6 +79,7 @@ export function useRenewalsWorkspace(userLabel: string) {
     snoozed,
     act,
     openChat,
+    openInRenewals,
     startAssigned,
     startOwn,
     actionsFor,

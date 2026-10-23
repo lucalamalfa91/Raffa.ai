@@ -12,6 +12,8 @@ export const DEMO_TODAY = "08 Sep 2026";
 export const DEMO_COMPANY = "Helvetia Foods AG";
 export const DEMO_APPROVER = "Luca Lamalfa";
 export const DEMO_OWNER = "Marta Keller";
+/** Job titles of the demo people (shown under their name on Today). */
+export const DEMO_TITLES: Readonly<Record<string, string>> = { [DEMO_APPROVER]: "Head of Procurement", [DEMO_OWNER]: "Buyer" };
 /** Everyone the demo tenant has; the Team tab and `?as=` draw from here. */
 export const DEMO_PEOPLE: readonly string[] = [DEMO_APPROVER, DEMO_OWNER];
 
