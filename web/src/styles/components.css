@@ -87,6 +87,10 @@
   background: var(--color-neutral-200);
 }
 
+.btn-secondary:active:not(:disabled) {
+  background: var(--color-neutral-300);
+}
+
 /* V2 `styles.css`: `.btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); }` */
 .btn-ghost {
   background: transparent;
@@ -97,6 +101,10 @@
 
 .btn-ghost:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.btn-ghost:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
 .btn-block {
@@ -130,7 +138,9 @@
   line-height: var(--leading-label);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  white-space: nowrap;
+  /* A status can be a full sentence ("Waiting for the supplier"): it wraps, it is never cut. */
+  white-space: normal;
+  text-align: left;
 }
 
 .tag-neutral {
@@ -145,8 +155,9 @@
 
 .tag-outline {
   background: transparent;
-  border-color: var(--color-text);
-  color: var(--color-text);
+  border-color: var(--color-accent);
+  /* accent-700, not the raw accent: small text keeps >=4.5:1 on the ground (tokens.css). */
+  color: var(--color-accent-700);
 }
 
 /* =========================================================================

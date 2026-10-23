@@ -8,6 +8,7 @@ import PortfolioRoute from "../../routes/contracts";
 import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
 import RenewalsRoute from "../../routes/renewals";
+import RenewalChatRoute from "../../routes/renewals/case/RenewalChatRoute";
 import QuoteCheckRoute from "../../routes/quotes";
 import AskRoute from "../../routes/ask";
 import SavingsRoute from "../../routes/savings";
@@ -87,6 +88,7 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} userLabel={userLabel} />} />
         <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
         <Route path="renewals" element={<RenewalsRoute apiClient={apiClient} userLabel={userLabel} />} />
+        <Route path="renewals/:contractId/chat" element={<RenewalChatRoute userLabel={userLabel} />} />
         <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
