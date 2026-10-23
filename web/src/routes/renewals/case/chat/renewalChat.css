@@ -1,7 +1,7 @@
 /**
  * Renewal chat -- the wizard as a chat (design handoff "Renewal wizard", Modernist).
  *
- * Flat, square, ink on ground: radius 0 everywhere (the tokens are 0; nothing here sets one), no
+ * Flat ink on ground like Ask Raffa: cards 12px, controls 8px (the composer bar stays square), no
  * shadows, 1-2px rules, one red accent, everything flush left and full width (the feed column is
  * capped at 900px for reading, never centred). Text always wraps -- nothing is truncated.
  *
@@ -16,6 +16,8 @@
   --rc-rule-strong: color-mix(in srgb, var(--color-text) 30%, transparent);
   --rc-scrim: color-mix(in srgb, var(--color-text) 35%, transparent);
   --rc-hover: color-mix(in srgb, var(--color-text) 5%, transparent);
+  --rc-radius-card: 12px; /* same corners as the Ask Raffa cards and controls */
+  --rc-radius-control: 8px;
 
   display: flex;
   flex-direction: column;
@@ -25,12 +27,14 @@
 
 /* Square, flat controls inside the chat: the shared .btn / .input are heavier (2px) than the handoff. */
 .renewal-chat .btn {
+  border-radius: var(--rc-radius-control);
   border-width: 1px;
   font-size: 13px;
   font-weight: var(--weight-heading);
 }
 
 .renewal-chat .input {
+  border-radius: var(--rc-radius-control);
   min-height: 36px;
   padding: 6px 10px;
   border: 1px solid var(--color-divider);
@@ -70,6 +74,7 @@
 }
 
 .rc-banner {
+  border-radius: var(--rc-radius-control);
   max-width: 72ch;
   padding: var(--space-2) var(--space-3);
   background: var(--color-accent-100);
@@ -88,7 +93,7 @@
 
 .rc-header {
   flex: none;
-  padding: 10px var(--space-8) 0;
+  padding: 12px var(--space-8) 0;
   border-bottom: 1px solid var(--color-divider);
 }
 
@@ -109,8 +114,10 @@
 
 .rc-case-title {
   margin: 0;
-  font-size: 15px;
-  line-height: var(--leading-label);
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: 14px;
+  line-height: var(--leading-body);
   text-wrap: pretty;
 }
 
@@ -233,18 +240,21 @@
   position: relative;
   flex: 1;
   overflow: auto;
-  padding: var(--space-6) var(--space-8) 20px;
+  padding: 26px var(--space-8) 20px;
 }
 
+/* Same thread as Ask Raffa: 900px, centred, 30px between turns. */
 .rc-column {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 30px;
   width: 100%;
   max-width: 900px;
+  margin-inline: auto;
 }
 
 .rc-since {
+  border-radius: var(--rc-radius-card);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--rc-rule-strong);
   background: var(--color-accent-100);
@@ -264,6 +274,7 @@
 /* ---- Steps so far ------------------------------------------------------------ */
 
 .rc-history {
+  border-radius: var(--rc-radius-card);
   max-width: 900px;
   padding: 6px var(--space-4) 0;
   border: 1px solid var(--rc-rule-soft);
@@ -364,10 +375,11 @@
 
 /* ---- Entries: a Raffa line, the user's words, or a step card ------------------ */
 
+/* One turn, as in Ask Raffa: a 72px kicker column (who, when) and the content beside it. */
 .rc-entry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
 }
 
 .rc-entry.is-dim {
@@ -376,9 +388,9 @@
 
 .rc-entry-meta {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding-top: 2px;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
 }
 
 .rc-entry-by {
@@ -401,9 +413,9 @@
   max-width: 74ch;
   margin: 0;
   font-family: var(--font-heading);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: var(--weight-heading);
-  line-height: 1.4;
+  line-height: 1.3;
   white-space: pre-line;
   text-wrap: pretty;
 }
@@ -421,6 +433,7 @@
 }
 
 .rc-card {
+  border-radius: var(--rc-radius-card);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -549,6 +562,7 @@
 }
 
 .rc-pill {
+  border-radius: var(--rc-radius-control);
   padding: 3px 10px;
   border: 1px solid var(--color-divider);
   font-size: 11px;
@@ -566,6 +580,7 @@
 }
 
 .rc-email {
+  border-radius: var(--rc-radius-card);
   max-width: 760px;
   border: 1px solid var(--color-divider);
   background: var(--rc-paper);
@@ -623,6 +638,7 @@
 }
 
 .rc-pre {
+  border-radius: var(--rc-radius-card);
   max-width: 760px;
   max-height: 150px;
   margin: 0;
@@ -693,6 +709,7 @@
 }
 
 .rc-chip {
+  border-radius: var(--rc-radius-control);
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -781,7 +798,16 @@
   padding: var(--space-2) var(--space-8) var(--space-4);
 }
 
+.rc-reply,
+.rc-threads,
+.rc-inputbar,
+.rc-extras {
+  width: 100%;
+  margin-inline: auto;
+}
+
 .rc-reply {
+  border-radius: var(--rc-radius-card);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -822,6 +848,7 @@
 }
 
 .rc-thread-pick {
+  border-radius: var(--rc-radius-control);
   padding: var(--space-1) 10px;
   border: 1px solid var(--color-text);
   background: transparent;
@@ -847,6 +874,7 @@
   max-width: 900px;
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   border: 1px solid var(--rc-rule-soft);
+  border-radius: 0;
   background: var(--rc-paper);
 }
 
@@ -869,6 +897,7 @@
 }
 
 .rc-inputbar .btn {
+  border-radius: 0;
   min-height: 36px;
   padding: 0 var(--space-4);
   font-size: 14px;
@@ -879,11 +908,13 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 6px 18px;
+  max-width: 900px;
   min-height: 22px;
-  padding-top: var(--space-2);
+  padding: 10px var(--space-1) 0;
 }
 
 .rc-extra {
+  border-radius: var(--rc-radius-control);
   padding: var(--space-1) 10px;
   border: 1px solid var(--rc-rule-soft);
   background: transparent;
@@ -906,6 +937,7 @@
 }
 
 .rc-demo-btn {
+  border-radius: var(--rc-radius-control);
   padding: 2px var(--space-2);
   border: 1px dashed var(--color-neutral-500);
   background: transparent;
@@ -931,6 +963,7 @@
 }
 
 .rc-panel {
+  border-radius: var(--rc-radius-card);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -940,6 +973,7 @@
   padding: 20px var(--space-6) 40px;
   overflow: auto;
   border-left: 1px solid var(--rc-rule-strong);
+  border-radius: 0;
   background: var(--color-bg);
 }
 
@@ -958,6 +992,16 @@
 
   .rc-card {
     padding: var(--space-4);
+  }
+
+  .rc-entry {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .rc-entry-meta {
+    flex-direction: row;
+    gap: 10px;
   }
 
   .rc-card.is-current .rc-title {
