@@ -9,11 +9,15 @@
  * chat and the Renewals screens only talk to `CaseStore`.
  */
 
+import type { CaseDate } from "./dates";
 import { act, create, type CreateOptions } from "./engine";
+import type { QueueState } from "./portfolio";
 import type { ActPayload, ActionType, Case, CaseContext } from "./types";
 
 export interface CaseStoreState {
   readonly cases: Readonly<Record<string, Case>>;
+  /** Which queue items are snoozed or marked done -- a person's own view of the queue. */
+  readonly queue: QueueState;
 }
 
 export interface StoreEffects {
@@ -31,6 +35,11 @@ export interface CaseStore {
   open(cid: string, ctx: CaseContext, opts: CreateOptions & { branch?: "notice" | null }): void;
   /** Applies one action. Unknown contracts are ignored. */
   act(cid: string, type: ActionType, payload: ActPayload | undefined, ctx: CaseContext): void;
+  /** Hides a queue item until `until`. */
+  snooze(key: string, until: CaseDate): void;
+  unsnooze(key: string): void;
+  /** Marks a queue item done (it leaves the queue). */
+  dismiss(key: string): void;
   /** Back to the seeded demo data. */
   reset(): void;
 }
@@ -43,7 +52,8 @@ export interface CaseStoreOptions {
   seed?: () => Record<string, Case>;
 }
 
-export const CASE_STORE_KEY = "raffa.renewalCases.v1";
+export const CASE_STORE_KEY = "raffa.renewalCases.v2";
+const NO_QUEUE: QueueState = { snoozed: {}, dismissed: {} };
 const TICK_MS = 900;
 
 const browserEffects: StoreEffects = {
@@ -64,15 +74,18 @@ function isCase(value: unknown): value is Case {
   return !!c && typeof c === "object" && typeof c.cid === "string" && Array.isArray(c.feed) && Array.isArray(c.emails) && typeof c.phase === "string";
 }
 
-function load(storage: CaseStoreOptions["storage"], key: string): Record<string, Case> | null {
+function load(storage: CaseStoreOptions["storage"], key: string): CaseStoreState | null {
   if (!storage) return null;
   try {
     const raw = storage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { cases?: Record<string, unknown> } | null;
+    const parsed = JSON.parse(raw) as { cases?: Record<string, unknown>; queue?: Partial<QueueState> } | null;
     const entries = Object.entries(parsed?.cases ?? {});
     if (!entries.length || !entries.every(([, value]) => isCase(value))) return null;
-    return Object.fromEntries(entries) as Record<string, Case>;
+    return {
+      cases: Object.fromEntries(entries) as Record<string, Case>,
+      queue: { snoozed: parsed?.queue?.snoozed ?? {}, dismissed: parsed?.queue?.dismissed ?? {} },
+    };
   } catch {
     return null;
   }
@@ -84,12 +97,12 @@ export function createCaseStore(options: CaseStoreOptions = {}): CaseStore {
   const effects = options.effects ?? browserEffects;
   const seed = options.seed ?? (() => ({}));
   const listeners = new Set<() => void>();
-  let state: CaseStoreState = { cases: load(storage, key) ?? seed() };
+  let state: CaseStoreState = load(storage, key) ?? { cases: seed(), queue: NO_QUEUE };
 
-  const commit = (cases: Record<string, Case>): void => {
-    state = { cases };
+  const commit = (next: Partial<CaseStoreState>): void => {
+    state = { ...state, ...next };
     try {
-      storage?.setItem(key, JSON.stringify({ cases }));
+      storage?.setItem(key, JSON.stringify({ cases: state.cases, queue: state.queue }));
     } catch {
       // Private mode or a full quota: the session still works, it just does not persist.
     }
@@ -114,16 +127,29 @@ export function createCaseStore(options: CaseStoreOptions = {}): CaseStore {
         if (branch === "notice" && !existing.notice) next = act(next, "startNotice", {}, ctx);
         next = act(next, "visit", {}, ctx);
       }
-      commit({ ...state.cases, [cid]: next });
+      commit({ cases: { ...state.cases, [cid]: next } });
     },
     act(cid, type, payload, ctx) {
       const current = state.cases[cid];
       if (!current) return;
       const result = act(current, type, payload, ctx);
       const { clip, tick, ...next } = result;
-      commit({ ...state.cases, [cid]: next as Case });
+      commit({ cases: { ...state.cases, [cid]: next as Case } });
       if (clip) effects.copyToClipboard(clip);
       if (tick) effects.later(() => store.act(cid, "tick", {}, ctx), TICK_MS);
+    },
+    snooze(itemKey, until) {
+      const { [itemKey]: _dismissed, ...dismissed } = state.queue.dismissed;
+      void _dismissed;
+      commit({ queue: { snoozed: { ...state.queue.snoozed, [itemKey]: until }, dismissed } });
+    },
+    unsnooze(itemKey) {
+      const { [itemKey]: _gone, ...snoozed } = state.queue.snoozed;
+      void _gone;
+      commit({ queue: { ...state.queue, snoozed } });
+    },
+    dismiss(itemKey) {
+      commit({ queue: { ...state.queue, dismissed: { ...state.queue.dismissed, [itemKey]: true } } });
     },
     reset() {
       try {
@@ -131,7 +157,7 @@ export function createCaseStore(options: CaseStoreOptions = {}): CaseStore {
       } catch {
         // nothing persisted to clear
       }
-      commit(seed());
+      commit({ cases: seed(), queue: NO_QUEUE });
     },
   };
   return store;

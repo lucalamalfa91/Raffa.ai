@@ -1,716 +1,618 @@
 /**
- * Renewals screen, V2 (route `/renewals`; ADR-024 V2 IA; screens-v2.md #7; `raffa-v2/markup.html`
- * "RENEWALS" block). Component classes (.screen-header, .screen-reroute, .btn, .btn-block, .tag,
- * .table, .card-kicker, .deadline-critical, .skeleton, .error-state, .hint, .micro-meta) come from
- * ../../styles/components.css (ADR-019 component catalogue) -- this file adds only this screen's own
- * composites, quoted from the prototype's own inline styles on this exact block:
+ * Renewals screen (route `/renewals`) and the pieces it shares with Today -- design handoff
+ * "Renewal wizard", Modernist: flat, square, ink on ground, one red accent, flush left, full width.
+ * Shared classes (.btn, .tag, .seg, .attention-strip, .input, .hint) come from ../../styles; this file
+ * adds only this screen's composites, all under `.rn-*`. Text always wraps -- nothing is truncated.
  *
- *   <div style="display:flex;flex-wrap:wrap;flex:1;min-height:0;align-content:flex-start">
- *     <div style="padding:0 32px 32px;flex:1 1 480px;min-width:0">
- *       <sc-raw-table class="table" style="font-size:13px;font-variant-numeric:tabular-nums;table-layout:fixed">
- *         <th style="width:64px">Score</th> <th>Supplier · contract</th>
- *         <th style="text-align:right;width:15%">Renews in</th> <th style="text-align:right;width:15%">Notice in</th>
- *         <th style="width:18%">Status</th>
- *       <tr class="cg-row" style="background:{{ r.bg }}">
- *         <td style="border-left:3px solid {{ r.bar }};padding-left:10px"><span style="font-family:var(--font-heading);font-weight:800;font-size:18px;color:{{ r.scoreFg }}">{{ r.score }}</span></td>
- *         <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-weight:600">{{ r.supplier }}</span> <span style="color:var(--color-neutral-600)">· {{ r.name }}</span></td>
- *     <div style="border-left:2px solid var(--color-divider);padding:20px 24px;background:var(--color-surface);flex:1 1 300px;max-width:380px">
- *       <span class="card-kicker">Why it is here</span>
- *       <h3 style="margin:4px 0 2px">…</h3>
- *       <div style="font-size:12px;color:var(--color-neutral-600);margin-bottom:14px">{{ rsel.name }}</div>
- *       <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent);margin-bottom:4px">Recommended action</div>
- *       <div style="font-family:var(--font-heading);font-weight:800;font-size:18px;line-height:1.2">{{ rsel.action }}</div>
- *       <p style="font-size:12px;color:var(--color-neutral-600);margin:6px 0 16px">{{ rsel.rationale }}</p>
- *       <div style="padding:12px;border:1px solid var(--color-divider);font-size:13px">…</div>
+ * Colours and spacing are tokens (tokens.css). The two values the handoff names without a token --
+ * the white of a step card and the 15% ink rule -- are defined once on `.rn-screen`.
  */
 
-.renewal-screen {
+.rn-screen,
+.rn-today {
+  --rn-paper: #fff;
+  --rn-rule-soft: color-mix(in srgb, var(--color-text) 15%, transparent);
+  --rn-hover: color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
+.rn-screen {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
 }
 
-/* ---- Loading skeleton ------------------------------------------------------- */
-
-.renewal-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: 20px 32px 32px;
-}
-
-.renewal-skeleton-row {
-  height: 32px;
-}
-
-/* ---- KPI strip (the design system's attention strip: big number + label, each a filter) ---- */
-
-.renewal-kpis {
-  padding: 20px 32px 0;
-}
-
-.attention-strip.renewal-kpi-strip {
-  border-top-color: var(--color-text);
-}
-
-.attention-cell.renewal-kpi-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding: 12px 14px;
-  font: inherit;
-  color: inherit;
-}
-
-.attention-cell.renewal-kpi-cell:first-child {
-  padding-left: 0;
-}
-
-.attention-cell.renewal-kpi-cell:hover {
-  background: var(--color-neutral-200);
-}
-
-/* Pressed = the list is filtered by this cell: an ink underline, paired with aria-pressed. */
-.attention-cell.renewal-kpi-cell.is-active {
-  background: var(--color-surface);
-  box-shadow: inset 0 -3px 0 var(--color-text);
-}
-
-.attention-cell .attention-label.renewal-kpi-label {
-  order: -1;
-  margin-top: 0;
+.rn-small {
   font-size: 11px;
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
-}
-
-.attention-cell .attention-number.renewal-kpi-number {
-  font-size: 28px;
-  overflow-wrap: anywhere;
-}
-
-.renewal-kpi-meta {
-  font-size: 12px;
   color: var(--color-neutral-600);
 }
 
-/* ---- Toolbar: readiness .seg + search + status ------------------------------------- */
+.rn-label {
+  font-size: 10px;
+  letter-spacing: var(--tracking-table-header);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
 
-.renewal-toolbar {
+.rn-kicker {
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.rn-empty {
+  max-width: 60ch;
+  padding: var(--space-6) 0;
+  font-size: 13px;
+  color: var(--color-neutral-700);
+}
+
+/* ---- Header: title and count, the two switches ------------------------------------------- */
+
+.rn-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3) var(--space-4);
-  padding: 16px 32px var(--space-3);
+  padding: 14px var(--space-8) var(--space-3);
+  border-bottom: 2px solid var(--color-divider);
 }
 
-.readiness-filter-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.renewal-toolbar-filters {
+.rn-heading {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
+  align-items: baseline;
+  gap: var(--space-1) 14px;
 }
 
-.input.renewal-search {
-  width: 240px;
-  max-width: 100%;
-}
-
-.input.renewal-state-select {
-  width: auto;
-}
-
-.renewal-ask {
-  text-decoration: none;
-}
-
-/* Two header actions: on a narrow screen they wrap under the title instead of pushing the page sideways. */
-.renewal-screen > .screen-header {
-  flex-wrap: wrap;
-}
-
-.renewal-screen > .screen-header .screen-header-actions {
-  flex-wrap: wrap;
-}
-
-/* ---- Bulk bar ------------------------------------------------------------------------- */
-
-.renewal-bulk {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-4);
-  margin: 0 32px var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-text);
-  color: var(--color-bg);
-}
-
-.renewal-bulk-count {
-  font-size: 13px;
-}
-
-.renewal-bulk-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.renewal-bulk .btn.renewal-bulk-button {
-  padding: 4px 10px;
-  font-size: 12px;
-  color: var(--color-bg);
-  border-color: var(--color-bg);
-  background: transparent;
-  text-decoration: none;
-}
-
-.renewal-bulk .btn.renewal-bulk-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-bg) 15%, transparent);
-}
-
-.renewal-bulk .micro-meta,
-.renewal-bulk .hint {
+.rn-title {
   margin: 0;
-  color: var(--color-neutral-300);
+  font-size: 22px;
 }
 
-.renewal-readiness-empty {
-  padding: 20px 32px 32px;
-  max-width: 520px;
-}
-
-/* ---- List + pane ------------------------------------------------------------- */
-
-.renewal-screen-body {
-  display: flex;
-  flex-wrap: wrap;
-  flex: 1;
-  min-height: 0;
-  align-content: flex-start;
-  align-items: stretch;
-}
-
-.renewal-table-wrapper {
-  flex: 1 1 480px;
-  min-width: 0;
-  overflow-x: auto;
-  padding: 0 32px 32px;
-}
-
-.renewal-table {
-  min-width: 640px;
+.rn-headline {
   font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-
-.renewal-table th,
-.renewal-table td {
-  padding: var(--space-2);
-}
-
-.renewal-table th {
-  letter-spacing: var(--tracking-kicker);
-  white-space: nowrap;
-}
-
-.renewal-table th.renewal-table-numeric,
-.renewal-table td.renewal-table-numeric {
-  text-align: right;
-}
-
-.renewal-table .renewal-col-check {
-  width: 36px;
-}
-
-.renewal-table .renewal-col-score {
-  width: 64px;
-}
-
-.renewal-table .renewal-col-spend {
-  width: 13%;
-}
-
-.renewal-check {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--color-text);
-  cursor: pointer;
-}
-
-.renewal-table tr.row-checked {
-  background: var(--color-surface);
-}
-
-.renewal-cell-spend {
   color: var(--color-neutral-700);
 }
 
-.renewal-table .renewal-col-days {
-  width: 11%;
+.rn-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
 }
 
-.renewal-table .renewal-col-status {
-  width: 16%;
+.rn-controls .btn {
+  padding: 0 var(--space-1);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-/* Rows select the pane (markup.html `cg-row` + `r.select`); the Score cell's own <button> stays the
-   keyboard-operable control. */
-.renewal-table tbody tr.renewal-row {
+/* The segmented switches: one ink border, the selected option filled with ink. */
+.rn-screen .seg,
+.rn-today .seg {
+  border-width: 1px;
+}
+
+.rn-screen .seg > button,
+.rn-today .seg > button {
+  padding: 7px 14px;
+  border-right-width: 1px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.rn-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- KPI strip: every cell is a filter -------------------------------------------------------- */
+
+.rn-kpis {
+  padding: 10px var(--space-8) 0;
+}
+
+.attention-strip.rn-kpi-strip {
+  display: grid;
+  grid-auto-flow: row;
+  grid-auto-columns: auto;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  border-top: 2px solid var(--color-text);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.attention-cell.rn-kpi-cell {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: var(--space-2) 14px;
+  border: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.attention-cell.rn-kpi-cell:hover {
+  background: var(--rn-hover);
+}
+
+.attention-cell.rn-kpi-cell.is-active {
+  background: var(--color-surface);
+  box-shadow: inset 0 -3px 0 var(--color-text);
+}
+
+.attention-cell .attention-number.rn-kpi-number {
+  order: -1;
+  font-size: 22px;
+  letter-spacing: var(--tracking-display);
+}
+
+.attention-cell .attention-label.rn-kpi-label {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+}
+
+/* ---- Cases view: the cards, and the selected case beside them ------------------------------- */
+
+.rn-panes {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1;
+  align-content: flex-start;
+  min-height: 0;
+  margin-top: var(--space-2);
+  overflow: auto;
+}
+
+.rn-list {
+  flex: 1 1 260px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 var(--space-3) var(--space-8) 20px;
+}
+
+.rn-list-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 10px 0 var(--space-2);
+  border-bottom: 2px solid var(--color-text);
+  font-size: 10px;
+  letter-spacing: var(--tracking-table-header);
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.rn-cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rn-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) 10px var(--space-3) 14px;
+  border: 0;
+  border-bottom: 1px solid var(--color-divider);
+  background: transparent;
+  box-shadow: inset 3px 0 0 transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
   cursor: pointer;
 }
 
-.renewal-table tbody tr.renewal-row:hover {
+.rn-card:hover {
   background: var(--color-neutral-200);
 }
 
-/* `bg: sel ? neutral-200 : transparent`, `bar: sel ? accent : transparent` -- same inset-bar
-   mechanism as `.row-critical` so the column never shifts. */
-.renewal-table tr.row-selected {
+.rn-card.is-selected {
   background: var(--color-neutral-200);
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
-.renewal-cell-score {
-  padding-left: 10px;
+.rn-card-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
 }
 
-.renewal-score-select {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
+.rn-supplier {
   font-family: var(--font-heading);
+  font-size: 15px;
   font-weight: var(--weight-heading);
-  font-size: 18px;
   line-height: 1.2;
-  color: inherit;
 }
 
-/* `scoreFg: c.score>=80 ? accent-700 : inherit` -- paired with the number itself, never colour alone. */
-.renewal-score-select.is-urgent {
-  color: var(--color-accent-700);
-}
-
-.renewal-cell-contract {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.renewal-supplier {
-  font-weight: var(--weight-body-strong);
-}
-
-.renewal-contract-ref {
-  color: var(--color-neutral-600);
-}
-
-/* ---- "Why it is here" pane ---------------------------------------------------- */
-
-.renewal-pane {
-  flex: 1 1 320px;
-  max-width: 400px;
-  padding: 20px 24px;
-  background: var(--color-surface);
-  border-left: 2px solid var(--color-divider);
-}
-
-.renewal-pane-heading {
-  margin: var(--space-1) 0 2px;
-  font-size: 20px;
-}
-
-/* ---- Pane: key facts + priority breakdown --------------------------------------------- */
-
-.renewal-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0 0 var(--space-3);
-  border-top: 1px solid var(--color-divider);
-}
-
-.renewal-fact {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 10px 10px 0;
-  border-bottom: 1px solid var(--color-divider);
-}
-
-.renewal-fact:nth-child(even) {
-  padding-left: 12px;
-  border-left: 1px solid var(--color-divider);
-}
-
-.renewal-fact dt {
-  font-size: 10px;
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
-  color: var(--color-neutral-600);
-}
-
-.renewal-fact dd {
-  margin: 0;
-  font-family: var(--font-heading);
-  font-weight: var(--weight-heading);
-  font-size: 16px;
-  line-height: var(--leading-label);
-  font-variant-numeric: tabular-nums;
-}
-
-.renewal-score-details {
-  margin: 0 0 var(--space-4);
+.rn-short {
   font-size: 12px;
+  color: var(--color-neutral-600);
+  text-wrap: pretty;
 }
 
-.renewal-score-details summary {
-  cursor: pointer;
-  color: var(--color-neutral-700);
-}
-
-.renewal-score-parts {
+.rn-bars {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: var(--space-2);
+  gap: 3px;
+  margin-top: 2px;
 }
 
-.renewal-score-part-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.renewal-score-part-value {
-  font-weight: var(--weight-body-strong);
-  font-variant-numeric: tabular-nums;
-}
-
-.renewal-score-bar {
+.rn-bar {
+  display: inline-block;
+  width: 12px;
   height: 6px;
-  margin-top: 4px;
-  background: var(--color-neutral-200);
+  border: 1px solid var(--color-text);
 }
 
-.renewal-score-bar-fill {
-  height: 100%;
+.rn-bar.is-done {
   background: var(--color-text);
 }
 
-.renewal-score-bar-fill.is-accent {
+.rn-bar.is-now {
   background: var(--color-accent);
 }
 
-.renewal-pane-contract {
-  margin: 0 0 14px;
-  font-size: 12px;
+.rn-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: 2px;
+}
+
+.rn-card-meta .tag {
+  padding: 2px var(--space-2);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.rn-owner {
+  font-size: 11px;
   color: var(--color-neutral-600);
 }
 
-.renewal-pane-action-kicker {
-  margin: 0 0 var(--space-1);
+.rn-card-days {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+}
+
+.rn-days {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: var(--weight-heading);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.rn-days.is-urgent {
+  font-weight: var(--weight-heading);
+  color: var(--color-accent-700);
+}
+
+.rn-days-sub {
+  font-size: 10px;
+  color: var(--color-neutral-600);
+}
+
+.rn-panel {
+  flex: 3 1 520px;
+  min-width: 0;
+  padding: var(--space-4) var(--space-8) 40px;
+  border-left: 2px solid var(--color-divider);
+  background: var(--color-surface);
+}
+
+/* ---- The selected case: header, then not-started block or tabs ---------------------------- */
+
+.rn-case,
+.rn-notstarted {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rn-notstarted {
+  gap: 18px;
+  max-width: 760px;
+}
+
+.rn-case-status {
   font-size: 11px;
   letter-spacing: var(--tracking-kicker);
   text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+
+.rn-case-title {
+  margin: var(--space-1) 0;
+  font-size: 25px;
+  text-wrap: pretty;
+}
+
+.rn-case-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-neutral-700);
+}
+
+.rn-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.rn-ruled {
+  display: flex;
+  flex-wrap: wrap;
+  border-top: 2px solid var(--color-text);
+  border-bottom: 2px solid var(--color-text);
+}
+
+.rn-ruled-days {
+  flex: 0 1 200px;
+  margin-right: 20px;
+  padding: var(--space-4) 20px var(--space-4) 0;
+  border-right: 1px solid var(--color-divider);
+}
+
+.rn-ruled-why {
+  flex: 1 1 300px;
+  min-width: 0;
+  padding: var(--space-4) 0;
+  font-size: 13px;
+}
+
+.rn-ruled-why p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.rn-ruled-why p + p {
+  margin-top: 6px;
+  color: var(--color-neutral-700);
+}
+
+.rn-strong {
+  font-weight: var(--weight-body-strong);
+}
+
+.rn-big {
+  margin-top: 6px;
+  font-family: var(--font-heading);
+  font-size: 44px;
+  font-weight: var(--weight-heading);
+  line-height: 1;
+}
+
+.rn-big.is-urgent {
   color: var(--color-accent);
 }
 
-.renewal-pane-action {
-  margin: 0;
-  font-family: var(--font-heading);
-  font-weight: var(--weight-heading);
-  font-size: 18px;
-  line-height: 1.2;
-}
+/* ---- Pipeline view: a column per step -------------------------------------------------------- */
 
-.renewal-pane-rationale {
-  margin: 6px 0 16px;
-  font-size: 12px;
-  color: var(--color-neutral-600);
-}
-
-.renewal-pane-actions {
+.rn-pipeline {
   display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+}
+
+.rn-column {
+  display: flex;
+  flex: 0 0 190px;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  padding: var(--space-4) 14px;
+  border-right: 1px solid var(--color-divider);
 }
 
-.renewal-pane-actions .btn-block {
-  margin: 0;
-}
-
-.renewal-pane-acted {
-  padding: 12px;
-  border: 1px solid var(--color-divider);
-  font-size: 13px;
-}
-
-.renewal-pane-inline-link {
-  font-size: 12px;
-  padding: 0 var(--space-1);
-}
-
-.renewal-pane-acted-next {
-  display: block;
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--color-neutral-600);
-}
-
-/* ---- Pane: "What you can do from here" (the action registry, renewalActions.ts) -------------- */
-
-.renewal-launcher {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-divider);
-}
-
-.renewal-launcher .card-kicker {
-  margin: 0;
-}
-
-.renewal-launcher-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.renewal-launcher-title {
-  margin: 0;
-  font-size: 11px;
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
-  color: var(--color-neutral-600);
-}
-
-.renewal-launcher-group.is-ask .renewal-launcher-title {
-  color: var(--color-accent-700);
-}
-
-.renewal-launcher-note {
-  margin: 0;
-  font-size: 11px;
-  color: var(--color-neutral-600);
-}
-
-.renewal-launcher-list,
-.renewal-launcher-chips {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.renewal-launcher-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.renewal-launcher-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "label arrow"
-    "hint arrow";
-  column-gap: var(--space-2);
-  padding: 7px var(--space-2);
-  margin: 0 calc(-1 * var(--space-2));
-  color: inherit;
-  text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
-}
-
-.renewal-launcher-item:hover,
-.renewal-launcher-item:focus-visible {
-  background: var(--color-neutral-200);
-}
-
-.renewal-launcher-label {
-  grid-area: label;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: var(--weight-body-strong);
-}
-
-.renewal-launcher-hint {
-  grid-area: hint;
-  font-size: 12px;
-  color: var(--color-neutral-600);
-}
-
-.renewal-launcher-arrow {
-  grid-area: arrow;
-  align-self: center;
-  color: var(--color-neutral-600);
-}
-
-.renewal-launcher-item:hover .renewal-launcher-arrow {
-  color: var(--color-accent-700);
-}
-
-.renewal-launcher-group.is-soon .renewal-launcher-label {
-  font-weight: var(--weight-body);
-}
-
-.tag.renewal-launcher-soon {
-  padding: 1px 6px;
-  font-size: 10px;
-}
-
-.renewal-launcher-chip {
-  display: inline-block;
-  padding: 4px 10px;
-  border: 1px solid var(--color-divider);
-  font-size: 12px;
-  font-weight: var(--weight-body-strong);
-  color: inherit;
-  text-decoration: none;
-}
-
-.renewal-launcher-chip:hover,
-.renewal-launcher-chip:focus-visible {
-  border-color: var(--color-text);
-  background: var(--color-neutral-200);
-}
-
-.renewal-pane-facts-link {
-  margin-top: 14px;
-  padding: 0;
-  font-size: 12px;
-}
-
-/* ---- Negotiation TODO sub-surface (task E29/F04/US01/T01, wave w19 NW-85: Mark-done
-   `.btn-secondary`, Open/Done tags). A stacked list rather than the ruling's `.table`: the pane is
-   380px wide and every cell holds a sentence, so a five-column table wrapped to one word per line.
-   Each point: topic 13px strong + tag · Current / Target / Why as 10px uppercase labels in a 56px
-   gutter beside 12px text (Why neutral-600) · 1px divider between points. ------------------------ */
-
-.renewal-pane-todos {
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-divider);
-}
-
-.renewal-todos {
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.renewal-todo {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-divider);
-}
-
-.renewal-todo:first-child {
-  padding-top: 4px;
-}
-
-.renewal-todo-head {
+.rn-column-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--color-text);
 }
 
-.renewal-todo-topic {
-  min-width: 0;
+.rn-column-title {
+  font-family: var(--font-heading);
   font-size: 13px;
-  font-weight: var(--weight-body-strong);
-  text-wrap: pretty;
+  font-weight: var(--weight-heading);
 }
 
-.renewal-todo-head .tag {
-  flex: none;
+.rn-pipe-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 10px var(--space-3);
+  border: 1px solid var(--color-divider);
+  background: var(--rn-paper);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.renewal-todo-facts {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 6px 10px;
-  margin: 0;
+.rn-pipe-card:hover {
+  background: var(--color-neutral-200);
+}
+
+.rn-supplier-sm {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: var(--weight-heading);
+}
+
+.rn-pipe-days {
   font-size: 12px;
+  font-weight: 700;
 }
 
-.renewal-todo-facts dt {
-  padding-top: 2px;
+.rn-pipe-days.is-urgent {
+  color: var(--color-accent-700);
+}
+
+/* ---- Action queue: Renewals' view and Today's rows ------------------------------------------------ */
+
+.rn-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 1120px;
+  padding: var(--space-2) var(--space-8) 48px;
+}
+
+.rn-qgroup {
+  margin-top: var(--space-4);
+}
+
+.rn-qgroup-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid var(--color-text);
+  font-size: 14px;
+}
+
+.rn-qlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rn-qrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 20px;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.rn-qdays {
+  flex: 0 0 112px;
+}
+
+.rn-qdays-n {
+  font-family: var(--font-heading);
+  font-size: 30px;
+  font-weight: var(--weight-heading);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.rn-qdays-n.is-urgent {
+  color: var(--color-accent);
+}
+
+.rn-qdays .rn-small {
+  margin-top: var(--space-1);
   font-size: 10px;
-  letter-spacing: var(--tracking-kicker);
-  text-transform: uppercase;
-  color: var(--color-neutral-600);
+  line-height: 1.3;
 }
 
-.renewal-todo-facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
+.rn-qbody {
+  flex: 1 1 300px;
+  min-width: 0;
+}
+
+.rn-qtitle {
+  margin: var(--space-1) 0 0;
+  font-size: 17px;
+  line-height: 1.25;
   text-wrap: pretty;
 }
 
-.renewal-todo-facts .renewal-todo-why {
-  color: var(--color-neutral-600);
+.rn-qwhy {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--color-neutral-700);
+  text-wrap: pretty;
 }
 
-.btn.renewal-todo-done {
-  margin-top: 10px;
+.rn-qmeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.rn-qmeta .tag {
+  padding: 2px var(--space-2);
+  font-size: 10px;
+}
+
+.rn-stalled {
+  font-size: 11px;
+  font-weight: var(--weight-body-strong);
+  color: var(--color-accent-700);
+}
+
+.rn-qactions {
+  display: flex;
+  flex: 0 1 220px;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.rn-qactions .btn {
+  font-size: 13px;
+}
+
+.rn-qactions .btn-secondary {
   font-size: 12px;
 }
 
-@media (max-width: 1100px) {
-  .attention-strip.renewal-kpi-strip {
-    grid-auto-flow: row;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .attention-cell.renewal-kpi-cell,
-  .attention-cell.renewal-kpi-cell:first-child {
-    padding-left: 12px;
-    border-bottom: 1px solid var(--color-divider);
-  }
+.rn-qquiet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
 }
 
-@media (max-width: 900px) {
-  .renewal-kpis,
-  .renewal-toolbar {
-    padding-left: 16px;
-    padding-right: 16px;
+.rn-qquiet .btn {
+  padding: 0;
+  font-size: 12px;
+}
+
+.rn-qquiet .rn-quiet {
+  color: var(--color-neutral-600);
+}
+
+@media (max-width: 640px) {
+  .rn-header,
+  .rn-kpis,
+  .rn-queue {
+    padding-inline: var(--space-4);
   }
 
-  .renewal-bulk {
-    margin-left: 16px;
-    margin-right: 16px;
-  }
-
-  .attention-strip.renewal-kpi-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .renewal-table-wrapper {
-    padding-right: 0;
-  }
-
-  .renewal-pane {
-    max-width: none;
+  .rn-panel {
+    padding: var(--space-4);
     border-left: 0;
     border-top: 2px solid var(--color-divider);
+  }
+
+  .rn-list {
+    padding-left: var(--space-4);
   }
 }

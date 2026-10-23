@@ -11,6 +11,7 @@ import type { ApiClient } from "../../api/client";
 import { DocumentViewerProvider } from "../../routes/documents/viewer/DocumentViewerOverlay";
 import { AskSessionsProvider } from "../../routes/ask/AskSessionsContext";
 import AskReplyNotifier from "../../routes/ask/AskReplyNotifier";
+import { I18nProvider } from "../../i18n/I18nProvider";
 import "./shell.css";
 
 export { isAskRoute } from "./isAskRoute";
@@ -75,36 +76,38 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
 
 
   return (
-    <DocumentViewerProvider apiClient={apiClient}>
-      {/* Parallel Ask sessions (`routes/ask/askSessions.ts`): one store for the rail, the Ask screen
-          and the "reply ready" notices, so a chat keeps answering while the user is elsewhere. */}
-      <AskSessionsProvider>
-        {/* The rail is resizable (RailResizeHandle): its width is this one custom property. */}
-        <div className="shell-layout" style={{ "--shell-rail-width": `${railWidth.width}px` } as CSSProperties}>
-          <RailNav
-            workspaceName={workspaceName}
-            role={role}
-            userLabel={userLabel}
-            onSignOut={onSignOut}
-            kbReady={kbReady}
-            validatedContractCount={count}
-            documentCounts={documentCounts}
-            apiClient={apiClient}
-          />
-          <RailResizeHandle {...railWidth} />
-          <main className="shell-main">
-            {/* No global Ask bar: every screen already offers its own "Ask Raffa" action, and /ask
-                has its own composer. */}
-            <div className="shell-content">
-              {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
-                  validated-count verdict the rail and the Ask bar already render, plus the same document
-                  counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
-              <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
-            </div>
-          </main>
-        </div>
-        <AskReplyNotifier />
-      </AskSessionsProvider>
-    </DocumentViewerProvider>
+    <I18nProvider>
+      <DocumentViewerProvider apiClient={apiClient}>
+        {/* Parallel Ask sessions (`routes/ask/askSessions.ts`): one store for the rail, the Ask screen
+            and the "reply ready" notices, so a chat keeps answering while the user is elsewhere. */}
+        <AskSessionsProvider>
+          {/* The rail is resizable (RailResizeHandle): its width is this one custom property. */}
+          <div className="shell-layout" style={{ "--shell-rail-width": `${railWidth.width}px` } as CSSProperties}>
+            <RailNav
+              workspaceName={workspaceName}
+              role={role}
+              userLabel={userLabel}
+              onSignOut={onSignOut}
+              kbReady={kbReady}
+              validatedContractCount={count}
+              documentCounts={documentCounts}
+              apiClient={apiClient}
+            />
+            <RailResizeHandle {...railWidth} />
+            <main className="shell-main">
+              {/* No global Ask bar: every screen already offers its own "Ask Raffa" action, and /ask
+                  has its own composer. */}
+              <div className="shell-content">
+                {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
+                    validated-count verdict the rail and the Ask bar already render, plus the same document
+                    counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
+                <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
+              </div>
+            </main>
+          </div>
+          <AskReplyNotifier />
+        </AskSessionsProvider>
+      </DocumentViewerProvider>
+    </I18nProvider>
   );
 }

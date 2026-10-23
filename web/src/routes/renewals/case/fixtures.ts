@@ -12,10 +12,12 @@ export const DEMO_TODAY = "08 Sep 2026";
 export const DEMO_COMPANY = "Helvetia Foods AG";
 export const DEMO_APPROVER = "Luca Lamalfa";
 export const DEMO_OWNER = "Marta Keller";
+/** Everyone the demo tenant has; the Team tab and `?as=` draw from here. */
+export const DEMO_PEOPLE: readonly string[] = [DEMO_APPROVER, DEMO_OWNER];
 
 export const DEMO_CONTRACTS: Record<string, { facts: ContractFacts; detail: ContractDetail }> = {
   "1": {
-    facts: { supplier: "Salesforce", name: "Sales Cloud Enterprise — MSA + Order Form", file: "Salesforce_MSA_2024.pdf", spend: 640000, start: "01 Mar 2024", end: "15 Jan 2027", cancel: "18 Oct 2026", cancelDays: 40, notice: 90, uplift: "7%" },
+    facts: { supplier: "Salesforce", name: "Sales Cloud Enterprise — MSA + Order Form", file: "Salesforce_MSA_2024.pdf", spend: 640000, start: "01 Mar 2024", end: "15 Jan 2027", cancel: "18 Oct 2026", cancelDays: 40, notice: 90, uplift: "7%", autoRenews: true, rationale: "The notice window closes in 40 days and the 7% uplift clause compounds at renewal. Both facts are validated and cited." },
     detail: {
       products: [
         { name: "Sales Cloud Enterprise", unit: "user / month", qty: 300, price: 156 },
@@ -49,7 +51,7 @@ export const DEMO_CONTRACTS: Record<string, { facts: ContractFacts; detail: Cont
     },
   },
   "2": {
-    facts: { supplier: "Microsoft", name: "Enterprise Agreement · M365 E5", file: "Microsoft_EA_Enrollment.pdf", spend: 1200000, start: "01 Jul 2024", end: "30 Jun 2027", cancel: "31 Mar 2027", cancelDays: 204, notice: 90, uplift: "5%" },
+    facts: { supplier: "Microsoft", name: "Enterprise Agreement · M365 E5", file: "Microsoft_EA_Enrollment.pdf", spend: 1200000, start: "01 Jul 2024", end: "30 Jun 2027", cancel: "31 Mar 2027", cancelDays: 204, notice: 90, uplift: "5%", autoRenews: true, rationale: "Notice is due by 31 Mar 2027 and the true-up locks counts for 12 months. Usage data is not in the contract — add it to size the licence mix." },
     detail: {
       products: [
         { name: "Microsoft 365 E5", unit: "user / month", qty: 1200, price: 52 },
@@ -78,7 +80,7 @@ export const DEMO_CONTRACTS: Record<string, { facts: ContractFacts; detail: Cont
     },
   },
   "3": {
-    facts: { supplier: "AWS", name: "Enterprise Discount Program", file: "AWS_EDP_Amendment_3.pdf", spend: 2400000, start: "01 Sep 2024", end: "31 Aug 2027", cancel: "01 Jun 2027", cancelDays: 266, notice: 90, uplift: "0%" },
+    facts: { supplier: "AWS", name: "Enterprise Discount Program", file: "AWS_EDP_Amendment_3.pdf", spend: 2400000, start: "01 Sep 2024", end: "31 Aug 2027", cancel: "01 Jun 2027", cancelDays: 266, notice: 90, uplift: "0%", autoRenews: false, rationale: "No auto-renewal: the contract ends on 31 Aug 2027 unless you renegotiate. Start before the 01 Jun 2027 window." },
     detail: {
       products: [
         { name: "EC2 + RDS committed usage", unit: "commit / year", qty: 1, price: 1800000 },
@@ -105,7 +107,7 @@ export const DEMO_CONTRACTS: Record<string, { facts: ContractFacts; detail: Cont
     },
   },
   "4": {
-    facts: { supplier: "DocuSign", name: "eSignature Business Pro", file: "DocuSign_OrderForm.pdf", spend: 58000, start: "01 Nov 2023", end: "31 Oct 2026", cancel: "02 Oct 2026", cancelDays: 24, notice: 30, uplift: "8%" },
+    facts: { supplier: "DocuSign", name: "eSignature Business Pro", file: "DocuSign_OrderForm.pdf", spend: 58000, start: "01 Nov 2023", end: "31 Oct 2026", cancel: "02 Oct 2026", cancelDays: 24, notice: 30, uplift: "8%", autoRenews: true, rationale: "The notice window closes in 24 days. Decide whether to renegotiate, give notice or replace." },
     detail: {
       products: [
         { name: "eSignature Business Pro", unit: "seat / month", qty: 60, price: 48 },

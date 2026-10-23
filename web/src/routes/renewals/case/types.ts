@@ -58,6 +58,10 @@ export interface ContractFacts {
   cancelDays: number;
   notice: number;
   uplift: string;
+  /** Renews by itself for a term if nobody gives notice. */
+  autoRenews: boolean;
+  /** Why this contract needs attention now -- shown while it has no renewal case yet. */
+  rationale: string;
 }
 
 export interface ContractDetail {
@@ -615,7 +619,9 @@ export type TodoKind =
   | "fields"
   | "notice"
   | "nout"
-  | "alt";
+  | "alt"
+  /** Raised by the portfolio, not the engine: a notice deadline running with no case started. */
+  | "unassigned";
 
 export interface TodoItem {
   kind: TodoKind;

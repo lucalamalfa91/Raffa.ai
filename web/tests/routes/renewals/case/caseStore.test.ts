@@ -110,6 +110,42 @@ describe("case store", () => {
   });
 });
 
+describe("case store: the person's own queue", () => {
+  const make = (storage = memoryStorage()) => createCaseStore({ storage, seed: seedDemoCases, effects: fakeEffects().effects });
+
+  it("snoozes and finishes items, and brings a snoozed one back", () => {
+    const store = make();
+    store.snooze("4:approve:x", "11 Sep 2026");
+    store.dismiss("1:unassigned");
+    expect(store.getState().queue).toEqual({ snoozed: { "4:approve:x": "11 Sep 2026" }, dismissed: { "1:unassigned": true } });
+    store.unsnooze("4:approve:x");
+    expect(store.getState().queue.snoozed).toEqual({});
+  });
+
+  it("snoozing an item that was marked done brings it back to snoozed, not done", () => {
+    const store = make();
+    store.dismiss("a");
+    store.snooze("a", "11 Sep 2026");
+    expect(store.getState().queue).toEqual({ snoozed: { a: "11 Sep 2026" }, dismissed: {} });
+  });
+
+  it("keeps the queue across a reload, and reset clears it", () => {
+    const storage = memoryStorage();
+    make(storage).dismiss("1:unassigned");
+    const reloaded = make(storage);
+    expect(reloaded.getState().queue.dismissed).toEqual({ "1:unassigned": true });
+    reloaded.reset();
+    expect(reloaded.getState().queue).toEqual({ snoozed: {}, dismissed: {} });
+  });
+
+  it("changing a case does not touch the queue state", () => {
+    const store = make();
+    store.dismiss("x");
+    store.act("2", "toggle", { k: "r0" }, demoContext("2", M));
+    expect(store.getState().queue.dismissed).toEqual({ x: true });
+  });
+});
+
 describe("case store persistence", () => {
   it("persists every change and restores it in a new store", () => {
     const storage = memoryStorage();

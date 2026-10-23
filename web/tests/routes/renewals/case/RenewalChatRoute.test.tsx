@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { I18nProvider } from "../../../../src/i18n/I18nProvider";
 import RenewalChatRoute from "../../../../src/routes/renewals/case/RenewalChatRoute";
 import { getCaseStore } from "../../../../src/routes/renewals/case/useCaseStore";
 
@@ -13,10 +14,12 @@ function Where() {
 function renderAt(path: string, userLabel = "someone@example.test") {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/renewals/:contractId/chat" element={<RenewalChatRoute userLabel={userLabel} />} />
-        <Route path="*" element={<Where />} />
-      </Routes>
+      <I18nProvider>
+        <Routes>
+          <Route path="/renewals/:contractId/chat" element={<RenewalChatRoute userLabel={userLabel} />} />
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </I18nProvider>
     </MemoryRouter>,
   );
 }
@@ -24,6 +27,7 @@ function renderAt(path: string, userLabel = "someone@example.test") {
 describe("RenewalChatRoute", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
     getCaseStore().reset();
   });
 
@@ -58,6 +62,11 @@ describe("RenewalChatRoute", () => {
     const { unmount } = renderAt("/renewals/4/chat?lang=it");
     expect(screen.getByRole("heading", { level: 2, name: /Rinnovo · DocuSign/ })).toBeInTheDocument();
     unmount();
+    // The choice is remembered, so a plain visit stays Italian until English is asked for.
+    renderAt("/renewals/4/chat");
+    expect(screen.getByRole("heading", { level: 2, name: /Rinnovo · DocuSign/ })).toBeInTheDocument();
+    unmount();
+    window.localStorage.clear();
     renderAt("/renewals/4/chat");
     expect(screen.getByRole("heading", { level: 2, name: /Renewal · DocuSign/ })).toBeInTheDocument();
   });
@@ -67,7 +76,7 @@ describe("RenewalChatRoute", () => {
     renderAt("/renewals/4/chat");
     await user.click(screen.getByRole("button", { name: "Approve" }));
     expect(getCaseStore().getState().cases["4"]?.emails[1]?.state).toBe("approved");
-    expect(JSON.parse(window.localStorage.getItem("raffa.renewalCases.v1") ?? "{}").cases["4"].emails[1].state).toBe("approved");
+    expect(JSON.parse(window.localStorage.getItem("raffa.renewalCases.v2") ?? "{}").cases["4"].emails[1].state).toBe("approved");
   });
 
   it("an unknown contract says so and links back to Renewals", () => {

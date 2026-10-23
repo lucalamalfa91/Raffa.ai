@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import RenewalChat, { type ChatTarget } from "./chat/RenewalChat";
 import { translator } from "./chat/chatCopy";
+import { useI18n } from "../../../i18n/I18nProvider";
+import { rememberedViewer } from "./demoSession";
 import { DEMO_APPROVER, DEMO_CONTRACTS, DEMO_OWNER, demoContext } from "./fixtures";
 import { view } from "./engine";
-import type { Lang } from "./text";
 import type { ActPayload, ActionType } from "./types";
 import { getCaseStore, useCaseStore } from "./useCaseStore";
 import { resolveViewer } from "./viewer";
@@ -19,21 +20,21 @@ export interface RenewalChatRouteProps {
  *
  * Case data is the demo tenant's until the backend owns renewal cases (see `caseStore.ts`):
  * contract facts come from `fixtures.ts`, the case itself from the local store. `?as=` picks a demo
- * person and `?lang=it` previews Italian; both go away when accounts and the app's i18n are wired.
+ * demo person (remembered for the tab); the language comes from the app's i18n (`?lang=it`).
  */
 export default function RenewalChatRoute({ userLabel }: RenewalChatRouteProps) {
   const { contractId = "" } = useParams();
-  const [search] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const store = getCaseStore();
   const { cases } = useCaseStore(store);
 
-  const lang: Lang = search.get("lang") === "it" ? "it" : "en";
+  const { lang } = useI18n();
   const known = contractId in DEMO_CONTRACTS;
   const existing = cases[contractId];
   const viewer = resolveViewer({
     userLabel,
-    as: search.get("as"),
+    as: rememberedViewer(location.search),
     members: existing?.members ?? [DEMO_APPROVER, DEMO_OWNER],
     approver: existing?.approver ?? DEMO_APPROVER,
   });

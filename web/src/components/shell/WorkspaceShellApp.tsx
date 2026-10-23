@@ -87,7 +87,7 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
         <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} userLabel={userLabel} />} />
         <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
-        <Route path="renewals" element={<RenewalsRoute apiClient={apiClient} userLabel={userLabel} />} />
+        <Route path="renewals" element={<RenewalsRoute userLabel={userLabel} />} />
         <Route path="renewals/:contractId/chat" element={<RenewalChatRoute userLabel={userLabel} />} />
         <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
