@@ -51,6 +51,7 @@
 // server-side; this is the client half, that it stops being *sent* at all.
 import type { paths } from "./generated/schema";
 import { createCoalescingFetch, type CoalescingFetch } from "./coalescingFetch";
+import type { CaseActionPayload, CaseCallResult, CaseEnvelope, RenewalsBoard, TodayFeed } from "./renewalCases";
 
 /** See this file's own header comment ("Task E18/F01/US02/T01", NW-05). Returns a bearer access
  * token scoped to `appConfig.oidcApiScopes` (acquired via `acquireTokenSilent`, falling back to
@@ -1893,6 +1894,22 @@ export interface ApiClient {
   clearSavingsGoal?(tenantId: string): Promise<ApiCallResult<null>>;
   /** `GET /api/savings/goals/active/progress` -- "Verso il tuo obiettivo"; 404 when no goal. */
   getSavingsGoalProgress?(tenantId: string): Promise<ApiCallResult<SavingsGoalProgressBody>>;
+  // AskRaffa 4.0 slices 2+3 (backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs): Oggi, Rinnovi,
+  // Pratica. Never throw; an error result keeps the current case the server returned with it (409 stale
+  // version / duplicate reply, 403 no right) so the screen re-renders from it. Optional on the
+  // interface so the existing test doubles of `ApiClient` stay valid; `createApiClient` has them all.
+  /** `GET /api/today` -- the caller's items, what waits on others, snoozed, next deadline. */
+  getToday?(tenantId: string): Promise<CaseCallResult<TodayFeed>>;
+  /** `POST|DELETE /api/today/{key}/snooze` (3 days) -- returns the feed. */
+  snoozeTodayItem?(tenantId: string, key: string, on: boolean): Promise<CaseCallResult<TodayFeed>>;
+  /** `GET /api/renewals?view=v4` -- the Renewals board. */
+  getRenewalsBoard?(tenantId: string): Promise<CaseCallResult<RenewalsBoard>>;
+  /** `GET /api/renewals/{caseId}` (`visit` records the caller's last visit). */
+  getRenewalCase?(tenantId: string, caseId: string, visit?: boolean): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `POST /api/renewals/{caseId}/actions` -- one engine action at `version`. */
+  postRenewalCaseAction?(tenantId: string, caseId: string, type: string, payload: CaseActionPayload | null, version: number | null): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `POST /api/renewals/{caseId}/ask` -- the case composer (sourced answer, then back to the step). */
+  askRenewalCase?(tenantId: string, caseId: string, text: string, version: number | null, lang?: string): Promise<CaseCallResult<CaseEnvelope>>;
 }
 
 
@@ -4183,6 +4200,32 @@ export function createApiClient(
       return callJson<SavingsGoalProgressBody>(new URL("/api/savings/goals/active/progress", baseUrl), { method: "GET", tenantId });
     },
 
+
+    getToday(tenantId) {
+      return caseCall<TodayFeed>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", "/api/today");
+    },
+
+    snoozeTodayItem(tenantId, key, on) {
+      return caseCall<TodayFeed>(apiFetch, baseUrl, getAccessToken, tenantId, on ? "POST" : "DELETE", `/api/today/${encodeURIComponent(key)}/snooze`);
+    },
+
+    getRenewalsBoard(tenantId) {
+      return caseCall<RenewalsBoard>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", "/api/renewals?view=v4");
+    },
+
+
+    getRenewalCase(tenantId, caseId, visit) {
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", `/api/renewals/${encodeURIComponent(caseId)}${visit ? "?visit=true" : ""}`);
+    },
+
+    postRenewalCaseAction(tenantId, caseId, type, payload, version) {
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/actions`, { type, payload, version });
+    },
+
+    askRenewalCase(tenantId, caseId, text, version, lang) {
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/ask`, { text, version, lang: lang ?? null });
+    },
+
   };
   askOfferTransports.set(client, transport);
   return client;
@@ -4476,12 +4519,60 @@ export function askOfferApi(client: object): AskOfferApi {
     decideQuote: (tenantId, quoteId, status, lang) =>
       call("POST", `/api/quotes/${seg(quoteId)}/decision?lang=${lang}`, tenantId, { status }),
     counterProposal: (tenantId, quoteId) => call("POST", `/api/quotes/${seg(quoteId)}/counter-proposal`, tenantId, {}),
-    listOpenCases: (tenantId) => call("GET", "/api/renewals", tenantId, undefined, readOpenCases),
+    listOpenCases: (tenantId) => call("GET", "/api/renewals?view=v4", tenantId, undefined, readOpenCases),
     openRenewalCase: (tenantId, contractId) =>
       call("POST", "/api/renewals", tenantId, { contractId, branch: "renew" }, (raw) => {
         const r = (raw ?? {}) as Record<string, unknown>;
         const nested = (r.case ?? {}) as Record<string, unknown>;
         return { caseId: String(pickField(r, "caseId", "id") ?? pickField(nested, "caseId", "id") ?? "") };
       }),
+  };
+}
+
+/** The one fetch path of the AskRaffa 4.0 case calls: JSON in/out, `X-Tenant-Id`, never throws. */
+async function caseCall<T>(
+  apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  baseUrl: string,
+  getAccessToken: GetAccessToken,
+  tenantId: string,
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<CaseCallResult<T>> {
+  let response: Response;
+  try {
+    response = await apiFetch(new URL(path, baseUrl), {
+      method,
+      headers: {
+        "X-Tenant-Id": tenantId,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...await authHeaders(getAccessToken),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      cache: "no-store",
+    });
+  } catch (cause) {
+    return { ok: false, statusCode: null, body: null, code: null, current: null, error: `Unable to reach ${baseUrl}${path}. Cause: ${cause instanceof Error ? cause.message : String(cause)}` };
+  }
+
+  let parsed: unknown = null;
+  try {
+    parsed = await response.json();
+  } catch {
+    parsed = null;
+  }
+
+  if (response.ok) {
+    return { ok: true, statusCode: response.status, body: parsed as T, error: null };
+  }
+
+  const err = (parsed && typeof parsed === "object" ? parsed : {}) as { code?: string; error?: string; current?: CaseEnvelope | null };
+  return {
+    ok: false,
+    statusCode: response.status,
+    body: null,
+    code: err.code ?? null,
+    current: err.current ?? null,
+    error: err.error ?? `Request failed with HTTP ${response.status} ${response.statusText}.`,
   };
 }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ShellRoutes } from "../../../src/components/shell/WorkspaceShellApp";
 import type { WorkspaceRole } from "../../../src/components/shell/navItems";
@@ -334,24 +334,21 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/renewals");
 
-    // The Renewals screen (cards, KPI strip, case panel) is mounted -- not the scaffold. Its own
-    // behaviour is covered in depth by tests/routes/renewals/*.test.tsx.
+    // The AskRaffa 4.0 Rinnovi board is mounted -- not the scaffold.
     expect(await screen.findByRole("heading", { level: 2, name: "Renewals" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Renewal KPIs" })).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-08\/feature-01-renewal-pipeline-ui/i)).not.toBeInTheDocument();
   });
 
-  it("mounts the renewal wizard chat at /renewals/:contractId/chat", async () => {
+  it("mounts the guided case (Pratica) at /renewals/:caseId", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
-    renderShell("admin", "/renewals/4/chat");
+    renderShell("admin", "/renewals/00000000-0000-0000-0000-000000000004");
 
-    // The wizard's own header (not the Renewals list): case title and the seven-step stepper.
-    expect(await screen.findByRole("heading", { name: /Renewal · DocuSign/ })).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Renewal steps" })).toBeInTheDocument();
+    // The case screen (not the Renewals list) is mounted; it loads its view from the API.
+    await waitFor(() => expect(document.querySelector('[data-screen-label="Pratica"]')).not.toBeNull());
   });
 
   it("renders Risultati at /savings (AskRaffa 4.0 slice 5)", async () => {

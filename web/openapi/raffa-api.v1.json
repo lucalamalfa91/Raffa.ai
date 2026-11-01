@@ -3399,6 +3399,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "'v4' returns the AskRaffa 4.0 Renewals board instead: {viewer, groups[{key,label,items[RenewalsRow]}], openCases, toStart, empty, assignee} (RenewalCasesEndpointExtensions.BoardAsync)."
           }
         ],
         "responses": {
@@ -3788,8 +3797,8 @@
       },
       "post": {
         "operationId": "openRenewalCase",
-        "summary": "Open (idempotently) the renewal case of a contract.",
-        "description": "AskRaffa 4.0: opening a case twice for one contract returns the same case. Implemented by the Renewals slice (renewal_case).",
+        "summary": "Idempotently opens the renewal case of a contract (returns the open one when it exists).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
         "parameters": [
           {
             "name": "X-Tenant-Id",
@@ -3801,6 +3810,56 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "The case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}.",
+                  "required": [
+                    "caseId"
+                  ],
+                  "properties": {
+                    "caseId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
         "requestBody": {
           "required": true,
           "content": {
@@ -3819,47 +3878,19 @@
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "description": "renew | notice"
                   },
                   "ownerUserId": {
                     "type": [
                       "string",
                       "null"
-                    ]
+                    ],
+                    "format": "uuid"
                   }
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The case.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "caseId"
-                  ],
-                  "properties": {
-                    "caseId": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Malformed id or missing X-Tenant-Id."
-          },
-          "401": {
-            "description": "No validated caller identity."
-          },
-          "404": {
-            "description": "Unknown id, or the caller is not a member of the tenant."
           }
         }
       }
@@ -10914,6 +10945,1870 @@
                         }
                       }
                     }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}": {
+      "get": {
+        "operationId": "getRenewalCase",
+        "summary": "The case view, the caller's capabilities and the version.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "visit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/actions": {
+      "post": {
+        "operationId": "postRenewalCaseAction",
+        "summary": "Runs one case action (the engine's RC.act) under optimistic concurrency.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the right (approve/close: approver or explicit delegate only). Nothing saved; current.view.hdr.warn says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/ask": {
+      "post": {
+        "operationId": "askRenewalCase",
+        "summary": "Case composer: a free question answered with its source, then back to the pending step; commands routed to the step.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/timeline": {
+      "get": {
+        "operationId": "getRenewalCaseTimeline",
+        "summary": "Append-only case events.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "{id, at, actor, type, emailIndex}"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/emails/{eid}": {
+      "patch": {
+        "operationId": "patchRenewalCaseEmail",
+        "summary": "Edit recipient/body; an edit after approval makes a new draft version and invalidates the approval.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "body": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "version": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/emails/{eid}/submit": {
+      "post": {
+        "operationId": "submitRenewalCaseEmail",
+        "summary": "Send for approval (needs a recipient).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the right (approve/close: approver or explicit delegate only). Nothing saved; current.view.hdr.warn says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/emails/{eid}/approve": {
+      "post": {
+        "operationId": "approveRenewalCaseEmail",
+        "summary": "Approve this exact version (approver or delegate only).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the right (approve/close: approver or explicit delegate only). Nothing saved; current.view.hdr.warn says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/emails/{eid}/copy": {
+      "post": {
+        "operationId": "copyRenewalCaseEmail",
+        "summary": "Copy for your mailbox: state copied, never sent; clip holds the text.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/emails/{eid}/sent": {
+      "post": {
+        "operationId": "confirmRenewalCaseEmailSent",
+        "summary": "The user confirms the send; sentBody records a text that differs from the approved one.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "eid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the right (approve/close: approver or explicit delegate only). Nothing saved; current.view.hdr.warn says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sentBody": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/delegations/{userId}": {
+      "put": {
+        "operationId": "putRenewalCaseDelegation",
+        "summary": "Grant approve (and optionally close) rights on this case (approver only).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the right (approve/close: approver or explicit delegate only). Nothing saved; current.view.hdr.warn says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "canClose": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRenewalCaseDelegation",
+        "summary": "Revoke the delegation (approver only).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the right (approve/close: approver or explicit delegate only). Nothing saved; current.view.hdr.warn says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/transfer": {
+      "post": {
+        "operationId": "transferRenewalCase",
+        "summary": "Reassign the owner (approver only).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the right (approve/close: approver or explicit delegate only). Nothing saved; current.view.hdr.warn says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ownerUserId"
+                ],
+                "properties": {
+                  "ownerUserId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/close": {
+      "post": {
+        "operationId": "closeRenewalCase",
+        "summary": "Runs the step that closes the case now (signed contract confirmed, fields validated, notice outcome) - approver or a delegate with closing rights.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller lacks the right (approve/close: approver or explicit delegate only). Nothing saved; current.view.hdr.warn says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/renewals/{caseId}/vendor-messages": {
+      "post": {
+        "operationId": "postRenewalCaseVendorMessage",
+        "summary": "Paste a supplier reply (analysed; the same text twice is refused with 409 duplicate_reply).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The updated case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseEnvelope: {caseId, contractId, version, view (the engine's CaseView: hdr, summary, page{title, phase, next, notice, end, warn, whoCan, done[], msgs[], current{kicker,title,banner,lines,rows,table,steps,email,pre,fields,chips,inputs,buttons(<=3),more,note}}, upcoming, emailsList, docsList, reply ...; texts are string | {id, vars}), capabilities{canWork, canApprove, canClose}, clip (text to copy - copy is never send), tick, closed, demo}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version (code stale_version) or the same supplier reply pasted twice (code duplicate_reply, existingMessageId): the body carries the current case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getRenewalCaseVendorMessages",
+        "summary": "Pasted supplier replies.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "{id, direction, receivedAt, text, contentHash, analysedBy}"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/today": {
+      "get": {
+        "operationId": "getToday",
+        "summary": "The caller's Today feed: own actions by due date, items waiting on others, snoozed items, next notice deadline.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The feed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[]}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/today/{key}/snooze": {
+      "post": {
+        "operationId": "snoozeTodayItem",
+        "summary": "Postpone an item by 3 days (returns the feed).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The feed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[]}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "unsnoozeTodayItem",
+        "summary": "Bring a postponed item back (returns the feed).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The feed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[]}."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reminders": {
+      "get": {
+        "operationId": "getReminders",
+        "summary": "The caller's open 'check date' reminders (never the contractual notice deadline).",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reminders.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "{id, caseId, kind, dueDate, state}"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postReminder",
+        "summary": "A custom reminder.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reminder.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "{id, caseId, kind, dueDate, state}"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "dueDate"
+                ],
+                "properties": {
+                  "caseId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "dueDate": {
+                    "type": "string",
+                    "format": "date"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reminders/{id}": {
+      "patch": {
+        "operationId": "patchReminder",
+        "summary": "done | dismissed | set.",
+        "description": "AskRaffa 4.0 slices 2+3 - backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reminder.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "{id, caseId, kind, dueDate, state}"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Not a member of the tenant, or no such case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CaseErrorBody: {code: stale_version | duplicate_reply | forbidden | not_found | bad_request | not_closable, error, current: CaseEnvelope | null, existingMessageId}."
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "state"
+                ],
+                "properties": {
+                  "state": {
+                    "type": "string"
                   }
                 }
               }

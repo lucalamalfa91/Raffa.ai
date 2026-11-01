@@ -1,144 +1,109 @@
-import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import AskRaffaLink from "../../components/ask-bar/AskRaffaLink";
-import { ASK_PROMPTS } from "../../components/ask-bar/askLaunch";
-import {
-  applyKpi,
-  buildKpis,
-  groupByKind,
-  headline,
-  inScope,
-  type KpiKey,
-  type RenewalsView,
-  type Scope,
-} from "./case/portfolio";
-import { useRenewalsWorkspace } from "./case/useRenewalsWorkspace";
-import { parseTab, type TabKey } from "./caseTabs";
-import CasePanel from "./CasePanel";
-import PipelineView from "./PipelineView";
-import QueueGroups from "./queue/QueueGroups";
-import RenewalCard from "./RenewalCard";
-import RenewalKpiStrip from "./RenewalKpiStrip";
-import SegControl from "./SegControl";
-import "./renewals.css";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import type { ApiClient } from "../../api/client";
+import type { RenewalsBoard, RenewalsRow } from "../../api/renewalCases";
+import { useGuide } from "../../components/shell/guide";
+import { useTenantId } from "../../routes/contracts/contracts4";
+import { useI18n } from "../../i18n/I18nProvider";
+import { resolveText, type Text } from "../../i18n/translate";
+import { useCaseNavigation } from "../today/useCaseNavigation";
+import "./renewals4.css";
 
 export interface RenewalsRouteProps {
-  /** The signed-in account's label (the demo person it maps to is resolved in the workspace hook). */
-  userLabel: string;
+  apiClient: ApiClient;
 }
 
 /**
- * Route `/renewals`. The chat is for action, Renewals is for context: a compact card per contract
- * (supplier, contract, the seven steps, days to the notice deadline, status), the KPI strip as the
- * filter above them, and the selected renewal's case on the right. Three views of the same cases:
- * Cases, Pipeline (a column per wizard step) and Action queue (everything to do, by kind).
- *
- * `?select=<contract>&tab=<tab>` opens a given case on a given tab (the chat's "History" link).
+ * Rinnovi (AskRaffa V4.dc.html lines 100-117): one summary line, then the validated contracts by whose
+ * turn it is -- Tocca a te · In corso con il team · In attesa del fornitore · Da avviare · Chiuse --
+ * sorted by notice deadline. A row opens the case (the same one, never a second).
  */
-export default function RenewalsRoute({ userLabel }: RenewalsRouteProps) {
-  const w = useRenewalsWorkspace(userLabel);
-  const { t } = w;
-  const [search] = useSearchParams();
-  const [view, setView] = useState<RenewalsView>("cases");
-  const [scope, setScope] = useState<Scope>("team");
-  const [kpi, setKpi] = useState<KpiKey | null>(null);
-  const [selected, setSelected] = useState<string | null>(() => search.get("select"));
-  const [tab, setTab] = useState<TabKey>(() => parseTab(search.get("tab")));
+export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
+  const tenantId = useTenantId() ?? undefined;
+  const { t, lang } = useI18n();
+  const tr = useCallback((x: Text | null | undefined) => resolveText(x, lang), [lang]);
+  const navigate = useNavigate();
+  const [board, setBoard] = useState<RenewalsBoard | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { openContract } = useCaseNavigation(apiClient, tenantId);
 
-  const base = useMemo(() => inScope(w.summaries, scope), [w.summaries, scope]);
-  const kpis = useMemo(() => buildKpis(base, t), [base, t]);
-  const list = useMemo(() => applyKpi(base, kpi), [base, kpi]);
-  const current = list.find((x) => x.cid === selected) ?? list[0] ?? null;
+  useEffect(() => {
+    if (!tenantId || !apiClient.getRenewalsBoard) return;
+    let alive = true;
+    void apiClient.getRenewalsBoard(tenantId).then((r) => {
+      if (!alive) return;
+      if (r.ok) setBoard(r.body);
+      else setError(r.error);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [apiClient, tenantId]);
 
-  // The action queue follows the same "Show" switch: mine, everyone's, or deadlines nobody owns yet.
-  const queueGroups = useMemo(() => {
-    const rows = scope === "mine" ? w.queue.filter((x) => x.mine) : scope === "unassigned" ? w.queue.filter((x) => x.kind === "unassigned") : w.queue;
-    return groupByKind(rows, t);
-  }, [scope, w.queue, t]);
+  const open = useCallback(
+    (x: RenewalsRow) => {
+      if (x.caseId) navigate(`/renewals/${x.caseId}`);
+      else if (board) void openContract(x.contractId, board.viewer.isApprover ? (board.assignee?.userId ?? board.viewer.userId) : board.viewer.userId);
+    },
+    [board, navigate, openContract],
+  );
 
-  const pick = (cid: string) => {
-    setSelected(cid);
-    setTab("now");
-    setView("cases");
-  };
+  const all = board?.groups.flatMap((g) => g.items) ?? [];
+  const first = board?.groups.find((g) => g.key === "mine")?.items[0];
+  useGuide(
+    board
+      ? {
+          where: t("Renewals"),
+          now: first ? t("Open the first one under “Your turn”.") : t("No step waits for you."),
+          why: t("Sorted by notice deadline. The work happens in the case, one step at a time."),
+          next: t("To start: within 120 days of the notice deadline."),
+          cta: first ? { label: t("Open the first"), onClick: () => open(first) } : null,
+        }
+      : null,
+  );
+
+  const next = (x: RenewalsRow): string =>
+    x.hasCase ? tr(x.next) : x.days <= 120 ? t("Start & assign") : t("To start by {date}", { date: x.startBy });
+  const cta = (x: RenewalsRow): string => (x.hasCase ? (x.myTurn ? t("Do now") : t("Open⟦action⟧")) : board?.viewer.isApprover ? t("Start & assign") : t("Start⟦action⟧"));
 
   return (
-    <div className="renewal-screen rn-screen" data-screen-label="Renewals">
-      <header className="rn-header">
-        <div className="rn-heading">
-          <h2 className="rn-title">{t("Renewals")}</h2>
-          <span className="rn-headline">{headline(w.summaries, t)}</span>
-        </div>
-        <div className="rn-controls">
-          <AskRaffaLink question={ASK_PROMPTS.renewalsStartFirst} className="btn btn-ghost">
-            {t("Ask Raffa which to start first")} →
-          </AskRaffaLink>
-          <SegControl
-            label={t("View")}
-            value={view}
-            onChange={setView}
-            options={[
-              { value: "cases", label: t("Cases") },
-              { value: "pipeline", label: t("Pipeline") },
-              { value: "queue", label: t("Action queue") },
-            ]}
-          />
-          <SegControl
-            label={t("Show")}
-            value={scope}
-            onChange={setScope}
-            options={[
-              { value: "mine", label: t("Mine") },
-              { value: "team", label: t("Team") },
-              { value: "unassigned", label: t("Unassigned") },
-            ]}
-          />
-        </div>
-      </header>
-
-      {view === "cases" && (
-        <div className="rn-body">
-          <RenewalKpiStrip cells={kpis} active={kpi} onToggle={(key) => setKpi((c) => (c === key ? null : key))} label={t("Renewal KPIs")} />
-          <div className="rn-panes">
-            <section className="rn-list" aria-label={t("Renewals · by notice date")}>
-              <div className="rn-list-head">
-                <span>{t("Renewals · by notice date")}</span>
-                <span>{t("Days to notice")}</span>
-              </div>
-              {list.length > 0 ? (
-                <ul className="rn-cards">
-                  {list.map((item) => (
-                    <RenewalCard key={item.cid} item={item} selected={item.cid === current?.cid} t={t} onSelect={pick} />
-                  ))}
-                </ul>
-              ) : (
-                <p className="rn-empty">{t("No renewal matches this filter.")}</p>
-              )}
-            </section>
-            <section className="rn-panel" aria-label={t("Selected renewal")}>
-              {current && <CasePanel key={current.cid} item={current} workspace={w} tab={tab} onTab={setTab} />}
-            </section>
+    <div className="r4-page" data-screen-label="Pratiche">
+      <h2 className="r4-title">{t("Renewals")}</h2>
+      <div className="r4-head">
+        {board ? t("{open} open cases · {start} to start · sorted by notice deadline", { open: board.openCases, start: board.toStart }) : (error ?? "")}
+      </div>
+      {board && all.length === 0 ? (
+        <div className="r4-empty">{t("No renewal to manage: there is no validated contract yet. Upload the first in Contracts.")}</div>
+      ) : null}
+      {board?.groups.map((g) => (
+        <div key={g.key} className="r4-group">
+          <div className="r4-group-head">
+            {tr(g.label)} <span>· {g.items.length}</span>
           </div>
+          {g.items.map((x) => (
+            <div key={x.contractId} className="r-row r4-row" onClick={() => open(x)}>
+              <div className="r4-main">
+                <div className="r4-sup">
+                  {x.supplier} <span>{x.contract}</span>
+                </div>
+                <div className="r4-phase">
+                  {x.hasCase ? t("Phase {n}/6 · {label}", { n: x.stage + 1, label: tr(x.stageLabel) }) : t("Not started")} · <strong>{next(x)}</strong>
+                </div>
+              </div>
+              <div className="r4-notice">
+                <div className="r4-label">{t("Notice by")}</div>
+                <div className={x.days <= 30 ? "r4-days is-urgent" : "r4-days"}>
+                  {x.notice} · {t("{n} d", { n: x.days })}
+                </div>
+              </div>
+              <div className="r4-owner">{x.owner ? `${t("Owner⟦short⟧")} ${x.owner.split(" ")[0]}` : t("No owner")}</div>
+              <button type="button" className={`btn ${x.myTurn || !x.hasCase ? "btn-primary" : "btn-secondary"} r4-cta`}>
+                {cta(x)}
+              </button>
+            </div>
+          ))}
         </div>
-      )}
-
-      {view === "pipeline" && <PipelineView items={list} lang={w.lang} t={t} onPick={pick} />}
-
-      {view === "queue" && (
-        <div className="rn-queue">
-          <QueueGroups
-            groups={queueGroups}
-            t={t}
-            actionsFor={w.actionsFor}
-            onRun={w.run}
-            onDelegate={w.delegate}
-            onSnooze={w.snooze}
-            onDone={w.dismiss}
-            onOpenInRenewals={(item) => pick(item.cid)}
-          />
-          {queueGroups.length === 0 && <p className="rn-empty">{t("No action matches this filter.")}</p>}
-        </div>
-      )}
+      ))}
     </div>
   );
 }
