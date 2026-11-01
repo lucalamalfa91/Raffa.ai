@@ -12700,6 +12700,1836 @@
           }
         }
       }
+    },
+    "/api/savings/results": {
+      "get": {
+        "operationId": "getSavingsResults",
+        "summary": "Risultati: contractual results, realized (invoices), quantity reductions apart, open objectives, charts.",
+        "description": "AskRaffa 4.0 Risultati (BACKEND-SPEC section 2.10/4, SavingsResultsEndpointExtensions.cs). No response carries an estimate: contractual results need a signed contract, realized ones an invoice; objectives are the user's own targets. Texts are messages {id, vars} translated by the web catalogue.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "fy",
+                "q",
+                "12m"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The results report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "period",
+                    "today",
+                    "fiscalYear",
+                    "headline",
+                    "kpis",
+                    "months",
+                    "peak",
+                    "bySupplier",
+                    "maxBySupplier",
+                    "levers",
+                    "proof",
+                    "openObjectives",
+                    "contractual",
+                    "volume"
+                  ],
+                  "properties": {
+                    "period": {
+                      "type": "string",
+                      "enum": [
+                        "fy",
+                        "q",
+                        "12m"
+                      ]
+                    },
+                    "today": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "fiscalYear": {
+                      "type": "integer"
+                    },
+                    "headline": {
+                      "type": "object",
+                      "required": [
+                        "contractual",
+                        "realized",
+                        "volume",
+                        "count",
+                        "volumeCount",
+                        "currency"
+                      ],
+                      "properties": {
+                        "contractual": {
+                          "type": "number"
+                        },
+                        "realized": {
+                          "type": "number"
+                        },
+                        "volume": {
+                          "type": "number"
+                        },
+                        "count": {
+                          "type": "integer"
+                        },
+                        "volumeCount": {
+                          "type": "integer"
+                        },
+                        "currency": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "kpis": {
+                      "type": "object",
+                      "required": [
+                        "signedCount",
+                        "averagePerContract",
+                        "provenPercent",
+                        "realized",
+                        "contractual",
+                        "analysedSpend",
+                        "validatedCount",
+                        "openObjectives",
+                        "openCount",
+                        "withoutObjectiveCount",
+                        "nextNotice"
+                      ],
+                      "properties": {
+                        "signedCount": {
+                          "type": "integer"
+                        },
+                        "averagePerContract": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "provenPercent": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "realized": {
+                          "type": "number"
+                        },
+                        "contractual": {
+                          "type": "number"
+                        },
+                        "analysedSpend": {
+                          "type": "number"
+                        },
+                        "validatedCount": {
+                          "type": "integer"
+                        },
+                        "openObjectives": {
+                          "type": "number"
+                        },
+                        "openCount": {
+                          "type": "integer"
+                        },
+                        "withoutObjectiveCount": {
+                          "type": "integer"
+                        },
+                        "nextNotice": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "required": [
+                            "contractId",
+                            "supplier",
+                            "noticeDeadline",
+                            "days"
+                          ],
+                          "properties": {
+                            "contractId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "supplier": {
+                              "type": "string"
+                            },
+                            "noticeDeadline": {
+                              "type": "string",
+                              "format": "date"
+                            },
+                            "days": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "months": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "year",
+                          "month",
+                          "label",
+                          "future",
+                          "amount",
+                          "count",
+                          "items"
+                        ],
+                        "properties": {
+                          "year": {
+                            "type": "integer"
+                          },
+                          "month": {
+                            "type": "integer"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "future": {
+                            "type": "boolean"
+                          },
+                          "amount": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "supplier",
+                                "amount"
+                              ],
+                              "properties": {
+                                "supplier": {
+                                  "type": "string"
+                                },
+                                "amount": {
+                                  "type": "number"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "peak": {
+                      "type": "number"
+                    },
+                    "bySupplier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "label",
+                          "contractual",
+                          "realized",
+                          "objectives",
+                          "n"
+                        ],
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "contractual": {
+                            "type": "number"
+                          },
+                          "realized": {
+                            "type": "number"
+                          },
+                          "objectives": {
+                            "type": "number"
+                          },
+                          "n": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "maxBySupplier": {
+                      "type": "number"
+                    },
+                    "levers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "count",
+                          "amount"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "price",
+                              "term",
+                              "clause",
+                              "other"
+                            ]
+                          },
+                          "count": {
+                            "type": "integer"
+                          },
+                          "amount": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "proof": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "resultId",
+                          "supplier",
+                          "amount",
+                          "realized"
+                        ],
+                        "properties": {
+                          "resultId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "supplier": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "number"
+                          },
+                          "realized": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "openObjectives": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "contractId",
+                          "caseId",
+                          "supplier",
+                          "category",
+                          "owner",
+                          "days",
+                          "noticeDeadline",
+                          "spend",
+                          "objectiveKind",
+                          "objectivePercent",
+                          "targetAmount",
+                          "hasCase"
+                        ],
+                        "properties": {
+                          "contractId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "caseId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          },
+                          "supplier": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "owner": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "days": {
+                            "type": "integer"
+                          },
+                          "noticeDeadline": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date"
+                          },
+                          "spend": {
+                            "type": "number"
+                          },
+                          "objectiveKind": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "objectivePercent": {
+                            "type": "integer"
+                          },
+                          "targetAmount": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "hasCase": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "contractual": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "signedOn",
+                          "supplier",
+                          "kind",
+                          "note",
+                          "baseline",
+                          "period",
+                          "method",
+                          "evidence",
+                          "amount",
+                          "realized",
+                          "realizedAmount",
+                          "proof"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "signedOn": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "supplier": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "note": {
+                            "type": "string"
+                          },
+                          "baseline": {
+                            "type": "string"
+                          },
+                          "period": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string"
+                          },
+                          "evidence": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "number"
+                          },
+                          "realized": {
+                            "type": "boolean"
+                          },
+                          "realizedAmount": {
+                            "type": "number"
+                          },
+                          "proof": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "firstInvoice",
+                              "lastInvoice",
+                              "invoiceCount",
+                              "periodMonths"
+                            ],
+                            "properties": {
+                              "firstInvoice": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "lastInvoice": {
+                                "type": "string",
+                                "format": "date"
+                              },
+                              "invoiceCount": {
+                                "type": "integer"
+                              },
+                              "periodMonths": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "volume": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "signedOn",
+                          "supplier",
+                          "note",
+                          "amount"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "signedOn": {
+                            "type": "string",
+                            "format": "date"
+                          },
+                          "supplier": {
+                            "type": "string"
+                          },
+                          "note": {
+                            "type": "string"
+                          },
+                          "amount": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (message).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/savings/goals/parse": {
+      "post": {
+        "operationId": "parseSavingsGoal",
+        "summary": "Reads a goal written in the user's own words into a draft (LLM-backed, deterministic fallback).",
+        "description": "AskRaffa 4.0 Risultati (BACKEND-SPEC section 2.10/4, SavingsResultsEndpointExtensions.cs). No response carries an estimate: contractual results need a signed contract, realized ones an invoice; objectives are the user's own targets. Texts are messages {id, vars} translated by the web catalogue.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The draft; ok=false carries the one question to ask.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "text",
+                    "pct",
+                    "annual",
+                    "scope",
+                    "period",
+                    "periodLabel",
+                    "label",
+                    "spend",
+                    "contractCount",
+                    "kicker",
+                    "title",
+                    "rows",
+                    "question",
+                    "source"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "pct": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "annual": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "supplier",
+                        "categories",
+                        "contractIds"
+                      ],
+                      "properties": {
+                        "supplier": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "categories": {
+                          "type": [
+                            "array",
+                            "null"
+                          ],
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "contractIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    },
+                    "period": {
+                      "type": "string"
+                    },
+                    "periodLabel": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "label": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "spend": {
+                      "type": "number"
+                    },
+                    "contractCount": {
+                      "type": "integer"
+                    },
+                    "kicker": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "title": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "k",
+                          "v"
+                        ],
+                        "properties": {
+                          "k": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": true,
+                                "description": "Placeholder values; a value may itself be a message {id, vars}."
+                              }
+                            }
+                          },
+                          "v": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": true,
+                                "description": "Placeholder values; a value may itself be a message {id, vars}."
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "question": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "deterministic",
+                        "llm"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (message).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/savings/goals": {
+      "post": {
+        "operationId": "confirmSavingsGoal",
+        "summary": "Confirms a goal (\"Sì, è questo\"): it becomes the caller's one active goal.",
+        "description": "AskRaffa 4.0 Risultati (BACKEND-SPEC section 2.10/4, SavingsResultsEndpointExtensions.cs). No response carries an estimate: contractual results need a signed contract, realized ones an invoice; objectives are the user's own targets. Texts are messages {id, vars} translated by the web catalogue. Without pct and annual the server parses text itself; 422 returns the draft still needing an answer.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "pct": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "annual": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "scope": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "supplier",
+                      "categories",
+                      "contractIds"
+                    ],
+                    "properties": {
+                      "supplier": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "categories": {
+                        "type": [
+                          "array",
+                          "null"
+                        ],
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "contractIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  },
+                  "period": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "label": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "id"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "vars": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "additionalProperties": true,
+                        "description": "Placeholder values; a value may itself be a message {id, vars}."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The active goal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "text",
+                    "pct",
+                    "annual",
+                    "scope",
+                    "period",
+                    "periodLabel",
+                    "label",
+                    "title",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "pct": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "annual": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "supplier",
+                        "categories",
+                        "contractIds"
+                      ],
+                      "properties": {
+                        "supplier": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "categories": {
+                          "type": [
+                            "array",
+                            "null"
+                          ],
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "contractIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    },
+                    "period": {
+                      "type": "string"
+                    },
+                    "periodLabel": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "label": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "title": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (message).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The text needs an answer first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "text",
+                    "pct",
+                    "annual",
+                    "scope",
+                    "period",
+                    "periodLabel",
+                    "label",
+                    "spend",
+                    "contractCount",
+                    "kicker",
+                    "title",
+                    "rows",
+                    "question",
+                    "source"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "pct": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "annual": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "supplier",
+                        "categories",
+                        "contractIds"
+                      ],
+                      "properties": {
+                        "supplier": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "categories": {
+                          "type": [
+                            "array",
+                            "null"
+                          ],
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "contractIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    },
+                    "period": {
+                      "type": "string"
+                    },
+                    "periodLabel": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "label": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "spend": {
+                      "type": "number"
+                    },
+                    "contractCount": {
+                      "type": "integer"
+                    },
+                    "kicker": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "title": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "k",
+                          "v"
+                        ],
+                        "properties": {
+                          "k": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": true,
+                                "description": "Placeholder values; a value may itself be a message {id, vars}."
+                              }
+                            }
+                          },
+                          "v": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "additionalProperties": true,
+                                "description": "Placeholder values; a value may itself be a message {id, vars}."
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "question": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "deterministic",
+                        "llm"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/savings/goals/active": {
+      "get": {
+        "operationId": "getActiveSavingsGoal",
+        "summary": "The caller's active goal (204 when none).",
+        "description": "AskRaffa 4.0 Risultati (BACKEND-SPEC section 2.10/4, SavingsResultsEndpointExtensions.cs). No response carries an estimate: contractual results need a signed contract, realized ones an invoice; objectives are the user's own targets. Texts are messages {id, vars} translated by the web catalogue.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The active goal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "text",
+                    "pct",
+                    "annual",
+                    "scope",
+                    "period",
+                    "periodLabel",
+                    "label",
+                    "title",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "pct": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "annual": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "required": [
+                        "supplier",
+                        "categories",
+                        "contractIds"
+                      ],
+                      "properties": {
+                        "supplier": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "categories": {
+                          "type": [
+                            "array",
+                            "null"
+                          ],
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "contractIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid"
+                          }
+                        }
+                      }
+                    },
+                    "period": {
+                      "type": "string"
+                    },
+                    "periodLabel": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "label": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "title": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "additionalProperties": true,
+                          "description": "Placeholder values; a value may itself be a message {id, vars}."
+                        }
+                      }
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No active goal."
+          }
+        }
+      },
+      "delete": {
+        "operationId": "clearSavingsGoal",
+        "summary": "Removes the caller's active goal (\"Rimuovi obiettivo\").",
+        "description": "AskRaffa 4.0 Risultati (BACKEND-SPEC section 2.10/4, SavingsResultsEndpointExtensions.cs). No response carries an estimate: contractual results need a signed contract, realized ones an invoice; objectives are the user's own targets. Texts are messages {id, vars} translated by the web catalogue.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed (or there was none)."
+          }
+        }
+      }
+    },
+    "/api/savings/goals/active/progress": {
+      "get": {
+        "operationId": "getSavingsGoalProgress",
+        "summary": "\"Verso il tuo obiettivo\": target, signed so far, objectives in the cases, gap, actionable contracts.",
+        "description": "AskRaffa 4.0 Risultati (BACKEND-SPEC section 2.10/4, SavingsResultsEndpointExtensions.cs). No response carries an estimate: contractual results need a signed contract, realized ones an invoice; objectives are the user's own targets. Texts are messages {id, vars} translated by the web catalogue.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Progress towards the active goal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "goal",
+                    "spend",
+                    "contractCount",
+                    "pct",
+                    "target",
+                    "signed",
+                    "objectives",
+                    "gap",
+                    "signedWidth",
+                    "objectivesWidth",
+                    "verdict",
+                    "ifAllHit",
+                    "rows"
+                  ],
+                  "properties": {
+                    "goal": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "text",
+                        "pct",
+                        "annual",
+                        "scope",
+                        "period",
+                        "periodLabel",
+                        "label",
+                        "title",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "pct": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "annual": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "scope": {
+                          "type": "object",
+                          "required": [
+                            "supplier",
+                            "categories",
+                            "contractIds"
+                          ],
+                          "properties": {
+                            "supplier": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "categories": {
+                              "type": [
+                                "array",
+                                "null"
+                              ],
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "contractIds": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
+                        },
+                        "period": {
+                          "type": "string"
+                        },
+                        "periodLabel": {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "vars": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "additionalProperties": true,
+                              "description": "Placeholder values; a value may itself be a message {id, vars}."
+                            }
+                          }
+                        },
+                        "label": {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "vars": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "additionalProperties": true,
+                              "description": "Placeholder values; a value may itself be a message {id, vars}."
+                            }
+                          }
+                        },
+                        "title": {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "vars": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "additionalProperties": true,
+                              "description": "Placeholder values; a value may itself be a message {id, vars}."
+                            }
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    "spend": {
+                      "type": "number"
+                    },
+                    "contractCount": {
+                      "type": "integer"
+                    },
+                    "pct": {
+                      "type": "number"
+                    },
+                    "target": {
+                      "type": "number"
+                    },
+                    "signed": {
+                      "type": "number"
+                    },
+                    "objectives": {
+                      "type": "number"
+                    },
+                    "gap": {
+                      "type": "number"
+                    },
+                    "signedWidth": {
+                      "type": "number"
+                    },
+                    "objectivesWidth": {
+                      "type": "number"
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "enum": [
+                        "no_contracts",
+                        "covered",
+                        "gap"
+                      ]
+                    },
+                    "ifAllHit": {
+                      "type": "number"
+                    },
+                    "rows": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "contractId",
+                          "caseId",
+                          "supplier",
+                          "spend",
+                          "hasCase",
+                          "objectiveKind",
+                          "objectivePercent",
+                          "objectiveAmount",
+                          "uplift",
+                          "autoRenewal",
+                          "ifHit",
+                          "days",
+                          "noticeDeadline",
+                          "primary"
+                        ],
+                        "properties": {
+                          "contractId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "caseId": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "uuid"
+                          },
+                          "supplier": {
+                            "type": "string"
+                          },
+                          "spend": {
+                            "type": "number"
+                          },
+                          "hasCase": {
+                            "type": "boolean"
+                          },
+                          "objectiveKind": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "objectivePercent": {
+                            "type": "integer"
+                          },
+                          "objectiveAmount": {
+                            "type": "number"
+                          },
+                          "uplift": {
+                            "type": "string"
+                          },
+                          "autoRenewal": {
+                            "type": "boolean"
+                          },
+                          "ifHit": {
+                            "type": "number"
+                          },
+                          "days": {
+                            "type": "integer"
+                          },
+                          "noticeDeadline": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date"
+                          },
+                          "primary": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bad request (message).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

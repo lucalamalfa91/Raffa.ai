@@ -114,5 +114,92 @@
     "2": "Productivity",
     "3": "Cloud infrastructure",
     "4": "Productivity"
-  }
+  },
+  "_invoicesComment": "Invoices that prove the realized part of SQ.HIST results h1/h2 (realizedAmount 17,500 and 35,600, realizedEv \"Invoices Apr–Aug 2026 · 5 of 12 months\" / \"Invoices Feb–Aug 2026 · 7 of 12 months\"); realized = the saving each invoice proves. Seeded only in scenario \"full\".",
+  "invoices": [
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-04-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-05-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-06-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-07-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-08-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-02-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-03-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-04-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-05-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-06-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-07-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-08-01",
+      "amount": 51416.67,
+      "realized": 5085.74
+    }
+  ]
 }

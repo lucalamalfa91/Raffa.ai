@@ -1,405 +1,450 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import type { ApiClient, PortfolioPageBody, SavingsOpportunityBody } from "../../api/client";
-import AskRaffaLink from "../../components/ask-bar/AskRaffaLink";
-import { ASK_PROMPTS } from "../../components/ask-bar/askLaunch";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import type {
+  ApiClient,
+  SavingsGoalBody,
+  SavingsGoalDraftBody,
+  SavingsGoalProgressBody,
+  SavingsResultsBody,
+} from "../../api/client";
+import { useGuide } from "../../components/shell/guide";
+import { useShellContext } from "../../components/shell/shellContext";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
-import ScreenTitle from "../../components/ScreenTitle";
-import KpiRow from "./KpiRow";
-import ContextStrip from "./ContextStrip";
-import SavingsPipeline from "./SavingsPipeline";
-import SavingsTimeline from "./SavingsTimeline";
-import RecentVerified from "./RecentVerified";
-import SavingsBreakdown from "./SavingsBreakdown";
-import DeadlineQueue from "./DeadlineQueue";
-import OpportunitiesTable from "./OpportunitiesTable";
-import {
-  EMPTY_SAVINGS_FILTERS,
-  getCurrencyFilterOptions,
-  getSupplierFilterOptions,
-  readSavingsFiltersFromSearch,
-  SAVINGS_STATUS_FILTER_OPTIONS,
-  type SavingsFilterState,
-} from "./savingsFilters";
-import {
-  buildContextCells,
-  buildOpportunitiesPortfolioHref,
-  buildOpportunityRows,
-  buildSupplierNameIndex,
-  filterOpportunityRows,
-  findNoticeSoonContractIds,
-  formatSavingsSummary,
-  getSavingsStatusTag,
-  reduceKpiFetch,
-  resolveOpportunitySupplier,
-  type KpiFetchState,
-} from "./savingsViewModel";
-import {
-  buildDeadlineQueue,
-  buildMonthlySavings,
-  buildNoticeIndex,
-  buildRecentVerified,
-  buildSavingsBreakdown,
-  buildSavingsPipeline,
-  buildVerifiedStats,
-  listDashboardCurrencies,
-  type BreakdownDimension,
-} from "./savingsDashboard";
-import "./savings.css";
+import { useI18n } from "../../i18n/I18nProvider";
+import { buildGoalView, buildResultsView, GOAL_EXAMPLES, tm, type ApiMsg } from "./resultsViewModel";
+import "./results4.css";
 
 export interface SavingsRouteProps {
   apiClient: ApiClient;
 }
 
-type OpportunitiesFetchState =
-  | { phase: "loading" }
-  | { phase: "error"; statusCode: number | null; message: string }
-  | { phase: "ready"; items: readonly SavingsOpportunityBody[] };
-
-/** Loading until the portfolio answers; `failed` falls back honestly -- id-fragment supplier labels, no notice dates. */
-type PortfolioState = { phase: "loading" } | { phase: "ready"; items: PortfolioPageBody["items"] } | { phase: "failed" };
+type Load<T> = { phase: "loading" } | { phase: "ready"; data: T } | { phase: "error"; message: string };
 
 /**
- * Route `/savings` -- the Savings dashboard. A rail destination under "From your contracts", also
- * reached from Ask actions, Renewals and Contract 360. Top to bottom:
- *
- * 1. **Header** -- "Savings" + summary, and "Ask Raffa where to save" (a new Ask chat asking it).
- * 2. **Headline band** (`KpiRow`) -- Savings verified (the lead figure) · identified · in progress ·
- *    potential as a share of spend, from `GET /api/savings/kpis`, stale-labelled if that call fails.
- * 3. **Portfolio context** (`ContextStrip`) -- contracts and spend analyzed, upcoming renewals,
- *    notice deadlines inside 45 days; each cell a link into Portfolio or Renewals.
- * 4. **Charts** (`savingsDashboard.ts`), one currency at a time with a switch when there are more:
- *    the identified → in progress → verified pipeline; "When you saved" (money verified per month,
- *    with this year / last 90 days / last verified saving) beside the latest verified outcomes;
- *    "Where the savings are" by supplier or lever; "Act before the notice deadline".
- * 5. **Opportunities** -- filters and the table; a pipeline stage or a supplier bar filters it.
- *
- * **Three independent fetches, independent degrade states.** `getSavingsKpis` backs the band; its
- * failure degrades the band to a stale-labelled last-known state (`reduceKpiFetch`), never a blank.
- * `getSavingsOpportunities` backs the charts and the table; its failure renders the table section's
- * own scoped error + Retry. `getPortfolio` supplies supplier *names* and notice dates; if it fails
- * the rows fall back to the id-fragment label the Portfolio table uses and "Notice in" reads "—" --
- * never a fabricated name or date.
- *
- * **Deep links.** `?contract=<id>` (Contract 360 "Track it in Savings", Renewals) focuses one
- * contract's opportunities and `?status=` one stage -- read once on mount, like Renewals' `?select=`,
- * so a later click is never fought by the URL.
+ * Risultati (AskRaffa V4.dc.html lines 206-255): verifiable figures only — contractual results
+ * (signed), realized (invoices), quantity reductions apart, open objectives (the user's targets).
+ * The goal bar is collapsed by default; with a goal the page adds "Verso il tuo obiettivo".
  */
 export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
-  const workspace = loadCurrentWorkspace();
-  const [searchParams] = useSearchParams();
-  const [kpiState, setKpiState] = useState<KpiFetchState>({ phase: "loading" });
-  const [opportunitiesState, setOpportunitiesState] = useState<OpportunitiesFetchState>({ phase: "loading" });
-  const [portfolioState, setPortfolioState] = useState<PortfolioState>({ phase: "loading" });
-  // Supplier / status / currency (task-01-savings-filters, ADR-020: presentation only, no client
-  // store), plus the deep-linked contract focus. Pure view state over the already-loaded rows below
-  // -- never written to storage, and never touched by the three fetches' own load/retry callbacks.
-  const [filters, setFilters] = useState<SavingsFilterState>(() => readSavingsFiltersFromSearch(searchParams));
-  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
-  const [breakdownDimension, setBreakdownDimension] = useState<BreakdownDimension>("supplier");
-  const tableRef = useRef<HTMLElement>(null);
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const shell = useShellContext();
+  const tenantId = shell?.workspaceId ?? loadCurrentWorkspace()?.id ?? "";
 
-  const loadKpis = useCallback(() => {
-    if (!workspace) return;
-    void apiClient.getSavingsKpis(workspace.id).then((result) => {
-      setKpiState((previous) => reduceKpiFetch(previous, result.ok && result.kpis ? { ok: true, kpis: result.kpis } : { ok: false }));
-    });
-    // Depends on workspace?.id (a primitive), not workspace itself: loadCurrentWorkspace() returns a
-    // fresh object every call, the same convention every other route's own load() callback follows.
-  }, [apiClient, workspace?.id]);
-
-  const loadOpportunities = useCallback(() => {
-    if (!workspace) return;
-
-    setOpportunitiesState({ phase: "loading" });
-
-    void apiClient.getSavingsOpportunities(workspace.id).then((result) => {
-      if (!result.ok || !result.opportunities) {
-        setOpportunitiesState({
-          phase: "error",
-          statusCode: result.statusCode,
-          message:
-            result.statusCode === 503 || result.statusCode === null
-              ? "Raffa.ai's savings service is temporarily unavailable. Try again in a moment."
-              : (result.error ?? "The opportunities list could not be loaded."),
-        });
-        return;
-      }
-
-      setOpportunitiesState({ phase: "ready", items: result.opportunities.items });
-    });
-  }, [apiClient, workspace?.id]);
-
-  const loadPortfolio = useCallback(() => {
-    if (!workspace) return;
-    void apiClient.getPortfolio(workspace.id, { pageSize: 100 }).then((result) => {
-      setPortfolioState(result.ok && result.portfolio ? { phase: "ready", items: result.portfolio.items } : { phase: "failed" });
-    });
-  }, [apiClient, workspace?.id]);
+  const [report, setReport] = useState<Load<SavingsResultsBody>>({ phase: "loading" });
+  const [goal, setGoal] = useState<SavingsGoalBody | null>(null);
+  const [progress, setProgress] = useState<SavingsGoalProgressBody | null>(null);
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [goalText, setGoalText] = useState("");
+  const [draft, setDraft] = useState<SavingsGoalDraftBody | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    loadKpis();
-    loadOpportunities();
-    loadPortfolio();
-  }, [loadKpis, loadOpportunities, loadPortfolio]);
-
-  const portfolioItems = useMemo<PortfolioPageBody["items"]>(() => (portfolioState.phase === "ready" ? portfolioState.items : []), [portfolioState]);
-  const supplierNames = useMemo(() => buildSupplierNameIndex(portfolioItems), [portfolioItems]);
-  const noticeIndex = useMemo(() => buildNoticeIndex(portfolioItems), [portfolioItems]);
-  const opportunityItems = useMemo(() => (opportunitiesState.phase === "ready" ? opportunitiesState.items : []), [opportunitiesState]);
-  const rows = useMemo(() => buildOpportunityRows(opportunityItems, supplierNames, noticeIndex), [opportunityItems, supplierNames, noticeIndex]);
-
-  const supplierLabelOf = useCallback(
-    (item: SavingsOpportunityBody) => resolveOpportunitySupplier(item.contractId, item.supplierId, supplierNames).label,
-    [supplierNames],
-  );
-  const currencies = useMemo(() => listDashboardCurrencies(opportunityItems), [opportunityItems]);
-  const currency = selectedCurrency !== null && currencies.includes(selectedCurrency) ? selectedCurrency : (currencies[0] ?? null);
-  const dashboard = useMemo(() => {
-    if (currency === null) return null;
-    return {
-      pipeline: buildSavingsPipeline(opportunityItems, currency),
-      months: buildMonthlySavings(opportunityItems, currency),
-      stats: buildVerifiedStats(opportunityItems, currency, supplierLabelOf),
-      recent: buildRecentVerified(opportunityItems, currency, supplierLabelOf),
-      breakdown: buildSavingsBreakdown(opportunityItems, currency, breakdownDimension, supplierLabelOf),
-      deadlines: buildDeadlineQueue(opportunityItems, portfolioItems, supplierLabelOf),
+    let live = true;
+    void (async () => {
+      if (!apiClient.getSavingsResults) {
+        setReport({ phase: "error", message: t("Results are not available right now.") });
+        return;
+      }
+      const [results, active] = await Promise.all([
+        apiClient.getSavingsResults(tenantId, "fy"),
+        apiClient.getActiveSavingsGoal ? apiClient.getActiveSavingsGoal(tenantId) : Promise.resolve(null),
+      ]);
+      if (!live) return;
+      setReport(results.ok && results.data ? { phase: "ready", data: results.data } : { phase: "error", message: t("Results are not available right now.") });
+      const current = active?.ok ? active.data : null;
+      setGoal(current);
+      if (current && apiClient.getSavingsGoalProgress) {
+        const p = await apiClient.getSavingsGoalProgress(tenantId);
+        if (live) setProgress(p.ok ? p.data : null);
+      } else {
+        setProgress(null);
+      }
+    })();
+    return () => {
+      live = false;
     };
-  }, [opportunityItems, portfolioItems, currency, breakdownDimension, supplierLabelOf]);
+  }, [apiClient, tenantId, reloadKey, t]);
 
-  if (!workspace) {
-    return (
-      <div className="empty-state" role="status">
-        <h3>No workspace selected</h3>
-        <p className="micro-meta">Choose a workspace before viewing savings.</p>
-      </div>
-    );
-  }
+  const rs = useMemo(() => (report.phase === "ready" ? buildResultsView(report.data, t) : null), [report, t]);
+  const gl = useMemo(() => (goal && progress ? buildGoalView(progress, t) : null), [goal, progress, t]);
 
-  const kpis = kpiState.phase === "ready" ? kpiState.kpis : null;
-  const summary =
-    kpiState.phase === "loading" || opportunitiesState.phase === "loading" ? "Loading savings…" : formatSavingsSummary(kpis, rows.length);
-  const contextCells = buildContextCells(kpis, portfolioState.phase === "ready" ? findNoticeSoonContractIds(portfolioItems) : null);
+  const ask = useCallback(
+    async (text: string) => {
+      if (!text.trim() || !apiClient.parseSavingsGoal) {
+        setDraft(null);
+        return;
+      }
+      const result = await apiClient.parseSavingsGoal(tenantId, text);
+      setDraft(result.ok ? result.data : null);
+    },
+    [apiClient, tenantId],
+  );
 
-  // Filter options always come from the full, unfiltered `rows` -- so picking a currency never
-  // makes the supplier list (or vice versa) shrink out from under the user.
-  const visibleRows = filterOpportunityRows(rows, filters);
-  const supplierFilterOptions = getSupplierFilterOptions(rows);
-  const currencyFilterOptions = getCurrencyFilterOptions(rows);
-  const filtersActive = filters.supplier !== null || filters.status !== null || filters.currency !== null || filters.contractId !== null;
-  const clearFilters = () => setFilters(EMPTY_SAVINGS_FILTERS);
-  const focusedRow = filters.contractId === null ? null : (rows.find((row) => row.contractId === filters.contractId) ?? null);
-  const portfolioHref = buildOpportunitiesPortfolioHref(visibleRows);
+  const confirm = useCallback(async () => {
+    if (!draft?.ok || !apiClient.confirmSavingsGoal) return;
+    const result = await apiClient.confirmSavingsGoal(tenantId, {
+      text: draft.text,
+      pct: draft.pct,
+      annual: draft.annual,
+      scope: draft.scope,
+      period: draft.period,
+      label: draft.label,
+    });
+    if (!result.ok || !result.data) {
+      setActionError(t("The goal could not be saved."));
+      return;
+    }
+    setDraft(null);
+    setGoalOpen(false);
+    setActionError(null);
+    setReloadKey((n) => n + 1);
+  }, [apiClient, tenantId, draft, t]);
 
-  // A chart that filters the table brings the table into view, so the click visibly does something.
-  // Charts show one currency; with more than one, a chart filter also pins the table to it.
-  const filterFromChart = (next: Partial<SavingsFilterState>) => {
-    const selecting = next.status != null || next.supplier != null;
-    const pinCurrency = selecting && currencies.length > 1 ? { currency } : {};
-    setFilters((previous) => ({ ...previous, ...next, ...pinCurrency }));
-    tableRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  const clear = useCallback(async () => {
+    if (apiClient.clearSavingsGoal) await apiClient.clearSavingsGoal(tenantId);
+    setGoal(null);
+    setProgress(null);
+    setGoalText("");
+    setDraft(null);
+  }, [apiClient, tenantId]);
+
+  /** A contract to act on: the case if there is one, else open it (one case per contract). */
+  const openContract = useCallback(
+    async (contractId: string, caseId: string | null) => {
+      if (caseId) {
+        navigate(`/renewals/${caseId}`);
+        return;
+      }
+      const opened = await apiClient.openRenewalCase(tenantId, { contractId });
+      if (opened.ok && opened.data?.caseId) {
+        navigate(`/renewals/${opened.data.caseId}`);
+        return;
+      }
+      setActionError(t("The renewal could not be started."));
+    },
+    [apiClient, tenantId, navigate, t],
+  );
+
+  const firstRow = gl?.rows[0];
+  useGuide({
+    where: t("Results⟦guide⟧"),
+    now: goal
+      ? t("Open the first contract under “Contracts you can act on” and set the target in the case.")
+      : t("Write your goal in your own words, then read what is signed and what is missing."),
+    why: t("Raffa never estimates: a figure exists only with a signed contract or an invoice. The goal is yours and the page adapts to it."),
+    next: goal
+      ? t("Every target set in a case adds up here; it truly counts only at signature.")
+      : t("With the goal set you see how much is covered and which renewals can close it."),
+    cta: goal && firstRow ? { label: t("Open the first contract"), onClick: () => void openContract(firstRow.contractId, firstRow.caseId) } : null,
+  });
+
+  const open = goalOpen || !!draft;
+  const toggle = () => {
+    setGoalOpen(!open);
+    if (open) setDraft(null);
+  };
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") void ask(goalText);
   };
 
   return (
-    <div className="savings-screen">
-      <header className="screen-header">
-        <div>
-          <ScreenTitle guide="savings">Savings</ScreenTitle>
-          <p className="screen-header-summary">{summary}</p>
-        </div>
-        <div className="screen-header-actions">
-          <AskRaffaLink question={ASK_PROMPTS.whereToSave} className="btn btn-primary savings-ask">
-            Ask Raffa where to save →
-          </AskRaffaLink>
-        </div>
-      </header>
+    <div data-screen-label="Risultati" className="s4-page">
+      <h2>{t("Results⟦page⟧")}</h2>
+      <div className="s4-subtitle">{t("Verifiable figures only. Raffa never estimates a saving. The goal is yours, in your own words.")}</div>
 
-      <KpiRow kpiState={kpiState} onRetry={loadKpis} />
-      <ContextStrip cells={contextCells} />
-
-      {opportunitiesState.phase === "ready" && dashboard !== null && currency !== null && (
-        <div className="savings-dashboard">
-          {currencies.length > 1 && (
-            <div className="savings-currency-row">
-              <span className="micro-meta">Charts in</span>
-              <div className="seg" role="group" aria-label="Chart currency">
-                {currencies.map((code) => (
-                  <button key={code} type="button" aria-pressed={code === currency} onClick={() => setSelectedCurrency(code)}>
-                    {code}
-                  </button>
-                ))}
-              </div>
-              <span className="micro-meta">No conversion: each currency is shown on its own.</span>
+      <div data-screen-label="Obiettivo" className="s4-goal">
+        <div className="s4-goal-head">
+          <span className="s4-goal-mark" />
+          <span className="s4-goal-name">{t("Your goal")}</span>
+          <span className="s4-goal-summary">
+            {goal ? tm(t, goal.title as ApiMsg) : t("No goal set — write it in your own words and the page adapts")}
+          </span>
+          <button type="button" className="btn btn-secondary s4-goal-toggle" onClick={toggle}>
+            {open ? t("Close") : goal ? t("Change⟦goal⟧") : t("Set a goal")}
+          </button>
+        </div>
+        {open && (
+          <div className="s4-goal-open">
+            <div className="s4-goal-hint">{t("write it as you would tell a colleague — Raffa turns it into a target and adapts the page")}</div>
+            <div className="s4-goal-input-row">
+              <input
+                className="input s4-goal-input"
+                value={goalText}
+                onChange={(e) => setGoalText(e.target.value)}
+                onKeyDown={onKey}
+                placeholder={t("E.g. “I want to save 20% on IT contracts next year”")}
+              />
+              <button type="button" className="btn btn-primary s4-goal-set" onClick={() => void ask(goalText)}>
+                {t("Set⟦goal⟧")}
+              </button>
+              {goal && (
+                <button type="button" className="btn btn-ghost s4-goal-remove" onClick={() => void clear()}>
+                  {t("Remove goal")}
+                </button>
+              )}
             </div>
-          )}
-
-          <SavingsPipeline
-            pipeline={dashboard.pipeline}
-            activeStatus={filters.status}
-            onSelectStatus={(status) => filterFromChart({ status })}
-          />
-
-          <div className="savings-grid savings-grid-wide">
-            <SavingsTimeline currency={currency} buckets={dashboard.months} stats={dashboard.stats} />
-            <RecentVerified rows={dashboard.recent} />
+            <div className="s4-goal-examples">
+              <span className="s4-goal-try">{t("Try:")}</span>
+              {GOAL_EXAMPLES.map((x) => {
+                const label = t(x);
+                return (
+                  <button
+                    key={x}
+                    type="button"
+                    className="s4-goal-example"
+                    onClick={() => {
+                      setGoalText(label);
+                      void ask(label);
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {draft && (
+              <div className="s4-draft">
+                <div className="s4-draft-kicker">{tm(t, draft.kicker as ApiMsg)}</div>
+                <div className="s4-draft-title">{tm(t, draft.title as ApiMsg)}</div>
+                {draft.rows.map((r, i) => (
+                  <div key={i} className="s4-draft-row">
+                    <span>{tm(t, r.k as ApiMsg)}</span>
+                    <span>{tm(t, r.v as ApiMsg)}</span>
+                  </div>
+                ))}
+                <div className="s4-draft-actions">
+                  {draft.ok && (
+                    <button type="button" className="btn btn-primary" onClick={() => void confirm()}>
+                      {t("Yes, that’s it")}
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-ghost s4-draft-cancel" onClick={() => setDraft(null)}>
+                    {t("Cancel")}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+        )}
+      </div>
 
-          <div className="savings-grid">
-            <SavingsBreakdown
-              dimension={breakdownDimension}
-              onDimensionChange={setBreakdownDimension}
-              rows={dashboard.breakdown}
-              activeSupplier={filters.supplier}
-              onSelectSupplier={(supplier) => filterFromChart({ supplier })}
-            />
-            <DeadlineQueue rows={dashboard.deadlines} portfolioLoaded={portfolioState.phase !== "failed"} supplierNames={supplierNames} />
+      {actionError && (
+        <div className="s4-error" role="alert">
+          <span>{actionError}</span>
+          <button type="button" className="btn btn-secondary" onClick={() => setActionError(null)}>
+            {t("Close")}
+          </button>
+        </div>
+      )}
+
+      {gl && (
+        <div data-screen-label="Verso l’obiettivo" className="s4-gl">
+          <div className="s4-gl-title">
+            {gl.title} <span>· {gl.scope}</span>
+          </div>
+          <div className="s4-gl-kpis">
+            {gl.kpis.map((n) => (
+              <div key={n.k} className="s4-gl-kpi">
+                <div className="s4-k">{n.k}</div>
+                <div className="s4-gl-v" style={{ color: n.fg }}>{n.v}</div>
+                <div className="s4-sub">{n.sub}</div>
+              </div>
+            ))}
+          </div>
+          <div className="s4-gl-bar-wrap">
+            <div className="s4-gl-bar">
+              <span style={{ width: gl.wSigned, background: "var(--color-accent)" }} />
+              <span style={{ width: gl.wObj, background: "var(--color-accent-200)" }} />
+            </div>
+            <div className="s4-gl-legend">
+              <span>
+                <span className="s4-sw" style={{ background: "var(--color-accent)" }} />
+                {t("signed {amount}", { amount: gl.signedTxt })}
+              </span>
+              <span>
+                <span className="s4-sw" style={{ background: "var(--color-accent-200)" }} />
+                {t("objectives set in the cases {amount}", { amount: gl.objTxt })}
+              </span>
+              <span className="s4-gl-gap">{gl.gapTxt}</span>
+            </div>
+          </div>
+          <div className="s4-gl-verdict">{gl.verdict}</div>
+          <div className="s4-gl-rows">
+            <div className="s4-section-k">{t("Contracts you can act on to get there · {n}", { n: gl.n })}</div>
+            {gl.rows.map((c) => (
+              <div key={c.key} className="r-row s4-gl-row" onClick={() => void openContract(c.contractId, c.caseId)}>
+                <strong>{c.supplier}</strong>
+                <span className="s4-gl-spend">{t("{amount} / year", { amount: c.spend })}</span>
+                <span className="s4-gl-line">{c.line}</span>
+                <span className="s4-gl-hit">
+                  <span>{t("If you reach {pct}", { pct: gl.pct })}</span>
+                  <div>{c.ifHit}</div>
+                </span>
+                <span className="s4-gl-days" style={{ color: c.fg }}>{t("{n} d to notice", { n: c.days })}</span>
+                <button type="button" className={`btn ${c.cls} s4-gl-cta`}>{c.cta}</button>
+              </div>
+            ))}
+            {gl.none && (
+              <div className="s4-gl-none">{t("No validated contract in this scope: the goal stays a figure until you upload one.")}</div>
+            )}
           </div>
         </div>
       )}
 
-      <section className="savings-opportunities-section" aria-label="Opportunities" ref={tableRef}>
-        <div className="savings-opportunities-head">
-          <h6>Opportunities</h6>
-          {opportunitiesState.phase === "ready" && portfolioHref !== null && (
-            <Link to={portfolioHref} className="btn btn-ghost savings-panel-link">
-              Show these contracts in Portfolio →
-            </Link>
-          )}
+      {report.phase === "error" && (
+        <div className="s4-error" role="alert">
+          <span>{report.message}</span>
+          <button type="button" className="btn btn-secondary" onClick={() => { setReport({ phase: "loading" }); setReloadKey((n) => n + 1); }}>
+            {t("Retry")}
+          </button>
         </div>
+      )}
 
-        {opportunitiesState.phase === "loading" && (
-          <div className="savings-opportunities-skeleton" role="status" aria-live="polite">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="skeleton savings-opportunities-skeleton-row" />
+      {rs && (
+        <>
+          <div className="s4-nums">
+            {rs.nums.map((n) => (
+              <div key={n.k} className="s4-num">
+                <div className="s4-k">{n.k}</div>
+                <div className="s4-num-v" style={{ color: n.fg }}>{n.v}</div>
+                <div className="s4-sub">{n.sub}</div>
+              </div>
             ))}
           </div>
-        )}
-
-        {opportunitiesState.phase === "error" && (
-          <div className="error-state" role="alert">
-            <h4>Opportunities unavailable</h4>
-            <p className="micro-meta">
-              {opportunitiesState.message}
-              {opportunitiesState.statusCode !== null && ` (HTTP ${opportunitiesState.statusCode})`}
-            </p>
-            <button type="button" className="btn btn-secondary" onClick={loadOpportunities}>
-              Retry
-            </button>
+          <div data-screen-label="Risultati · KPI" className="s4-kpis">
+            {rs.kpis.map((n) => (
+              <div key={n.k} className="s4-kpi">
+                <div className="s4-kpi-k">{n.k}</div>
+                <div className="s4-kpi-v" style={{ color: n.fg }}>{n.v}</div>
+                <div className="s4-kpi-sub">{n.sub}</div>
+              </div>
+            ))}
           </div>
-        )}
-
-        {opportunitiesState.phase === "ready" && rows.length === 0 && (
-          <div className="screen-reroute" role="status">
-            <h3>No savings opportunities yet</h3>
-            <p>Opportunities appear once a renewal is actioned or a saving is identified from validated contracts.</p>
-            <div className="screen-reroute-actions">
-              <Link to="/renewals" className="btn btn-primary">
-                Open renewals
-              </Link>
-              <AskRaffaLink question={ASK_PROMPTS.whereToSave} className="btn btn-secondary">
-                Ask Raffa where to save
-              </AskRaffaLink>
+          <div data-screen-label="Risultati · grafici" className="s4-charts">
+            <div className="s4-chart">
+              <div className="s4-section-k">{t("When they were signed · CHF / year")}</div>
+              <div className="s4-months">
+                {rs.months.map((m, i) => (
+                  <div key={i} className="s4-month" title={m.title}>
+                    <span className="s4-month-txt">{m.txt}</span>
+                    <span className="s4-month-bar" style={{ height: m.h, background: m.bg }} />
+                  </div>
+                ))}
+              </div>
+              <div className="s4-month-labels">
+                {rs.months.map((m, i) => (
+                  <span key={i}>{m.label}</span>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-
-        {opportunitiesState.phase === "ready" && rows.length > 0 && (
-          <>
-            {filters.contractId !== null && (
-              <div className="savings-focus-notice" role="status">
+            <div className="s4-chart">
+              <div className="s4-section-k">{t("By supplier · signed, proven, objective")}</div>
+              {rs.by.map((b) => (
+                <div key={b.label} className="s4-by">
+                  <strong>{b.label}</strong>
+                  <span className="s4-stack">
+                    <span style={{ width: b.wReal, background: "var(--color-text)" }} />
+                    <span style={{ width: b.wSig, background: "var(--color-accent)" }} />
+                    <span style={{ width: b.wObj, background: "var(--color-accent-100)" }} />
+                  </span>
+                  <span className="s4-by-txt">{b.txt}</span>
+                </div>
+              ))}
+              <div className="s4-legend">
                 <span>
-                  {focusedRow !== null
-                    ? `Showing the savings on one ${focusedRow.supplierLabel} contract.`
-                    : "This contract has no savings opportunity yet."}
+                  <span className="s4-sw" style={{ background: "var(--color-text)" }} />
+                  {t("proven by invoices")}
                 </span>
-                <span className="savings-focus-links">
-                  <Link to={`/contracts/${filters.contractId}`} state={{ from: "savings" }} className="btn btn-ghost">
-                    Open the contract →
-                  </Link>
-                  <button type="button" className="btn btn-ghost" onClick={() => setFilters((previous) => ({ ...previous, contractId: null }))}>
-                    Show all opportunities
-                  </button>
+                <span>
+                  <span className="s4-sw" style={{ background: "var(--color-accent)" }} />
+                  {t("signed, not yet proven")}
+                </span>
+                <span>
+                  <span className="s4-sw" style={{ background: "var(--color-accent-100)", border: "1px solid var(--color-accent-300)", boxSizing: "border-box" }} />
+                  {t("your objective")}
                 </span>
               </div>
-            )}
-
-            {/* Anchored above the opportunities table (screens-v2.md #8; task-01-savings-filters,
-                ADR-020). Supplier / status / currency -- the council's exact filter set (AC-2);
-                "Estimate" stays a sort/numeric column, never a filter. Pure client-side view state:
-                filtering never re-fetches and never writes to storage (AC-3). */}
-            <div role="group" aria-label="Filter opportunities" className="savings-filters">
-              <div className="field savings-filter-field">
-                <label htmlFor="savings-filter-supplier">Supplier</label>
-                <select
-                  id="savings-filter-supplier"
-                  className="input"
-                  value={filters.supplier ?? ""}
-                  onChange={(event) => setFilters((previous) => ({ ...previous, supplier: event.target.value === "" ? null : event.target.value }))}
-                >
-                  <option value="">All suppliers</option>
-                  {supplierFilterOptions.map((supplier) => (
-                    <option key={supplier} value={supplier}>
-                      {supplier}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field savings-filter-field">
-                <label htmlFor="savings-filter-status">Status</label>
-                <select
-                  id="savings-filter-status"
-                  className="input"
-                  value={filters.status ?? ""}
-                  onChange={(event) =>
-                    setFilters((previous) => ({
-                      ...previous,
-                      status: event.target.value === "" ? null : (event.target.value as SavingsOpportunityBody["status"]),
-                    }))
-                  }
-                >
-                  <option value="">All statuses</option>
-                  {SAVINGS_STATUS_FILTER_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {getSavingsStatusTag(status).label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field savings-filter-field">
-                <label htmlFor="savings-filter-currency">Currency</label>
-                <select
-                  id="savings-filter-currency"
-                  className="input"
-                  value={filters.currency ?? ""}
-                  onChange={(event) => setFilters((previous) => ({ ...previous, currency: event.target.value === "" ? null : event.target.value }))}
-                >
-                  <option value="">All currencies</option>
-                  {currencyFilterOptions.map((code) => (
-                    <option key={code} value={code}>
-                      {code}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button type="button" className="btn-ghost" onClick={clearFilters} disabled={!filtersActive}>
-                Clear filters
-              </button>
             </div>
-
-            {visibleRows.length === 0 ? (
-              <div className="empty-state" role="status">
-                <h3>No opportunities match the selected filters</h3>
-                <p className="micro-meta">Clear a filter above to see the full list.</p>
+            <div className="s4-chart">
+              <div className="s4-section-k">{t("By lever · signed results")}</div>
+              {rs.levers.map((l) => (
+                <div key={l.label} className="s4-lever">
+                  <span>
+                    {l.label}
+                    <span className="s4-lever-n">{l.n}</span>
+                  </span>
+                  <span className="s4-bar">
+                    <span style={{ width: l.w, background: "var(--color-accent)" }} />
+                  </span>
+                  <span className="s4-lever-txt">{l.txt}</span>
+                </div>
+              ))}
+              <div className="s4-chart-note">{t("Quantity reductions are not included: they are shown apart.")}</div>
+            </div>
+            <div className="s4-chart">
+              <div className="s4-section-k">{t("Proven by invoices · per signed result")}</div>
+              {rs.proof.map((p, i) => (
+                <div key={i} className="s4-proof">
+                  <strong>{p.label}</strong>
+                  <span className="s4-bar">
+                    <span style={{ width: p.w, background: "var(--color-text)" }} />
+                  </span>
+                  <span className="s4-proof-txt">{p.txt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="s4-lists">
+            <div className="s4-list">
+              <div className="s4-list-title">
+                {t("Open objectives")} <span>{t("· yours, from the renewal chat")}</span>
               </div>
-            ) : (
-              <OpportunitiesTable rows={visibleRows} />
-            )}
-          </>
-        )}
-      </section>
+              {rs.open.map((o) => (
+                <div
+                  key={o.key}
+                  className="r-row s4-open"
+                  onClick={() => navigate(o.caseId ? `/renewals/${o.caseId}` : `/contracts/${o.contractId}`)}
+                >
+                  <strong>{o.supplier}</strong>
+                  <span className="s4-open-est">{o.est}</span>
+                  <span className={`tag ${o.tag}`}>{o.status}</span>
+                  <span className="s4-open-days" style={{ color: o.fg }}>{o.days}</span>
+                </div>
+              ))}
+            </div>
+            <div className="s4-list">
+              <div className="s4-list-title">
+                {t("Contractual results · FY {year}", { year: rs.fiscalYear })} <span>{t("· baseline · period · method · evidence")}</span>
+              </div>
+              {rs.recent.map((r) => (
+                <div key={r.key} className="s4-recent">
+                  <span className="s4-recent-when">{r.when}</span>
+                  <span>
+                    <strong>{r.supplier}</strong> · {r.note}
+                    <span className="s4-recent-meta">
+                      {r.baseline} · {r.period} · {r.method} · {r.evidence}
+                    </span>
+                    <span className="s4-recent-real" style={{ color: r.realFg }}>{r.realized}</span>
+                  </span>
+                  <span className="s4-recent-amount">{r.amount}</span>
+                </div>
+              ))}
+              {rs.volume.map((r) => (
+                <div key={r.key} className="s4-recent s4-volume">
+                  <span className="s4-recent-when">{r.when}</span>
+                  <span>
+                    <strong>{r.supplier}</strong> · {r.note}
+                    <span className="s4-recent-meta">{t("Quantity reduction — not a negotiation result")}</span>
+                  </span>
+                  <span className="s4-recent-amount">{r.amount}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

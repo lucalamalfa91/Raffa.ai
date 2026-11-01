@@ -1256,6 +1256,88 @@ export interface operations {
       };
     };
   };
+  getSavingsResults: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { period: "fy" | "q" | "12m"; today: string; fiscalYear: number; headline: { contractual: number; realized: number; volume: number; count: number; volumeCount: number; currency: string }; kpis: { signedCount: number; averagePerContract: number | null; provenPercent: number | null; realized: number; contractual: number; analysedSpend: number; validatedCount: number; openObjectives: number; openCount: number; withoutObjectiveCount: number; nextNotice: { contractId: string; supplier: string; noticeDeadline: string; days: number } | null }; months: ({ year: number; month: number; label: string; future: boolean; amount: number; count: number; items: ({ supplier: string; amount: number })[] })[]; peak: number; bySupplier: ({ label: string; contractual: number; realized: number; objectives: number; n: number })[]; maxBySupplier: number; levers: ({ kind: "price" | "term" | "clause" | "other"; count: number; amount: number })[]; proof: ({ resultId: string; supplier: string; amount: number; realized: number })[]; openObjectives: ({ contractId: string; caseId: string | null; supplier: string; category: string | null; owner: string | null; days: number; noticeDeadline: string | null; spend: number; objectiveKind: string | null; objectivePercent: number; targetAmount: number | null; hasCase: boolean })[]; contractual: ({ id: string; signedOn: string; supplier: string; kind: string; note: string; baseline: string; period: string; method: string; evidence: string; amount: number; realized: boolean; realizedAmount: number; proof: { firstInvoice: string; lastInvoice: string; invoiceCount: number; periodMonths: number | null } | null })[]; volume: ({ id: string; signedOn: string; supplier: string; note: string; amount: number })[] };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  parseSavingsGoal: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { ok: boolean; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; spend: number; contractCount: number; kicker: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; rows: ({ k: { id: string; vars?: unknown | null }; v: { id: string; vars?: unknown | null } })[]; question: { id: string; vars?: unknown | null } | null; source: "deterministic" | "llm" };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  confirmSavingsGoal: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; createdAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      422: {
+        content: {
+          "application/json": { ok: boolean; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; spend: number; contractCount: number; kicker: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; rows: ({ k: { id: string; vars?: unknown | null }; v: { id: string; vars?: unknown | null } })[]; question: { id: string; vars?: unknown | null } | null; source: "deterministic" | "llm" };
+        };
+      };
+    };
+  };
+  getActiveSavingsGoal: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; createdAt: string };
+        };
+      };
+      204: {
+        content: {
+        };
+      };
+    };
+  };
+  clearSavingsGoal: {
+    responses: {
+      204: {
+        content: {
+        };
+      };
+    };
+  };
+  getSavingsGoalProgress: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { goal: { id: string; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; createdAt: string }; spend: number; contractCount: number; pct: number; target: number; signed: number; objectives: number; gap: number; signedWidth: number; objectivesWidth: number; verdict: "no_contracts" | "covered" | "gap"; ifAllHit: number; rows: ({ contractId: string; caseId: string | null; supplier: string; spend: number; hasCase: boolean; objectiveKind: string | null; objectivePercent: number; objectiveAmount: number; uplift: string; autoRenewal: boolean; ifHit: number; days: number; noticeDeadline: string | null; primary: boolean })[] };
+        };
+      };
+      404: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -1450,5 +1532,21 @@ export interface paths {
   };
   "/api/quotes/{id}/counter-proposal": {
     post: operations["createQuoteCounterProposal"];
+  };
+  "/api/savings/results": {
+    get: operations["getSavingsResults"];
+  };
+  "/api/savings/goals/parse": {
+    post: operations["parseSavingsGoal"];
+  };
+  "/api/savings/goals": {
+    post: operations["confirmSavingsGoal"];
+  };
+  "/api/savings/goals/active": {
+    get: operations["getActiveSavingsGoal"];
+    delete: operations["clearSavingsGoal"];
+  };
+  "/api/savings/goals/active/progress": {
+    get: operations["getSavingsGoalProgress"];
   };
 }
