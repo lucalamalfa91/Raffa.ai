@@ -516,6 +516,9 @@ app.MapDocumentsEndpoints();
 // aggregation for the GET (ADR-009).
 app.MapContractsEndpoints();
 
+// AskRaffa 4.0 slice 4: Revisione reading, decision points, Contratti/Contratto v4 read models.
+app.MapContractsV4Endpoints();
+
 // Task E01/F06/US02/T02 (us-02-audit-baseline, AC-2), guard swapped from claims to membership by
 // wave w16's NW-08 (task E18/F02/US02/T01, ADR-025 §K): authorized, tenant-scoped GET /api/audit.
 // See AuditEndpointExtensions for the endpoint itself -- ICallerContext resolves identity and the
