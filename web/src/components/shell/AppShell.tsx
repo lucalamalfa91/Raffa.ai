@@ -13,6 +13,7 @@ import TopNav from "./TopNav";
 import GuidePanel from "./GuidePanel";
 import { GuideProvider, useGuideState } from "./guide";
 import { useTodayBadge } from "../../routes/today/loadToday";
+import { useCarriedScroll } from "./useCarriedScroll";
 import "./shell4.css";
 
 export { isAskRoute } from "./isAskRoute";
@@ -59,6 +60,7 @@ function ShellLayout({ workspaceId, apiClient }: AppShellProps) {
   const { count, kbReady } = useValidatedContractCount(apiClient, refreshKey);
   // Oggi badge on every screen (README "Top nav"): the caller's items.
   useTodayBadge(apiClient, workspaceId, location.pathname);
+  const mainRef = useCarriedScroll(location.pathname);
 
   const fingerprint = useMemo(
     () =>
@@ -78,7 +80,7 @@ function ShellLayout({ workspaceId, apiClient }: AppShellProps) {
       {fixture ? <DemoBar /> : null}
       <TopNav />
       <div className={open ? "v4-body" : "v4-body is-guide-closed"}>
-        <main className="v4-main">
+        <main className="v4-main" ref={mainRef}>
           <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
         </main>
         {open ? <GuidePanel /> : null}
