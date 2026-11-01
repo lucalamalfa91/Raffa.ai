@@ -63,6 +63,387 @@ namespace Raffa.Savings.Migrations
                     b.ToTable("realized_savings", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Savings.Domain.Results.CaseObjective", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("outcome");
+
+                    b.Property<string>("OwnerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("owner_name");
+
+                    b.Property<decimal?>("Pct")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)")
+                        .HasColumnName("pct");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Text")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_objective");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_case_objective_tenant_id");
+
+                    b.HasIndex("TenantId", "CaseId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_case_objective_tenant_id_case_id");
+
+                    b.HasIndex("TenantId", "ContractId")
+                        .HasDatabaseName("ix_case_objective_tenant_id_contract_id");
+
+                    b.ToTable("case_objective", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Savings.Domain.Results.Invoice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid?>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<DateOnly>("Period")
+                        .HasColumnType("date")
+                        .HasColumnName("period");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.Property<string>("SupplierName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("supplier_name");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_invoice");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_invoice_tenant_id");
+
+                    b.HasIndex("TenantId", "ContractId", "Period")
+                        .HasDatabaseName("ix_invoice_tenant_id_contract_id_period");
+
+                    b.ToTable("invoice", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Savings.Domain.Results.SavingRealization", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ComputedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("computed_at");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invoice_id");
+
+                    b.Property<decimal>("RealizedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("realized_amount");
+
+                    b.Property<Guid>("SavingResultId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("saving_result_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_saving_realization");
+
+                    b.HasIndex("InvoiceId")
+                        .HasDatabaseName("ix_saving_realization_invoice_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_saving_realization_tenant_id");
+
+                    b.HasIndex("SavingResultId", "InvoiceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_saving_realization_saving_result_id_invoice_id");
+
+                    b.ToTable("saving_realization", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Savings.Domain.Results.SavingResult", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("AmountAnnual")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount_annual");
+
+                    b.Property<string>("BaselineDesc")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("baseline_desc");
+
+                    b.Property<decimal?>("BaselineValue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("baseline_value");
+
+                    b.Property<Guid?>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("category");
+
+                    b.Property<Guid?>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("ContractName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("contract_name");
+
+                    b.Property<bool>("CountsAsNegotiation")
+                        .HasColumnType("boolean")
+                        .HasColumnName("counts_as_negotiation");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid?>("EvidenceDocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evidence_document_id");
+
+                    b.Property<string>("EvidenceFileName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("evidence_file_name");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("method");
+
+                    b.Property<decimal?>("NewValue")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("new_value");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<string>("OwnerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("owner_name");
+
+                    b.Property<string>("PeriodDesc")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("period_desc");
+
+                    b.Property<DateOnly?>("PeriodFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("period_from");
+
+                    b.Property<DateOnly?>("PeriodTo")
+                        .HasColumnType("date")
+                        .HasColumnName("period_to");
+
+                    b.Property<decimal?>("Quantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("quantity");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<string>("RecordedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("recorded_by");
+
+                    b.Property<DateOnly>("SignedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("signed_on");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.Property<string>("SupplierName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("supplier_name");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_saving_result");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_saving_result_tenant_id");
+
+                    b.HasIndex("TenantId", "ContractId")
+                        .HasDatabaseName("ix_saving_result_tenant_id_contract_id");
+
+                    b.HasIndex("TenantId", "SignedOn")
+                        .HasDatabaseName("ix_saving_result_tenant_id_signed_on");
+
+                    b.ToTable("saving_result", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Savings.Domain.Results.SavingsGoal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean")
+                        .HasColumnName("active");
+
+                    b.Property<decimal?>("AnnualAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("annual_amount");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal?>("Pct")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("numeric(9,2)")
+                        .HasColumnName("pct");
+
+                    b.Property<string>("Period")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("period");
+
+                    b.Property<string>("ScopeJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("scope_json");
+
+                    b.Property<string>("SourceText")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("source_text");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_savings_goal");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_savings_goal_tenant_id");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_savings_goal_active_per_user")
+                        .HasFilter("active");
+
+                    b.ToTable("savings_goal", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Savings.Domain.SavingsOpportunity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -151,6 +532,23 @@ namespace Raffa.Savings.Migrations
                         .HasFilter("opportunity_key IS NOT NULL");
 
                     b.ToTable("savings_opportunity", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Savings.Domain.Results.SavingRealization", b =>
+                {
+                    b.HasOne("Raffa.Savings.Domain.Results.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_saving_realization_invoice_invoice_id");
+
+                    b.HasOne("Raffa.Savings.Domain.Results.SavingResult", null)
+                        .WithMany()
+                        .HasForeignKey("SavingResultId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_saving_realization_saving_result_saving_result_id");
                 });
 #pragma warning restore 612, 618
         }

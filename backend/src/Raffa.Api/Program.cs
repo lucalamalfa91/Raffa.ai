@@ -552,6 +552,7 @@ app.MapSavingsEndpoints();
 // endpoints above (ADR-010 is not in force for this task either) — see that file's own comment
 // for why this gap is not promoted to reports/open-questions.md by this task.
 app.MapSavingsKpiEndpoints();
+app.MapSavingsResultsEndpoints();
 
 // Task E13/F06/US01/T01 (ask-engine, ADR-024 §6): POST /api/chat/query — kept one release as a
 // thin alias that creates a conversation and delegates into AskCopilotService (see

@@ -1863,6 +1863,22 @@ export interface ApiClient {
    * outcome.
    */
   getMarketRecord(id: string): Promise<GetMarketRecordResult>;
+  // AskRaffa 4.0 additions are optional members: the many hand-built `ApiClient` mocks in tests/
+  // keep type-checking; `createApiClient` always provides them.
+  /** `GET /api/savings/results` -- Risultati (contractual, realized, quantity reductions apart, objectives). */
+  getSavingsResults?(tenantId: string, period?: "fy" | "q" | "12m"): Promise<ApiCallResult<SavingsResultsBody>>;
+  /** `POST /api/savings/goals/parse` -- the "Cosa ho capito" draft of a goal in the user's own words. */
+  parseSavingsGoal?(tenantId: string, text: string): Promise<ApiCallResult<SavingsGoalDraftBody>>;
+  /** `POST /api/savings/goals` -- confirm a goal ("Sì, è questo"); 422 = the draft still needs an answer. */
+  confirmSavingsGoal?(tenantId: string, request: ConfirmSavingsGoalRequest): Promise<ApiCallResult<SavingsGoalBody>>;
+  /** `GET /api/savings/goals/active` -- the caller's active goal, `data: null` when none (204). */
+  getActiveSavingsGoal?(tenantId: string): Promise<ApiCallResult<SavingsGoalBody>>;
+  /** `DELETE /api/savings/goals/active` -- "Rimuovi obiettivo". */
+  clearSavingsGoal?(tenantId: string): Promise<ApiCallResult<null>>;
+  /** `GET /api/savings/goals/active/progress` -- "Verso il tuo obiettivo"; 404 when no goal. */
+  getSavingsGoalProgress?(tenantId: string): Promise<ApiCallResult<SavingsGoalProgressBody>>;
+  /** `POST /api/renewals` -- open or resume the renewal case of a contract. */
+  openRenewalCase?(tenantId: string, request: OpenRenewalCaseRequest): Promise<OpenRenewalCaseResult>;
 }
 
 
@@ -1885,6 +1901,51 @@ export function contractCorrectionCount(client: object): number {
  * every `200` from `correctContract`; it is exported for test doubles that stand in for that call. */
 export function noteContractCorrection(client: object): void {
   contractCorrections.set(client, contractCorrectionCount(client) + 1);
+}
+
+// AskRaffa 4.0 Risultati (slice 5): verifiable results and the user's goal -- `GET /api/savings/results`,
+// `POST /api/savings/goals/parse`, `POST /api/savings/goals`, `GET|DELETE /api/savings/goals/active`,
+// `GET /api/savings/goals/active/progress`. No body here carries an estimate.
+type GetSavingsResultsResponses = paths["/api/savings/results"]["get"]["responses"];
+export type SavingsResultsBody = GetSavingsResultsResponses[200]["content"]["application/json"];
+type ParseSavingsGoalResponses = paths["/api/savings/goals/parse"]["post"]["responses"];
+export type SavingsGoalDraftBody = ParseSavingsGoalResponses[200]["content"]["application/json"];
+type ConfirmSavingsGoalOperation = paths["/api/savings/goals"]["post"];
+export type SavingsGoalBody = ConfirmSavingsGoalOperation["responses"][200]["content"]["application/json"];
+/** `POST /api/savings/goals` body: the confirmed draft (without pct/annual the server parses `text`). */
+export interface ConfirmSavingsGoalRequest {
+  text: string;
+  pct?: number | null;
+  annual?: number | null;
+  scope?: SavingsGoalDraftBody["scope"] | null;
+  period?: string | null;
+  label?: SavingsGoalDraftBody["label"] | null;
+}
+type GetSavingsGoalProgressResponses = paths["/api/savings/goals/active/progress"]["get"]["responses"];
+export type SavingsGoalProgressBody = GetSavingsGoalProgressResponses[200]["content"]["application/json"];
+
+/** The uniform result of the Risultati calls: `data` only when `ok`. */
+export interface ApiCallResult<T> {
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed. */
+  statusCode: number | null;
+  data: T | null;
+  /** Plain-language failure reason, present only when `ok` is false. */
+  error: string | null;
+}
+
+/** `POST /api/renewals`: open (or reuse) the renewal case of a contract -- never a second one. */
+export interface OpenRenewalCaseRequest {
+  contractId: string;
+  branch?: string;
+  ownerUserId?: string;
+}
+
+export interface OpenRenewalCaseResult {
+  ok: boolean;
+  statusCode: number | null;
+  caseId: string | null;
+  error: string | null;
 }
 
 /**
@@ -1911,6 +1972,44 @@ export function createApiClient(
   // request settles, and any write drops what is in flight). One instance per client, so nothing
   // leaks between clients.
   const apiFetch = createCoalescingFetch(options.fetch);
+
+  /** One JSON call of the Risultati wrappers: 2xx with a body → `data`, 204 → `data: null`. */
+  async function callJson<T>(
+    url: URL,
+    init: { method: "GET" | "POST" | "DELETE"; tenantId: string; body?: unknown },
+  ): Promise<ApiCallResult<T>> {
+    let response: Response;
+    try {
+      response = await apiFetch(url, {
+        method: init.method,
+        headers: {
+          "X-Tenant-Id": init.tenantId,
+          ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...await authHeaders(getAccessToken),
+        },
+        body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+        cache: "no-store",
+      });
+    } catch (cause) {
+      return { ok: false, statusCode: null, data: null, error: `Unable to reach ${url.toString()}. Cause: ${cause instanceof Error ? cause.message : String(cause)}` };
+    }
+
+    if (response.status === 204) return { ok: true, statusCode: 204, data: null, error: null };
+    if (response.ok) return { ok: true, statusCode: response.status, data: (await response.json()) as T, error: null };
+
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    // A 422 on a goal confirm carries the draft that still needs an answer.
+    if (response.status === 422 && body && typeof body === "object") {
+      return { ok: false, statusCode: 422, data: body as T, error: "The goal needs an answer first." };
+    }
+    const error = typeof body === "string" ? body : body ? JSON.stringify(body) : `Request failed with HTTP ${response.status} ${response.statusText}.`;
+    return { ok: false, statusCode: response.status, data: null, error };
+  }
   const client: ApiClient = {
     async getHealth() {
       let response: Response;
@@ -3959,6 +4058,36 @@ export function createApiClient(
         record: null,
         error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
       };
+    },
+    async getSavingsResults(tenantId, period) {
+      const url = new URL("/api/savings/results", baseUrl);
+      if (period) url.searchParams.set("period", period);
+      return callJson<SavingsResultsBody>(url, { method: "GET", tenantId });
+    },
+
+    async parseSavingsGoal(tenantId, text) {
+      return callJson<SavingsGoalDraftBody>(new URL("/api/savings/goals/parse", baseUrl), { method: "POST", tenantId, body: { text } });
+    },
+
+    async confirmSavingsGoal(tenantId, request) {
+      return callJson<SavingsGoalBody>(new URL("/api/savings/goals", baseUrl), { method: "POST", tenantId, body: request });
+    },
+
+    async getActiveSavingsGoal(tenantId) {
+      return callJson<SavingsGoalBody>(new URL("/api/savings/goals/active", baseUrl), { method: "GET", tenantId });
+    },
+
+    async clearSavingsGoal(tenantId) {
+      return callJson<null>(new URL("/api/savings/goals/active", baseUrl), { method: "DELETE", tenantId });
+    },
+
+    async getSavingsGoalProgress(tenantId) {
+      return callJson<SavingsGoalProgressBody>(new URL("/api/savings/goals/active/progress", baseUrl), { method: "GET", tenantId });
+    },
+
+    async openRenewalCase(tenantId, request) {
+      const result = await callJson<{ caseId: string }>(new URL("/api/renewals", baseUrl), { method: "POST", tenantId, body: request });
+      return { ok: result.ok, statusCode: result.statusCode, caseId: result.data?.caseId ?? null, error: result.error };
     },
   };
   return client;

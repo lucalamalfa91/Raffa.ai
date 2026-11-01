@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.Documents.Contracts.Infrastructure.Fixtures;
 using Raffa.Identity.Workspace.Infrastructure.Fixtures;
+using Raffa.Savings.Infrastructure.Fixtures;
 using Raffa.SharedKernel;
 
 namespace Raffa.Api.Fixtures;
@@ -32,6 +33,7 @@ internal static class FixtureServiceCollectionExtensions
         // One seeder per module that owns fixture data; later slices add their line here.
         builder.Services.AddIdentityWorkspaceFixtureSeeder();
         builder.Services.AddDocumentsContractsFixtureSeeder();
+        builder.Services.AddSavingsFixtureSeeder();
 
         if (options.CorsOrigins.Length > 0)
         {

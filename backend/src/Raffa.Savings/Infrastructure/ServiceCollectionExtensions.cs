@@ -1,5 +1,7 @@
 using Raffa.Benchmark;
 using Raffa.Savings.Application;
+using Raffa.Savings.Application.Results;
+using Raffa.SharedKernel.Savings;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -89,6 +91,16 @@ public static class ServiceCollectionExtensions
         // Task E04/F03/US01/T01 (savings-kpis): `GET /api/savings/kpis` — see the type doc comment.
         services.TryAddSingleton<SavingsKpiCalculator>();
         services.AddScoped<SavingsKpiQueryService>();
+
+        // AskRaffa 4.0 verifiable savings (BACKEND-SPEC §2.10, Risultati). The goal parser
+        // (ISavingsGoalParser) is registered by AddAiFlows (LLM-backed) or by fixture mode
+        // (deterministic). TryAdd: a module that owns cases may register its own objective source.
+        services.AddScoped<ResultsQueryService>();
+        services.AddScoped<SavingsGoalService>();
+        services.TryAddScoped<CaseObjectiveTableStore>();
+        services.TryAddScoped<ICaseObjectiveSource>(sp => sp.GetRequiredService<CaseObjectiveTableStore>());
+        services.TryAddScoped<ICaseObjectiveWriter>(sp => sp.GetRequiredService<CaseObjectiveTableStore>());
+        services.TryAddScoped<ISavingResultRecorder, SavingResultRecorder>();
 
         return services;
     }

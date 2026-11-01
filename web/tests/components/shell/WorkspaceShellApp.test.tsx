@@ -356,7 +356,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(screen.getByRole("list", { name: "Renewal steps" })).toBeInTheDocument();
   });
 
-  it("renders the real Savings screen at /savings, moved from / (task E13/F09/US01/T01, gap G-IA-V2)", async () => {
+  it("renders Risultati at /savings (AskRaffa 4.0 slice 5)", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -364,11 +364,10 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/savings");
 
-    // The shared mockApiClient() above resolves getSavingsKpis/getSavingsOpportunities to empty --
-    // proves the real route (KPI row AND opportunities table) is mounted at its new V2 path; the
-    // fetch-outcome matrix itself (populated/loading/error/empty/stale) is covered in depth by
-    // tests/routes/savings/*.test.tsx.
-    expect(await screen.findByText("Contracts analyzed")).toBeInTheDocument();
-    expect(await screen.findByText(/no savings opportunities yet/i)).toBeInTheDocument();
+    // The shared mockApiClient() has no Risultati calls: the page still renders its frame, the
+    // collapsed goal bar and the honest inline error (DESIGN-GAPS A3).
+    expect(await screen.findByRole("heading", { name: "Results" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set a goal" })).toBeInTheDocument();
+    expect(await screen.findByText("Results are not available right now.")).toBeInTheDocument();
   });
 });
