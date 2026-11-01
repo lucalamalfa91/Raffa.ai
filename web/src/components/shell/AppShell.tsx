@@ -1,62 +1,66 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import RailNav from "./RailNav";
-import RailResizeHandle from "./RailResizeHandle";
-import { useRailWidth } from "./useRailWidth";
 import { useValidatedContractCount } from "./useValidatedContractCount";
 import { useDocumentCounts } from "./useDocumentCounts";
 import { usePollBudget } from "./usePollBudget";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import { DocumentViewerProvider } from "../../routes/documents/viewer/DocumentViewerOverlay";
-import { AskSessionsProvider } from "../../routes/ask/AskSessionsContext";
-import AskReplyNotifier from "../../routes/ask/AskReplyNotifier";
 import { I18nProvider } from "../../i18n/I18nProvider";
-import "./shell.css";
+import DemoBar from "../../fixtures/DemoBar";
+import { useFixtureSession } from "../../fixtures/FixtureSessionContext";
+import TopNav from "./TopNav";
+import GuidePanel from "./GuidePanel";
+import { GuideProvider, useGuideState } from "./guide";
+import { useTodayBadge } from "../../routes/today/loadToday";
+import { useCarriedScroll } from "./useCarriedScroll";
+import "./shell4.css";
 
 export { isAskRoute } from "./isAskRoute";
 
 export interface AppShellProps {
-  /**
-   * Task E14/F03/US02/T01 (wave w14 "workspace is real"): the one resolved workspace's id, passed
-   * through to the router outlet (`shellContext.ts`) so a routed screen never has to re-derive it
-   * from the session hint. This shell does not call an endpoint with it itself.
-   */
+  /** The one resolved workspace's id, passed to every screen through the outlet (`shellContext.ts`). */
   workspaceId: string;
   workspaceName: string;
   role: WorkspaceRole;
   userLabel: string;
   onSignOut: () => void;
-  /**
-   * Task E13/F09/US01/T01 (web-shell-v2): threaded through so this shell can fetch `kbReady` /
-   * the validated-contract count (`useValidatedContractCount`) and pass it to both the rail
-   * (greyed secondary tier, count badges) and the global Ask bar (off placeholder) -- the same
-   * generated-client instance every routed screen already shares (`WorkspaceShellApp.tsx`).
-   */
+  /** The client every routed screen shares; the shell reads `kbReady` / document counts with it. */
   apiClient: ApiClient;
 }
 
 /**
- * The shell: resizable rail + routed content. There is no global Ask bar above the content --
- * screens carry their own "Ask Raffa" action and `/ask` renders its own composer.
+ * The AskRaffa 4.0 shell (IMPLEMENTATION-PLAN.md §1 "Shell"; AskRaffa V4.dc.html lines 26-47,
+ * 309-321): [demo bar, fixture mode only] + top nav + main grid (`minmax(0,1fr) 300px` with the
+ * guide open, `minmax(0,1fr)` closed) + Guida Raffa. The old rail is retired.
  *
- * Task E14/F03/US02/T01 (wave w14): `useValidatedContractCount` now answers from NW-01's server
- * field instead of a client-side portfolio scan (see that hook's own header comment) -- this
- * component's own call site is unchanged, because the one resolved workspace it renders for is
- * exactly what makes that field meaningful.
- *
- * While documents are still `Uploaded`/`Processing` or waiting in Needs review, both rail counts
- * re-read on the shared 2 s poll budget (and on every navigation) so "N to review" / Portfolio /
- * Renewals move with ingest instead of freezing at the first shell mount.
+ * The shell still reads `kbReady` / the validated-contract count and the tenant's document counts
+ * once for every screen (router outlet context) and re-reads them on the shared poll budget while
+ * documents are being processed or wait for review.
  */
+export default function AppShell(props: AppShellProps) {
+  return (
+    <I18nProvider>
+      <GuideProvider>
+        <DocumentViewerProvider apiClient={props.apiClient}>
+          <ShellLayout {...props} />
+        </DocumentViewerProvider>
+      </GuideProvider>
+    </I18nProvider>
+  );
+}
 
-export default function AppShell({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: AppShellProps) {
+function ShellLayout({ workspaceId, apiClient }: AppShellProps) {
   const location = useLocation();
+  const fixture = useFixtureSession();
+  const { open } = useGuideState();
   const [pollTick, setPollTick] = useState(0);
-  const railWidth = useRailWidth();
   const refreshKey = `${location.pathname}:${pollTick}`;
   const documentCounts = useDocumentCounts(apiClient, refreshKey);
   const { count, kbReady } = useValidatedContractCount(apiClient, refreshKey);
+  // Oggi badge on every screen (README "Top nav"): the caller's items.
+  useTodayBadge(apiClient, workspaceId, location.pathname);
+  const mainRef = useCarriedScroll(location.pathname);
 
   const fingerprint = useMemo(
     () =>
@@ -66,48 +70,21 @@ export default function AppShell({ workspaceId, workspaceName, role, userLabel, 
     [documentCounts],
   );
   usePollBudget({
-    active:
-      documentCounts === null ||
-      documentCounts.processing > 0 ||
-      documentCounts.needsReview > 0,
+    active: documentCounts === null || documentCounts.processing > 0 || documentCounts.needsReview > 0,
     fingerprint,
     onTick: () => setPollTick((current) => current + 1),
   });
 
-
   return (
-    <I18nProvider>
-      <DocumentViewerProvider apiClient={apiClient}>
-        {/* Parallel Ask sessions (`routes/ask/askSessions.ts`): one store for the rail, the Ask screen
-            and the "reply ready" notices, so a chat keeps answering while the user is elsewhere. */}
-        <AskSessionsProvider>
-          {/* The rail is resizable (RailResizeHandle): its width is this one custom property. */}
-          <div className="shell-layout" style={{ "--shell-rail-width": `${railWidth.width}px` } as CSSProperties}>
-            <RailNav
-              workspaceName={workspaceName}
-              role={role}
-              userLabel={userLabel}
-              onSignOut={onSignOut}
-              kbReady={kbReady}
-              validatedContractCount={count}
-              documentCounts={documentCounts}
-              apiClient={apiClient}
-            />
-            <RailResizeHandle {...railWidth} />
-            <main className="shell-main">
-              {/* No global Ask bar: every screen already offers its own "Ask Raffa" action, and /ask
-                  has its own composer. */}
-              <div className="shell-content">
-                {/* Shared with every screen through the router outlet (shellContext.ts): the same kbReady /
-                    validated-count verdict the rail and the Ask bar already render, plus the same document
-                    counts the rail badge shows, so a screen never has to re-fetch for a second opinion. */}
-                <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
-              </div>
-            </main>
-          </div>
-          <AskReplyNotifier />
-        </AskSessionsProvider>
-      </DocumentViewerProvider>
-    </I18nProvider>
+    <div className="v4">
+      {fixture ? <DemoBar /> : null}
+      <TopNav />
+      <div className={open ? "v4-body" : "v4-body is-guide-closed"}>
+        <main className="v4-main" ref={mainRef}>
+          <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
+        </main>
+        {open ? <GuidePanel /> : null}
+      </div>
+    </div>
   );
 }

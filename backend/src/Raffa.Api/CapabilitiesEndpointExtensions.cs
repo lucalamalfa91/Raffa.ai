@@ -36,8 +36,21 @@ public static class CapabilitiesEndpointExtensions
         {
             version = CapabilityCatalog.Version,
             capabilities = visible,
+            flags = Flags,
         });
     }
+
+    /// <summary>
+    /// AskRaffa 4.0 feature flags (IMPLEMENTATION-PLAN.md §2 "Feature flags"): the guided flow is
+    /// on, no market benchmark surface is called (<c>askraffa4.noBenchmark</c>), and Risultati
+    /// shows signed/realized results only (<c>savings.results</c>).
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, bool> Flags = new Dictionary<string, bool>(StringComparer.Ordinal)
+    {
+        ["askraffa4.guidedFlow"] = true,
+        ["askraffa4.noBenchmark"] = true,
+        ["savings.results"] = true,
+    };
 
     private static object ToResponse(Capability capability) => new
     {

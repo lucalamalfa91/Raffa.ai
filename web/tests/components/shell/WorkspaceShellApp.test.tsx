@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ShellRoutes } from "../../../src/components/shell/WorkspaceShellApp";
 import type { WorkspaceRole } from "../../../src/components/shell/navItems";
 import type { ApiClient } from "../../../src/api/client";
+import { contractsV4Mocks } from "../../helpers/contractsV4Mocks";
 
 // Task E06/F05/US01/T01 (document-upload) / E06/F05/US02/T01
 // (document-status-readback) added the `documents` route's real content,
@@ -22,6 +23,7 @@ const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 
 function mockApiClient(): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
@@ -191,22 +193,21 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     window.sessionStorage.clear();
   });
 
-  it("redirects / to /ask and renders the rail alongside the real Ask Raffa screen (R-WEB-01)", async () => {
+  it("redirects / to /today and renders the AskRaffa 4.0 top nav and Guida Raffa around it", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
+    Object.defineProperty(window, "innerWidth", { value: 1440, configurable: true });
     renderShell("admin");
 
     expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
-    // This suite's own mockApiClient() above resolves getPortfolio to an empty page (0 validated
-    // contracts), so the real V2 AskRoute this shell mounts renders its off state (AskOffState.tsx),
-    // not the "What do you want to know?" on-state -- proves the real route (task E13/F09/US01/T04),
-    // not a scaffold, is mounted, the same "assert on the real route's own honest content" convention
-    // every other screen in this suite already follows (see e.g. the Contract 360/Renewals cases
-    // below). The full off/on state matrix is covered in depth by tests/routes/ask/AskRoute.test.tsx.
-    expect(await screen.findByRole("heading", { name: "Ask needs at least one validated contract." })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^Today/ })).toHaveAttribute("aria-current", "page");
+    for (const name of ["Renewals", "Contracts", "Results", "Ask"]) {
+      expect(screen.getByRole("link", { name })).toHaveAttribute("href", expect.stringMatching(/^\//));
+    }
+    expect(screen.getByRole("complementary", { name: "Raffa guide" })).toBeInTheDocument();
     expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
@@ -222,7 +223,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/contracts");
 
-    expect(screen.getByRole("heading", { name: "Portfolio" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Contracts" })).toBeInTheDocument();
     expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
@@ -255,7 +256,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(screen.queryByText(/members table \+ invite ships in epic-06\/feature-04-workspace-members-ui/i)).not.toBeInTheDocument();
   });
 
-  it("redirects an unknown path to Ask (via / -- there is no Home to fall back to in V2)", async () => {
+  it("redirects an unknown path to Today (via /)", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -263,11 +264,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/this-route-does-not-exist");
 
-    // See the identical assertion (and its own comment) in the "redirects / to /ask..." test above --
-    // this suite's shared mock always resolves 0 validated contracts, so the real Ask screen the
-    // catch-all redirect lands on is its off state.
-    expect(await screen.findByRole("heading", { name: "Ask needs at least one validated contract." })).toBeInTheDocument();
-    expect(screen.queryByRole("search")).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^Today/ })).toHaveAttribute("aria-current", "page");
   });
 
   it("/review redirects to /documents?filter=attention (Review is a state of Documents in V2, not a rail destination)", async () => {
@@ -305,7 +302,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(screen.queryByText(/ships in epic-06\/feature-05-document-upload-ui/i)).not.toBeInTheDocument();
   });
 
-  it("renders the real Portfolio screen instead of a scaffold placeholder (task E07/F01/US01/T01)", () => {
+  it("renders the AskRaffa 4.0 Contratti screen at /contracts", () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -313,11 +310,11 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/contracts");
 
-    expect(screen.getByRole("heading", { name: "Portfolio" })).toBeInTheDocument();
-    expect(screen.queryByText(/ships in epic-07\/feature-01-portfolio-ui/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Contracts" })).toBeInTheDocument();
+    expect(document.querySelector('[data-screen-label="Contratti"]')).not.toBeNull();
   });
 
-  it("renders the real Contract 360 screen instead of a scaffold placeholder (task E07/F02/US01/T01)", async () => {
+  it("renders the AskRaffa 4.0 Contratto screen at /contracts/:contractId", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -325,12 +322,8 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/contracts/22222222-2222-2222-2222-222222222222");
 
-    // The shared mockApiClient() above resolves getContract360 to a 404 -- proves the real route
-    // (which renders its own named "not found" state) is mounted, not the scaffold; the fetch-outcome
-    // matrix itself (populated/loading/error/not-found) is covered in depth by
-    // tests/routes/contracts/contract360/*.test.tsx.
-    expect(await screen.findByText(/contract not found/i)).toBeInTheDocument();
-    expect(screen.queryByText(/ships in epic-07\/feature-02-contract-360-ui/i)).not.toBeInTheDocument();
+    // The shared mock answers getContractV4 with a 404: the route shows its inline error (A3).
+    expect(await screen.findByText(/the contract could not be loaded/i)).toBeInTheDocument();
   });
 
   it("renders the real Renewals screen instead of a scaffold placeholder (task E08/F01/US01/T01)", async () => {
@@ -341,27 +334,24 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/renewals");
 
-    // The Renewals screen (cards, KPI strip, case panel) is mounted -- not the scaffold. Its own
-    // behaviour is covered in depth by tests/routes/renewals/*.test.tsx.
+    // The AskRaffa 4.0 Rinnovi board is mounted -- not the scaffold.
     expect(await screen.findByRole("heading", { level: 2, name: "Renewals" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Renewal KPIs" })).toBeInTheDocument();
     expect(screen.queryByText(/ships in epic-08\/feature-01-renewal-pipeline-ui/i)).not.toBeInTheDocument();
   });
 
-  it("mounts the renewal wizard chat at /renewals/:contractId/chat", async () => {
+  it("mounts the guided case (Pratica) at /renewals/:caseId", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
-    renderShell("admin", "/renewals/4/chat");
+    renderShell("admin", "/renewals/00000000-0000-0000-0000-000000000004");
 
-    // The wizard's own header (not the Renewals list): case title and the seven-step stepper.
-    expect(await screen.findByRole("heading", { name: /Renewal · DocuSign/ })).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Renewal steps" })).toBeInTheDocument();
+    // The case screen (not the Renewals list) is mounted; it loads its view from the API.
+    await waitFor(() => expect(document.querySelector('[data-screen-label="Pratica"]')).not.toBeNull());
   });
 
-  it("renders the real Savings screen at /savings, moved from / (task E13/F09/US01/T01, gap G-IA-V2)", async () => {
+  it("renders Risultati at /savings (AskRaffa 4.0 slice 5)", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -369,11 +359,10 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/savings");
 
-    // The shared mockApiClient() above resolves getSavingsKpis/getSavingsOpportunities to empty --
-    // proves the real route (KPI row AND opportunities table) is mounted at its new V2 path; the
-    // fetch-outcome matrix itself (populated/loading/error/empty/stale) is covered in depth by
-    // tests/routes/savings/*.test.tsx.
-    expect(await screen.findByText("Contracts analyzed")).toBeInTheDocument();
-    expect(await screen.findByText(/no savings opportunities yet/i)).toBeInTheDocument();
+    // The shared mockApiClient() has no Risultati calls: the page still renders its frame, the
+    // collapsed goal bar and the honest inline error (DESIGN-GAPS A3).
+    expect(await screen.findByRole("heading", { name: "Results" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set a goal" })).toBeInTheDocument();
+    expect(await screen.findByText("Results are not available right now.")).toBeInTheDocument();
   });
 });

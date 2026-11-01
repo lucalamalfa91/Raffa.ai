@@ -32,6 +32,13 @@ export interface AppConfig {
    * kept config-driven here so this task does not invent the final value.
    */
   oidcApiScopes: string[];
+  /**
+   * AskRaffa 4.0 fixture mode (test/demo only, IMPLEMENTATION-PLAN.md §2): when true AND the URL
+   * carries `?fixture=zero|full` (or the tab remembered a scenario), the app skips MSAL and talks
+   * to an API running with `Fixtures:Enabled` (see `src/fixtures/`). Absent/false in every
+   * deployed environment.
+   */
+  fixtures?: boolean;
 }
 
 const REQUIRED_STRING_FIELDS = [
@@ -89,6 +96,7 @@ export function validateAppConfig(raw: unknown, sourceLabel = "config"): AppConf
     oidcClientId: candidate.oidcClientId as string,
     oidcRedirectUri: candidate.oidcRedirectUri as string,
     oidcApiScopes: scopes as string[],
+    ...(candidate.fixtures === true ? { fixtures: true } : {}),
   };
 }
 

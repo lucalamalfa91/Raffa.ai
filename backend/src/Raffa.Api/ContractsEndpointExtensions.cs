@@ -164,6 +164,11 @@ public static class ContractsEndpointExtensions
                 highlightLength = e.HighlightLength,
                 modelId = e.ModelId,
                 extractedAt = e.ExtractedAt,
+                // AskRaffa 4.0 slice 4: why a field is flagged, and whether it is critical.
+                flagReason = ExtractionConfidencePolicy.IsWeakEvidence(e.Confidence, e.Decision)
+                    ? Raffa.Documents.Contracts.Application.V4.ExtractionFlagReason.For(e.FieldName, e.Confidence)
+                    : null,
+                critical = Raffa.Documents.Contracts.Application.V4.ExtractionFlagReason.IsCritical(e.FieldName),
             }),
         });
     }

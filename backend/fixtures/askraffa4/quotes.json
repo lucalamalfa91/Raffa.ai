@@ -1,0 +1,240 @@
+{
+  "_comment": "SQ.QUOTES and SQ.CASEQ (scripted supplier offers inside a renewal case, keyed by fixture contract id) from reference/savings-quote-v4.js. Bilingual gaps are {en,it}. QUOTES are seeded only in scenario \"full\".",
+  "today": "08 Sep 2026",
+  "quotes": [
+    {
+      "id": "q1",
+      "ref": "QC-07",
+      "supplier": "Databricks",
+      "file": "Databricks_Proposal_Q-88213.pdf",
+      "kind": "new",
+      "cid": null,
+      "date": "02 Sep 2026",
+      "by": "Marta Keller",
+      "currency": "CHF",
+      "term": "12 months",
+      "valid": "30 Sep 2026",
+      "status": "checked",
+      "lines": [
+        {
+          "name": "Premium DBU — committed",
+          "sku": "DBX-PREM-DBU",
+          "qty": 600000,
+          "unit": "DBU",
+          "price": 0.55
+        },
+        {
+          "name": "SQL Serverless DBU",
+          "sku": "DBX-SQL-SRVLESS",
+          "qty": 200000,
+          "unit": "DBU",
+          "price": 0.7
+        },
+        {
+          "name": "Enterprise Support",
+          "sku": "DBX-ENT-SUPPORT",
+          "qty": 1,
+          "unit": "year",
+          "price": 50000
+        }
+      ],
+      "stated": {
+        "payment": "Annual in advance",
+        "uplift": null,
+        "renewal": "Auto-renews 12 months unless 60 days notice",
+        "liability": null,
+        "sla": "99.9% uptime, credits not stated"
+      },
+      "gaps": [
+        {
+          "en": "Annual uplift not stated",
+          "it": "Aumento annuo non indicato"
+        },
+        {
+          "en": "Limitation of liability not stated",
+          "it": "Limite di responsabilità non indicato"
+        },
+        {
+          "en": "Service credits for SLA breaches not stated",
+          "it": "Crediti per violazioni SLA non indicati"
+        },
+        {
+          "en": "Data egress fees not stated",
+          "it": "Costi di uscita dati non indicati"
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "ref": "QC-06",
+      "supplier": "Snowflake",
+      "file": "Snowflake_Renewal_Offer_2026.pdf",
+      "kind": "renewal",
+      "cid": null,
+      "date": "20 Feb 2026",
+      "by": "Marta Keller",
+      "currency": "CHF",
+      "term": "24 months",
+      "valid": "15 Mar 2026",
+      "status": "signed",
+      "decidedAt": "14 Mar 2026",
+      "target": {
+        "kind": "p10",
+        "label": "−10% on unit price"
+      },
+      "lines": [
+        {
+          "name": "Compute credits — Enterprise",
+          "sku": "SNOW-ENT-CREDIT",
+          "qty": 160000,
+          "unit": "credit",
+          "price": 2.34,
+          "existing": 2.6,
+          "existingLabel": "2024 contract price"
+        }
+      ],
+      "stated": {
+        "payment": "Annual in advance",
+        "uplift": "0% for the term",
+        "renewal": "By written agreement",
+        "liability": "12 months of fees",
+        "sla": "99.9%"
+      },
+      "gaps": []
+    }
+  ],
+  "caseQuotes": {
+    "1": {
+      "supplier": "Salesforce",
+      "file": "Salesforce reply · 08 Sep 2026",
+      "term": "24 months",
+      "valid": "18 Oct 2026",
+      "lines": [
+        {
+          "name": "Sales Cloud Enterprise — per user / month",
+          "sku": "SFDC-SC-ENT",
+          "qty": 340,
+          "unit": "user / mo",
+          "price": 148,
+          "existing": 156,
+          "existingLabel": "Your current price"
+        }
+      ],
+      "stated": {
+        "payment": "Annual in advance, Net 30",
+        "uplift": "cap at 4%",
+        "renewal": "Auto-renewal kept",
+        "liability": "Standard — 12 months",
+        "sla": "99.9%"
+      },
+      "gaps": [
+        {
+          "en": "Uplift cap above the 3% you asked for",
+          "it": "Tetto all’aumento sopra il 3% richiesto"
+        },
+        {
+          "en": "Auto-renewal clause unchanged",
+          "it": "Clausola di rinnovo automatico invariata"
+        }
+      ]
+    },
+    "2": {
+      "supplier": "Microsoft",
+      "file": "Microsoft reply · 08 Sep 2026",
+      "term": "36 months",
+      "valid": "31 Mar 2027",
+      "lines": [
+        {
+          "name": "Microsoft 365 E5 — per user / month",
+          "sku": "M365-E5",
+          "qty": 1500,
+          "unit": "user / mo",
+          "price": 54.2,
+          "existing": 57,
+          "existingLabel": "Your current price"
+        }
+      ],
+      "stated": {
+        "payment": "Annual in advance",
+        "uplift": "price protection for the term",
+        "renewal": null,
+        "liability": "12 months",
+        "sla": "99.9%"
+      },
+      "gaps": [
+        {
+          "en": "Downward adjustment of counts at anniversary not addressed",
+          "it": "Riduzione dei conteggi all’anniversario non trattata"
+        }
+      ]
+    },
+    "3": {
+      "supplier": "AWS",
+      "file": "AWS reply · 08 Sep 2026",
+      "term": "24 months",
+      "valid": "01 Jun 2027",
+      "lines": [
+        {
+          "name": "EDP annual commit — effective rate",
+          "sku": "AWS-EDP-COMMIT",
+          "qty": 1,
+          "unit": "year",
+          "price": 2280000,
+          "existing": 2400000,
+          "existingLabel": "Your current commit"
+        }
+      ],
+      "stated": {
+        "payment": "Monthly, Net 30",
+        "uplift": null,
+        "renewal": null,
+        "liability": "Standard terms",
+        "sla": null
+      },
+      "gaps": [
+        {
+          "en": "Carry-forward of unused commit not addressed",
+          "it": "Riporto dell’impegno non usato non trattato"
+        },
+        {
+          "en": "Support fee tier not stated",
+          "it": "Scaglione del supporto non indicato"
+        }
+      ]
+    },
+    "4": {
+      "supplier": "DocuSign",
+      "file": "DocuSign reply · 08 Sep 2026",
+      "term": "24 months",
+      "valid": "02 Oct 2026",
+      "lines": [
+        {
+          "name": "eSignature Business Pro — seats",
+          "sku": "DS-BP-SEAT",
+          "qty": 120,
+          "unit": "seat / yr",
+          "price": 459,
+          "existing": 483,
+          "existingLabel": "Your current price"
+        }
+      ],
+      "stated": {
+        "payment": "“May be flexible, subject to credit review”",
+        "uplift": "cap at 4%",
+        "renewal": null,
+        "liability": "Standard terms — not negotiable",
+        "sla": null
+      },
+      "gaps": [
+        {
+          "en": "Payment terms conditional on a credit review",
+          "it": "Pagamenti condizionati a una verifica di credito"
+        },
+        {
+          "en": "SLA and credits not restated",
+          "it": "SLA e crediti non ripetuti nell’offerta"
+        }
+      ]
+    }
+  }
+}

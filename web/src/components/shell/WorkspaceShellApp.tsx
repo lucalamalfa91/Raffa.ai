@@ -4,11 +4,11 @@ import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import DocumentsRoute from "../../routes/documents";
 import DocumentViewerRoute from "../../routes/documents/viewer";
-import PortfolioRoute from "../../routes/contracts";
+import ContractsRoute from "../../routes/contracts";
 import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
 import RenewalsRoute from "../../routes/renewals";
-import RenewalChatRoute from "../../routes/renewals/case/RenewalChatRoute";
+import CaseRoute from "../../routes/renewals/case/CaseRoute";
 import TodayRoute from "../../routes/today";
 import QuoteCheckRoute from "../../routes/quotes";
 import AskRoute from "../../routes/ask";
@@ -38,8 +38,10 @@ export interface WorkspaceShellAppProps {
 }
 
 /**
- * V2 route table (ADR-024 amendment to ADR-018's locked "Route map"; `ia-v2.md` "Route map (V2)"):
- * `/` -> `/ask` (R-WEB-01, sign-in and every stale bookmark lands on the new home); `ask` /
+ * AskRaffa 4.0 (IMPLEMENTATION-PLAN.md §1): `/` -> `/today`, the five top-nav tabs are
+ * `/today /renewals /contracts /savings /ask`; `/renewals/:caseId` and `/contracts/review/:documentId`
+ * are the v4 case and review routes. Earlier V2 notes, still true for the rest of the table:
+ * V2 route table (ADR-024 amendment to ADR-018's locked "Route map"; `ia-v2.md` "Route map (V2)"): `ask` /
  * `ask/:conversationId` -> `AskRoute`; `savings` -> `SavingsRoute` (rail item under "From your
  * contracts", also reached from Ask actions, Renewals and Contract 360); `review` redirects to `/documents?filter=attention`
  * (Review is a *state* of Documents in V2, not a rail destination or its own screen -- the old
@@ -81,16 +83,20 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
           />
         }
       >
-        <Route index element={<Navigate to="/ask" replace />} />
-        <Route path="today" element={<TodayRoute userLabel={userLabel} />} />
+        <Route index element={<Navigate to="/today" replace />} />
+        <Route path="today" element={<TodayRoute apiClient={apiClient} />} />
         <Route path="ask" element={<AskRoute apiClient={apiClient} />} />
         <Route path="ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
         <Route path="savings" element={<SavingsRoute apiClient={apiClient} />} />
-        <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
+        <Route path="contracts" element={<ContractsRoute apiClient={apiClient} />} />
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} userLabel={userLabel} />} />
-        <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
-        <Route path="renewals" element={<RenewalsRoute userLabel={userLabel} />} />
-        <Route path="renewals/:contractId/chat" element={<RenewalChatRoute userLabel={userLabel} />} />
+        {/* AskRaffa 4.0 Revisione is by document (IMPLEMENTATION-PLAN.md §1); the old by-contract
+            review URL leads to the documents waiting for review. */}
+        <Route path="contracts/:contractId/review" element={<Navigate to="/documents?filter=attention" replace />} />
+        <Route path="contracts/review/:documentId" element={<ReviewRoute apiClient={apiClient} />} />
+        <Route path="renewals" element={<RenewalsRoute apiClient={apiClient} />} />
+        {/* AskRaffa 4.0 Pratica: the guided renewal case (slices 2+3). */}
+        <Route path="renewals/:caseId" element={<CaseRoute apiClient={apiClient} />} />
         <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />

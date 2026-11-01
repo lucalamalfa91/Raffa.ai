@@ -121,6 +121,28 @@ public static class ConversationsEndpointExtensions
             return Results.BadRequest(takeError);
         }
 
+        // AskRaffa 4.0 Chiedi groups (BACKEND-SPEC §4 Chat): ?state=recent|archived|case reads the
+        // explicit archived_at / case_id, with each conversation's question count.
+        if (request.Query.TryGetValue("state", out var stateValues))
+        {
+            ConversationListState? state = stateValues.ToString() switch
+            {
+                "recent" => ConversationListState.Recent,
+                "archived" => ConversationListState.Archived,
+                "case" => ConversationListState.Case,
+                _ => null,
+            };
+            if (state is null)
+            {
+                return Results.BadRequest("'state' must be recent, archived or case.");
+            }
+
+            var byState = await conversationService
+                .ListByStateAsync(tenantId, userId, state.Value, request.Query.ContainsKey("take") ? take : ConversationService.MaxRecentLimit, cancellationToken)
+                .ConfigureAwait(false);
+            return Results.Ok(byState.Select(AskConversationsEndpointExtensions.ToSummary));
+        }
+
         if (!TryParseArchived(request.Query, out var archive, out var archivedError))
         {
             return Results.BadRequest(archivedError);
@@ -868,6 +890,8 @@ public static class ConversationsEndpointExtensions
         scopeContractId = summary.ScopeContractId?.Value,
         updatedAt = summary.UpdatedAt,
         archived = summary.Archived,
+        archivedAt = summary.ArchivedAt,
+        caseId = summary.CaseId?.Value,
     };
 
     private static object ToDetailResponse(ConversationDetailResult detail) => new
@@ -878,6 +902,8 @@ public static class ConversationsEndpointExtensions
         scopeContractId = detail.ScopeContractId?.Value,
         createdAt = detail.CreatedAt,
         updatedAt = detail.UpdatedAt,
+        archivedAt = detail.ArchivedAt,
+        caseId = detail.CaseId?.Value,
         messages = detail.Messages.Select((message, index) => ToMessageResponse(message, index < detail.Messages.Count - 1)),
     };
 
@@ -938,6 +964,8 @@ public static class ConversationsEndpointExtensions
     /// from the disposed <see cref="JsonDocument"/>, the same convention
     /// <c>Raffa.IntegrationTests.AskRaffaRagCrossTenantIsolationTests.ParseAsync</c> already
     /// uses on the test side of this same JSON.</summary>
+    internal static JsonElement ParseJsonArrayPublic(string json) => ParseJsonArray(json);
+
     private static JsonElement ParseJsonArray(string json)
     {
         using var document = JsonDocument.Parse(json);

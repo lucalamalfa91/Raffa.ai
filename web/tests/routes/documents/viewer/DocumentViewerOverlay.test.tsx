@@ -7,12 +7,14 @@ import {
   DocumentViewerLink,
   DocumentViewerProvider,
 } from "../../../../src/routes/documents/viewer/DocumentViewerOverlay";
+import { contractsV4Mocks } from "../../../helpers/contractsV4Mocks";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const DOCUMENT_ID = "55555555-5555-5555-5555-555555555555";
 
 function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),

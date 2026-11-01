@@ -1,0 +1,3215 @@
+{
+ "hist": [
+  {
+   "id": "h1",
+   "supplier": "Snowflake",
+   "contract": "Capacity agreement",
+   "cat": "Data & analytics",
+   "kind": "price",
+   "lever": "Unit price",
+   "owner": "Marta Keller",
+   "amount": 42000,
+   "when": "14 Mar 2026",
+   "evidence": "Snowflake_Capacity_2026_signed.pdf",
+   "note": "CHF 2.60 → 2.34 per credit, same volume (160,000 credits)",
+   "baseline": "2024 contract price · CHF 2.60 / credit",
+   "period": "12 months from 01 Apr 2026",
+   "method": "(old − new unit price) × contracted volume",
+   "realized": true,
+   "realizedEv": "Invoices Apr–Aug 2026 · 5 of 12 months",
+   "realizedAmount": 17500,
+   "quote": "q2"
+  },
+  {
+   "id": "h2",
+   "supplier": "SAP Ariba",
+   "contract": "Procurement suite",
+   "cat": "ERP & finance",
+   "kind": "term",
+   "lever": "Term",
+   "owner": "Luca Lamalfa",
+   "amount": 61000,
+   "when": "22 Jan 2026",
+   "evidence": "SAP_Ariba_Renewal_2026_signed.pdf",
+   "note": "36 months for −9%, uplift frozen",
+   "baseline": "2025 annual fee · CHF 678k",
+   "period": "12 months from 01 Feb 2026",
+   "method": "old annual fee − new annual fee, same modules",
+   "realized": true,
+   "realizedEv": "Invoices Feb–Aug 2026 · 7 of 12 months",
+   "realizedAmount": 35600
+  },
+  {
+   "id": "h3",
+   "supplier": "Workday",
+   "contract": "HCM subscription",
+   "cat": "HR",
+   "kind": "volume",
+   "lever": "Volume",
+   "owner": "Marta Keller",
+   "amount": 28000,
+   "when": "05 Nov 2025",
+   "evidence": "Workday_OrderForm_2025_signed.pdf",
+   "note": "1,250 → 1,100 workers; unused seats removed — quantity reduction, unit price unchanged",
+   "baseline": "2024 order form · 1,250 workers",
+   "period": "12 months from 01 Dec 2025",
+   "method": "removed seats × unchanged unit price",
+   "realized": false
+  },
+  {
+   "id": "h4",
+   "supplier": "Atlassian",
+   "contract": "Cloud Enterprise",
+   "cat": "Engineering tools",
+   "kind": "volume",
+   "lever": "Volume",
+   "owner": "Marta Keller",
+   "amount": 14000,
+   "when": "19 May 2026",
+   "evidence": "Atlassian_Cloud_2026_signed.pdf",
+   "note": "Tier right-sized to 800 users — quantity reduction",
+   "baseline": "2025 tier · 1,000 users",
+   "period": "12 months from 01 Jun 2026",
+   "method": "old tier fee − new tier fee",
+   "realized": false
+  },
+  {
+   "id": "h5",
+   "supplier": "Adobe",
+   "contract": "Creative Cloud for teams",
+   "cat": "Productivity",
+   "kind": "price",
+   "lever": "Unit price",
+   "owner": "Luca Lamalfa",
+   "amount": 35000,
+   "when": "28 Aug 2026",
+   "evidence": "Adobe_VIP_2026_signed.pdf",
+   "note": "VIP Select level 13 pricing applied, same licences",
+   "baseline": "2025 price list · level 12",
+   "period": "12 months from 01 Sep 2026",
+   "method": "(old − new licence price) × licences",
+   "realized": false
+  },
+  {
+   "id": "h6",
+   "supplier": "Zoom",
+   "contract": "Business licences",
+   "cat": "Productivity",
+   "kind": "clause",
+   "lever": "Clauses",
+   "owner": "Marta Keller",
+   "amount": 9000,
+   "when": "11 Jun 2026",
+   "evidence": "Zoom_Renewal_2026_signed.pdf",
+   "note": "Auto-renewal uplift 10% → 0% — increase avoided, not a reduction of today’s fee",
+   "baseline": "Contractual uplift 10% on CHF 90k",
+   "period": "renewed term from 01 Jul 2026",
+   "method": "avoided uplift × annual fee",
+   "realized": false
+  }
+ ],
+ "quotes": [
+  {
+   "id": "q1",
+   "ref": "QC-07",
+   "supplier": "Databricks",
+   "file": "Databricks_Proposal_Q-88213.pdf",
+   "kind": "new",
+   "cid": null,
+   "date": "02 Sep 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "term": "12 months",
+   "valid": "30 Sep 2026",
+   "status": "checked",
+   "lines": [
+    {
+     "name": "Premium DBU — committed",
+     "sku": "DBX-PREM-DBU",
+     "qty": 600000,
+     "unit": "DBU",
+     "price": 0.55
+    },
+    {
+     "name": "SQL Serverless DBU",
+     "sku": "DBX-SQL-SRVLESS",
+     "qty": 200000,
+     "unit": "DBU",
+     "price": 0.7
+    },
+    {
+     "name": "Enterprise Support",
+     "sku": "DBX-ENT-SUPPORT",
+     "qty": 1,
+     "unit": "year",
+     "price": 50000
+    }
+   ],
+   "stated": {
+    "payment": "Annual in advance",
+    "uplift": null,
+    "renewal": "Auto-renews 12 months unless 60 days notice",
+    "liability": null,
+    "sla": "99.9% uptime, credits not stated"
+   },
+   "gaps": [
+    {
+     "en": "Annual uplift not stated",
+     "it": "Aumento annuo non indicato"
+    },
+    {
+     "en": "Limitation of liability not stated",
+     "it": "Limite di responsabilità non indicato"
+    },
+    {
+     "en": "Service credits for SLA breaches not stated",
+     "it": "Crediti per violazioni SLA non indicati"
+    },
+    {
+     "en": "Data egress fees not stated",
+     "it": "Costi di uscita dati non indicati"
+    }
+   ]
+  },
+  {
+   "id": "q2",
+   "ref": "QC-06",
+   "supplier": "Snowflake",
+   "file": "Snowflake_Renewal_Offer_2026.pdf",
+   "kind": "renewal",
+   "cid": null,
+   "date": "20 Feb 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "term": "24 months",
+   "valid": "15 Mar 2026",
+   "status": "signed",
+   "decidedAt": "14 Mar 2026",
+   "target": {
+    "kind": "p10",
+    "label": "−10% on unit price"
+   },
+   "lines": [
+    {
+     "name": "Compute credits — Enterprise",
+     "sku": "SNOW-ENT-CREDIT",
+     "qty": 160000,
+     "unit": "credit",
+     "price": 2.34,
+     "existing": 2.6,
+     "existingLabel": "2024 contract price"
+    }
+   ],
+   "stated": {
+    "payment": "Annual in advance",
+    "uplift": "0% for the term",
+    "renewal": "By written agreement",
+    "liability": "12 months of fees",
+    "sla": "99.9%"
+   },
+   "gaps": []
+  },
+  {
+   "id": "qc4",
+   "ref": "QC-011",
+   "kind": "renewal",
+   "cid": 4,
+   "date": "08 Sep 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "status": "checked",
+   "supplier": "DocuSign",
+   "file": "DocuSign reply · 08 Sep 2026",
+   "term": "24 months",
+   "valid": "02 Oct 2026",
+   "lines": [
+    {
+     "name": "eSignature Business Pro — seats",
+     "sku": "DS-BP-SEAT",
+     "qty": 120,
+     "unit": "seat / yr",
+     "price": 459,
+     "existing": 483,
+     "existingLabel": "Your current price"
+    }
+   ],
+   "stated": {
+    "payment": "“May be flexible, subject to credit review”",
+    "uplift": "cap at 4%",
+    "renewal": null,
+    "liability": "Standard terms — not negotiable",
+    "sla": null
+   },
+   "gaps": [
+    {
+     "en": "Payment terms conditional on a credit review",
+     "it": "Pagamenti condizionati a una verifica di credito"
+    },
+    {
+     "en": "SLA and credits not restated",
+     "it": "SLA e crediti non ripetuti nell’offerta"
+    }
+   ]
+  },
+  {
+   "id": "qc3",
+   "ref": "QC-010",
+   "kind": "renewal",
+   "cid": 3,
+   "date": "08 Sep 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "status": "checked",
+   "supplier": "AWS",
+   "file": "AWS reply · 08 Sep 2026",
+   "term": "24 months",
+   "valid": "01 Jun 2027",
+   "lines": [
+    {
+     "name": "EDP annual commit — effective rate",
+     "sku": "AWS-EDP-COMMIT",
+     "qty": 1,
+     "unit": "year",
+     "price": 2280000,
+     "existing": 2400000,
+     "existingLabel": "Your current commit"
+    }
+   ],
+   "stated": {
+    "payment": "Monthly, Net 30",
+    "uplift": null,
+    "renewal": null,
+    "liability": "Standard terms",
+    "sla": null
+   },
+   "gaps": [
+    {
+     "en": "Carry-forward of unused commit not addressed",
+     "it": "Riporto dell’impegno non usato non trattato"
+    },
+    {
+     "en": "Support fee tier not stated",
+     "it": "Scaglione del supporto non indicato"
+    }
+   ]
+  },
+  {
+   "id": "qc2",
+   "ref": "QC-09",
+   "kind": "renewal",
+   "cid": 2,
+   "date": "08 Sep 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "status": "checked",
+   "supplier": "Microsoft",
+   "file": "Microsoft reply · 08 Sep 2026",
+   "term": "36 months",
+   "valid": "31 Mar 2027",
+   "lines": [
+    {
+     "name": "Microsoft 365 E5 — per user / month",
+     "sku": "M365-E5",
+     "qty": 1500,
+     "unit": "user / mo",
+     "price": 54.2,
+     "existing": 57,
+     "existingLabel": "Your current price"
+    }
+   ],
+   "stated": {
+    "payment": "Annual in advance",
+    "uplift": "price protection for the term",
+    "renewal": null,
+    "liability": "12 months",
+    "sla": "99.9%"
+   },
+   "gaps": [
+    {
+     "en": "Downward adjustment of counts at anniversary not addressed",
+     "it": "Riduzione dei conteggi all’anniversario non trattata"
+    }
+   ]
+  },
+  {
+   "id": "qc1",
+   "ref": "QC-08",
+   "kind": "renewal",
+   "cid": 1,
+   "date": "08 Sep 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "status": "checked",
+   "supplier": "Salesforce",
+   "file": "Salesforce reply · 08 Sep 2026",
+   "term": "24 months",
+   "valid": "18 Oct 2026",
+   "lines": [
+    {
+     "name": "Sales Cloud Enterprise — per user / month",
+     "sku": "SFDC-SC-ENT",
+     "qty": 340,
+     "unit": "user / mo",
+     "price": 148,
+     "existing": 156,
+     "existingLabel": "Your current price"
+    }
+   ],
+   "stated": {
+    "payment": "Annual in advance, Net 30",
+    "uplift": "cap at 4%",
+    "renewal": "Auto-renewal kept",
+    "liability": "Standard — 12 months",
+    "sla": "99.9%"
+   },
+   "gaps": [
+    {
+     "en": "Uplift cap above the 3% you asked for",
+     "it": "Tetto all’aumento sopra il 3% richiesto"
+    },
+    {
+     "en": "Auto-renewal clause unchanged",
+     "it": "Clausola di rinnovo automatico invariata"
+    }
+   ]
+  },
+  {
+   "id": "above",
+   "ref": "QC-08",
+   "kind": "renewal",
+   "cid": 1,
+   "date": "08 Sep 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "status": "checked",
+   "supplier": "Salesforce",
+   "file": "Salesforce reply · 08 Sep 2026",
+   "term": "24 months",
+   "valid": "18 Oct 2026",
+   "lines": [
+    {
+     "name": "Sales Cloud Enterprise — per user / month",
+     "sku": "SFDC-SC-ENT",
+     "qty": 340,
+     "unit": "user / mo",
+     "price": 163,
+     "existing": 156,
+     "existingLabel": "Your current price"
+    }
+   ],
+   "stated": {
+    "payment": "Annual in advance, Net 30",
+    "uplift": "cap at 4%",
+    "renewal": "Auto-renewal kept",
+    "liability": "Standard — 12 months",
+    "sla": "99.9%"
+   },
+   "gaps": [
+    {
+     "en": "Uplift cap above the 3% you asked for",
+     "it": "Tetto all’aumento sopra il 3% richiesto"
+    },
+    {
+     "en": "Auto-renewal clause unchanged",
+     "it": "Clausola di rinnovo automatico invariata"
+    }
+   ]
+  },
+  {
+   "id": "same",
+   "ref": "QC-08",
+   "kind": "renewal",
+   "cid": 1,
+   "date": "08 Sep 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "status": "checked",
+   "supplier": "Salesforce",
+   "file": "Salesforce reply · 08 Sep 2026",
+   "term": "24 months",
+   "valid": "18 Oct 2026",
+   "lines": [
+    {
+     "name": "Sales Cloud Enterprise — per user / month",
+     "sku": "SFDC-SC-ENT",
+     "qty": 340,
+     "unit": "user / mo",
+     "price": 156.5,
+     "existing": 156,
+     "existingLabel": "Your current price"
+    }
+   ],
+   "stated": {
+    "payment": "Annual in advance, Net 30",
+    "uplift": "cap at 4%",
+    "renewal": "Auto-renewal kept",
+    "liability": "Standard — 12 months",
+    "sla": "99.9%"
+   },
+   "gaps": [
+    {
+     "en": "Uplift cap above the 3% you asked for",
+     "it": "Tetto all’aumento sopra il 3% richiesto"
+    },
+    {
+     "en": "Auto-renewal clause unchanged",
+     "it": "Clausola di rinnovo automatico invariata"
+    }
+   ]
+  },
+  {
+   "id": "partial",
+   "ref": "QC-07",
+   "supplier": "Databricks",
+   "file": "Databricks_Proposal_Q-88213.pdf",
+   "kind": "new",
+   "cid": null,
+   "date": "02 Sep 2026",
+   "by": "Marta Keller",
+   "currency": "CHF",
+   "term": "12 months",
+   "valid": "30 Sep 2026",
+   "status": "checked",
+   "lines": [
+    {
+     "name": "Premium DBU — committed",
+     "sku": "DBX-PREM-DBU",
+     "qty": 600000,
+     "unit": "DBU",
+     "price": 0.55,
+     "existing": 0.6,
+     "existingLabel": "2025 order form"
+    },
+    {
+     "name": "SQL Serverless DBU",
+     "sku": "DBX-SQL-SRVLESS",
+     "qty": 200000,
+     "unit": "DBU",
+     "price": 0.7
+    },
+    {
+     "name": "Enterprise Support",
+     "sku": "DBX-ENT-SUPPORT",
+     "qty": 1,
+     "unit": "year",
+     "price": 50000
+    }
+   ],
+   "stated": {
+    "payment": "Annual in advance",
+    "uplift": null,
+    "renewal": "Auto-renews 12 months unless 60 days notice",
+    "liability": null,
+    "sla": "99.9% uptime, credits not stated"
+   },
+   "gaps": [
+    {
+     "en": "Annual uplift not stated",
+     "it": "Aumento annuo non indicato"
+    },
+    {
+     "en": "Limitation of liability not stated",
+     "it": "Limite di responsabilità non indicato"
+    },
+    {
+     "en": "Service credits for SLA breaches not stated",
+     "it": "Crediti per violazioni SLA non indicati"
+    },
+    {
+     "en": "Data egress fees not stated",
+     "it": "Costi di uscita dati non indicati"
+    }
+   ]
+  }
+ ],
+ "open": [
+  {
+   "supplier": "Salesforce",
+   "cat": "CRM",
+   "owner": "Marta Keller",
+   "targetAmount": 44800,
+   "days": 40
+  },
+  {
+   "supplier": "DocuSign",
+   "cat": "Productivity",
+   "owner": "Marta Keller",
+   "targetAmount": null,
+   "days": 24
+  },
+  {
+   "supplier": "Microsoft",
+   "cat": "Productivity",
+   "owner": "Luca Lamalfa",
+   "targetAmount": 60000,
+   "days": 204
+  },
+  {
+   "supplier": "AWS",
+   "cat": "Cloud infrastructure",
+   "owner": "Luca Lamalfa",
+   "targetAmount": 120000,
+   "days": 266
+  }
+ ],
+ "cases": [
+  {
+   "name": "databricks_nocompare",
+   "lang": "en",
+   "quote": "q1",
+   "opts": {},
+   "verdict": "nocompare",
+   "basis": "none",
+   "total": 520000,
+   "curTotal": null,
+   "own": null,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Annual uplift not stated; Limitation of liability not stated; Service credits for SLA breaches not stated; Data egress fees not stated",
+     "src": "the quote itself"
+    }
+   ],
+   "missing": [
+    "your current contract price for these lines",
+    "a target set by you (collected in the renewal chat)",
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Annual uplift not stated",
+    "Limitation of liability not stated",
+    "Service credits for SLA breaches not stated",
+    "Data egress fees not stated"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 330000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 140000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 50000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    }
+   ],
+   "counter": "Dear Databricks team,\n\nThank you for proposal Databricks_Proposal_Q-88213. Before we can proceed we need the following:\n• Please state in writing: Annual uplift.\n• Please state in writing: Limitation of liability.\n• Please state in writing: Service credits for SLA breaches.\n• Please state in writing: Data egress fees.\n\nWe can offer a 12 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "databricks_nocompare",
+   "lang": "it",
+   "quote": "q1",
+   "opts": {},
+   "verdict": "nocompare",
+   "basis": "none",
+   "total": 520000,
+   "curTotal": null,
+   "own": null,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Aumento annuo non indicato; Limite di responsabilità non indicato; Crediti per violazioni SLA non indicati; Costi di uscita dati non indicati",
+     "src": "il preventivo stesso"
+    }
+   ],
+   "missing": [
+    "il prezzo del tuo contratto attuale per queste righe",
+    "un obiettivo indicato da te (raccolto nella chat del rinnovo)",
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Aumento annuo non indicato",
+    "Limite di responsabilità non indicato",
+    "Crediti per violazioni SLA non indicati",
+    "Costi di uscita dati non indicati"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 330000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 140000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 50000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "databricks_with_others",
+   "lang": "en",
+   "quote": "q1",
+   "opts": {
+    "others": [
+     {
+      "name": "Snowflake offer",
+      "total": 420000,
+      "term": 12
+     }
+    ],
+    "noticeDate": "02 Oct 2026"
+   },
+   "verdict": "same",
+   "basis": "others",
+   "total": 520000,
+   "curTotal": null,
+   "own": null,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Annual uplift not stated; Limitation of liability not stated; Service credits for SLA breaches not stated; Data egress fees not stated",
+     "src": "the quote itself"
+    },
+    {
+     "kind": "other",
+     "tone": "alert",
+     "text": "Snowflake offer: CHF 420k / yr for 12 months (-19% vs this quote)",
+     "src": "offer received"
+    }
+   ],
+   "missing": [
+    "your current contract price for these lines",
+    "a target set by you (collected in the renewal chat)"
+   ],
+   "gaps": [
+    "Annual uplift not stated",
+    "Limitation of liability not stated",
+    "Service credits for SLA breaches not stated",
+    "Data egress fees not stated"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 330000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 140000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 50000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    }
+   ],
+   "counter": "Dear Databricks team,\n\nThank you for proposal Databricks_Proposal_Q-88213. Before we can proceed we need the following:\n• Please state in writing: Annual uplift.\n• Please state in writing: Limitation of liability.\n• Please state in writing: Service credits for SLA breaches.\n• Please state in writing: Data egress fees.\n\nWe can offer a 12 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "databricks_with_others",
+   "lang": "it",
+   "quote": "q1",
+   "opts": {
+    "others": [
+     {
+      "name": "Snowflake offer",
+      "total": 420000,
+      "term": 12
+     }
+    ],
+    "noticeDate": "02 Oct 2026"
+   },
+   "verdict": "same",
+   "basis": "others",
+   "total": 520000,
+   "curTotal": null,
+   "own": null,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Aumento annuo non indicato; Limite di responsabilità non indicato; Crediti per violazioni SLA non indicati; Costi di uscita dati non indicati",
+     "src": "il preventivo stesso"
+    },
+    {
+     "kind": "other",
+     "tone": "alert",
+     "text": "Snowflake offer: CHF 420k / anno per 12 mesi (-19% rispetto a questa offerta)",
+     "src": "offerta ricevuta"
+    }
+   ],
+   "missing": [
+    "il prezzo del tuo contratto attuale per queste righe",
+    "un obiettivo indicato da te (raccolto nella chat del rinnovo)"
+   ],
+   "gaps": [
+    "Aumento annuo non indicato",
+    "Limite di responsabilità non indicato",
+    "Crediti per violazioni SLA non indicati",
+    "Costi di uscita dati non indicati"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 330000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 140000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 50000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "snowflake_meets_target",
+   "lang": "en",
+   "quote": "q2",
+   "opts": {},
+   "verdict": "meets_target",
+   "basis": "current",
+   "total": 374400,
+   "curTotal": 416000,
+   "own": -9.999999999999998,
+   "partial": false,
+   "targetTotal": 374400,
+   "targetMet": true,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Compute credits — Enterprise: CHF 2.34 per credit vs CHF 2.6 today (-10%)",
+     "src": "2024 contract price"
+    },
+    {
+     "kind": "target",
+     "tone": "ok",
+     "text": "Meets your target (−10% on unit price): CHF 374k ≤ CHF 374k per year",
+     "src": "your objective, not a benchmark"
+    }
+   ],
+   "missing": [
+    "other offers for the same need"
+   ],
+   "gaps": [],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 374400,
+     "currentAnnual": 416000,
+     "delta": -10.000000000000009,
+     "pos": "below"
+    }
+   ],
+   "counter": "Dear Snowflake team,\n\nThank you for proposal Snowflake_Renewal_Offer_2026. Before we can proceed we need the following:\n• Please confirm the quoted prices, term and clauses in a revised Order Form.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "snowflake_meets_target",
+   "lang": "it",
+   "quote": "q2",
+   "opts": {},
+   "verdict": "meets_target",
+   "basis": "current",
+   "total": 374400,
+   "curTotal": 416000,
+   "own": -9.999999999999998,
+   "partial": false,
+   "targetTotal": 374400,
+   "targetMet": true,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Compute credits — Enterprise: CHF 2.34 per credit contro CHF 2.6 oggi (-10%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "target",
+     "tone": "ok",
+     "text": "Rispetta il tuo obiettivo (−10% on unit price): CHF 374k ≤ CHF 374k l’anno",
+     "src": "il tuo obiettivo, non un benchmark"
+    }
+   ],
+   "missing": [
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 374400,
+     "currentAnnual": 416000,
+     "delta": -10.000000000000009,
+     "pos": "below"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "snowflake_misses_budget",
+   "lang": "en",
+   "quote": "q2",
+   "opts": {
+    "target": {
+     "kind": "budget",
+     "budget": 300000,
+     "label": "Budget CHF 300k"
+    }
+   },
+   "verdict": "misses_target",
+   "basis": "current",
+   "total": 374400,
+   "curTotal": 416000,
+   "own": -9.999999999999998,
+   "partial": false,
+   "targetTotal": 300000,
+   "targetMet": false,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Compute credits — Enterprise: CHF 2.34 per credit vs CHF 2.6 today (-10%)",
+     "src": "2024 contract price"
+    },
+    {
+     "kind": "target",
+     "tone": "alert",
+     "text": "Misses your target (Budget CHF 300k): CHF 374k vs CHF 300k per year",
+     "src": "your objective, not a benchmark"
+    }
+   ],
+   "missing": [
+    "other offers for the same need"
+   ],
+   "gaps": [],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 374400,
+     "currentAnnual": 416000,
+     "delta": -10.000000000000009,
+     "pos": "below"
+    }
+   ],
+   "counter": "Dear Snowflake team,\n\nThank you for proposal Snowflake_Renewal_Offer_2026. Before we can proceed we need the following:\n• Compute credits — Enterprise: you quoted CHF 2.34 per credit; our target is CHF 1.88 or better.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "snowflake_misses_budget",
+   "lang": "it",
+   "quote": "q2",
+   "opts": {
+    "target": {
+     "kind": "budget",
+     "budget": 300000,
+     "label": "Budget CHF 300k"
+    }
+   },
+   "verdict": "misses_target",
+   "basis": "current",
+   "total": 374400,
+   "curTotal": 416000,
+   "own": -9.999999999999998,
+   "partial": false,
+   "targetTotal": 300000,
+   "targetMet": false,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Compute credits — Enterprise: CHF 2.34 per credit contro CHF 2.6 oggi (-10%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "target",
+     "tone": "alert",
+     "text": "Manca il tuo obiettivo (Budget CHF 300k): CHF 374k contro CHF 300k l’anno",
+     "src": "il tuo obiettivo, non un benchmark"
+    }
+   ],
+   "missing": [
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 374400,
+     "currentAnnual": 416000,
+     "delta": -10.000000000000009,
+     "pos": "below"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "docusign_below",
+   "lang": "en",
+   "quote": "qc4",
+   "opts": {
+    "planTerm": "12",
+    "noticeDate": "02 Oct 2026",
+    "policy": {
+     "liabMin": 24
+    }
+   },
+   "verdict": "below_current",
+   "basis": "current",
+   "total": 55080,
+   "curTotal": 57960,
+   "own": -4.968944099378881,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "eSignature Business Pro — seats: CHF 459 per seat / yr vs CHF 483 today (-5.0%)",
+     "src": "Your current price"
+    },
+    {
+     "kind": "term",
+     "tone": "alert",
+     "text": "Term 24 months — your plan asks for 12 months",
+     "src": "renewal plan"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Payment terms conditional on a credit review; SLA and credits not restated",
+     "src": "the quote itself"
+    },
+    {
+     "kind": "validity",
+     "tone": "alert",
+     "text": "Offer valid until 02 Oct 2026 — on or after your notice deadline 02 Oct 2026",
+     "src": "contract notice clause"
+    }
+   ],
+   "missing": [
+    "a target set by you (collected in the renewal chat)",
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Payment terms conditional on a credit review",
+    "SLA and credits not restated"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 55080,
+     "currentAnnual": 57960,
+     "delta": -4.968944099378881,
+     "pos": "below"
+    }
+   ],
+   "counter": "Dear DocuSign team,\n\nThank you for proposal DocuSign reply · 08 Sep 2026. Before we can proceed we need the following:\n• Please state in writing: Payment terms conditional on a credit review.\n• Please state in writing: SLA and credits not restated.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "docusign_below",
+   "lang": "it",
+   "quote": "qc4",
+   "opts": {
+    "planTerm": "12",
+    "noticeDate": "02 Oct 2026",
+    "policy": {
+     "liabMin": 24
+    }
+   },
+   "verdict": "below_current",
+   "basis": "current",
+   "total": 55080,
+   "curTotal": 57960,
+   "own": -4.968944099378881,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "eSignature Business Pro — seats: CHF 459 per seat / yr contro CHF 483 oggi (-5.0%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "term",
+     "tone": "alert",
+     "text": "Durata 24 months — il tuo piano chiede 12 mesi",
+     "src": "piano di rinnovo"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Pagamenti condizionati a una verifica di credito; SLA e crediti non ripetuti nell’offerta",
+     "src": "il preventivo stesso"
+    },
+    {
+     "kind": "validity",
+     "tone": "alert",
+     "text": "Offerta valida fino al 02 Oct 2026 — alla pari o dopo la tua scadenza di disdetta 02 Oct 2026",
+     "src": "clausola di disdetta"
+    }
+   ],
+   "missing": [
+    "un obiettivo indicato da te (raccolto nella chat del rinnovo)",
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Pagamenti condizionati a una verifica di credito",
+    "SLA e crediti non ripetuti nell’offerta"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 55080,
+     "currentAnnual": 57960,
+     "delta": -4.968944099378881,
+     "pos": "below"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "docusign_misses_p10",
+   "lang": "en",
+   "quote": "qc4",
+   "opts": {
+    "target": {
+     "kind": "p10",
+     "label": "−10% on unit price"
+    },
+    "planTerm": "24"
+   },
+   "verdict": "misses_target",
+   "basis": "current",
+   "total": 55080,
+   "curTotal": 57960,
+   "own": -4.968944099378881,
+   "partial": false,
+   "targetTotal": 52164,
+   "targetMet": false,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "eSignature Business Pro — seats: CHF 459 per seat / yr vs CHF 483 today (-5.0%)",
+     "src": "Your current price"
+    },
+    {
+     "kind": "target",
+     "tone": "alert",
+     "text": "Misses your target (−10% on unit price): CHF 55k vs CHF 52k per year",
+     "src": "your objective, not a benchmark"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Payment terms conditional on a credit review; SLA and credits not restated",
+     "src": "the quote itself"
+    }
+   ],
+   "missing": [
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Payment terms conditional on a credit review",
+    "SLA and credits not restated"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 55080,
+     "currentAnnual": 57960,
+     "delta": -4.968944099378881,
+     "pos": "below"
+    }
+   ],
+   "counter": "Dear DocuSign team,\n\nThank you for proposal DocuSign reply · 08 Sep 2026. Before we can proceed we need the following:\n• eSignature Business Pro — seats: you quoted CHF 459 per seat / yr; our target is CHF 434.7 or better.\n• Please state in writing: Payment terms conditional on a credit review.\n• Please state in writing: SLA and credits not restated.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "docusign_misses_p10",
+   "lang": "it",
+   "quote": "qc4",
+   "opts": {
+    "target": {
+     "kind": "p10",
+     "label": "−10% on unit price"
+    },
+    "planTerm": "24"
+   },
+   "verdict": "misses_target",
+   "basis": "current",
+   "total": 55080,
+   "curTotal": 57960,
+   "own": -4.968944099378881,
+   "partial": false,
+   "targetTotal": 52164,
+   "targetMet": false,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "eSignature Business Pro — seats: CHF 459 per seat / yr contro CHF 483 oggi (-5.0%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "target",
+     "tone": "alert",
+     "text": "Manca il tuo obiettivo (−10% on unit price): CHF 55k contro CHF 52k l’anno",
+     "src": "il tuo obiettivo, non un benchmark"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Pagamenti condizionati a una verifica di credito; SLA e crediti non ripetuti nell’offerta",
+     "src": "il preventivo stesso"
+    }
+   ],
+   "missing": [
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Pagamenti condizionati a una verifica di credito",
+    "SLA e crediti non ripetuti nell’offerta"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 55080,
+     "currentAnnual": 57960,
+     "delta": -4.968944099378881,
+     "pos": "below"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "docusign_meets_p5",
+   "lang": "en",
+   "quote": "qc4",
+   "opts": {
+    "target": {
+     "kind": "p5",
+     "label": "−5% on unit price"
+    }
+   },
+   "verdict": "meets_target",
+   "basis": "current",
+   "total": 55080,
+   "curTotal": 57960,
+   "own": -4.968944099378881,
+   "partial": false,
+   "targetTotal": 55062,
+   "targetMet": true,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "eSignature Business Pro — seats: CHF 459 per seat / yr vs CHF 483 today (-5.0%)",
+     "src": "Your current price"
+    },
+    {
+     "kind": "target",
+     "tone": "ok",
+     "text": "Meets your target (−5% on unit price): CHF 55k ≤ CHF 55k per year",
+     "src": "your objective, not a benchmark"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Payment terms conditional on a credit review; SLA and credits not restated",
+     "src": "the quote itself"
+    }
+   ],
+   "missing": [
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Payment terms conditional on a credit review",
+    "SLA and credits not restated"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 55080,
+     "currentAnnual": 57960,
+     "delta": -4.968944099378881,
+     "pos": "below"
+    }
+   ],
+   "counter": "Dear DocuSign team,\n\nThank you for proposal DocuSign reply · 08 Sep 2026. Before we can proceed we need the following:\n• Please state in writing: Payment terms conditional on a credit review.\n• Please state in writing: SLA and credits not restated.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "docusign_meets_p5",
+   "lang": "it",
+   "quote": "qc4",
+   "opts": {
+    "target": {
+     "kind": "p5",
+     "label": "−5% on unit price"
+    }
+   },
+   "verdict": "meets_target",
+   "basis": "current",
+   "total": 55080,
+   "curTotal": 57960,
+   "own": -4.968944099378881,
+   "partial": false,
+   "targetTotal": 55062,
+   "targetMet": true,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "eSignature Business Pro — seats: CHF 459 per seat / yr contro CHF 483 oggi (-5.0%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "target",
+     "tone": "ok",
+     "text": "Rispetta il tuo obiettivo (−5% on unit price): CHF 55k ≤ CHF 55k l’anno",
+     "src": "il tuo obiettivo, non un benchmark"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Pagamenti condizionati a una verifica di credito; SLA e crediti non ripetuti nell’offerta",
+     "src": "il preventivo stesso"
+    }
+   ],
+   "missing": [
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Pagamenti condizionati a una verifica di credito",
+    "SLA e crediti non ripetuti nell’offerta"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 55080,
+     "currentAnnual": 57960,
+     "delta": -4.968944099378881,
+     "pos": "below"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "aws_below_policy",
+   "lang": "en",
+   "quote": "qc3",
+   "opts": {
+    "policy": {
+     "liabMin": 24
+    },
+    "noticeDate": "01 Jun 2027"
+   },
+   "verdict": "below_current",
+   "basis": "current",
+   "total": 2280000,
+   "curTotal": 2400000,
+   "own": -5.000000000000004,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "EDP annual commit — effective rate: CHF 2,280,000 per year vs CHF 2,400,000 today (-5.0%)",
+     "src": "Your current commit"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Carry-forward of unused commit not addressed; Support fee tier not stated",
+     "src": "the quote itself"
+    },
+    {
+     "kind": "validity",
+     "tone": "alert",
+     "text": "Offer valid until 01 Jun 2027 — on or after your notice deadline 01 Jun 2027",
+     "src": "contract notice clause"
+    }
+   ],
+   "missing": [
+    "a target set by you (collected in the renewal chat)",
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Carry-forward of unused commit not addressed",
+    "Support fee tier not stated"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 2280000,
+     "currentAnnual": 2400000,
+     "delta": -5.000000000000004,
+     "pos": "below"
+    }
+   ],
+   "counter": "Dear AWS team,\n\nThank you for proposal AWS reply · 08 Sep 2026. Before we can proceed we need the following:\n• Please state in writing: Carry-forward of unused commit not addressed.\n• Please state in writing: Support fee tier.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "aws_below_policy",
+   "lang": "it",
+   "quote": "qc3",
+   "opts": {
+    "policy": {
+     "liabMin": 24
+    },
+    "noticeDate": "01 Jun 2027"
+   },
+   "verdict": "below_current",
+   "basis": "current",
+   "total": 2280000,
+   "curTotal": 2400000,
+   "own": -5.000000000000004,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "EDP annual commit — effective rate: CHF 2,280,000 per year contro CHF 2,400,000 oggi (-5.0%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Riporto dell’impegno non usato non trattato; Scaglione del supporto non indicato",
+     "src": "il preventivo stesso"
+    },
+    {
+     "kind": "validity",
+     "tone": "alert",
+     "text": "Offerta valida fino al 01 Jun 2027 — alla pari o dopo la tua scadenza di disdetta 01 Jun 2027",
+     "src": "clausola di disdetta"
+    }
+   ],
+   "missing": [
+    "un obiettivo indicato da te (raccolto nella chat del rinnovo)",
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Riporto dell’impegno non usato non trattato",
+    "Scaglione del supporto non indicato"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 2280000,
+     "currentAnnual": 2400000,
+     "delta": -5.000000000000004,
+     "pos": "below"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "microsoft_policy",
+   "lang": "en",
+   "quote": "qc2",
+   "opts": {
+    "policy": {
+     "liabMin": 24
+    },
+    "planTerm": "36",
+    "others": [
+     {
+      "name": "Google Workspace",
+      "total": 900000,
+      "term": 36
+     },
+     {
+      "name": "Zoho",
+      "total": 1100000,
+      "term": 24
+     }
+    ]
+   },
+   "verdict": "below_current",
+   "basis": "current",
+   "total": 975600,
+   "curTotal": 1026000,
+   "own": -4.912280701754391,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Microsoft 365 E5 — per user / month: CHF 54.2 per user / mo vs CHF 57 today (-4.9%)",
+     "src": "Your current price"
+    },
+    {
+     "kind": "policy",
+     "tone": "alert",
+     "text": "Liability 12 months — company policy requires at least 24",
+     "src": "Procurement Policy v3.2"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Downward adjustment of counts at anniversary not addressed",
+     "src": "the quote itself"
+    },
+    {
+     "kind": "other",
+     "tone": "alert",
+     "text": "Google Workspace: CHF 900k / yr for 36 months (-7.7% vs this quote)",
+     "src": "offer received"
+    },
+    {
+     "kind": "other",
+     "tone": "ok",
+     "text": "Zoho: CHF 1.1M / yr for 24 months (+13% vs this quote)",
+     "src": "offer received"
+    }
+   ],
+   "missing": [
+    "a target set by you (collected in the renewal chat)"
+   ],
+   "gaps": [
+    "Downward adjustment of counts at anniversary not addressed"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 975600,
+     "currentAnnual": 1026000,
+     "delta": -4.912280701754379,
+     "pos": "below"
+    }
+   ],
+   "counter": "Dear Microsoft team,\n\nThank you for proposal Microsoft reply · 08 Sep 2026. Before we can proceed we need the following:\n• Please state in writing: Downward adjustment of counts at anniversary not addressed.\n\nWe can offer a 36 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "microsoft_policy",
+   "lang": "it",
+   "quote": "qc2",
+   "opts": {
+    "policy": {
+     "liabMin": 24
+    },
+    "planTerm": "36",
+    "others": [
+     {
+      "name": "Google Workspace",
+      "total": 900000,
+      "term": 36
+     },
+     {
+      "name": "Zoho",
+      "total": 1100000,
+      "term": 24
+     }
+    ]
+   },
+   "verdict": "below_current",
+   "basis": "current",
+   "total": 975600,
+   "curTotal": 1026000,
+   "own": -4.912280701754391,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Microsoft 365 E5 — per user / month: CHF 54.2 per user / mo contro CHF 57 oggi (-4.9%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "policy",
+     "tone": "alert",
+     "text": "Responsabilità 12 mesi — la policy aziendale richiede almeno 24",
+     "src": "Procurement Policy v3.2"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Riduzione dei conteggi all’anniversario non trattata",
+     "src": "il preventivo stesso"
+    },
+    {
+     "kind": "other",
+     "tone": "alert",
+     "text": "Google Workspace: CHF 900k / anno per 36 mesi (-7.7% rispetto a questa offerta)",
+     "src": "offerta ricevuta"
+    },
+    {
+     "kind": "other",
+     "tone": "ok",
+     "text": "Zoho: CHF 1.1M / anno per 24 mesi (+13% rispetto a questa offerta)",
+     "src": "offerta ricevuta"
+    }
+   ],
+   "missing": [
+    "un obiettivo indicato da te (raccolto nella chat del rinnovo)"
+   ],
+   "gaps": [
+    "Riduzione dei conteggi all’anniversario non trattata"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 975600,
+     "currentAnnual": 1026000,
+     "delta": -4.912280701754379,
+     "pos": "below"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "salesforce_p10",
+   "lang": "en",
+   "quote": "qc1",
+   "opts": {
+    "target": {
+     "kind": "p10",
+     "label": "−10% on unit price"
+    },
+    "noticeDate": "18 Oct 2026",
+    "planTerm": "24"
+   },
+   "verdict": "misses_target",
+   "basis": "current",
+   "total": 603840,
+   "curTotal": 636480,
+   "own": -5.128205128205132,
+   "partial": false,
+   "targetTotal": 572832,
+   "targetMet": false,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Sales Cloud Enterprise — per user / month: CHF 148 per user / mo vs CHF 156 today (-5.1%)",
+     "src": "Your current price"
+    },
+    {
+     "kind": "target",
+     "tone": "alert",
+     "text": "Misses your target (−10% on unit price): CHF 604k vs CHF 573k per year",
+     "src": "your objective, not a benchmark"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Uplift cap above the 3% you asked for; Auto-renewal clause unchanged",
+     "src": "the quote itself"
+    },
+    {
+     "kind": "validity",
+     "tone": "alert",
+     "text": "Offer valid until 18 Oct 2026 — on or after your notice deadline 18 Oct 2026",
+     "src": "contract notice clause"
+    }
+   ],
+   "missing": [
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Uplift cap above the 3% you asked for",
+    "Auto-renewal clause unchanged"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 603840,
+     "currentAnnual": 636480,
+     "delta": -5.128205128205132,
+     "pos": "below"
+    }
+   ],
+   "counter": "Dear Salesforce team,\n\nThank you for proposal Salesforce reply · 08 Sep 2026. Before we can proceed we need the following:\n• Sales Cloud Enterprise — per user / month: you quoted CHF 148 per user / mo; our target is CHF 140.4 or better.\n• Please state in writing: Uplift cap above the 3% you asked for.\n• Please state in writing: Auto-renewal clause unchanged.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "salesforce_p10",
+   "lang": "it",
+   "quote": "qc1",
+   "opts": {
+    "target": {
+     "kind": "p10",
+     "label": "−10% on unit price"
+    },
+    "noticeDate": "18 Oct 2026",
+    "planTerm": "24"
+   },
+   "verdict": "misses_target",
+   "basis": "current",
+   "total": 603840,
+   "curTotal": 636480,
+   "own": -5.128205128205132,
+   "partial": false,
+   "targetTotal": 572832,
+   "targetMet": false,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Sales Cloud Enterprise — per user / month: CHF 148 per user / mo contro CHF 156 oggi (-5.1%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "target",
+     "tone": "alert",
+     "text": "Manca il tuo obiettivo (−10% on unit price): CHF 604k contro CHF 573k l’anno",
+     "src": "il tuo obiettivo, non un benchmark"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Tetto all’aumento sopra il 3% richiesto; Clausola di rinnovo automatico invariata",
+     "src": "il preventivo stesso"
+    },
+    {
+     "kind": "validity",
+     "tone": "alert",
+     "text": "Offerta valida fino al 18 Oct 2026 — alla pari o dopo la tua scadenza di disdetta 18 Oct 2026",
+     "src": "clausola di disdetta"
+    }
+   ],
+   "missing": [
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Tetto all’aumento sopra il 3% richiesto",
+    "Clausola di rinnovo automatico invariata"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 603840,
+     "currentAnnual": 636480,
+     "delta": -5.128205128205132,
+     "pos": "below"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "salesforce_above",
+   "lang": "en",
+   "quote": "above",
+   "opts": {},
+   "verdict": "above_current",
+   "basis": "current",
+   "total": 665040,
+   "curTotal": 636480,
+   "own": 4.487179487179493,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "alert",
+     "text": "Sales Cloud Enterprise — per user / month: CHF 163 per user / mo vs CHF 156 today (+4.5%)",
+     "src": "Your current price"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Uplift cap above the 3% you asked for; Auto-renewal clause unchanged",
+     "src": "the quote itself"
+    }
+   ],
+   "missing": [
+    "a target set by you (collected in the renewal chat)",
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Uplift cap above the 3% you asked for",
+    "Auto-renewal clause unchanged"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 665040,
+     "currentAnnual": 636480,
+     "delta": 4.487179487179493,
+     "pos": "above"
+    }
+   ],
+   "counter": "Dear Salesforce team,\n\nThank you for proposal Salesforce reply · 08 Sep 2026. Before we can proceed we need the following:\n• Sales Cloud Enterprise — per user / month: you quoted CHF 163 per user / mo, above our current CHF 156. We ask you to hold the current price.\n• Please state in writing: Uplift cap above the 3% you asked for.\n• Please state in writing: Auto-renewal clause unchanged.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "salesforce_above",
+   "lang": "it",
+   "quote": "above",
+   "opts": {},
+   "verdict": "above_current",
+   "basis": "current",
+   "total": 665040,
+   "curTotal": 636480,
+   "own": 4.487179487179493,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "alert",
+     "text": "Sales Cloud Enterprise — per user / month: CHF 163 per user / mo contro CHF 156 oggi (+4.5%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Tetto all’aumento sopra il 3% richiesto; Clausola di rinnovo automatico invariata",
+     "src": "il preventivo stesso"
+    }
+   ],
+   "missing": [
+    "un obiettivo indicato da te (raccolto nella chat del rinnovo)",
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Tetto all’aumento sopra il 3% richiesto",
+    "Clausola di rinnovo automatico invariata"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 665040,
+     "currentAnnual": 636480,
+     "delta": 4.487179487179493,
+     "pos": "above"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "salesforce_same",
+   "lang": "en",
+   "quote": "same",
+   "opts": {},
+   "verdict": "same",
+   "basis": "current",
+   "total": 638520,
+   "curTotal": 636480,
+   "own": 0.3205128205128194,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "alert",
+     "text": "Sales Cloud Enterprise — per user / month: CHF 156.5 per user / mo vs CHF 156 today (+0.3%)",
+     "src": "Your current price"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Uplift cap above the 3% you asked for; Auto-renewal clause unchanged",
+     "src": "the quote itself"
+    }
+   ],
+   "missing": [
+    "a target set by you (collected in the renewal chat)",
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Uplift cap above the 3% you asked for",
+    "Auto-renewal clause unchanged"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 638520,
+     "currentAnnual": 636480,
+     "delta": 0.3205128205128194,
+     "pos": "same"
+    }
+   ],
+   "counter": "Dear Salesforce team,\n\nThank you for proposal Salesforce reply · 08 Sep 2026. Before we can proceed we need the following:\n• Sales Cloud Enterprise — per user / month: you quoted CHF 156.5 per user / mo, above our current CHF 156. We ask you to hold the current price.\n• Please state in writing: Uplift cap above the 3% you asked for.\n• Please state in writing: Auto-renewal clause unchanged.\n\nWe can offer a 24 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "salesforce_same",
+   "lang": "it",
+   "quote": "same",
+   "opts": {},
+   "verdict": "same",
+   "basis": "current",
+   "total": 638520,
+   "curTotal": 636480,
+   "own": 0.3205128205128194,
+   "partial": false,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "alert",
+     "text": "Sales Cloud Enterprise — per user / month: CHF 156.5 per user / mo contro CHF 156 oggi (+0.3%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Tetto all’aumento sopra il 3% richiesto; Clausola di rinnovo automatico invariata",
+     "src": "il preventivo stesso"
+    }
+   ],
+   "missing": [
+    "un obiettivo indicato da te (raccolto nella chat del rinnovo)",
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Tetto all’aumento sopra il 3% richiesto",
+    "Clausola di rinnovo automatico invariata"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 638520,
+     "currentAnnual": 636480,
+     "delta": 0.3205128205128194,
+     "pos": "same"
+    }
+   ],
+   "counter": null
+  },
+  {
+   "name": "databricks_partial",
+   "lang": "en",
+   "quote": "partial",
+   "opts": {},
+   "verdict": "above_current",
+   "basis": "current",
+   "total": 520000,
+   "curTotal": 360000,
+   "own": 44.44444444444444,
+   "partial": true,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Premium DBU — committed: CHF 0.55 per DBU vs CHF 0.6 today (-8.3%)",
+     "src": "2025 order form"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Not stated: Annual uplift not stated; Limitation of liability not stated; Service credits for SLA breaches not stated; Data egress fees not stated",
+     "src": "the quote itself"
+    }
+   ],
+   "missing": [
+    "a target set by you (collected in the renewal chat)",
+    "other offers for the same need"
+   ],
+   "gaps": [
+    "Annual uplift not stated",
+    "Limitation of liability not stated",
+    "Service credits for SLA breaches not stated",
+    "Data egress fees not stated"
+   ],
+   "evaluable": [
+    "lines, quantities and unit prices",
+    "term and validity",
+    "clauses stated or missing"
+   ],
+   "lines": [
+    {
+     "annual": 330000,
+     "currentAnnual": 360000,
+     "delta": -8.333333333333325,
+     "pos": "below"
+    },
+    {
+     "annual": 140000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 50000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    }
+   ],
+   "counter": "Dear Databricks team,\n\nThank you for proposal Databricks_Proposal_Q-88213. Before we can proceed we need the following:\n• Please state in writing: Annual uplift.\n• Please state in writing: Limitation of liability.\n• Please state in writing: Service credits for SLA breaches.\n• Please state in writing: Data egress fees.\n\nWe can offer a 12 months commitment in exchange. Please send a revised proposal.\n\nKind regards,\nMarta Keller\nProcurement, Helvetia Foods AG"
+  },
+  {
+   "name": "databricks_partial",
+   "lang": "it",
+   "quote": "partial",
+   "opts": {},
+   "verdict": "above_current",
+   "basis": "current",
+   "total": 520000,
+   "curTotal": 360000,
+   "own": 44.44444444444444,
+   "partial": true,
+   "targetTotal": null,
+   "targetMet": null,
+   "points": [
+    {
+     "kind": "price",
+     "tone": "ok",
+     "text": "Premium DBU — committed: CHF 0.55 per DBU contro CHF 0.6 oggi (-8.3%)",
+     "src": "contratto attuale"
+    },
+    {
+     "kind": "gap",
+     "tone": "alert",
+     "text": "Non indicato: Aumento annuo non indicato; Limite di responsabilità non indicato; Crediti per violazioni SLA non indicati; Costi di uscita dati non indicati",
+     "src": "il preventivo stesso"
+    }
+   ],
+   "missing": [
+    "un obiettivo indicato da te (raccolto nella chat del rinnovo)",
+    "altre offerte per la stessa esigenza"
+   ],
+   "gaps": [
+    "Aumento annuo non indicato",
+    "Limite di responsabilità non indicato",
+    "Crediti per violazioni SLA non indicati",
+    "Costi di uscita dati non indicati"
+   ],
+   "evaluable": [
+    "righe, quantità e prezzi unitari",
+    "durata e validità",
+    "clausole indicate o mancanti"
+   ],
+   "lines": [
+    {
+     "annual": 330000,
+     "currentAnnual": 360000,
+     "delta": -8.333333333333325,
+     "pos": "below"
+    },
+    {
+     "annual": 140000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    },
+    {
+     "annual": 50000,
+     "currentAnnual": null,
+     "delta": null,
+     "pos": "none"
+    }
+   ],
+   "counter": null
+  }
+ ],
+ "reports": [
+  {
+   "name": "fy",
+   "f": {
+    "period": "fy"
+   },
+   "targets": {
+    "annual": 500000,
+    "noticeDays": 45
+   },
+   "spend": 4298000,
+   "out": {
+    "contractual": 147000,
+    "realized": 53100,
+    "volumeAmt": 14000,
+    "count": 4,
+    "volumeN": 1,
+    "objectives": 224800,
+    "undefinedN": 1,
+    "target": 500000,
+    "pctTarget": 0.294,
+    "pctSpend": 0.03420195439739414,
+    "months": [
+     {
+      "label": "Jan 26",
+      "amount": 61000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Feb",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Mar",
+      "amount": 42000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Apr",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "May",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Jun",
+      "amount": 9000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Jul",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Aug",
+      "amount": 35000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Sep",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Oct",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     },
+     {
+      "label": "Nov",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     },
+     {
+      "label": "Dec",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     }
+    ],
+    "peak": 61000,
+    "by": [
+     {
+      "label": "AWS",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 120000,
+      "n": 1,
+      "total": 120000
+     },
+     {
+      "label": "SAP Ariba",
+      "contractual": 61000,
+      "realized": 35600,
+      "objectives": 0,
+      "n": 1,
+      "total": 61000
+     },
+     {
+      "label": "Microsoft",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 60000,
+      "n": 1,
+      "total": 60000
+     },
+     {
+      "label": "Salesforce",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 44800,
+      "n": 1,
+      "total": 44800
+     },
+     {
+      "label": "Snowflake",
+      "contractual": 42000,
+      "realized": 17500,
+      "objectives": 0,
+      "n": 1,
+      "total": 42000
+     },
+     {
+      "label": "Adobe",
+      "contractual": 35000,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 35000
+     }
+    ],
+    "maxBy": 120000,
+    "recent": [
+     "h5",
+     "h6",
+     "h1",
+     "h2"
+    ],
+    "volumeItems": [
+     "h4"
+    ],
+    "open": [
+     "DocuSign",
+     "Salesforce",
+     "Microsoft",
+     "AWS"
+    ],
+    "noticeSoon": [
+     "Salesforce",
+     "DocuSign"
+    ],
+    "supplierOpts": [
+     "AWS",
+     "Adobe",
+     "Atlassian",
+     "DocuSign",
+     "Microsoft",
+     "SAP Ariba",
+     "Salesforce",
+     "Snowflake",
+     "Workday",
+     "Zoom"
+    ],
+    "catOpts": [
+     "CRM",
+     "Cloud infrastructure",
+     "Data & analytics",
+     "ERP & finance",
+     "Engineering tools",
+     "HR",
+     "Productivity"
+    ],
+    "ownerOpts": [
+     "Luca Lamalfa",
+     "Marta Keller"
+    ]
+   }
+  },
+  {
+   "name": "q",
+   "f": {
+    "period": "q"
+   },
+   "targets": {},
+   "spend": 0,
+   "out": {
+    "contractual": 35000,
+    "realized": 0,
+    "volumeAmt": 0,
+    "count": 1,
+    "volumeN": 0,
+    "objectives": 224800,
+    "undefinedN": 1,
+    "target": 0,
+    "pctTarget": 0,
+    "pctSpend": 0,
+    "months": [
+     {
+      "label": "Jul 26",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Aug",
+      "amount": 35000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Sep",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     }
+    ],
+    "peak": 35000,
+    "by": [
+     {
+      "label": "AWS",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 120000,
+      "n": 1,
+      "total": 120000
+     },
+     {
+      "label": "Microsoft",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 60000,
+      "n": 1,
+      "total": 60000
+     },
+     {
+      "label": "Salesforce",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 44800,
+      "n": 1,
+      "total": 44800
+     },
+     {
+      "label": "Adobe",
+      "contractual": 35000,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 35000
+     },
+     {
+      "label": "DocuSign",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 0
+     }
+    ],
+    "maxBy": 120000,
+    "recent": [
+     "h5"
+    ],
+    "volumeItems": [],
+    "open": [
+     "DocuSign",
+     "Salesforce",
+     "Microsoft",
+     "AWS"
+    ],
+    "noticeSoon": [
+     "Salesforce",
+     "DocuSign"
+    ],
+    "supplierOpts": [
+     "AWS",
+     "Adobe",
+     "Atlassian",
+     "DocuSign",
+     "Microsoft",
+     "SAP Ariba",
+     "Salesforce",
+     "Snowflake",
+     "Workday",
+     "Zoom"
+    ],
+    "catOpts": [
+     "CRM",
+     "Cloud infrastructure",
+     "Data & analytics",
+     "ERP & finance",
+     "Engineering tools",
+     "HR",
+     "Productivity"
+    ],
+    "ownerOpts": [
+     "Luca Lamalfa",
+     "Marta Keller"
+    ]
+   }
+  },
+  {
+   "name": "12m",
+   "f": {
+    "period": "12m"
+   },
+   "targets": {
+    "annual": 100000
+   },
+   "spend": 4298000,
+   "out": {
+    "contractual": 147000,
+    "realized": 53100,
+    "volumeAmt": 42000,
+    "count": 4,
+    "volumeN": 2,
+    "objectives": 224800,
+    "undefinedN": 1,
+    "target": 100000,
+    "pctTarget": 1.47,
+    "pctSpend": 0.03420195439739414,
+    "months": [
+     {
+      "label": "Oct 25",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Nov",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Dec",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Jan 26",
+      "amount": 61000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Feb",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Mar",
+      "amount": 42000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Apr",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "May",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Jun",
+      "amount": 9000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Jul",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Aug",
+      "amount": 35000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Sep",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     }
+    ],
+    "peak": 61000,
+    "by": [
+     {
+      "label": "AWS",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 120000,
+      "n": 1,
+      "total": 120000
+     },
+     {
+      "label": "SAP Ariba",
+      "contractual": 61000,
+      "realized": 35600,
+      "objectives": 0,
+      "n": 1,
+      "total": 61000
+     },
+     {
+      "label": "Microsoft",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 60000,
+      "n": 1,
+      "total": 60000
+     },
+     {
+      "label": "Salesforce",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 44800,
+      "n": 1,
+      "total": 44800
+     },
+     {
+      "label": "Snowflake",
+      "contractual": 42000,
+      "realized": 17500,
+      "objectives": 0,
+      "n": 1,
+      "total": 42000
+     },
+     {
+      "label": "Adobe",
+      "contractual": 35000,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 35000
+     }
+    ],
+    "maxBy": 120000,
+    "recent": [
+     "h5",
+     "h6",
+     "h1",
+     "h2"
+    ],
+    "volumeItems": [
+     "h4",
+     "h3"
+    ],
+    "open": [
+     "DocuSign",
+     "Salesforce",
+     "Microsoft",
+     "AWS"
+    ],
+    "noticeSoon": [
+     "Salesforce",
+     "DocuSign"
+    ],
+    "supplierOpts": [
+     "AWS",
+     "Adobe",
+     "Atlassian",
+     "DocuSign",
+     "Microsoft",
+     "SAP Ariba",
+     "Salesforce",
+     "Snowflake",
+     "Workday",
+     "Zoom"
+    ],
+    "catOpts": [
+     "CRM",
+     "Cloud infrastructure",
+     "Data & analytics",
+     "ERP & finance",
+     "Engineering tools",
+     "HR",
+     "Productivity"
+    ],
+    "ownerOpts": [
+     "Luca Lamalfa",
+     "Marta Keller"
+    ]
+   }
+  },
+  {
+   "name": "marta_fy",
+   "f": {
+    "period": "fy",
+    "owner": "Marta Keller"
+   },
+   "targets": {},
+   "spend": 0,
+   "out": {
+    "contractual": 51000,
+    "realized": 17500,
+    "volumeAmt": 14000,
+    "count": 2,
+    "volumeN": 1,
+    "objectives": 44800,
+    "undefinedN": 1,
+    "target": 0,
+    "pctTarget": 0,
+    "pctSpend": 0,
+    "months": [
+     {
+      "label": "Jan 26",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Feb",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Mar",
+      "amount": 42000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Apr",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "May",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Jun",
+      "amount": 9000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Jul",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Aug",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Sep",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Oct",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     },
+     {
+      "label": "Nov",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     },
+     {
+      "label": "Dec",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     }
+    ],
+    "peak": 42000,
+    "by": [
+     {
+      "label": "Salesforce",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 44800,
+      "n": 1,
+      "total": 44800
+     },
+     {
+      "label": "Snowflake",
+      "contractual": 42000,
+      "realized": 17500,
+      "objectives": 0,
+      "n": 1,
+      "total": 42000
+     },
+     {
+      "label": "Zoom",
+      "contractual": 9000,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 9000
+     },
+     {
+      "label": "DocuSign",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 0
+     }
+    ],
+    "maxBy": 44800,
+    "recent": [
+     "h6",
+     "h1"
+    ],
+    "volumeItems": [
+     "h4"
+    ],
+    "open": [
+     "DocuSign",
+     "Salesforce"
+    ],
+    "noticeSoon": [
+     "Salesforce",
+     "DocuSign"
+    ],
+    "supplierOpts": [
+     "AWS",
+     "Adobe",
+     "Atlassian",
+     "DocuSign",
+     "Microsoft",
+     "SAP Ariba",
+     "Salesforce",
+     "Snowflake",
+     "Workday",
+     "Zoom"
+    ],
+    "catOpts": [
+     "CRM",
+     "Cloud infrastructure",
+     "Data & analytics",
+     "ERP & finance",
+     "Engineering tools",
+     "HR",
+     "Productivity"
+    ],
+    "ownerOpts": [
+     "Luca Lamalfa",
+     "Marta Keller"
+    ]
+   }
+  },
+  {
+   "name": "productivity",
+   "f": {
+    "period": "12m",
+    "cats": [
+     "Productivity",
+     "HR"
+    ]
+   },
+   "targets": {
+    "noticeDays": 30
+   },
+   "spend": 0,
+   "out": {
+    "contractual": 44000,
+    "realized": 0,
+    "volumeAmt": 28000,
+    "count": 2,
+    "volumeN": 1,
+    "objectives": 60000,
+    "undefinedN": 1,
+    "target": 0,
+    "pctTarget": 0,
+    "pctSpend": 0,
+    "months": [
+     {
+      "label": "Oct 25",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Nov",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Dec",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Jan 26",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Feb",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Mar",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Apr",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "May",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Jun",
+      "amount": 9000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Jul",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Aug",
+      "amount": 35000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Sep",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     }
+    ],
+    "peak": 35000,
+    "by": [
+     {
+      "label": "Microsoft",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 60000,
+      "n": 1,
+      "total": 60000
+     },
+     {
+      "label": "Adobe",
+      "contractual": 35000,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 35000
+     },
+     {
+      "label": "Zoom",
+      "contractual": 9000,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 9000
+     },
+     {
+      "label": "DocuSign",
+      "contractual": 0,
+      "realized": 0,
+      "objectives": 0,
+      "n": 1,
+      "total": 0
+     }
+    ],
+    "maxBy": 60000,
+    "recent": [
+     "h5",
+     "h6"
+    ],
+    "volumeItems": [
+     "h3"
+    ],
+    "open": [
+     "DocuSign",
+     "Microsoft"
+    ],
+    "noticeSoon": [
+     "DocuSign"
+    ],
+    "supplierOpts": [
+     "AWS",
+     "Adobe",
+     "Atlassian",
+     "DocuSign",
+     "Microsoft",
+     "SAP Ariba",
+     "Salesforce",
+     "Snowflake",
+     "Workday",
+     "Zoom"
+    ],
+    "catOpts": [
+     "CRM",
+     "Cloud infrastructure",
+     "Data & analytics",
+     "ERP & finance",
+     "Engineering tools",
+     "HR",
+     "Productivity"
+    ],
+    "ownerOpts": [
+     "Luca Lamalfa",
+     "Marta Keller"
+    ]
+   }
+  },
+  {
+   "name": "sup",
+   "f": {
+    "period": "fy",
+    "sup": "Snowflake"
+   },
+   "targets": {},
+   "spend": 0,
+   "out": {
+    "contractual": 42000,
+    "realized": 17500,
+    "volumeAmt": 0,
+    "count": 1,
+    "volumeN": 0,
+    "objectives": 0,
+    "undefinedN": 0,
+    "target": 0,
+    "pctTarget": 0,
+    "pctSpend": 0,
+    "months": [
+     {
+      "label": "Jan 26",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Feb",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Mar",
+      "amount": 42000,
+      "count": 1,
+      "future": false
+     },
+     {
+      "label": "Apr",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "May",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Jun",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Jul",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Aug",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Sep",
+      "amount": 0,
+      "count": 0,
+      "future": false
+     },
+     {
+      "label": "Oct",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     },
+     {
+      "label": "Nov",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     },
+     {
+      "label": "Dec",
+      "amount": 0,
+      "count": 0,
+      "future": true
+     }
+    ],
+    "peak": 42000,
+    "by": [
+     {
+      "label": "Snowflake",
+      "contractual": 42000,
+      "realized": 17500,
+      "objectives": 0,
+      "n": 1,
+      "total": 42000
+     }
+    ],
+    "maxBy": 42000,
+    "recent": [
+     "h1"
+    ],
+    "volumeItems": [],
+    "open": [],
+    "noticeSoon": [],
+    "supplierOpts": [
+     "AWS",
+     "Adobe",
+     "Atlassian",
+     "DocuSign",
+     "Microsoft",
+     "SAP Ariba",
+     "Salesforce",
+     "Snowflake",
+     "Workday",
+     "Zoom"
+    ],
+    "catOpts": [
+     "CRM",
+     "Cloud infrastructure",
+     "Data & analytics",
+     "ERP & finance",
+     "Engineering tools",
+     "HR",
+     "Productivity"
+    ],
+    "ownerOpts": [
+     "Luca Lamalfa",
+     "Marta Keller"
+    ]
+   }
+  }
+ ],
+ "fmt": [
+  {
+   "n": 0,
+   "k": "CHF 0k",
+   "up": "0"
+  },
+  {
+   "n": 999,
+   "k": "CHF 1k",
+   "up": "999"
+  },
+  {
+   "n": 1499,
+   "k": "CHF 1k",
+   "up": "1,499"
+  },
+  {
+   "n": 1500,
+   "k": "CHF 2k",
+   "up": "1,500"
+  },
+  {
+   "n": 156000,
+   "k": "CHF 156k",
+   "up": "156,000"
+  },
+  {
+   "n": 155499,
+   "k": "CHF 155k",
+   "up": "155,499"
+  },
+  {
+   "n": 999999,
+   "k": "CHF 1000k",
+   "up": "999,999"
+  },
+  {
+   "n": 1000000,
+   "k": "CHF 1.0M",
+   "up": "1,000,000"
+  },
+  {
+   "n": 2400000,
+   "k": "CHF 2.4M",
+   "up": "2,400,000"
+  },
+  {
+   "n": 2449999,
+   "k": "CHF 2.4M",
+   "up": "2,449,999"
+  },
+  {
+   "d": -4.97,
+   "pct": "-5.0%"
+  },
+  {
+   "d": 3.2,
+   "pct": "+3.2%"
+  },
+  {
+   "d": -12.6,
+   "pct": "-13%"
+  },
+  {
+   "d": 0,
+   "pct": "0.0%"
+  },
+  {
+   "d": 25,
+   "pct": "+25%"
+  }
+ ],
+ "kr": "CHF 120–180k"
+}

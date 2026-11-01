@@ -1,0 +1,1189 @@
+{
+  "_comment": "Converted verbatim from docs/design/Raffa.ai/design_handoff_askraffa_v4/reference/raffa-data.js (RD.CONTRACTS + RD.DEEP after mkDeep + RD.EVIDENCE + weakFields/allFields) and SQ.CATS. Fictional demo data, fixture mode only.",
+  "validatedInScenario": {
+    "zero": [],
+    "full": [
+      2,
+      3,
+      4
+    ]
+  },
+  "contracts": [
+    {
+      "fixtureId": 1,
+      "supplier": "Salesforce",
+      "name": "Sales Cloud Enterprise — MSA + Order Form",
+      "type": "MSA",
+      "file": "Salesforce_MSA_2024.pdf",
+      "spend": 640000,
+      "start": "01 Mar 2024",
+      "end": "15 Jan 2027",
+      "days": 129,
+      "cancel": "18 Oct 2026",
+      "cancelDays": 40,
+      "notice": 90,
+      "auto": "Yes",
+      "risk": "High",
+      "score": 86,
+      "uplift": "7%",
+      "saving": "CHF 44.8k / yr",
+      "lever": "If you miss 18 Oct 2026, the 7% uplift clause applies to CHF 640k of annual spend on the renewed term.",
+      "action": "Start renewal",
+      "rationale": "The notice window closes in 40 days and the 7% uplift clause compounds at renewal. Both facts are validated and cited.",
+      "docCount": 2,
+      "category": "CRM",
+      "deep": {
+        "products": [
+          {
+            "name": "Sales Cloud Enterprise",
+            "sku": "SC-ENT-U",
+            "unit": "user / month",
+            "quantity": 300,
+            "unitPrice": 156,
+            "annual": 561600
+          },
+          {
+            "name": "Sales Cloud CPQ",
+            "sku": "SC-CPQ-U",
+            "unit": "user / month",
+            "quantity": 60,
+            "unitPrice": 75,
+            "annual": 54000
+          },
+          {
+            "name": "Premier Success Plan",
+            "sku": "PSP-20",
+            "unit": "flat / year",
+            "quantity": 1,
+            "unitPrice": 24400,
+            "annual": 24400
+          }
+        ],
+        "productNote": "Prices are those on the current contract. No external market data is used.",
+        "levers": [
+          {
+            "strength": "Strong",
+            "value": "CHF 44.8k / yr",
+            "title": "Uplift clause",
+            "ask": "a cap at 3% or a price freeze for the renewed term",
+            "source": "§6.2 Price increase, p.9"
+          },
+          {
+            "strength": "Strong",
+            "value": "40 days",
+            "title": "Notice window as leverage",
+            "ask": "a revised Order Form before 18 Oct 2026 — your option to give notice is the credible alternative",
+            "source": "§8.4 Auto-renewal, p.12"
+          },
+          {
+            "strength": "Medium",
+            "value": "24 months",
+            "title": "Term length as currency",
+            "ask": "a better unit price in exchange for a longer commitment — only if you decide to",
+            "source": "§2.1 Subscription term"
+          },
+          {
+            "strength": "Medium",
+            "value": "Net 30 · annual",
+            "title": "Payment terms",
+            "ask": "quarterly in advance",
+            "source": "§5.1 Payment, p.5"
+          }
+        ],
+        "push": [
+          {
+            "topic": "Price increase",
+            "says": "Up to 7% or CPI, whichever is higher, at each renewal.",
+            "proposal": "Cap at 3% or freeze for the renewed term.",
+            "source": "p.9 §6.2",
+            "evidenceKey": "sf_uplift"
+          },
+          {
+            "topic": "Auto-renewal",
+            "says": "Renews for successive 12-month terms unless notice ≥90 days before term end.",
+            "proposal": "Shorten notice to 30 days; remove auto-renewal.",
+            "source": "p.12 §8.4",
+            "evidenceKey": "sf_renew"
+          }
+        ],
+        "raise": [
+          {
+            "topic": "Limitation of liability",
+            "says": "Capped at 12 months of fees; carve-outs for confidentiality and IP.",
+            "proposal": "Raise to 24 months; add data-breach carve-out.",
+            "source": "p.27 §17.2",
+            "evidenceKey": "sf_liab"
+          },
+          {
+            "topic": "Termination for convenience",
+            "says": "Not permitted during the term.",
+            "proposal": "Allow termination at each anniversary with 60 days notice.",
+            "source": "p.26 §16.1",
+            "evidenceKey": "sf_term"
+          },
+          {
+            "topic": "Payment terms",
+            "says": "Annual in advance, Net 30.",
+            "proposal": "Quarterly in advance — improves cash by ~CHF 480k.",
+            "source": "p.5 §5.1",
+            "evidenceKey": null
+          },
+          {
+            "topic": "Service credits",
+            "says": "99.9% uptime; credits capped at 10% of monthly fee.",
+            "proposal": "Lift the cap to 25%; add chronic-failure exit.",
+            "source": "Sch. 2 SLA",
+            "evidenceKey": null
+          }
+        ],
+        "std": [
+          {
+            "topic": "Data processing",
+            "says": "DPA incorporated; EU SCCs.",
+            "source": "p.30 §20"
+          },
+          {
+            "topic": "Confidentiality",
+            "says": "Mutual, 5 years post-termination.",
+            "source": "p.28 §18"
+          },
+          {
+            "topic": "Governing law",
+            "says": "Switzerland; courts of Zürich.",
+            "source": "p.32 §22"
+          },
+          {
+            "topic": "Intellectual property",
+            "says": "Supplier retains IP; customer owns its data.",
+            "source": "p.20 §14"
+          },
+          {
+            "topic": "Audit rights",
+            "says": "Annual, 30 business days notice.",
+            "source": "p.17 §12"
+          },
+          {
+            "topic": "Insurance",
+            "says": "Cyber cover CHF 5m.",
+            "source": "p.29 §19"
+          }
+        ],
+        "oblYou": [
+          {
+            "what": "Give non-renewal or renegotiation notice",
+            "when": "by 18 Oct 2026",
+            "priority": "High",
+            "recurrence": "once"
+          },
+          {
+            "what": "Pay annual subscription fee in advance",
+            "when": "01 Mar each year",
+            "priority": "High",
+            "recurrence": "yearly"
+          },
+          {
+            "what": "Certify user counts for the true-up",
+            "when": "01 Feb each year",
+            "priority": "Medium",
+            "recurrence": "yearly"
+          },
+          {
+            "what": "Keep two named admin contacts on file",
+            "when": "—",
+            "priority": "Low",
+            "recurrence": "ongoing"
+          }
+        ],
+        "oblSup": [
+          {
+            "what": "Notify any price increase",
+            "when": "≥60 days before renewal — by 16 Nov 2026",
+            "priority": "High",
+            "recurrence": "once"
+          },
+          {
+            "what": "Maintain 99.9% monthly uptime",
+            "when": "every month",
+            "priority": "High",
+            "recurrence": "monthly"
+          },
+          {
+            "what": "Deliver SOC 2 Type II report",
+            "when": "on request, annually",
+            "priority": "Medium",
+            "recurrence": "yearly"
+          },
+          {
+            "what": "Return customer data after termination",
+            "when": "within 30 days",
+            "priority": "Medium",
+            "recurrence": "once"
+          }
+        ],
+        "scoreParts": [
+          {
+            "label": "Spend weight",
+            "points": 18,
+            "max": 20
+          },
+          {
+            "label": "Time urgency",
+            "points": 25,
+            "max": 25
+          },
+          {
+            "label": "Negotiation room",
+            "points": 20,
+            "max": 25
+          },
+          {
+            "label": "Price increase risk",
+            "points": 13,
+            "max": 15
+          },
+          {
+            "label": "Contract risk",
+            "points": 10,
+            "max": 15
+          }
+        ],
+        "risks": [
+          {
+            "severity": "High",
+            "title": "Auto-renewal lock-in",
+            "detail": "Missing 18 Oct 2026 renews 12 months with the 7% uplift: +CHF 44.8k on current spend."
+          },
+          {
+            "severity": "High",
+            "title": "Compounding uplift",
+            "detail": "7% or CPI at each renewal — three renewals compound to +22.5%."
+          },
+          {
+            "severity": "Medium",
+            "title": "Liability capped at 12 months",
+            "detail": "A serious data incident is under-covered relative to CHF 640k spend."
+          },
+          {
+            "severity": "Medium",
+            "title": "No termination for convenience",
+            "detail": "You cannot exit mid-term if needs change."
+          },
+          {
+            "severity": "Low",
+            "title": "Usage not available",
+            "detail": "The contract has no usage data; sizing seats needs data you hold outside Raffa."
+          }
+        ],
+        "terms": [
+          {
+            "label": "Annual spend",
+            "value": "CHF 640,000"
+          },
+          {
+            "label": "Total contract value",
+            "value": "CHF 1,840,000"
+          },
+          {
+            "label": "Term",
+            "value": "01 Mar 2024 → 15 Jan 2027"
+          },
+          {
+            "label": "Renewal term",
+            "value": "12 months, automatic"
+          },
+          {
+            "label": "Notice period",
+            "value": "90 days"
+          },
+          {
+            "label": "Uplift at renewal",
+            "value": "7% or CPI"
+          },
+          {
+            "label": "Payment terms",
+            "value": "Annual in advance · Net 30"
+          },
+          {
+            "label": "Governing law",
+            "value": "Switzerland"
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": 2,
+      "supplier": "Microsoft",
+      "name": "Enterprise Agreement · M365 E5",
+      "type": "MSA",
+      "file": "Microsoft_EA_Enrollment.pdf",
+      "spend": 1200000,
+      "start": "01 Jul 2024",
+      "end": "30 Jun 2027",
+      "days": 295,
+      "cancel": "31 Mar 2027",
+      "cancelDays": 204,
+      "notice": 90,
+      "auto": "Yes",
+      "risk": "Medium",
+      "score": 63,
+      "uplift": "5%",
+      "saving": "CHF 60k / yr",
+      "lever": "If nothing changes, the 5% uplift applies to CHF 1.2M of annual spend, and the licence counts you certify on 01 Jul lock for 12 months.",
+      "action": "Start renewal",
+      "rationale": "Notice is due by 31 Mar 2027 and the true-up locks counts for 12 months. Usage data is not in the contract — add it to size the licence mix.",
+      "docCount": 3,
+      "category": "Productivity",
+      "deep": {
+        "products": [
+          {
+            "name": "Microsoft 365 E5",
+            "sku": "CFQ7TTC0LFLX",
+            "unit": "user / month",
+            "quantity": 1200,
+            "unitPrice": 52,
+            "annual": 748800
+          },
+          {
+            "name": "Microsoft 365 E3",
+            "sku": "CFQ7TTC0LFLZ",
+            "unit": "user / month",
+            "quantity": 400,
+            "unitPrice": 33,
+            "annual": 158400
+          },
+          {
+            "name": "Power BI Pro",
+            "sku": "CFQ7TTC0LHSF",
+            "unit": "user / month",
+            "quantity": 600,
+            "unitPrice": 9.5,
+            "annual": 68400
+          },
+          {
+            "name": "Azure consumption commit",
+            "sku": "AZ-MACC",
+            "unit": "flat / year",
+            "quantity": 1,
+            "unitPrice": 224400,
+            "annual": 224400
+          }
+        ],
+        "productNote": "Prices are those on the current contract. No external market data is used.",
+        "levers": [
+          {
+            "strength": "Strong",
+            "value": "CHF 60k / yr",
+            "title": "5% uplift",
+            "ask": "price protection on the renewed term",
+            "source": "§5 Price protection, p.9"
+          },
+          {
+            "strength": "Medium",
+            "value": "01 Jul",
+            "title": "True-up lock",
+            "ask": "counts adjustable downward at each anniversary",
+            "source": "§6, p.11"
+          },
+          {
+            "strength": "Medium",
+            "value": "36 months",
+            "title": "Term length",
+            "ask": "a price lock in exchange for the commitment",
+            "source": "Enrollment term, p.4"
+          },
+          {
+            "strength": "Weak",
+            "value": "90 days",
+            "title": "Licence reassignment",
+            "ask": "30 days to allow faster right-sizing",
+            "source": "§6, p.11"
+          }
+        ],
+        "push": [
+          {
+            "topic": "Price protection",
+            "says": "Prices fixed for the term; true-up counts cannot be reduced within a year.",
+            "proposal": "Allow downward adjustment at each anniversary.",
+            "source": "p.9 §5",
+            "evidenceKey": "ms_liab"
+          }
+        ],
+        "raise": [
+          {
+            "topic": "Limitation of liability",
+            "says": "Amounts paid under the affected Enrollment in the preceding 12 months.",
+            "proposal": "Raise to 24 months for data-protection claims.",
+            "source": "p.22 §14",
+            "evidenceKey": "ms_liab"
+          },
+          {
+            "topic": "Licence reassignment",
+            "says": "Reassignment allowed after 90 days.",
+            "proposal": "Reduce to 30 days to enable faster right-sizing.",
+            "source": "p.11 §6",
+            "evidenceKey": null
+          },
+          {
+            "topic": "Azure commit shortfall",
+            "says": "Unused commit is forfeited at term end.",
+            "proposal": "Carry forward up to 20% into the next term.",
+            "source": "MACC §3",
+            "evidenceKey": null
+          }
+        ],
+        "std": [
+          {
+            "topic": "Data processing",
+            "says": "Microsoft DPA; EU Data Boundary.",
+            "source": "p.30 §20"
+          },
+          {
+            "topic": "Governing law",
+            "says": "Ireland.",
+            "source": "p.34 §25"
+          },
+          {
+            "topic": "Software asset management",
+            "says": "Self-audit on 30 days notice.",
+            "source": "p.18 §10"
+          },
+          {
+            "topic": "Product retirement",
+            "says": "12 months notice before retirement.",
+            "source": "p.14 §8"
+          }
+        ],
+        "oblYou": [
+          {
+            "what": "Submit the annual true-up order",
+            "when": "by 01 Jul each year",
+            "priority": "High",
+            "recurrence": "yearly"
+          },
+          {
+            "what": "Give non-renewal notice",
+            "when": "by 31 Mar 2027",
+            "priority": "High",
+            "recurrence": "once"
+          },
+          {
+            "what": "Pay the annual enrollment fee",
+            "when": "01 Jul each year",
+            "priority": "High",
+            "recurrence": "yearly"
+          },
+          {
+            "what": "Keep licence assignment records for SAM",
+            "when": "—",
+            "priority": "Medium",
+            "recurrence": "ongoing"
+          }
+        ],
+        "oblSup": [
+          {
+            "what": "Hold prices for the enrollment term",
+            "when": "through 30 Jun 2027",
+            "priority": "High",
+            "recurrence": "ongoing"
+          },
+          {
+            "what": "Meet 99.9% financially backed SLA",
+            "when": "every month",
+            "priority": "Medium",
+            "recurrence": "monthly"
+          },
+          {
+            "what": "Give 12 months notice of product retirement",
+            "when": "—",
+            "priority": "Medium",
+            "recurrence": "ongoing"
+          }
+        ],
+        "scoreParts": [
+          {
+            "label": "Spend weight",
+            "points": 20,
+            "max": 20
+          },
+          {
+            "label": "Time urgency",
+            "points": 12,
+            "max": 25
+          },
+          {
+            "label": "Negotiation room",
+            "points": 15,
+            "max": 25
+          },
+          {
+            "label": "Price increase risk",
+            "points": 8,
+            "max": 15
+          },
+          {
+            "label": "Contract risk",
+            "points": 8,
+            "max": 15
+          }
+        ],
+        "risks": [
+          {
+            "severity": "High",
+            "title": "True-up lock",
+            "detail": "Any count you certify on 01 Jul is paid for 12 months."
+          },
+          {
+            "severity": "Medium",
+            "title": "Auto-renewal at +5%",
+            "detail": "Notice is due by 31 Mar 2027."
+          },
+          {
+            "severity": "Medium",
+            "title": "Liability capped at 12 months",
+            "detail": "Standard Microsoft position; hard to move, worth stating."
+          },
+          {
+            "severity": "Low",
+            "title": "Usage not available",
+            "detail": "No usage data in the contract; add it to size the licence mix."
+          }
+        ],
+        "terms": [
+          {
+            "label": "Annual spend",
+            "value": "CHF 1,200,000"
+          },
+          {
+            "label": "Total contract value",
+            "value": "CHF 3,600,000"
+          },
+          {
+            "label": "Term",
+            "value": "01 Jul 2024 → 30 Jun 2027"
+          },
+          {
+            "label": "Renewal term",
+            "value": "36 months"
+          },
+          {
+            "label": "Notice period",
+            "value": "90 days"
+          },
+          {
+            "label": "Uplift at renewal",
+            "value": "5%"
+          },
+          {
+            "label": "Payment terms",
+            "value": "Annual in advance · Net 30"
+          },
+          {
+            "label": "Governing law",
+            "value": "Ireland"
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": 3,
+      "supplier": "AWS",
+      "name": "Enterprise Discount Program",
+      "type": "Amendment",
+      "file": "AWS_EDP_Amendment_3.pdf",
+      "spend": 2400000,
+      "start": "01 Sep 2024",
+      "end": "31 Aug 2027",
+      "days": 357,
+      "cancel": "01 Jun 2027",
+      "cancelDays": 266,
+      "notice": 90,
+      "auto": "No",
+      "risk": "Medium",
+      "score": 53,
+      "uplift": "0%",
+      "saving": "No uplift clause",
+      "lever": "Spend is a CHF 2.4M annual commit; unused commit is invoiced at term end, so size it before renewal.",
+      "action": "Start renewal",
+      "rationale": "No auto-renewal: the contract ends on 31 Aug 2027 unless you renegotiate. Start before the 01 Jun 2027 window.",
+      "docCount": 4,
+      "category": "Cloud infrastructure",
+      "deep": {
+        "products": [
+          {
+            "name": "EC2 + RDS committed usage",
+            "sku": "EDP-COMPUTE",
+            "unit": "commit / year",
+            "quantity": 1,
+            "unitPrice": 1800000,
+            "annual": 1800000
+          },
+          {
+            "name": "S3 + data transfer",
+            "sku": "EDP-STORAGE",
+            "unit": "commit / year",
+            "quantity": 1,
+            "unitPrice": 400000,
+            "annual": 400000
+          },
+          {
+            "name": "Enterprise Support",
+            "sku": "ENT-SUP",
+            "unit": "10% of usage",
+            "quantity": 1,
+            "unitPrice": 200000,
+            "annual": 200000
+          }
+        ],
+        "productNote": "Prices are those on the current contract. No external market data is used.",
+        "levers": [
+          {
+            "strength": "Medium",
+            "value": "CHF 2.4M",
+            "title": "Annual commit",
+            "ask": "a one-year carry-forward of up to 15% of unused commit",
+            "source": "§4 Commit shortfall, p.6"
+          },
+          {
+            "strength": "Medium",
+            "value": "10% fee",
+            "title": "Enterprise Support rate",
+            "ask": "a tiered rate above CHF 1m",
+            "source": "§7 Support fees, p.8"
+          },
+          {
+            "strength": "Weak",
+            "value": "No auto-renewal",
+            "title": "Renewal is a decision",
+            "ask": "opening the renegotiation before the 01 Jun 2027 window",
+            "source": "Amendment 3"
+          }
+        ],
+        "push": [
+          {
+            "topic": "Commit shortfall",
+            "says": "Unused commit is invoiced at term end.",
+            "proposal": "Allow a one-year carry-forward of up to 15%.",
+            "source": "p.6 §4",
+            "evidenceKey": "aws_liab"
+          }
+        ],
+        "raise": [
+          {
+            "topic": "Limitation of liability",
+            "says": "Greater of USD 500k or 12 months fees; carve-outs for confidentiality and IP.",
+            "proposal": "Add a data-breach carve-out.",
+            "source": "p.19 §11.2",
+            "evidenceKey": "aws_liab"
+          },
+          {
+            "topic": "Support fees",
+            "says": "10% of monthly usage.",
+            "proposal": "Tiered rate above CHF 1m.",
+            "source": "p.8 §7",
+            "evidenceKey": null
+          }
+        ],
+        "std": [
+          {
+            "topic": "Data processing",
+            "says": "AWS DPA; GDPR addendum.",
+            "source": "p.22 §13"
+          },
+          {
+            "topic": "Governing law",
+            "says": "Luxembourg.",
+            "source": "p.24 §16"
+          },
+          {
+            "topic": "Service deprecation",
+            "says": "12 months notice.",
+            "source": "p.12 §9"
+          },
+          {
+            "topic": "Acceptable use",
+            "says": "AWS AUP incorporated.",
+            "source": "p.5 §3"
+          }
+        ],
+        "oblYou": [
+          {
+            "what": "Meet the annual commit of CHF 2.4m",
+            "when": "by 31 Aug each year",
+            "priority": "High",
+            "recurrence": "yearly"
+          },
+          {
+            "what": "Pay monthly invoices",
+            "when": "Net 30",
+            "priority": "Medium",
+            "recurrence": "monthly"
+          },
+          {
+            "what": "Notify intent to renegotiate before term end",
+            "when": "by 01 Jun 2027",
+            "priority": "High",
+            "recurrence": "once"
+          }
+        ],
+        "oblSup": [
+          {
+            "what": "Apply the discount tier to monthly usage",
+            "when": "every month",
+            "priority": "High",
+            "recurrence": "monthly"
+          },
+          {
+            "what": "Quarterly TAM business review",
+            "when": "every quarter",
+            "priority": "Medium",
+            "recurrence": "quarterly"
+          },
+          {
+            "what": "Give 12 months notice of service deprecation",
+            "when": "—",
+            "priority": "Medium",
+            "recurrence": "ongoing"
+          }
+        ],
+        "scoreParts": [
+          {
+            "label": "Spend weight",
+            "points": 20,
+            "max": 20
+          },
+          {
+            "label": "Time urgency",
+            "points": 8,
+            "max": 25
+          },
+          {
+            "label": "Negotiation room",
+            "points": 12,
+            "max": 25
+          },
+          {
+            "label": "Price increase risk",
+            "points": 3,
+            "max": 15
+          },
+          {
+            "label": "Contract risk",
+            "points": 10,
+            "max": 15
+          }
+        ],
+        "risks": [
+          {
+            "severity": "High",
+            "title": "Commit shortfall",
+            "detail": "Unused commit is invoiced at term end: every 10% below commit is CHF 240k."
+          },
+          {
+            "severity": "Medium",
+            "title": "Growth above commit",
+            "detail": "Usage beyond the commit is billed at public rates."
+          },
+          {
+            "severity": "Medium",
+            "title": "Liability cap",
+            "detail": "USD 500k floor is low against CHF 2.4M spend."
+          }
+        ],
+        "terms": [
+          {
+            "label": "Annual spend",
+            "value": "CHF 2,400,000"
+          },
+          {
+            "label": "Total contract value",
+            "value": "CHF 7,200,000"
+          },
+          {
+            "label": "Term",
+            "value": "01 Sep 2024 → 31 Aug 2027"
+          },
+          {
+            "label": "Renewal term",
+            "value": "None — renegotiate"
+          },
+          {
+            "label": "Notice period",
+            "value": "90 days"
+          },
+          {
+            "label": "Uplift at renewal",
+            "value": "0%"
+          },
+          {
+            "label": "Payment terms",
+            "value": "Monthly · Net 30"
+          },
+          {
+            "label": "Governing law",
+            "value": "Luxembourg"
+          }
+        ]
+      }
+    },
+    {
+      "fixtureId": 4,
+      "supplier": "DocuSign",
+      "name": "eSignature Business Pro",
+      "type": "Order Form",
+      "file": "DocuSign_OrderForm.pdf",
+      "spend": 58000,
+      "start": "01 Nov 2023",
+      "end": "31 Oct 2026",
+      "days": 53,
+      "cancel": "02 Oct 2026",
+      "cancelDays": 24,
+      "notice": 30,
+      "auto": "Yes",
+      "risk": "Low",
+      "score": 48,
+      "uplift": "8%",
+      "saving": "CHF 4.6k / yr",
+      "lever": "If you miss 02 Oct 2026, the 8% uplift applies to CHF 58k and the contract renews for 12 months.",
+      "action": "Start renewal",
+      "rationale": "The notice window closes in 24 days. Decide whether to renegotiate, give notice or replace.",
+      "docCount": 1,
+      "category": "Productivity",
+      "deep": {
+        "products": [
+          {
+            "name": "eSignature Business Pro",
+            "sku": "ESIG-BP",
+            "unit": "seat / month",
+            "quantity": 60,
+            "unitPrice": 48,
+            "annual": 34560
+          },
+          {
+            "name": "Envelope allowance",
+            "sku": "ENV-12K",
+            "unit": "12,000 / year",
+            "quantity": 1,
+            "unitPrice": 18000,
+            "annual": 18000
+          },
+          {
+            "name": "Premier Support",
+            "sku": "SUP-PREM",
+            "unit": "flat / year",
+            "quantity": 1,
+            "unitPrice": 5440,
+            "annual": 5440
+          }
+        ],
+        "productNote": "Prices are those on the current contract. No external market data is used.",
+        "levers": [
+          {
+            "strength": "Strong",
+            "value": "24 days",
+            "title": "Notice deadline",
+            "ask": "a renegotiated Order Form before 02 Oct 2026 — or a non-renewal notice",
+            "source": "§4, p.2"
+          },
+          {
+            "strength": "Medium",
+            "value": "CHF 4.6k / yr",
+            "title": "8% uplift",
+            "ask": "a freeze for the renewed term",
+            "source": "§5, p.2"
+          },
+          {
+            "strength": "Weak",
+            "value": "Unused envelopes",
+            "title": "Do not roll over",
+            "ask": "up to 25% rollover into the next year",
+            "source": "§3, p.2"
+          }
+        ],
+        "push": [
+          {
+            "topic": "Auto-renewal",
+            "says": "Renews for 12 months unless 30-day notice.",
+            "proposal": "Give notice by 02 Oct 2026; re-sign on the smaller plan.",
+            "source": "p.2 §4",
+            "evidenceKey": "sf_renew"
+          },
+          {
+            "topic": "Price increase",
+            "says": "Up to 8% at renewal.",
+            "proposal": "Freeze for the renewed term.",
+            "source": "p.2 §5",
+            "evidenceKey": "sf_renew"
+          }
+        ],
+        "raise": [
+          {
+            "topic": "Unused envelopes",
+            "says": "Non-refundable; do not roll over.",
+            "proposal": "Roll over up to 25% into the next year.",
+            "source": "p.2 §3",
+            "evidenceKey": null
+          }
+        ],
+        "std": [
+          {
+            "topic": "Data processing",
+            "says": "DocuSign DPA; EU SCCs.",
+            "source": "p.4 §9"
+          },
+          {
+            "topic": "Governing law",
+            "says": "Ireland.",
+            "source": "p.4 §11"
+          }
+        ],
+        "oblYou": [
+          {
+            "what": "Give non-renewal notice",
+            "when": "by 02 Oct 2026",
+            "priority": "High",
+            "recurrence": "once"
+          },
+          {
+            "what": "Pay annual fee in advance",
+            "when": "01 Nov each year",
+            "priority": "Medium",
+            "recurrence": "yearly"
+          }
+        ],
+        "oblSup": [
+          {
+            "what": "Maintain 99.9% uptime",
+            "when": "every month",
+            "priority": "Medium",
+            "recurrence": "monthly"
+          },
+          {
+            "what": "Provide monthly envelope usage report",
+            "when": "every month",
+            "priority": "Low",
+            "recurrence": "monthly"
+          }
+        ],
+        "scoreParts": [
+          {
+            "label": "Spend weight",
+            "points": 4,
+            "max": 20
+          },
+          {
+            "label": "Time urgency",
+            "points": 25,
+            "max": 25
+          },
+          {
+            "label": "Negotiation room",
+            "points": 10,
+            "max": 25
+          },
+          {
+            "label": "Price increase risk",
+            "points": 6,
+            "max": 15
+          },
+          {
+            "label": "Contract risk",
+            "points": 3,
+            "max": 15
+          }
+        ],
+        "risks": [
+          {
+            "severity": "High",
+            "title": "Auto-renewal at +8%",
+            "detail": "Missing 02 Oct 2026 renews 12 months at +8%: +CHF 4.6k."
+          },
+          {
+            "severity": "Low",
+            "title": "Usage not available",
+            "detail": "No usage data in the contract."
+          }
+        ],
+        "terms": [
+          {
+            "label": "Annual spend",
+            "value": "CHF 58,000"
+          },
+          {
+            "label": "Total contract value",
+            "value": "CHF 174,000"
+          },
+          {
+            "label": "Term",
+            "value": "01 Nov 2023 → 31 Oct 2026"
+          },
+          {
+            "label": "Renewal term",
+            "value": "12 months, automatic"
+          },
+          {
+            "label": "Notice period",
+            "value": "30 days"
+          },
+          {
+            "label": "Uplift at renewal",
+            "value": "8%"
+          },
+          {
+            "label": "Payment terms",
+            "value": "Annual in advance"
+          },
+          {
+            "label": "Governing law",
+            "value": "Ireland"
+          }
+        ]
+      }
+    }
+  ],
+  "evidence": {
+    "sf_term": {
+      "doc": "Salesforce_MSA_2024.pdf",
+      "page": 2,
+      "sec": "2.1",
+      "before": "Subscription Term. The Initial Subscription Term commences on 1 March 2024 and ",
+      "quote": "expires on 15 January 2027",
+      "after": ". Thereafter this Agreement renews as set out in Section 8.4."
+    },
+    "sf_renew": {
+      "doc": "Salesforce_MSA_2024.pdf",
+      "page": 12,
+      "sec": "8.4",
+      "before": "This Order Form shall ",
+      "quote": "automatically renew for successive twelve (12) month periods",
+      "after": " unless either party gives written notice of non-renewal at least ninety (90) days before the end of the then-current term."
+    },
+    "sf_liab": {
+      "doc": "Salesforce_MSA_2024.pdf",
+      "page": 27,
+      "sec": "17.2",
+      "before": "Limitation of Liability. In no event shall either party’s ",
+      "quote": "aggregate liability exceed the fees paid or payable in the twelve (12) months preceding the claim",
+      "after": ", except for breach of confidentiality obligations or infringement of intellectual property rights."
+    },
+    "sf_uplift": {
+      "doc": "Salesforce_MSA_2024.pdf",
+      "page": 9,
+      "sec": "6.2",
+      "before": "Upon each renewal, ",
+      "quote": "Supplier may increase the fees by the greater of seven percent (7%) or the CPI",
+      "after": "; any such increase shall be notified no later than sixty (60) days before renewal."
+    },
+    "sf_renewterm": {
+      "doc": "Salesforce_MSA_2024.pdf",
+      "page": 14,
+      "sec": "9.1",
+      "before": "Unless terminated, this Order Form shall ",
+      "quote": "renew for successive periods equal in length to the initial Subscription Term",
+      "after": " — the Initial Subscription Term is defined in Schedule 1."
+    },
+    "ms_liab": {
+      "doc": "Microsoft_EA_Enrollment.pdf",
+      "page": 22,
+      "sec": "14",
+      "before": "Each party’s ",
+      "quote": "liability is limited to the amounts paid under the affected Enrollment in the preceding 12 months",
+      "after": "."
+    },
+    "aws_liab": {
+      "doc": "AWS_EDP_Amendment_3.pdf",
+      "page": 19,
+      "sec": "11.2",
+      "before": "AWS’s aggregate liability shall not exceed ",
+      "quote": "the greater of USD 500,000 or the fees paid in the preceding twelve months",
+      "after": ", with carve-outs for breach of confidentiality and IP indemnity."
+    }
+  },
+  "weakFields": [
+    {
+      "label": "Renewal term",
+      "value": "12 months (inferred)",
+      "src": "p.14 §9.1",
+      "ev": "sf_renewterm",
+      "conf": 0.71,
+      "critical": "Critical field",
+      "why": "The term is not stated as a number: §9.1 says “periods equal in length to the initial term”, and the initial term is defined elsewhere. Confirm it is 12 months — it drives the notice deadline and the auto-renewal."
+    },
+    {
+      "label": "Price uplift at renewal",
+      "value": "7% or CPI, whichever is higher",
+      "src": "p.9 §6.2",
+      "ev": "sf_uplift",
+      "conf": 0.64,
+      "critical": "Critical field",
+      "why": "Two readings conflict: a fixed 7% and “CPI, whichever is higher”. Confirm which applies — it changes what the renewal costs if nothing is negotiated."
+    }
+  ],
+  "allFields": [
+    {
+      "label": "Renewal term",
+      "value": "12 months (inferred)",
+      "src": "p.14 §9.1",
+      "ev": "sf_renewterm",
+      "conf": 0.71,
+      "critical": "Critical field",
+      "why": "The term is not stated as a number: §9.1 says “periods equal in length to the initial term”, and the initial term is defined elsewhere. Confirm it is 12 months — it drives the notice deadline and the auto-renewal."
+    },
+    {
+      "label": "Price uplift at renewal",
+      "value": "7% or CPI, whichever is higher",
+      "src": "p.9 §6.2",
+      "ev": "sf_uplift",
+      "conf": 0.64,
+      "critical": "Critical field",
+      "why": "Two readings conflict: a fixed 7% and “CPI, whichever is higher”. Confirm which applies — it changes what the renewal costs if nothing is negotiated."
+    },
+    {
+      "label": "Annual fee",
+      "value": "CHF 640,000",
+      "src": "p.3 table",
+      "ev": "sf_term",
+      "conf": 0.98,
+      "critical": "Critical field"
+    },
+    {
+      "label": "Subscription end",
+      "value": "15 Jan 2027",
+      "src": "p.2 §2.1",
+      "ev": "sf_term",
+      "conf": 0.97,
+      "critical": "Critical field"
+    },
+    {
+      "label": "Cancellation notice",
+      "value": "90 days before term end",
+      "src": "p.12 §8.4",
+      "ev": "sf_renew",
+      "conf": 0.93,
+      "critical": "Critical field"
+    },
+    {
+      "label": "Liability cap",
+      "value": "12 months fees",
+      "src": "p.27 §17.2",
+      "ev": "sf_liab",
+      "conf": 0.88,
+      "critical": ""
+    },
+    {
+      "label": "Payment terms",
+      "value": "Net 45, annual in advance",
+      "src": "p.8 §6.1",
+      "ev": "sf_term",
+      "conf": 0.99,
+      "critical": ""
+    },
+    {
+      "label": "Governing law",
+      "value": "Switzerland, Zürich",
+      "src": "p.31 §21",
+      "ev": "sf_term",
+      "conf": 0.96,
+      "critical": ""
+    }
+  ]
+}

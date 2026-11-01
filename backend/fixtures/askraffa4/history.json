@@ -1,0 +1,205 @@
+{
+  "_comment": "SQ.HIST (signed contractual results, scenario \"full\" only) and SQ.CATS (category per fixture contract id) from reference/savings-quote-v4.js.",
+  "results": [
+    {
+      "id": "h1",
+      "supplier": "Snowflake",
+      "contract": "Capacity agreement",
+      "cat": "Data & analytics",
+      "kind": "price",
+      "lever": "Unit price",
+      "owner": "Marta Keller",
+      "amount": 42000,
+      "when": "14 Mar 2026",
+      "evidence": "Snowflake_Capacity_2026_signed.pdf",
+      "note": "CHF 2.60 → 2.34 per credit, same volume (160,000 credits)",
+      "baseline": "2024 contract price · CHF 2.60 / credit",
+      "period": "12 months from 01 Apr 2026",
+      "method": "(old − new unit price) × contracted volume",
+      "realized": true,
+      "realizedEv": "Invoices Apr–Aug 2026 · 5 of 12 months",
+      "realizedAmount": 17500,
+      "quote": "q2"
+    },
+    {
+      "id": "h2",
+      "supplier": "SAP Ariba",
+      "contract": "Procurement suite",
+      "cat": "ERP & finance",
+      "kind": "term",
+      "lever": "Term",
+      "owner": "Luca Lamalfa",
+      "amount": 61000,
+      "when": "22 Jan 2026",
+      "evidence": "SAP_Ariba_Renewal_2026_signed.pdf",
+      "note": "36 months for −9%, uplift frozen",
+      "baseline": "2025 annual fee · CHF 678k",
+      "period": "12 months from 01 Feb 2026",
+      "method": "old annual fee − new annual fee, same modules",
+      "realized": true,
+      "realizedEv": "Invoices Feb–Aug 2026 · 7 of 12 months",
+      "realizedAmount": 35600
+    },
+    {
+      "id": "h3",
+      "supplier": "Workday",
+      "contract": "HCM subscription",
+      "cat": "HR",
+      "kind": "volume",
+      "lever": "Volume",
+      "owner": "Marta Keller",
+      "amount": 28000,
+      "when": "05 Nov 2025",
+      "evidence": "Workday_OrderForm_2025_signed.pdf",
+      "note": "1,250 → 1,100 workers; unused seats removed — quantity reduction, unit price unchanged",
+      "baseline": "2024 order form · 1,250 workers",
+      "period": "12 months from 01 Dec 2025",
+      "method": "removed seats × unchanged unit price",
+      "realized": false
+    },
+    {
+      "id": "h4",
+      "supplier": "Atlassian",
+      "contract": "Cloud Enterprise",
+      "cat": "Engineering tools",
+      "kind": "volume",
+      "lever": "Volume",
+      "owner": "Marta Keller",
+      "amount": 14000,
+      "when": "19 May 2026",
+      "evidence": "Atlassian_Cloud_2026_signed.pdf",
+      "note": "Tier right-sized to 800 users — quantity reduction",
+      "baseline": "2025 tier · 1,000 users",
+      "period": "12 months from 01 Jun 2026",
+      "method": "old tier fee − new tier fee",
+      "realized": false
+    },
+    {
+      "id": "h5",
+      "supplier": "Adobe",
+      "contract": "Creative Cloud for teams",
+      "cat": "Productivity",
+      "kind": "price",
+      "lever": "Unit price",
+      "owner": "Luca Lamalfa",
+      "amount": 35000,
+      "when": "28 Aug 2026",
+      "evidence": "Adobe_VIP_2026_signed.pdf",
+      "note": "VIP Select level 13 pricing applied, same licences",
+      "baseline": "2025 price list · level 12",
+      "period": "12 months from 01 Sep 2026",
+      "method": "(old − new licence price) × licences",
+      "realized": false
+    },
+    {
+      "id": "h6",
+      "supplier": "Zoom",
+      "contract": "Business licences",
+      "cat": "Productivity",
+      "kind": "clause",
+      "lever": "Clauses",
+      "owner": "Marta Keller",
+      "amount": 9000,
+      "when": "11 Jun 2026",
+      "evidence": "Zoom_Renewal_2026_signed.pdf",
+      "note": "Auto-renewal uplift 10% → 0% — increase avoided, not a reduction of today’s fee",
+      "baseline": "Contractual uplift 10% on CHF 90k",
+      "period": "renewed term from 01 Jul 2026",
+      "method": "avoided uplift × annual fee",
+      "realized": false
+    }
+  ],
+  "categories": {
+    "1": "CRM",
+    "2": "Productivity",
+    "3": "Cloud infrastructure",
+    "4": "Productivity"
+  },
+  "_invoicesComment": "Invoices that prove the realized part of SQ.HIST results h1/h2 (realizedAmount 17,500 and 35,600, realizedEv \"Invoices Apr–Aug 2026 · 5 of 12 months\" / \"Invoices Feb–Aug 2026 · 7 of 12 months\"); realized = the saving each invoice proves. Seeded only in scenario \"full\".",
+  "invoices": [
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-04-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-05-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-06-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-07-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h1",
+      "supplier": "Snowflake",
+      "period": "2026-08-01",
+      "amount": 31200,
+      "realized": 3500
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-02-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-03-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-04-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-05-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-06-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-07-01",
+      "amount": 51416.67,
+      "realized": 5085.71
+    },
+    {
+      "resultId": "h2",
+      "supplier": "SAP Ariba",
+      "period": "2026-08-01",
+      "amount": 51416.67,
+      "realized": 5085.74
+    }
+  ]
+}

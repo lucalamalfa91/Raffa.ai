@@ -218,6 +218,49 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.ToTable("contract", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractFactsRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("Facts")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("facts");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateTimeOffset?>("ValidatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("validated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_facts");
+
+                    b.HasIndex("ContractId")
+                        .HasDatabaseName("ix_contract_facts_contract_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_contract_facts_tenant_id");
+
+                    b.HasIndex("TenantId", "ContractId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contract_facts_tenant_id_contract_id");
+
+                    b.ToTable("contract_facts", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractLineItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -519,6 +562,137 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.ToTable("contract_negotiation_step", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractPointDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DecidedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("decided_by");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("decision");
+
+                    b.Property<string>("PointKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("point_key");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_point_decision");
+
+                    b.HasIndex("ContractId")
+                        .HasDatabaseName("ix_contract_point_decision_contract_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_contract_point_decision_tenant_id");
+
+                    b.HasIndex("TenantId", "ContractId", "PointKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contract_point_decision_tenant_id_contract_id_point_key");
+
+                    b.ToTable("contract_point_decision", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractTermVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("AnnualValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("annual_value");
+
+                    b.Property<bool?>("AutoRenew")
+                        .HasColumnType("boolean")
+                        .HasColumnName("auto_renew");
+
+                    b.Property<Guid?>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_current");
+
+                    b.Property<int?>("NoticeDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("notice_days");
+
+                    b.Property<Guid?>("SourceDocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_document_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<decimal?>("UpliftPct")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("numeric(9,4)")
+                        .HasColumnName("uplift_pct");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_from");
+
+                    b.Property<DateOnly>("ValidTo")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_to");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_term_version");
+
+                    b.HasIndex("ContractId")
+                        .HasDatabaseName("ix_contract_term_version_contract_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_contract_term_version_tenant_id");
+
+                    b.HasIndex(new[] { "TenantId", "ContractId" }, "ux_contract_term_version_current")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contract_term_version_tenant_id_contract_id")
+                        .HasFilter("is_current");
+
+                    b.ToTable("contract_term_version", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -723,6 +897,63 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasFilter("processing_status <> 'Rejected' AND created_at >= '2026-10-08T00:00:00+00'");
 
                     b.ToTable("document", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.DocumentFieldDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DecidedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("decided_by");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("decision");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("FieldKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("field_key");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Value")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_document_field_decision");
+
+                    b.HasIndex("DocumentId")
+                        .HasDatabaseName("ix_document_field_decision_document_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_document_field_decision_tenant_id");
+
+                    b.HasIndex("TenantId", "DocumentId", "FieldKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_document_field_decision_tenant_id_document_id_field_key");
+
+                    b.ToTable("document_field_decision", (string)null);
                 });
 
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.DocumentVersion", b =>
@@ -1269,6 +1500,16 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasConstraintName("fk_contract_contract_parent_contract_id");
                 });
 
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractFactsRecord", b =>
+                {
+                    b.HasOne("Raffa.Documents.Contracts.Domain.Contract", null)
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_facts_contract_contract_id");
+                });
+
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractLineItem", b =>
                 {
                     b.HasOne("Raffa.Documents.Contracts.Domain.Contract", null)
@@ -1295,6 +1536,26 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasConstraintName("fk_contract_line_item_market_price_contract_line_item_line_ite");
                 });
 
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractPointDecision", b =>
+                {
+                    b.HasOne("Raffa.Documents.Contracts.Domain.Contract", null)
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_point_decision_contract_contract_id");
+                });
+
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractTermVersion", b =>
+                {
+                    b.HasOne("Raffa.Documents.Contracts.Domain.Contract", null)
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_term_version_contract_contract_id");
+                });
+
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractVersion", b =>
                 {
                     b.HasOne("Raffa.Documents.Contracts.Domain.Contract", null)
@@ -1312,6 +1573,16 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasForeignKey("ContractId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_document_contract_contract_id");
+                });
+
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.DocumentFieldDecision", b =>
+                {
+                    b.HasOne("Raffa.Documents.Contracts.Domain.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_document_field_decision_document_document_id");
                 });
 
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.DocumentVersion", b =>

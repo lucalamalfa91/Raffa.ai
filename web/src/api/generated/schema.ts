@@ -454,6 +454,29 @@ export interface operations {
       };
     };
   };
+  openRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { caseId: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
   getRenewalPriority: {
     responses: {
       200: {
@@ -775,7 +798,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { version: string; capabilities: ({ key: string; title: string; routePattern: string; description: string; exampleQuestions: (string)[]; roleGate: "any" | "admin"; availability: "always" | "needsValidatedContract" | "admin"; howTo: (string)[] })[] };
+          "application/json": { version: string; capabilities: ({ key: string; title: string; routePattern: string; description: string; exampleQuestions: (string)[]; roleGate: "any" | "admin"; availability: "always" | "needsValidatedContract" | "admin"; howTo: (string)[] })[]; flags?: { "askraffa4.guidedFlow": boolean; "askraffa4.noBenchmark": boolean; "savings.results": boolean } };
         };
       };
     };
@@ -975,6 +998,871 @@ export interface operations {
       };
     };
   };
+  resetFixtures: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { tenantId: string; tenantName: string; scenario: string | null; now: string; users: ({ key: "luca" | "marta"; displayName: string; title: string; email: string; role: "admin" | "procurement"; isApprover: boolean })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+    };
+  };
+  getFixtureSession: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { tenantId: string; tenantName: string; scenario: string | null; now: string; users: ({ key: "luca" | "marta"; displayName: string; title: string; email: string; role: "admin" | "procurement"; isApprover: boolean })[] };
+        };
+      };
+    };
+  };
+  getRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  postRenewalCaseAction: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  askRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  getRenewalCaseTimeline: {
+    responses: {
+      200: {
+        content: {
+          "application/json": (unknown)[];
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  patchRenewalCaseEmail: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  submitRenewalCaseEmail: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  approveRenewalCaseEmail: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  copyRenewalCaseEmail: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  confirmRenewalCaseEmailSent: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  putRenewalCaseDelegation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  deleteRenewalCaseDelegation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  transferRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  closeRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  getRenewalCaseVendorMessages: {
+    responses: {
+      200: {
+        content: {
+          "application/json": (unknown)[];
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  postRenewalCaseVendorMessage: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  getToday: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  snoozeTodayItem: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  unsnoozeTodayItem: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  getReminders: {
+    responses: {
+      200: {
+        content: {
+          "application/json": (unknown)[];
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  postReminder: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  patchReminder: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  uploadSampleDocument: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getDocumentReading: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string; contractId: string | null; file: string; supplier: string | null; status: "processing" | "review" | "done" | "failed"; stage: number; stageLabel: { id: string; vars?: unknown }; failure: { id: string; vars?: unknown } | null; fields: ({ key: string; label: unknown; value: string; page: number | null; src: string; why: unknown; flagReason: { id: string; vars?: unknown } | null; quote: { before: string; mark: string; after: string } | null; critical: boolean; decision: "accept" | "correct" | null; correctedValue: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  decideReadingField: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string; contractId: string | null; file: string; supplier: string | null; status: "processing" | "review" | "done" | "failed"; stage: number; stageLabel: { id: string; vars?: unknown }; failure: { id: string; vars?: unknown } | null; fields: ({ key: string; label: unknown; value: string; page: number | null; src: string; why: unknown; flagReason: { id: string; vars?: unknown } | null; quote: { before: string; mark: string; after: string } | null; critical: boolean; decision: "accept" | "correct" | null; correctedValue: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getContractV4: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { contractId: string; supplier: string; name: string; type: string; version: number; validated: boolean; annualValue: number; currency: string; dates: { noticeDeadline: string; noticeDays: number; end: string; autoRenew: boolean; renewalMonths: number | null; uplift: string; start: string }; decisionPoints: ({ key: string; tag: "discuss" | "risk" | "sla"; kind: { id: string; vars?: unknown }; title: string; says: string; why: unknown; proposal: string; source: { id: string; vars?: unknown }; policyNote: { id: string; vars?: unknown } | null; decision: "negotiate" | "accept" | "clarify" | null; decidedBy: string | null; decidedAt: string | null })[]; nextAction: { hasCase: boolean; caseId: string | null; outcome: "renewed" | "terminated" | null; text: { id: string; vars?: unknown } }; terms: ({ label: string; value: string })[]; products: ({ name: string; unit: string; quantity: number; unitPrice: number; annual: number })[]; oblYou: ({ text: string; when: string; high: boolean })[]; oblSup: ({ text: string; when: string; high: boolean })[]; std: ({ type: string; normalized: string; src: string })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getDecisionPoints: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { points: ({ key: string; tag: "discuss" | "risk" | "sla"; kind: { id: string; vars?: unknown }; title: string; says: string; why: unknown; proposal: string; source: { id: string; vars?: unknown }; policyNote: { id: string; vars?: unknown } | null; decision: "negotiate" | "accept" | "clarify" | null; decidedBy: string | null; decidedAt: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  setDecisionPoint: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { points: ({ key: string; tag: "discuss" | "risk" | "sla"; kind: { id: string; vars?: unknown }; title: string; says: string; why: unknown; proposal: string; source: { id: string; vars?: unknown }; policyNote: { id: string; vars?: unknown } | null; decision: "negotiate" | "accept" | "clarify" | null; decidedBy: string | null; decidedAt: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  askConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  archiveConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  unarchiveConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  listAskContracts: {
+    responses: {
+      200: {
+        content: {
+          "application/json": (unknown)[];
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getQuoteOffer: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  confirmQuoteExtraction: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  decideQuote: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      409: {
+        content: {
+        };
+      };
+    };
+  };
+  createQuoteCounterProposal: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getSavingsResults: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { period: "fy" | "q" | "12m"; today: string; fiscalYear: number; headline: { contractual: number; realized: number; volume: number; count: number; volumeCount: number; currency: string }; kpis: { signedCount: number; averagePerContract: number | null; provenPercent: number | null; realized: number; contractual: number; analysedSpend: number; validatedCount: number; openObjectives: number; openCount: number; withoutObjectiveCount: number; nextNotice: { contractId: string; supplier: string; noticeDeadline: string; days: number } | null }; months: ({ year: number; month: number; label: string; future: boolean; amount: number; count: number; items: ({ supplier: string; amount: number })[] })[]; peak: number; bySupplier: ({ label: string; contractual: number; realized: number; objectives: number; n: number })[]; maxBySupplier: number; levers: ({ kind: "price" | "term" | "clause" | "other"; count: number; amount: number })[]; proof: ({ resultId: string; supplier: string; amount: number; realized: number })[]; openObjectives: ({ contractId: string; caseId: string | null; supplier: string; category: string | null; owner: string | null; days: number; noticeDeadline: string | null; spend: number; objectiveKind: string | null; objectivePercent: number; targetAmount: number | null; hasCase: boolean })[]; contractual: ({ id: string; signedOn: string; supplier: string; kind: string; note: string; baseline: string; period: string; method: string; evidence: string; amount: number; realized: boolean; realizedAmount: number; proof: { firstInvoice: string; lastInvoice: string; invoiceCount: number; periodMonths: number | null } | null })[]; volume: ({ id: string; signedOn: string; supplier: string; note: string; amount: number })[] };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  parseSavingsGoal: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { ok: boolean; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; spend: number; contractCount: number; kicker: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; rows: ({ k: { id: string; vars?: unknown | null }; v: { id: string; vars?: unknown | null } })[]; question: { id: string; vars?: unknown | null } | null; source: "deterministic" | "llm" };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
+  confirmSavingsGoal: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; createdAt: string };
+        };
+      };
+      400: {
+        content: {
+          "application/json": string;
+        };
+      };
+      422: {
+        content: {
+          "application/json": { ok: boolean; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; spend: number; contractCount: number; kicker: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; rows: ({ k: { id: string; vars?: unknown | null }; v: { id: string; vars?: unknown | null } })[]; question: { id: string; vars?: unknown | null } | null; source: "deterministic" | "llm" };
+        };
+      };
+    };
+  };
+  getActiveSavingsGoal: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { id: string; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; createdAt: string };
+        };
+      };
+      204: {
+        content: {
+        };
+      };
+    };
+  };
+  clearSavingsGoal: {
+    responses: {
+      204: {
+        content: {
+        };
+      };
+    };
+  };
+  getSavingsGoalProgress: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { goal: { id: string; text: string; pct: number | null; annual: number | null; scope: { supplier: string | null; categories: (string)[] | null; contractIds: (string)[] }; period: string; periodLabel: { id: string; vars?: unknown | null }; label: { id: string; vars?: unknown | null }; title: { id: string; vars?: unknown | null }; createdAt: string }; spend: number; contractCount: number; pct: number; target: number; signed: number; objectives: number; gap: number; signedWidth: number; objectivesWidth: number; verdict: "no_contracts" | "covered" | "gap"; ifAllHit: number; rows: ({ contractId: string; caseId: string | null; supplier: string; spend: number; hasCase: boolean; objectiveKind: string | null; objectivePercent: number; objectiveAmount: number; uplift: string; autoRenewal: boolean; ifHit: number; days: number; noticeDeadline: string | null; primary: boolean })[] };
+        };
+      };
+      404: {
+        content: {
+          "application/json": string;
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -1041,6 +1929,7 @@ export interface paths {
   };
   "/api/renewals": {
     get: operations["getRenewals"];
+    post: operations["openRenewalCase"];
   };
   "/api/renewals/{contractId}/priority": {
     get: operations["getRenewalPriority"];
@@ -1120,5 +2009,124 @@ export interface paths {
   "/api/workspaces/{tenantId}/settings": {
     get: operations["getWorkspaceSettings"];
     patch: operations["updateWorkspaceSettings"];
+  };
+  "/api/fixtures/reset": {
+    post: operations["resetFixtures"];
+  };
+  "/api/fixtures/session": {
+    get: operations["getFixtureSession"];
+  };
+  "/api/renewals/{caseId}": {
+    get: operations["getRenewalCase"];
+  };
+  "/api/renewals/{caseId}/actions": {
+    post: operations["postRenewalCaseAction"];
+  };
+  "/api/renewals/{caseId}/ask": {
+    post: operations["askRenewalCase"];
+  };
+  "/api/renewals/{caseId}/timeline": {
+    get: operations["getRenewalCaseTimeline"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}": {
+    patch: operations["patchRenewalCaseEmail"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}/submit": {
+    post: operations["submitRenewalCaseEmail"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}/approve": {
+    post: operations["approveRenewalCaseEmail"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}/copy": {
+    post: operations["copyRenewalCaseEmail"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}/sent": {
+    post: operations["confirmRenewalCaseEmailSent"];
+  };
+  "/api/renewals/{caseId}/delegations/{userId}": {
+    put: operations["putRenewalCaseDelegation"];
+    delete: operations["deleteRenewalCaseDelegation"];
+  };
+  "/api/renewals/{caseId}/transfer": {
+    post: operations["transferRenewalCase"];
+  };
+  "/api/renewals/{caseId}/close": {
+    post: operations["closeRenewalCase"];
+  };
+  "/api/renewals/{caseId}/vendor-messages": {
+    get: operations["getRenewalCaseVendorMessages"];
+    post: operations["postRenewalCaseVendorMessage"];
+  };
+  "/api/today": {
+    get: operations["getToday"];
+  };
+  "/api/today/{key}/snooze": {
+    post: operations["snoozeTodayItem"];
+    delete: operations["unsnoozeTodayItem"];
+  };
+  "/api/reminders": {
+    get: operations["getReminders"];
+    post: operations["postReminder"];
+  };
+  "/api/reminders/{id}": {
+    patch: operations["patchReminder"];
+  };
+  "/api/documents/sample": {
+    post: operations["uploadSampleDocument"];
+  };
+  "/api/documents/{id}/reading": {
+    get: operations["getDocumentReading"];
+  };
+  "/api/documents/{id}/reading/fields/{key}": {
+    post: operations["decideReadingField"];
+  };
+  "/api/contracts/{id}/v4": {
+    get: operations["getContractV4"];
+  };
+  "/api/contracts/{id}/decision-points": {
+    get: operations["getDecisionPoints"];
+  };
+  "/api/contracts/{id}/decision-points/{pointKey}": {
+    put: operations["setDecisionPoint"];
+  };
+  "/api/conversations/ask": {
+    post: operations["askConversation"];
+  };
+  "/api/conversations/{id}/archive": {
+    post: operations["archiveConversation"];
+  };
+  "/api/conversations/{id}/unarchive": {
+    post: operations["unarchiveConversation"];
+  };
+  "/api/ask/contracts": {
+    get: operations["listAskContracts"];
+  };
+  "/api/quotes/{id}/v4": {
+    get: operations["getQuoteOffer"];
+  };
+  "/api/quotes/{id}/confirm-extraction": {
+    post: operations["confirmQuoteExtraction"];
+  };
+  "/api/quotes/{id}/decision": {
+    post: operations["decideQuote"];
+  };
+  "/api/quotes/{id}/counter-proposal": {
+    post: operations["createQuoteCounterProposal"];
+  };
+  "/api/savings/results": {
+    get: operations["getSavingsResults"];
+  };
+  "/api/savings/goals/parse": {
+    post: operations["parseSavingsGoal"];
+  };
+  "/api/savings/goals": {
+    post: operations["confirmSavingsGoal"];
+  };
+  "/api/savings/goals/active": {
+    get: operations["getActiveSavingsGoal"];
+    delete: operations["clearSavingsGoal"];
+  };
+  "/api/savings/goals/active/progress": {
+    get: operations["getSavingsGoalProgress"];
   };
 }

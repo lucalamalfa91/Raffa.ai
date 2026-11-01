@@ -1,4 +1,5 @@
 using Raffa.Renewals.Domain;
+using Raffa.Renewals.Domain.Cases;
 using Raffa.Renewals.Infrastructure.Configurations;
 using Microsoft.EntityFrameworkCore;
 
@@ -31,11 +32,33 @@ public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> option
 
     public DbSet<RenewalNegotiationTodo> RenewalNegotiationTodos => Set<RenewalNegotiationTodo>();
 
+    // AskRaffa 4.0 renewal case (BACKEND-SPEC §2.1-2.7, 2.12).
+    public DbSet<RenewalCaseRecord> RenewalCases => Set<RenewalCaseRecord>();
+
+    public DbSet<CaseEmailRecord> CaseEmails => Set<CaseEmailRecord>();
+
+    public DbSet<CaseDelegationRecord> CaseDelegations => Set<CaseDelegationRecord>();
+
+    public DbSet<CaseEventRecord> CaseEvents => Set<CaseEventRecord>();
+
+    public DbSet<CaseVendorMessageRecord> CaseVendorMessages => Set<CaseVendorMessageRecord>();
+
+    public DbSet<UserReminderRecord> UserReminders => Set<UserReminderRecord>();
+
+    public DbSet<TodaySnoozeRecord> TodaySnoozes => Set<TodaySnoozeRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new RenewalActionConfiguration());
         modelBuilder.ApplyConfiguration(new RenewalAlertConfiguration());
         modelBuilder.ApplyConfiguration(new RenewalNegotiationTodoConfiguration());
+        modelBuilder.ApplyConfiguration(new RenewalCaseRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new CaseEmailRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new CaseDelegationRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new CaseEventRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new CaseVendorMessageRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new UserReminderRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new TodaySnoozeRecordConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

@@ -107,7 +107,9 @@ function renderSchemaType(schema) {
       if (!schema.properties || typeof schema.properties !== "object") return "unknown";
       const required = new Set(Array.isArray(schema.required) ? schema.required : []);
       const members = Object.entries(schema.properties).map(
-        ([key, propSchema]) => `${key}${required.has(key) ? "" : "?"}: ${renderSchemaType(propSchema)}`,
+        // A key that is not a plain identifier (e.g. the dotted capability flags) is quoted.
+        ([key, propSchema]) =>
+          `${/^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key)}${required.has(key) ? "" : "?"}: ${renderSchemaType(propSchema)}`,
       );
       return members.length > 0 ? `{ ${members.join("; ")} }` : "Record<string, never>";
     }

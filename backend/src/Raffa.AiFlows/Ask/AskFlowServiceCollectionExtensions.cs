@@ -64,6 +64,14 @@ internal static class AskFlowServiceCollectionExtensions
         // The Ask pack-composition root: one Scoped instance per request/job shares that scope's
         // own DbContext-backed services instead of a second, independently-tracked copy.
         services.AddScoped<AskCopilotService>();
+
+        // AskRaffa 4.0 Chiedi answers (TryAdd: fixture mode registers its deterministic one).
+        // Replaces the Chat module's honest "cannot answer" default, but never a fixture-mode registration.
+        var askAnswer = services.FirstOrDefault(d => d.ServiceType == typeof(Raffa.Chat.Application.Ask4.IAskAnswerService));
+        if (askAnswer is null || askAnswer.ImplementationType == typeof(Raffa.Chat.Application.Ask4.NoAskAnswerService))
+        {
+            services.Replace(ServiceDescriptor.Scoped<Raffa.Chat.Application.Ask4.IAskAnswerService, V4.CopilotAskAnswerService>());
+        }
         services.AddScoped<GateReplyBuilder>();
         services.AddScoped<AbstainRecovery>();
         services.AddScoped<AskTurnAudit>();

@@ -51,6 +51,7 @@
 // server-side; this is the client half, that it stops being *sent* at all.
 import type { paths } from "./generated/schema";
 import { createCoalescingFetch, type CoalescingFetch } from "./coalescingFetch";
+import type { CaseActionPayload, CaseCallResult, CaseEnvelope, RenewalsBoard, TodayFeed } from "./renewalCases";
 
 /** See this file's own header comment ("Task E18/F01/US02/T01", NW-05). Returns a bearer access
  * token scoped to `appConfig.oidcApiScopes` (acquired via `acquireTokenSilent`, falling back to
@@ -1863,6 +1864,52 @@ export interface ApiClient {
    * outcome.
    */
   getMarketRecord(id: string): Promise<GetMarketRecordResult>;
+
+  // AskRaffa 4.0 slice 4 (Contratti, Contratto, Revisione). Each never throws: `{ ok, statusCode, data, error }`.
+  /** `POST /api/documents/sample` (fixture mode only): the sample contract; 404 outside fixture mode. */
+  uploadSampleDocument(tenantId: string): Promise<V4Result<SampleDocumentBody>>;
+  /** `GET /api/documents/{id}/reading`: stage, then the fields to verify one at a time. */
+  getDocumentReading(tenantId: string, documentId: string): Promise<V4Result<DocumentReadingBody>>;
+  /** `POST /api/documents/{id}/reading/fields/{key}`: accept or correct one field (the last one validates). */
+  decideReadingField(tenantId: string, documentId: string, key: string, body: ReadingFieldDecisionBody): Promise<V4Result<DocumentReadingBody>>;
+  /** `GET /api/contracts?view=v4`: Contratti rows + the document banner. */
+  listContractsV4(tenantId: string): Promise<V4Result<ContractListV4Body>>;
+  /** `GET /api/contracts/{id}/v4`: Contract 360, decisions first. */
+  getContractV4(tenantId: string, contractId: string): Promise<V4Result<ContractV4Body>>;
+  /** `PUT /api/contracts/{id}/decision-points/{pointKey}`: record or clear (null) a choice. */
+  setDecisionPoint(tenantId: string, contractId: string, pointKey: string, decision: DecisionPointChoice | null): Promise<V4Result<DecisionPointsBody>>;
+  /** `POST /api/renewals` (Renewals slice): open the contract's renewal case, idempotently. */
+  openRenewalCase(tenantId: string, request: OpenRenewalCaseRequest): Promise<V4Result<OpenRenewalCaseBody>>;
+  // AskRaffa 4.0 additions are optional members: the many hand-built `ApiClient` mocks in tests/
+  // keep type-checking; `createApiClient` always provides them.
+  /** `GET /api/savings/results` -- Risultati (contractual, realized, quantity reductions apart, objectives). */
+  getSavingsResults?(tenantId: string, period?: "fy" | "q" | "12m"): Promise<ApiCallResult<SavingsResultsBody>>;
+  /** `POST /api/savings/goals/parse` -- the "Cosa ho capito" draft of a goal in the user's own words. */
+  parseSavingsGoal?(tenantId: string, text: string): Promise<ApiCallResult<SavingsGoalDraftBody>>;
+  /** `POST /api/savings/goals` -- confirm a goal ("Sì, è questo"); 422 = the draft still needs an answer. */
+  confirmSavingsGoal?(tenantId: string, request: ConfirmSavingsGoalRequest): Promise<ApiCallResult<SavingsGoalBody>>;
+  /** `GET /api/savings/goals/active` -- the caller's active goal, `data: null` when none (204). */
+  getActiveSavingsGoal?(tenantId: string): Promise<ApiCallResult<SavingsGoalBody>>;
+  /** `DELETE /api/savings/goals/active` -- "Rimuovi obiettivo". */
+  clearSavingsGoal?(tenantId: string): Promise<ApiCallResult<null>>;
+  /** `GET /api/savings/goals/active/progress` -- "Verso il tuo obiettivo"; 404 when no goal. */
+  getSavingsGoalProgress?(tenantId: string): Promise<ApiCallResult<SavingsGoalProgressBody>>;
+  // AskRaffa 4.0 slices 2+3 (backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs): Oggi, Rinnovi,
+  // Pratica. Never throw; an error result keeps the current case the server returned with it (409 stale
+  // version / duplicate reply, 403 no right) so the screen re-renders from it. Optional on the
+  // interface so the existing test doubles of `ApiClient` stay valid; `createApiClient` has them all.
+  /** `GET /api/today` -- the caller's items, what waits on others, snoozed, next deadline. */
+  getToday?(tenantId: string): Promise<CaseCallResult<TodayFeed>>;
+  /** `POST|DELETE /api/today/{key}/snooze` (3 days) -- returns the feed. */
+  snoozeTodayItem?(tenantId: string, key: string, on: boolean): Promise<CaseCallResult<TodayFeed>>;
+  /** `GET /api/renewals?view=v4` -- the Renewals board. */
+  getRenewalsBoard?(tenantId: string): Promise<CaseCallResult<RenewalsBoard>>;
+  /** `GET /api/renewals/{caseId}` (`visit` records the caller's last visit). */
+  getRenewalCase?(tenantId: string, caseId: string, visit?: boolean): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `POST /api/renewals/{caseId}/actions` -- one engine action at `version`. */
+  postRenewalCaseAction?(tenantId: string, caseId: string, type: string, payload: CaseActionPayload | null, version: number | null): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `POST /api/renewals/{caseId}/ask` -- the case composer (sourced answer, then back to the step). */
+  askRenewalCase?(tenantId: string, caseId: string, text: string, version: number | null, lang?: string): Promise<CaseCallResult<CaseEnvelope>>;
 }
 
 
@@ -1887,6 +1934,117 @@ export function noteContractCorrection(client: object): void {
   contractCorrections.set(client, contractCorrectionCount(client) + 1);
 }
 
+// AskRaffa 4.0 slice 4 (Contratti, Contratto, Revisione): response shapes anchored to the generated
+// `paths`; the v4 contract list (`GET /api/contracts?view=v4`) shares its path with the portfolio
+// page, so its body is typed here (documented on the `view` parameter in the OpenAPI file).
+export interface V4Result<T> {
+  ok: boolean;
+  statusCode: number | null;
+  data: T | null;
+  error: string | null;
+}
+export type SampleDocumentBody = paths["/api/documents/sample"]["post"]["responses"][200]["content"]["application/json"];
+export type DocumentReadingBody = paths["/api/documents/{id}/reading"]["get"]["responses"][200]["content"]["application/json"];
+export type ReadingFieldBody = DocumentReadingBody["fields"][number];
+export interface ReadingFieldDecisionBody {
+  decision: "accept" | "correct";
+  value?: string | null;
+}
+export type ContractV4Body = paths["/api/contracts/{id}/v4"]["get"]["responses"][200]["content"]["application/json"];
+export type DecisionPointsBody = paths["/api/contracts/{id}/decision-points"]["get"]["responses"][200]["content"]["application/json"];
+export type DecisionPointBody = DecisionPointsBody["points"][number];
+export type DecisionPointChoice = "negotiate" | "accept" | "clarify";
+export interface ContractListRowV4Body {
+  contractId: string;
+  supplier: string;
+  name: string;
+  noticeDeadline: string;
+  noticeDays: number;
+  end: string;
+  annualValue: number;
+  currency: string;
+  status: "validated" | "caseOpen" | "renewed" | "terminated";
+  caseId: string | null;
+}
+export interface ContractListV4Body {
+  rows: ContractListRowV4Body[];
+  document: { documentId: string; file: string; status: "processing" | "review"; flagged: number } | null;
+}
+export interface OpenRenewalCaseRequest {
+  contractId: string;
+  branch?: string | null;
+  ownerUserId?: string | null;
+}
+export type OpenRenewalCaseBody = paths["/api/renewals"]["post"]["responses"][200]["content"]["application/json"];
+
+/** One JSON call for the v4 endpoints: never throws; `data` only on 2xx. */
+async function v4Request<T>(
+  apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  baseUrl: string,
+  getAccessToken: GetAccessToken,
+  tenantId: string,
+  path: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<V4Result<T>> {
+  let response: Response;
+  try {
+    response = await apiFetch(new URL(path, baseUrl), {
+      method: init.method ?? "GET",
+      headers: {
+        "X-Tenant-Id": tenantId,
+        ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...await authHeaders(getAccessToken),
+      },
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      cache: "no-store",
+    });
+  } catch (cause) {
+    return { ok: false, statusCode: null, data: null, error: `Unable to reach ${baseUrl}${path}. Cause: ${cause instanceof Error ? cause.message : String(cause)}` };
+  }
+  if (response.ok) {
+    return { ok: true, statusCode: response.status, data: (await response.json()) as T, error: null };
+  }
+  let error: string;
+  try {
+    const body: unknown = await response.json();
+    error = typeof body === "string" ? body : JSON.stringify(body);
+  } catch {
+    error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+  }
+  return { ok: false, statusCode: response.status, data: null, error };
+}
+// AskRaffa 4.0 Risultati (slice 5): verifiable results and the user's goal -- `GET /api/savings/results`,
+// `POST /api/savings/goals/parse`, `POST /api/savings/goals`, `GET|DELETE /api/savings/goals/active`,
+// `GET /api/savings/goals/active/progress`. No body here carries an estimate.
+type GetSavingsResultsResponses = paths["/api/savings/results"]["get"]["responses"];
+export type SavingsResultsBody = GetSavingsResultsResponses[200]["content"]["application/json"];
+type ParseSavingsGoalResponses = paths["/api/savings/goals/parse"]["post"]["responses"];
+export type SavingsGoalDraftBody = ParseSavingsGoalResponses[200]["content"]["application/json"];
+type ConfirmSavingsGoalOperation = paths["/api/savings/goals"]["post"];
+export type SavingsGoalBody = ConfirmSavingsGoalOperation["responses"][200]["content"]["application/json"];
+/** `POST /api/savings/goals` body: the confirmed draft (without pct/annual the server parses `text`). */
+export interface ConfirmSavingsGoalRequest {
+  text: string;
+  pct?: number | null;
+  annual?: number | null;
+  scope?: SavingsGoalDraftBody["scope"] | null;
+  period?: string | null;
+  label?: SavingsGoalDraftBody["label"] | null;
+}
+type GetSavingsGoalProgressResponses = paths["/api/savings/goals/active/progress"]["get"]["responses"];
+export type SavingsGoalProgressBody = GetSavingsGoalProgressResponses[200]["content"]["application/json"];
+
+/** The uniform result of the Risultati calls: `data` only when `ok`. */
+export interface ApiCallResult<T> {
+  ok: boolean;
+  /** HTTP status code, or `null` if the request never completed. */
+  statusCode: number | null;
+  data: T | null;
+  /** Plain-language failure reason, present only when `ok` is false. */
+  error: string | null;
+}
+
+
 /**
  * Builds the API client from runtime config (ADR-012 "config, not code";
  * `AppConfig.apiBaseUrl`, see src/config/appConfig.ts). `baseUrl` is expected
@@ -1895,15 +2053,61 @@ export function noteContractCorrection(client: object): void {
  * against it with the platform `URL` parser rather than hand-rolled string
  * concatenation.
  */
+export interface ApiClientOptions {
+  /** The transport every request goes through; defaults to the platform `fetch`. Fixture mode
+   * (`src/fixtures/`) passes one that adds the fixture headers. */
+  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
+
 export function createApiClient(
   baseUrl: string,
   getAccessToken: GetAccessToken = () => Promise.resolve(null),
+  options: ApiClientOptions = {},
 ): ApiClient {
   // Every request of this client goes through `apiFetch`: identical GETs that are in flight at the
   // same instant share one network request (see ./coalescingFetch.ts -- nothing is cached after a
   // request settles, and any write drops what is in flight). One instance per client, so nothing
   // leaks between clients.
-  const apiFetch = createCoalescingFetch();
+  const apiFetch = createCoalescingFetch(options.fetch);
+  const transport: AskOfferTransport = { baseUrl, getAccessToken, fetch: apiFetch };
+
+  /** One JSON call of the Risultati wrappers: 2xx with a body → `data`, 204 → `data: null`. */
+  async function callJson<T>(
+    url: URL,
+    init: { method: "GET" | "POST" | "DELETE"; tenantId: string; body?: unknown },
+  ): Promise<ApiCallResult<T>> {
+    let response: Response;
+    try {
+      response = await apiFetch(url, {
+        method: init.method,
+        headers: {
+          "X-Tenant-Id": init.tenantId,
+          ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...await authHeaders(getAccessToken),
+        },
+        body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+        cache: "no-store",
+      });
+    } catch (cause) {
+      return { ok: false, statusCode: null, data: null, error: `Unable to reach ${url.toString()}. Cause: ${cause instanceof Error ? cause.message : String(cause)}` };
+    }
+
+    if (response.status === 204) return { ok: true, statusCode: 204, data: null, error: null };
+    if (response.ok) return { ok: true, statusCode: response.status, data: (await response.json()) as T, error: null };
+
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    // A 422 on a goal confirm carries the draft that still needs an answer.
+    if (response.status === 422 && body && typeof body === "object") {
+      return { ok: false, statusCode: 422, data: body as T, error: "The goal needs an answer first." };
+    }
+    const error = typeof body === "string" ? body : body ? JSON.stringify(body) : `Request failed with HTTP ${response.status} ${response.statusText}.`;
+    return { ok: false, statusCode: response.status, data: null, error };
+  }
   const client: ApiClient = {
     async getHealth() {
       let response: Response;
@@ -3953,6 +4157,422 @@ export function createApiClient(
         error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
       };
     },
+    // AskRaffa 4.0 slice 4.
+    uploadSampleDocument: (tenantId) =>
+      v4Request<SampleDocumentBody>(apiFetch, baseUrl, getAccessToken, tenantId, "/api/documents/sample", { method: "POST", body: {} }),
+    getDocumentReading: (tenantId, documentId) =>
+      v4Request<DocumentReadingBody>(apiFetch, baseUrl, getAccessToken, tenantId, `/api/documents/${encodeURIComponent(documentId)}/reading`),
+    decideReadingField: (tenantId, documentId, key, body) =>
+      v4Request<DocumentReadingBody>(apiFetch, baseUrl, getAccessToken, tenantId,
+        `/api/documents/${encodeURIComponent(documentId)}/reading/fields/${encodeURIComponent(key)}`, { method: "POST", body }),
+    listContractsV4: (tenantId) =>
+      v4Request<ContractListV4Body>(apiFetch, baseUrl, getAccessToken, tenantId, "/api/contracts?view=v4"),
+    getContractV4: (tenantId, contractId) =>
+      v4Request<ContractV4Body>(apiFetch, baseUrl, getAccessToken, tenantId, `/api/contracts/${encodeURIComponent(contractId)}/v4`),
+    setDecisionPoint: (tenantId, contractId, pointKey, decision) =>
+      v4Request<DecisionPointsBody>(apiFetch, baseUrl, getAccessToken, tenantId,
+        `/api/contracts/${encodeURIComponent(contractId)}/decision-points/${encodeURIComponent(pointKey)}`, { method: "PUT", body: { decision } }),
+    openRenewalCase: (tenantId, request) =>
+      v4Request<OpenRenewalCaseBody>(apiFetch, baseUrl, getAccessToken, tenantId, "/api/renewals", { method: "POST", body: { branch: null, ...request } }),
+    async getSavingsResults(tenantId, period) {
+      const url = new URL("/api/savings/results", baseUrl);
+      if (period) url.searchParams.set("period", period);
+      return callJson<SavingsResultsBody>(url, { method: "GET", tenantId });
+    },
+
+    async parseSavingsGoal(tenantId, text) {
+      return callJson<SavingsGoalDraftBody>(new URL("/api/savings/goals/parse", baseUrl), { method: "POST", tenantId, body: { text } });
+    },
+
+    async confirmSavingsGoal(tenantId, request) {
+      return callJson<SavingsGoalBody>(new URL("/api/savings/goals", baseUrl), { method: "POST", tenantId, body: request });
+    },
+
+    async getActiveSavingsGoal(tenantId) {
+      return callJson<SavingsGoalBody>(new URL("/api/savings/goals/active", baseUrl), { method: "GET", tenantId });
+    },
+
+    async clearSavingsGoal(tenantId) {
+      return callJson<null>(new URL("/api/savings/goals/active", baseUrl), { method: "DELETE", tenantId });
+    },
+
+    async getSavingsGoalProgress(tenantId) {
+      return callJson<SavingsGoalProgressBody>(new URL("/api/savings/goals/active/progress", baseUrl), { method: "GET", tenantId });
+    },
+
+
+    getToday(tenantId) {
+      return caseCall<TodayFeed>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", "/api/today");
+    },
+
+    snoozeTodayItem(tenantId, key, on) {
+      return caseCall<TodayFeed>(apiFetch, baseUrl, getAccessToken, tenantId, on ? "POST" : "DELETE", `/api/today/${encodeURIComponent(key)}/snooze`);
+    },
+
+    getRenewalsBoard(tenantId) {
+      return caseCall<RenewalsBoard>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", "/api/renewals?view=v4");
+    },
+
+
+    getRenewalCase(tenantId, caseId, visit) {
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", `/api/renewals/${encodeURIComponent(caseId)}${visit ? "?visit=true" : ""}`);
+    },
+
+    postRenewalCaseAction(tenantId, caseId, type, payload, version) {
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/actions`, { type, payload, version });
+    },
+
+    askRenewalCase(tenantId, caseId, text, version, lang) {
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/ask`, { text, version, lang: lang ?? null });
+    },
+
   };
+  askOfferTransports.set(client, transport);
   return client;
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// AskRaffa 4.0 slice 6 -- Chiedi (conversations, sourced answers, archive) and Offerta (quote
+// check without benchmark, decision). Kept beside `ApiClient` (like `contractCorrectionCount`) so
+// the interface -- and every test double of it -- is unchanged: `askOfferApi(client)` returns the
+// calls for a client made by `createApiClient`, or for a transport a test registered.
+// ---------------------------------------------------------------------------------------------
+
+export interface AskOfferTransport {
+  baseUrl: string;
+  getAccessToken: GetAccessToken;
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
+
+const askOfferTransports = new WeakMap<object, AskOfferTransport>();
+
+/** Test doubles: make `askOfferApi(double)` use `transport`. */
+export function registerAskOfferTransport(client: object, transport: AskOfferTransport): void {
+  askOfferTransports.set(client, transport);
+}
+
+/** Never throws: `{ ok, status, data }`, `data` null on failure. */
+export interface AskOfferResult<T> {
+  ok: boolean;
+  status: number | null;
+  data: T | null;
+}
+
+export type ConversationState = "recent" | "archived" | "case";
+
+export interface ConversationSummary4 {
+  id: string;
+  title: string;
+  customTitle: string | null;
+  scopeContractId: string | null;
+  updatedAt: string;
+  archived: boolean;
+  archivedAt: string | null;
+  caseId: string | null;
+  questionCount: number;
+}
+
+export interface ConversationMessage4 {
+  id: string;
+  role: "you" | "raffa";
+  kind: string;
+  markdown: string;
+  citations: Array<{ title?: string; page?: number | null; section?: string | null }>;
+  actions: Array<{ kind?: string; contractId?: string | null }>;
+  createdAt: string;
+}
+
+export interface ConversationDetail4 {
+  id: string;
+  title: string;
+  customTitle: string | null;
+  scopeContractId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  caseId: string | null;
+  messages: ConversationMessage4[];
+}
+
+export interface AskTurnRequest {
+  conversationId?: string | null;
+  question: string;
+  contractId?: string | null;
+  answerOnly?: boolean;
+  lang?: "it" | "en";
+}
+
+export interface AskTurnResult {
+  conversationId: string;
+  needsContract: boolean;
+  conversation: ConversationDetail4;
+}
+
+export interface AskContract {
+  contractId: string;
+  supplier: string;
+  name: string;
+  noticeDeadline: string | null;
+}
+
+export type QuoteStatus4 = "checked" | "negotiating" | "signing" | "signed" | "declined";
+
+export interface QuoteListItem4 {
+  id: string;
+  reference: string | null;
+  supplier: string;
+  fileName: string;
+  kind: string | null;
+  status: QuoteStatus4;
+  contractId: string | null;
+  caseId: string | null;
+  validUntil: string | null;
+  quoteDate: string | null;
+  checkedBy: string | null;
+  annualTotal: number;
+  annualTotalLabel: string;
+}
+
+export interface QuoteEvidencePoint4 {
+  kind: string;
+  tone: "ok" | "alert" | "neutral";
+  text: string;
+  src: string;
+}
+
+export interface QuoteView4 {
+  id: string;
+  reference: string | null;
+  supplier: string;
+  fileName: string;
+  kind: string | null;
+  status: QuoteStatus4;
+  term: string | null;
+  valid: string | null;
+  validUntil: string | null;
+  quoteDate: string | null;
+  checkedBy: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  contractId: string | null;
+  caseId: string | null;
+  extractionConfirmedAt: string | null;
+  lines: Array<{
+    name: string;
+    sku: string | null;
+    qty: number;
+    unit: string;
+    price: number;
+    annual: number;
+    existing: number | null;
+    existingLabel: string | null;
+    delta: number | null;
+    qtyLabel: string;
+    priceLabel: string;
+    annualLabel: string;
+  }>;
+  stated: Array<{ key: string; value: string | null }>;
+  assessment: {
+    verdict: "nocompare" | "misses_target" | "meets_target" | "below_current" | "above_current" | "same";
+    basis: "current" | "others" | "none";
+    total: number;
+    totalLabel: string;
+    curTotal: number | null;
+    curTotalLabel: string | null;
+    own: number | null;
+    ownLabel: string | null;
+    partial: boolean;
+    target: { kind: string; label: string | null; budget: number | null } | null;
+    targetTotal: number | null;
+    targetMet: boolean | null;
+    points: QuoteEvidencePoint4[];
+    missing: string[];
+    gaps: string[];
+    evaluable: string[];
+  };
+}
+
+export interface CounterProposal4 {
+  available: boolean;
+  caseId: string | null;
+  emailId: string | null;
+  subject: string;
+  body: string;
+}
+
+/** One open renewal case as the Chiedi rail lists it (read tolerantly from `GET /api/renewals`). */
+export interface OpenCase4 {
+  caseId: string;
+  supplier: string;
+  contract: string;
+  phase: string;
+}
+
+export interface AskOfferApi {
+  listConversations(tenantId: string, state: ConversationState): Promise<AskOfferResult<ConversationSummary4[]>>;
+  getConversation(tenantId: string, id: string): Promise<AskOfferResult<ConversationDetail4>>;
+  ask(tenantId: string, request: AskTurnRequest): Promise<AskOfferResult<AskTurnResult>>;
+  setArchived(tenantId: string, id: string, archived: boolean): Promise<AskOfferResult<ConversationSummary4>>;
+  listAskContracts(tenantId: string): Promise<AskOfferResult<AskContract[]>>;
+  listQuotes(tenantId: string, status?: QuoteStatus4[] | "any"): Promise<AskOfferResult<QuoteListItem4[]>>;
+  getQuote(tenantId: string, id: string, lang: "it" | "en"): Promise<AskOfferResult<QuoteView4>>;
+  confirmQuoteExtraction(tenantId: string, id: string, lang: "it" | "en"): Promise<AskOfferResult<QuoteView4>>;
+  decideQuote(tenantId: string, id: string, status: QuoteStatus4, lang: "it" | "en"): Promise<AskOfferResult<QuoteView4>>;
+  counterProposal(tenantId: string, id: string): Promise<AskOfferResult<CounterProposal4>>;
+  listOpenCases(tenantId: string): Promise<AskOfferResult<OpenCase4[]>>;
+  openRenewalCase(tenantId: string, contractId: string): Promise<AskOfferResult<{ caseId: string }>>;
+}
+
+function pickField(record: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const key of keys) if (record[key] !== undefined && record[key] !== null) return record[key];
+  return undefined;
+}
+
+function plainText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const inner = pickField(value as Record<string, unknown>, "it", "label", "name", "en", "id");
+    return typeof inner === "string" ? inner : "";
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+/** `GET /api/renewals` belongs to the Renewals slice; its 4.0 shape is read tolerantly (array or
+ * `{items|cases}`; `caseId|id`, `supplier`, `contract|contractName`, `phaseLabel|phase`), keeping
+ * only open cases. Anything else reads as "no open case". */
+export function readOpenCases(body: unknown): OpenCase4[] {
+  const rows = Array.isArray(body)
+    ? body
+    : body && typeof body === "object"
+      ? pickField(body as Record<string, unknown>, "items", "cases", "rows")
+      : [];
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row: unknown) => {
+    if (!row || typeof row !== "object") return [];
+    const r = row as Record<string, unknown>;
+    const caseId = pickField(r, "caseId");
+    const supplier = plainText(pickField(r, "supplier", "supplierName"));
+    if (typeof caseId !== "string" || !supplier) return [];
+    const closed =
+      pickField(r, "closed", "isClosed") === true || pickField(r, "outcome") !== undefined || pickField(r, "group") === "closed";
+    if (closed) return [];
+    return [
+      {
+        caseId,
+        supplier,
+        contract: plainText(pickField(r, "contract", "contractName", "name")),
+        phase: plainText(pickField(r, "phaseLabel", "stageLabel", "phase", "stage")),
+      },
+    ];
+  });
+}
+
+export function askOfferApi(client: object): AskOfferApi {
+  const transport = askOfferTransports.get(client) ?? null;
+
+  async function call<T>(
+    method: string,
+    path: string,
+    tenantId: string,
+    body?: unknown,
+    map?: (raw: unknown) => T,
+  ): Promise<AskOfferResult<T>> {
+    if (transport === null) return { ok: false, status: null, data: null };
+    let response: Response;
+    try {
+      response = await transport.fetch(new URL(path, transport.baseUrl), {
+        method,
+        headers: {
+          "X-Tenant-Id": tenantId,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(await authHeaders(transport.getAccessToken)),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        cache: "no-store",
+      });
+    } catch {
+      return { ok: false, status: null, data: null };
+    }
+    if (!response.ok) return { ok: false, status: response.status, data: null };
+    try {
+      const raw: unknown = await response.json();
+      return { ok: true, status: response.status, data: map ? map(raw) : (raw as T) };
+    } catch {
+      return { ok: false, status: response.status, data: null };
+    }
+  }
+
+  const seg = (value: string) => encodeURIComponent(value);
+  return {
+    listConversations: (tenantId, state) => call("GET", `/api/conversations?state=${state}`, tenantId),
+    getConversation: (tenantId, conversationId) => call("GET", `/api/conversations/${seg(conversationId)}`, tenantId),
+    ask: (tenantId, request) => call("POST", "/api/conversations/ask", tenantId, request),
+    setArchived: (tenantId, conversationId, archived) =>
+      call("POST", `/api/conversations/${seg(conversationId)}/${archived ? "archive" : "unarchive"}`, tenantId, {}),
+    listAskContracts: (tenantId) => call("GET", "/api/ask/contracts", tenantId),
+    listQuotes: (tenantId, status = "any") =>
+      call("GET", `/api/quotes?status=${status === "any" ? "any" : status.join(",")}`, tenantId),
+    getQuote: (tenantId, quoteId, lang) => call("GET", `/api/quotes/${seg(quoteId)}/v4?lang=${lang}`, tenantId),
+    confirmQuoteExtraction: (tenantId, quoteId, lang) =>
+      call("POST", `/api/quotes/${seg(quoteId)}/confirm-extraction?lang=${lang}`, tenantId, {}),
+    decideQuote: (tenantId, quoteId, status, lang) =>
+      call("POST", `/api/quotes/${seg(quoteId)}/decision?lang=${lang}`, tenantId, { status }),
+    counterProposal: (tenantId, quoteId) => call("POST", `/api/quotes/${seg(quoteId)}/counter-proposal`, tenantId, {}),
+    listOpenCases: (tenantId) => call("GET", "/api/renewals?view=v4", tenantId, undefined, readOpenCases),
+    openRenewalCase: (tenantId, contractId) =>
+      call("POST", "/api/renewals", tenantId, { contractId, branch: "renew" }, (raw) => {
+        const r = (raw ?? {}) as Record<string, unknown>;
+        const nested = (r.case ?? {}) as Record<string, unknown>;
+        return { caseId: String(pickField(r, "caseId", "id") ?? pickField(nested, "caseId", "id") ?? "") };
+      }),
+  };
+}
+
+/** The one fetch path of the AskRaffa 4.0 case calls: JSON in/out, `X-Tenant-Id`, never throws. */
+async function caseCall<T>(
+  apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  baseUrl: string,
+  getAccessToken: GetAccessToken,
+  tenantId: string,
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<CaseCallResult<T>> {
+  let response: Response;
+  try {
+    response = await apiFetch(new URL(path, baseUrl), {
+      method,
+      headers: {
+        "X-Tenant-Id": tenantId,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...await authHeaders(getAccessToken),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      cache: "no-store",
+    });
+  } catch (cause) {
+    return { ok: false, statusCode: null, body: null, code: null, current: null, error: `Unable to reach ${baseUrl}${path}. Cause: ${cause instanceof Error ? cause.message : String(cause)}` };
+  }
+
+  let parsed: unknown = null;
+  try {
+    parsed = await response.json();
+  } catch {
+    parsed = null;
+  }
+
+  if (response.ok) {
+    return { ok: true, statusCode: response.status, body: parsed as T, error: null };
+  }
+
+  const err = (parsed && typeof parsed === "object" ? parsed : {}) as { code?: string; error?: string; current?: CaseEnvelope | null };
+  return {
+    ok: false,
+    statusCode: response.status,
+    body: null,
+    code: err.code ?? null,
+    current: err.current ?? null,
+    error: err.error ?? `Request failed with HTTP ${response.status} ${response.statusText}.`,
+  };
 }

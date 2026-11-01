@@ -1,0 +1,182 @@
+name: parity
+
+# AskRaffa 4.0 parity suite (docs/design/Raffa.ai/design_handoff_askraffa_v4/IMPLEMENTATION-PLAN.md §4,
+# PARITY.md). Proves the app is identical to the reference prototype: goldens are captured from the
+# prototype in this same runner (same fonts and rasterisation), then the same click-path runs on the
+# real app (fixture mode, Postgres only) and is compared shot by shot; computed-style assertions run
+# last. Every shot is a soft assertion, so the report lists all of them. Same shape as
+# scripts/parity-local.sh.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "backend/**"
+      - "docs/design/**"
+      - ".github/workflows/parity.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "backend/**"
+      - "docs/design/**"
+      - ".github/workflows/parity.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: parity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  API_PORT: "5180"
+  WEB_PORT: "5173"
+  REF_PORT: "4173"
+  PGHOST: localhost
+  PGPORT: "5432"
+  PGUSER: raffa
+  PGPASSWORD: raffa
+  PGDATABASE: raffa_parity
+
+jobs:
+  parity:
+    name: parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: raffa
+          POSTGRES_PASSWORD: raffa
+          POSTGRES_DB: raffa_parity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U raffa -d raffa_parity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Apply schema (ADR-021 order)
+        run: |
+          set -euo pipefail
+          SCRIPTS=(
+            "backend/src/Raffa.Identity.Workspace/Migrations/Scripts/identity-workspace.sql"
+            "backend/src/Raffa.Documents.Contracts/Migrations/Scripts/documents-contracts.sql"
+            "backend/src/Raffa.Audit/Migrations/Scripts/audit.sql"
+            "backend/src/Raffa.Renewals/Migrations/Scripts/renewals.sql"
+            "backend/src/Raffa.Savings/Migrations/Scripts/savings.sql"
+            "backend/src/Raffa.Quotes/Migrations/Scripts/quotes.sql"
+            "backend/src/Raffa.Chat/Migrations/Scripts/chat.sql"
+            "backend/src/Raffa.Suppliers.Products/Migrations/Scripts/suppliers.sql"
+            "backend/src/Raffa.Market/Migrations/Scripts/market.sql"
+          )
+          for script in "${SCRIPTS[@]}"; do
+            echo "::group::psql -f $script"
+            PGOPTIONS="-c client_min_messages=warning" psql -v ON_ERROR_STOP=1 -q -f "$script"
+            echo "::endgroup::"
+          done
+
+      - name: Start the API (Parity environment, fixtures on)
+        run: |
+          set -euo pipefail
+          CS="Host=localhost;Port=5432;Database=raffa_parity;Username=raffa;Password=raffa;Include Error Detail=true"
+          for name in IdentityWorkspace DocumentsContracts Audit Renewals Savings Quotes Chat Suppliers; do
+            echo "ConnectionStrings__$name=$CS" >> "$GITHUB_ENV"
+            export "ConnectionStrings__$name=$CS"
+          done
+          dotnet build backend/src/Raffa.Api/Raffa.Api.csproj -c Release -nologo
+          ASPNETCORE_ENVIRONMENT=Parity \
+          ASPNETCORE_URLS="http://localhost:${API_PORT}" \
+          Fixtures__CorsOrigins__0="http://localhost:${WEB_PORT}" \
+            nohup dotnet run --project backend/src/Raffa.Api -c Release --no-build --no-launch-profile > api.log 2>&1 &
+          for _ in $(seq 1 90); do
+            if curl -fsS "http://localhost:${API_PORT}/health" >/dev/null 2>&1; then
+              curl -fsS -X POST -H 'Content-Type: application/json' -d '{"scenario":"zero"}' \
+                "http://localhost:${API_PORT}/api/fixtures/reset"
+              echo
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::API did not become healthy"
+          cat api.log
+          exit 1
+
+      - name: Install web dependencies and Chromium
+        working-directory: web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build and serve the web app (fixture config)
+        working-directory: web
+        run: |
+          set -euo pipefail
+          npm run build
+          cat > dist/config.json <<JSON
+          {
+            "apiBaseUrl": "http://localhost:${API_PORT}",
+            "oidcAuthority": "https://login.microsoftonline.com/parity-unused",
+            "oidcClientId": "parity-unused",
+            "oidcRedirectUri": "http://localhost:${WEB_PORT}",
+            "oidcApiScopes": ["api://parity-unused/Raffa.Read"],
+            "fixtures": true
+          }
+          JSON
+          nohup npx vite preview --port "${WEB_PORT}" --strictPort > ../web.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS "http://localhost:${WEB_PORT}/" >/dev/null 2>&1 && exit 0
+            sleep 1
+          done
+          echo "::error::web preview did not start"; cat ../web.log; exit 1
+
+      - name: Serve the reference prototype
+        working-directory: docs/design/Raffa.ai/design_handoff_askraffa_v4/reference
+        run: |
+          nohup python3 -m http.server "${REF_PORT}" > "${GITHUB_WORKSPACE}/ref.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS "http://localhost:${REF_PORT}/" >/dev/null 2>&1 && exit 0
+            sleep 1
+          done
+          exit 1
+
+      - name: Capture goldens from the reference
+        working-directory: web/parity
+        env:
+          REFERENCE_URL: "http://localhost:4173/AskRaffa%20V4.dc.html"
+        run: npx playwright test -c playwright.config.ts reference.capture.spec.ts
+
+      - name: Compare the app with the goldens + geometry
+        working-directory: web/parity
+        env:
+          APP_URL: "http://localhost:5173"
+        run: npx playwright test -c playwright.config.ts app.parity.spec.ts geometry.spec.ts
+
+      - name: Upload parity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-report
+          path: |
+            web/parity-report
+            web/parity/test-results
+            web/test-results
+            web/parity/goldens
+            api.log
+            web.log
+          if-no-files-found: ignore

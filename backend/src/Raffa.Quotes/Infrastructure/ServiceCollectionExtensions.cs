@@ -1,6 +1,8 @@
 using Raffa.Benchmark;
 using Raffa.Quotes.Application;
 using Raffa.Quotes.Application.Assessment;
+using Raffa.Quotes.Application.AssessmentV4;
+using Raffa.SharedKernel.Renewals;
 using Raffa.Quotes.Application.Extraction;
 using Raffa.Quotes.Application.Header;
 using Raffa.Quotes.Application.Normalization;
@@ -72,6 +74,11 @@ public static class ServiceCollectionExtensions
         // Scoped: shares the request's own QuotesDbContext instance (also Scoped, via AddDbContext
         // above) rather than a second, independently-tracked context.
         services.AddScoped<QuoteUploadService>();
+        // AskRaffa 4.0 Offerta: the no-benchmark comparison and decision. The case seams default to
+        // "no case module" until Raffa.Renewals registers its own (TryAdd).
+        services.AddScoped<QuoteOfferService>();
+        services.TryAddScoped<ICaseGoalsReader, NoCaseGoalsReader>();
+        services.TryAddScoped<ICaseEmailDraftSink, NotAvailableCaseEmailDraftSink>();
         // Task F6-T03 (reprocess): same dependencies as QuoteUploadService (storage, audit).
         services.AddScoped<QuoteReprocessService>();
         // Task F6-T07: a person's confirmation or correction of the header fields.

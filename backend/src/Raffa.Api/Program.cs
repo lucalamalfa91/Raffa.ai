@@ -5,6 +5,7 @@ using Azure.Communication.Email;
 using Azure.Identity;
 using Raffa.AiFlows;
 using Raffa.Api;
+using Raffa.Api.Fixtures;
 using Raffa.Api.Infrastructure;
 using Raffa.Audit.Infrastructure;
 using Raffa.Chat.Infrastructure;
@@ -17,6 +18,7 @@ using Microsoft.Graph;
 using Raffa.Insights;
 using Raffa.Market;
 using Raffa.Quotes.Infrastructure;
+using Raffa.Renewals.Application.CaseWork;
 using Raffa.Renewals.Infrastructure;
 using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
@@ -38,6 +40,11 @@ var builder = WebApplication.CreateBuilder(args);
 var postgresMaxPoolSize = builder.Configuration.GetValue<int?>(PostgresConnectionPool.MaxPoolSizeConfigurationKey)
     ?? PostgresConnectionPool.DefaultMaxPoolSize;
 string BoundPostgres(string connectionString) => PostgresConnectionPool.WithBudget(connectionString, postgresMaxPoolSize);
+
+// AskRaffa 4.0 fixture mode (IMPLEMENTATION-PLAN.md §2; Fixtures:Enabled, default off, refused in
+// Production): scenario clock, fixture users, POST /api/fixtures/reset. Bound before every
+// AddXxxModule so its IClock wins over the modules' TryAdd system clock.
+var fixtureOptions = builder.AddFixtureMode();
 
 // Module registration: each module exposes an AddXxx(IServiceCollection) extension method
 // (ADR-002); the host calls it once it takes a dependency on that module. Documents/Contracts
@@ -137,7 +144,7 @@ var azureAdOptions = builder.Configuration.GetSection(AzureAdOptions.SectionName
     ?? new AzureAdOptions();
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(fixtureOptions.Enabled ? FixtureAuthenticationHandler.SchemeName : JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         // Preserves the token's own claim names (e.g. `oid`, `tid`, `scp`) instead of JwtBearer's
@@ -179,7 +186,9 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(2),
         };
-    });
+    })
+    // Fixture mode only: the X-Raffa-Fixture-User scheme (see FixtureAuthenticationHandler).
+    .AddFixtureScheme(fixtureOptions);
 builder.Services.AddAuthorization();
 
 // Object storage (ADR-005 "Object storage" row, ADR-011): the Azure Blob Storage adapter is
@@ -190,7 +199,9 @@ var storageConnectionString = builder.Configuration.GetConnectionString("Storage
         "Missing required configuration 'ConnectionStrings:Storage' " +
         "(set env var ConnectionStrings__Storage in deployed environments).");
 
-builder.Services.AddAzureBlobDocumentStorage(storageConnectionString);
+// ConnectionStrings:Storage = "InMemory" (the Postgres-only Parity environment) keeps documents in
+// process memory instead of Blob Storage.
+Raffa.Storage.StorageServiceCollectionExtensions.AddDocumentStorage(builder.Services, storageConnectionString);
 // ADR-027 §D2 (task E16/F02/US03/T01): the upload publishes its ExtractionRequested pointer
 // before committing; this picks Service Bus when ServiceBus:FullyQualifiedNamespace is set
 // (every deployed environment, via infra/modules/containerapps) and the in-process channel
@@ -356,6 +367,11 @@ var renewalsConnectionString = BoundPostgres(
 
 builder.Services.AddRenewalsModule(renewalsConnectionString);
 
+// AskRaffa 4.0 renewal case (slices 2+3): the case service, its cross-module ports (honest defaults,
+// replaced by the modules that own them) and the workspace members a case can name.
+builder.Services.AddRenewalCases();
+builder.Services.AddScoped<Raffa.Renewals.Application.CaseWork.ICaseMemberDirectory, WorkspaceCaseMemberDirectory>();
+
 // Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3):
 // RenewalAlertRecomputeService is host-composition wiring, the same kind as
 // NegotiationOutcomePropagationService below ("the one place... that calls both
@@ -475,6 +491,9 @@ app.UseResponseCompression();
 app.UseStartupWarmupYielding();
 app.UseDatabaseSaturationHandling();
 
+// Fixture mode only: CORS for the parity web origin (Fixtures:CorsOrigins).
+app.UseFixtureMode(fixtureOptions);
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -503,6 +522,9 @@ app.MapDocumentsEndpoints();
 // aggregation for the GET (ADR-009).
 app.MapContractsEndpoints();
 
+// AskRaffa 4.0 slice 4: Revisione reading, decision points, Contratti/Contratto v4 read models.
+app.MapContractsV4Endpoints();
+
 // Task E01/F06/US02/T02 (us-02-audit-baseline, AC-2), guard swapped from claims to membership by
 // wave w16's NW-08 (task E18/F02/US02/T01, ADR-025 §K): authorized, tenant-scoped GET /api/audit.
 // See AuditEndpointExtensions for the endpoint itself -- ICallerContext resolves identity and the
@@ -524,6 +546,9 @@ app.MapPortfolioEndpoints();
 // promoted to reports/open-questions.md by this task.
 app.MapRenewalsEndpoints();
 
+// AskRaffa 4.0 (slices 2+3): renewal case, Today feed, reminders.
+app.MapRenewalCaseEndpoints();
+
 // Task E04/F02/US02/T01 (savings-opportunity, AC-1): GET /api/savings (list) and PATCH
 // /api/savings/{id} (update status/owner), tenant-scoped (ADR-009). Same interim X-Tenant-Id
 // placeholder as the endpoints above (ADR-010 is not in force for this task either) — see
@@ -539,6 +564,7 @@ app.MapSavingsEndpoints();
 // endpoints above (ADR-010 is not in force for this task either) — see that file's own comment
 // for why this gap is not promoted to reports/open-questions.md by this task.
 app.MapSavingsKpiEndpoints();
+app.MapSavingsResultsEndpoints();
 
 // Task E13/F06/US01/T01 (ask-engine, ADR-024 §6): POST /api/chat/query — kept one release as a
 // thin alias that creates a conversation and delegates into AskCopilotService (see
@@ -579,6 +605,10 @@ app.MapMarketEndpoints();
 // endpoint and orchestration respectively.
 app.MapQuotesEndpoints();
 
+// AskRaffa 4.0 slice 6: Offerta (no-benchmark quote check + decision) and Chiedi (sourced Q&A, archive).
+app.MapQuoteOffersEndpoints();
+app.MapAskConversationsEndpoints();
+
 // Task E05/F03/US02/T01 (negotiation-outcome, parent story us-02-outcome-capture AC-1): POST
 // /api/negotiations/outcomes — records the final negotiated outcome (original/target/final/
 // saving/discount/duration/levers) as permissioned proprietary learning data (spec §12.2/§12.3).
@@ -602,6 +632,9 @@ app.MapNegotiationsEndpoints();
 // untouched — the invite/revoke and members/remove routes it composes are that file's own and
 // WorkspaceMembersEndpointExtensions' own additions, not a second Program.cs edit.
 app.MapInvitationEndpoints();
+
+// Fixture mode only: POST /api/fixtures/reset and GET /api/fixtures/session.
+app.MapFixtureMode(fixtureOptions);
 
 app.Run();
 

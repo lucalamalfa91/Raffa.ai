@@ -27,6 +27,22 @@ APP_URL="http://localhost:5173" npx playwright test geometry.spec.ts
 ```
 Tolerance: `maxDiffPixelRatio: 0.002`, `threshold: 0.1` (anti-aliasing only). Anything above is a bug, not "close enough".
 
+## Run locally
+One command starts the whole parity stack the way CI (`.github/workflows/parity.yml`) does:
+
+```bash
+scripts/parity-local.sh                 # foreground; Ctrl-C stops everything
+DETACH=1 scripts/parity-local.sh        # background; stop with: scripts/parity-local.sh down
+```
+It starts Postgres (`pgvector/pgvector:pg16` in docker, every module's `Migrations/Scripts/*.sql` applied in ADR-021 order), the API in the `Parity` environment (fixtures on, in-memory storage, no Azure; see `backend/README.md` "AskRaffa 4.0 fixture mode"), the web app (`vite build` + `vite preview` with a `config.json` that has `"fixtures": true`) and a static server for `reference/`. Ports: `PG_PORT` (55432), `API_PORT` (5180), `WEB_PORT` (5173), `REF_PORT` (4173). Also: `SKIP_WEB_BUILD=1` (reuse `web/dist`), `NO_WEB=1`, `NO_REF=1`, `KEEP_DB=1`. Logs in `.parity-local/`.
+
+Then open `http://localhost:5173/today?fixture=zero&now=2026-09-08` (or `fixture=full`) and run the suite from `web/parity`:
+```bash
+REFERENCE_URL="http://localhost:4173/AskRaffa%20V4.dc.html" npx playwright test -c playwright.config.ts reference.capture.spec.ts
+APP_URL="http://localhost:5173" npx playwright test -c playwright.config.ts app.parity.spec.ts geometry.spec.ts
+```
+Fixture mode in the app: `?fixture=zero|full` resets the fixture tenant (*Helvetia Foods AG*) and skips sign-in; `?now=` sets the scenario clock; the demo bar (Vedi come / Scenario / IT-EN / Reimposta) appears only in this mode and never in a deployed environment (`fixtures` is absent from their `config.json`, and the API refuses `Fixtures:Enabled` in Production).
+
 ## 2. What must be pixel-identical
 Every screen in `screenshots/` (names = golden names), in IT; plus EN for *Oggi* (`25`), plus *Guida chiusa* (`26`). Dynamic content that must be neutralised in both runs: scenario clock, caret blink (`caret-color: transparent`), spinner (`animation: none`, capture after reading finishes).
 

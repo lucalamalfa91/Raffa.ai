@@ -35,6 +35,14 @@ public sealed class DocumentsContractsDbContext(DbContextOptions<DocumentsContra
     /// <summary>Each line item's last market comparison (<see cref="Application.LineItemMarketPriceService"/>).</summary>
     public DbSet<ContractLineItemMarketPrice> ContractLineItemMarketPrices => Set<ContractLineItemMarketPrice>();
 
+    /// <summary>AskRaffa 4.0 contract facts (jsonb profile per contract, see <see cref="ContractFactsRecord"/>).</summary>
+    public DbSet<ContractFactsRecord> ContractFacts => Set<ContractFactsRecord>();
+
+    // AskRaffa 4.0 slice 4: Contratto decisions, renewed terms, Revisione field decisions.
+    public DbSet<ContractPointDecision> ContractPointDecisions => Set<ContractPointDecision>();
+    public DbSet<ContractTermVersion> ContractTermVersions => Set<ContractTermVersion>();
+    public DbSet<DocumentFieldDecision> DocumentFieldDecisions => Set<DocumentFieldDecision>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Required so migrations emit `CREATE EXTENSION IF NOT EXISTS "vector"` (ADR-003).
@@ -54,6 +62,10 @@ public sealed class DocumentsContractsDbContext(DbContextOptions<DocumentsContra
         modelBuilder.ApplyConfiguration(new ExtractionEvidenceConfiguration());
         modelBuilder.ApplyConfiguration(new ContractNegotiationStepConfiguration());
         modelBuilder.ApplyConfiguration(new ContractLineItemMarketPriceConfiguration());
+        modelBuilder.ApplyConfiguration(new ContractFactsRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new ContractPointDecisionConfiguration());
+        modelBuilder.ApplyConfiguration(new ContractTermVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new DocumentFieldDecisionConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

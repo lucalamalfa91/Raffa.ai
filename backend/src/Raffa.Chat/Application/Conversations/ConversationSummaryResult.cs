@@ -16,10 +16,22 @@ public sealed record ConversationSummaryResult(
     EntityId? ScopeContractId,
     DateTimeOffset UpdatedAt,
     string? CustomTitle = null,
-    bool Archived = false);
+    bool Archived = false,
+    DateTimeOffset? ArchivedAt = null,
+    EntityId? CaseId = null,
+    int QuestionCount = 0);
 
 /// <summary>Which of the caller's conversations <see cref="ConversationService.ListRecentAsync"/>
 /// returns: all of them, only the ones in use, or only the archived ones.</summary>
+/// <summary>AskRaffa 4.0 Chiedi groups (<c>GET /api/conversations?state=</c>): recent = not
+/// archived and not a case chat; archived = explicitly archived; case = a renewal case chat.</summary>
+public enum ConversationListState
+{
+    Recent,
+    Archived,
+    Case,
+}
+
 public enum ConversationArchiveFilter
 {
     All,

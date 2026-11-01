@@ -6,6 +6,8 @@ import App from "./App";
 import { AppConfigError, loadAppConfig } from "./config/appConfig";
 import { acquireApiAccessToken, buildMsalConfig, handleRedirectPromiseOptions } from "./auth/msalConfig";
 import { createApiClient } from "./api/client";
+import FixtureApp from "./fixtures/FixtureApp";
+import { readFixtureBoot } from "./fixtures/fixtureMode";
 import "./index.css";
 
 const rootElement = document.getElementById("root");
@@ -43,6 +45,18 @@ async function bootstrap() {
           <h1>Raffa.ai could not start</h1>
           <p>{message}</p>
         </div>
+      </StrictMode>,
+    );
+    return;
+  }
+
+  // AskRaffa 4.0 fixture mode (test/demo only; see src/fixtures/fixtureMode.ts): only when the runtime
+  // config enables it AND the URL asks for a scenario. MSAL is never constructed on this path.
+  const fixtureBoot = readFixtureBoot(appConfig.fixtures, window.location.search);
+  if (fixtureBoot) {
+    root.render(
+      <StrictMode>
+        <FixtureApp appConfig={appConfig} boot={fixtureBoot} />
       </StrictMode>,
     );
     return;

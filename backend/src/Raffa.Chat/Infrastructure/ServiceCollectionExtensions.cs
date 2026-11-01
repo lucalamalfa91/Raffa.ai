@@ -1,4 +1,6 @@
+using Raffa.Chat.Application.Ask4;
 using Raffa.Chat.Application.Conversations;
+using Raffa.SharedKernel.Renewals;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.SharedKernel;
@@ -58,6 +60,12 @@ public static class ServiceCollectionExtensions
         // so the gate stays closed, consistent with the kill switch being off by default.
         services.TryAddSingleton<IWebResearchBudgetLimit>(new ClosedWebResearchBudgetLimit());
 
+        // AskRaffa 4.0: flags for the Chiedi answer services and the case-scoped Q&A the Renewals
+        // composer calls (over whichever IAskAnswerService the host registered).
+        services.TryAddSingleton(new AskAnswerOptions());
+        services.TryAddScoped<IAskAnswerService, NoAskAnswerService>();
+        services.TryAddScoped<ICaseQuestionAnswerer, CaseQuestionAnswerer>();
+
         if (chatConnectionString is not null)
         {
             // TryAdd: same defensive convention as IClock above; every module shares the same
@@ -72,6 +80,10 @@ public static class ServiceCollectionExtensions
             // AddDbContext above) rather than a second, independently-tracked context — same
             // reason every DbContext-backed service in this codebase is Scoped, not Singleton.
             services.AddScoped<ConversationService>();
+
+            // AskRaffa 4.0 Chiedi: the turn orchestration over the answer service (production:
+            // Raffa.AiFlows; fixture mode: the deterministic ContractFacts answerer).
+            services.AddScoped<AskConversationService>();
 
             // ADR-030 D5: the feedback write path shares the request's own ChatDbContext.
             services.AddScoped<FeedbackService>();

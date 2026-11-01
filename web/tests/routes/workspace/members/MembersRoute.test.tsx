@@ -5,12 +5,14 @@ import MembersRoute from "../../../../src/routes/workspace/members";
 import type { WorkspaceRole } from "../../../../src/components/shell/navItems";
 import type { ShellOutletContext } from "../../../../src/components/shell/shellContext";
 import type { ApiClient, GetWorkspaceMembersResult, InviteWorkspaceMemberResult, WorkspaceMemberBody } from "../../../../src/api/client";
+import { contractsV4Mocks } from "../../../helpers/contractsV4Mocks";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const USER_LABEL = "admin@acme.example";
 
 function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),

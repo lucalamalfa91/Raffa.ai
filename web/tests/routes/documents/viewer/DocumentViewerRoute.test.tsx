@@ -15,6 +15,7 @@ import {
   CITATION_UNRESOLVABLE_COPY,
   EMPTY_PAGE_COPY,
 } from "../../../../src/routes/documents/viewer/documentViewerViewModel";
+import { contractsV4Mocks } from "../../../helpers/contractsV4Mocks";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const DOCUMENT_ID = "55555555-5555-5555-5555-555555555555";
@@ -23,6 +24,7 @@ const CLAUSE_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),

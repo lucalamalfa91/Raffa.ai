@@ -1,0 +1,82 @@
+{
+  "_comment": "The conversations seeded by the prototype initial() (AskRaffa V4.dc.html) in BOTH scenarios. 'who' user = the viewer (asked by Luca Lamalfa), raffa = the assistant. Texts are Italian as in the prototype; 'when' is the display date, 'whenDate' the ISO date.",
+  "scenarios": [
+    "zero",
+    "full"
+  ],
+  "askedBy": "luca",
+  "conversations": [
+    {
+      "key": "c1",
+      "title": "Salesforce · quando dobbiamo dare disdetta?",
+      "when": "02 Set 2026",
+      "whenDate": "2026-09-02",
+      "archived": false,
+      "messages": [
+        {
+          "who": "user",
+          "text": "Quando dobbiamo dare disdetta a Salesforce?"
+        },
+        {
+          "who": "raffa",
+          "text": "Disdetta scritta entro il 18 Oct 2026 — 90 giorni prima della fine del 15 Jan 2027. Senza disdetta si rinnova per 12 mesi al +7%.",
+          "source": "Salesforce_MSA_2024.pdf p.12 §8.4"
+        }
+      ]
+    },
+    {
+      "key": "c2",
+      "title": "AWS · limite di responsabilità",
+      "when": "28 Ago 2026",
+      "whenDate": "2026-08-28",
+      "archived": false,
+      "messages": [
+        {
+          "who": "user",
+          "text": "Qual è il massimale di responsabilità con AWS?"
+        },
+        {
+          "who": "raffa",
+          "text": "AWS: il maggiore tra USD 500k e 12 mesi di canone; esclusioni per riservatezza e IP. «the greater of USD 500,000 or the fees paid in the preceding twelve months»",
+          "source": "AWS_EDP_Amendment_3.pdf p.19 §11.2"
+        }
+      ]
+    },
+    {
+      "key": "c3",
+      "title": "Microsoft · obblighi al true-up",
+      "when": "14 Lug 2026",
+      "whenDate": "2026-07-14",
+      "archived": true,
+      "messages": [
+        {
+          "who": "user",
+          "text": "Quali obblighi abbiamo al true-up Microsoft?"
+        },
+        {
+          "who": "raffa",
+          "text": "Noi: Submit the annual true-up order (by 01 Jul each year) · Give non-renewal notice (by 31 Mar 2027) · Pay the annual enrollment fee (01 Jul each year).",
+          "source": "obblighi dal contratto"
+        }
+      ]
+    },
+    {
+      "key": "c4",
+      "title": "Zoom · esito rinnovo 2026",
+      "when": "11 Giu 2026",
+      "whenDate": "2026-06-11",
+      "archived": true,
+      "messages": [
+        {
+          "who": "user",
+          "text": "Com’è andato il rinnovo Zoom?"
+        },
+        {
+          "who": "raffa",
+          "text": "Risultato contrattuale CHF 9k / anno: aumento automatico 10% → 0% sul rinnovo dal 01 Jul 2026. È un aumento evitato, non una riduzione del canone; non ancora provato da fatture.",
+          "source": "Zoom_Renewal_2026_signed.pdf"
+        }
+      ]
+    }
+  ]
+}

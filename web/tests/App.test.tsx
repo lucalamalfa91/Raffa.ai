@@ -4,6 +4,7 @@ import { InteractionStatus } from "@azure/msal-browser";
 import App from "../src/App";
 import type { AppConfig } from "../src/config/appConfig";
 import type { ApiClient, HealthCheckResult } from "../src/api/client";
+import { contractsV4Mocks } from "./helpers/contractsV4Mocks";
 
 // App.tsx (task E06/F03/US01/T01 onward) is only the composition root: run
 // the /health proof-of-connectivity effect, then mount ./routes/signin
@@ -29,6 +30,7 @@ const appConfig: AppConfig = {
 /** src/api/client.ts (task E01/F07/US01/T02, extended by E06/F03/US01/T01) is exercised by its own tests/api/client.test.ts; here it is a plain mock so App's rendering is isolated. */
 function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn().mockReturnValue(Promise.resolve(result)),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
@@ -263,7 +265,7 @@ describe("App", () => {
       return apiClient;
     }
 
-    it("renders the rail nav instead of the workspace picker once resolution finds exactly one membership", async () => {
+    it("renders the top nav instead of the workspace picker once resolution finds exactly one membership", async () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
         accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
@@ -272,12 +274,12 @@ describe("App", () => {
 
       render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
 
-      expect(await screen.findByText("Acme Procurement")).toBeInTheDocument();
-      expect(screen.getByText("Portfolio")).toBeInTheDocument();
+      expect(await screen.findByRole("navigation", { name: /primary/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Contracts" })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: /choose a workspace/i })).not.toBeInTheDocument();
     });
 
-    it("does not double-wrap the app shell's own <main> either (AppShell.tsx already owns `.shell-main`)", async () => {
+    it("does not double-wrap the app shell's own <main> either (AppShell.tsx already owns `.v4-main`)", async () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
         accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
@@ -285,11 +287,11 @@ describe("App", () => {
       });
 
       const { container } = render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
-      await screen.findByText("Acme Procurement");
+      await screen.findByRole("navigation", { name: /primary/i });
 
       const mains = container.querySelectorAll("main");
       expect(mains).toHaveLength(1);
-      expect(mains[0]).toHaveClass("shell-main");
+      expect(mains[0]).toHaveClass("v4-main");
     });
 
     it("still renders the always-on health status above the shell", async () => {
@@ -302,7 +304,7 @@ describe("App", () => {
       render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
 
       expect(await screen.findByText(/API: reachable \(Healthy\)/)).toBeInTheDocument();
-      expect(await screen.findByText("Acme Procurement")).toBeInTheDocument();
+      expect(await screen.findByRole("navigation", { name: /primary/i })).toBeInTheDocument();
     });
   });
 
@@ -343,7 +345,7 @@ describe("App", () => {
 
       render(<App appConfig={appConfig} apiClient={apiClient} />);
 
-      expect(await screen.findByText("Invited Co")).toBeInTheDocument();
+      expect(await screen.findByRole("navigation", { name: /primary/i })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: /create your workspace/i })).not.toBeInTheDocument();
       // Exactly once -- the guard against a retry loop -- not a listWorkspaces() count: once the
       // shell mounts, useValidatedContractCount.ts fires its own independent listWorkspaces() call

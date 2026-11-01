@@ -22,6 +22,489 @@ namespace Raffa.Renewals.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.CaseDelegationRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("CanApprove")
+                        .HasColumnType("boolean")
+                        .HasColumnName("can_approve");
+
+                    b.Property<bool>("CanClose")
+                        .HasColumnType("boolean")
+                        .HasColumnName("can_close");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<DateTimeOffset>("GrantedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("granted_at");
+
+                    b.Property<string>("GrantedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("granted_by");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_delegation");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_case_delegation_tenant_id");
+
+                    b.HasIndex("TenantId", "CaseId")
+                        .HasDatabaseName("ix_case_delegation_tenant_id_case_id");
+
+                    b.ToTable("case_delegation", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.CaseEmailRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
+                    b.Property<string>("ApprovedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("approved_by");
+
+                    b.Property<int?>("ApprovedVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("approved_version");
+
+                    b.Property<string>("AttachmentsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("attachments_json");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<DateTimeOffset?>("CopiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("copied_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("EmailIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("email_index");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("SentBody")
+                        .HasColumnType("text")
+                        .HasColumnName("sent_body");
+
+                    b.Property<string>("SentBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("sent_by");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subject");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("ToAddress")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("to_address");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_email");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_case_email_tenant_id");
+
+                    b.HasIndex("TenantId", "CaseId", "EmailIndex")
+                        .IsUnique()
+                        .HasDatabaseName("ix_case_email_tenant_id_case_id_email_index");
+
+                    b.ToTable("case_email", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.CaseEventRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("actor");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<int?>("EmailIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("email_index");
+
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload_json");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_event");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_case_event_tenant_id");
+
+                    b.HasIndex("TenantId", "CaseId", "At")
+                        .HasDatabaseName("ix_case_event_tenant_id_case_id_at");
+
+                    b.ToTable("case_event", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.CaseVendorMessageRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AnalysedByModel")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("analysed_by_model");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("direction");
+
+                    b.Property<string>("InputHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("input_hash");
+
+                    b.Property<string>("ParsedJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("parsed_json");
+
+                    b.Property<string>("PastedText")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("pasted_text");
+
+                    b.Property<string>("PromptVersion")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("prompt_version");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("ThreadKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("thread_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_vendor_message");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_case_vendor_message_tenant_id");
+
+                    b.HasIndex("TenantId", "CaseId", "ContentHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_case_vendor_message_tenant_id_case_id_content_hash");
+
+                    b.ToTable("case_vendor_message", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.RenewalCaseRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ApproverUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approver_user_id");
+
+                    b.Property<string>("Branch")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("branch");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateOnly?>("ContractEnd")
+                        .HasColumnType("date")
+                        .HasColumnName("contract_end");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateOnly?>("NoticeDeadline")
+                        .HasColumnType("date")
+                        .HasColumnName("notice_deadline");
+
+                    b.Property<DateTimeOffset>("OpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opened_at");
+
+                    b.Property<string>("OutcomeJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("outcome_json");
+
+                    b.Property<string>("OutcomeKind")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("outcome_kind");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("phase");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Step")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("step");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_renewal_case");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_renewal_case_tenant_id");
+
+                    b.HasIndex("TenantId", "ContractId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_renewal_case_tenant_contract_open")
+                        .HasFilter("closed_at IS NULL");
+
+                    b.ToTable("renewal_case", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.TodaySnoozeRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ItemKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("item_key");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateOnly>("Until")
+                        .HasColumnType("date")
+                        .HasColumnName("until");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_today_snooze");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_today_snooze_tenant_id");
+
+                    b.HasIndex("TenantId", "UserId", "ItemKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_today_snooze_tenant_id_user_id_item_key");
+
+                    b.ToTable("today_snooze", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.UserReminderRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<int?>("ReminderIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("reminder_index");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("state");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_reminder");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_user_reminder_tenant_id");
+
+                    b.HasIndex("TenantId", "UserId", "DueDate")
+                        .HasDatabaseName("ix_user_reminder_tenant_id_user_id_due_date");
+
+                    b.ToTable("user_reminder", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Renewals.Domain.RenewalAction", b =>
                 {
                     b.Property<Guid>("Id")
