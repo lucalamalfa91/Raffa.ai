@@ -120,4 +120,5 @@ public sealed record ResultsContract(
     DateOnly? NoticeDeadline,
     int Days,
     string Uplift,
-    bool AutoRenewal);
+    bool AutoRenewal,
+    string TermStatus = "active");

@@ -16,6 +16,8 @@ const STATUS_LABEL: Record<ContractListRowV4Body["status"], string> = {
   caseOpen: "Case open",
   renewed: "Renewed",
   terminated: "Terminated",
+  autoRenewed: "Renewed automatically",
+  expired: "Expired",
 };
 
 /** While a document is being read the banner follows it. */
@@ -134,10 +136,17 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
               <div className="c4-row-name">{row.name}</div>
             </div>
             <div className="c4-row-notice">
-              <div className="c4-label">{t("Notice by")}</div>
-              <div className={row.noticeDays <= URGENT_NOTICE_DAYS ? "c4-row-notice-value c4-urgent" : "c4-row-notice-value"}>
-                {row.noticeDeadline} · {row.noticeDays} {t("d⟦days⟧")}
+              <div className="c4-label">
+                {row.termStatus === "rolledOver" ? t("Next notice by") : row.noticeDays < 0 ? t("Notice deadline passed on") : t("Notice by")}
               </div>
+              <div className={row.noticeDays >= 0 && row.noticeDays <= URGENT_NOTICE_DAYS ? "c4-row-notice-value c4-urgent" : "c4-row-notice-value"}>
+                {row.noticeDays >= 0 ? `${row.noticeDeadline} · ${row.noticeDays} ${t("d⟦days⟧")}` : row.noticeDeadline}
+              </div>
+              {row.termStatus === "rolledOver" && row.renewedOn ? (
+                <div className="c4-row-renewed">
+                  {t(row.renewedOnPassed ? "Renewed by itself on {date}" : "Renews by itself on {date}", { date: row.renewedOn })}
+                </div>
+              ) : null}
             </div>
             <div className="c4-row-end">
               <div className="c4-label">{t("Contract end")}</div>

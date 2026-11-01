@@ -160,3 +160,9 @@
 }
 .o4-snoozed-row span { color: var(--color-neutral-700); }
 .v4 .o4-snoozed-row .btn { margin-left: auto; padding: 0; font-size: 12px; }
+
+/* "Per tua informazione": a contract that renewed by itself -- information, not an action. */
+.o4-info { margin-top: 28px; }
+.o4-info-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.o4-snoozed-row .o4-info-title { color: var(--color-neutral-900); font-weight: 600; }
+.o4-snoozed-row .o4-info-why { color: var(--color-neutral-600); font-size: 12px; line-height: 1.45; }

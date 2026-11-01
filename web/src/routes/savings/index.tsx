@@ -282,7 +282,7 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
                   <span>{t("If you reach {pct}", { pct: gl.pct })}</span>
                   <div>{c.ifHit}</div>
                 </span>
-                <span className="s4-gl-days" style={{ color: c.fg }}>{t("{n} d to notice", { n: c.days })}</span>
+                <span className="s4-gl-days" style={{ color: c.fg }}>{c.days === "—" ? t("notice passed") : t("{n} d to notice", { n: c.days })}</span>
                 <button type="button" className={`btn ${c.cls} s4-gl-cta`}>{c.cta}</button>
               </div>
             ))}

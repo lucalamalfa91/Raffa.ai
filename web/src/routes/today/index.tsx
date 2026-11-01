@@ -24,6 +24,16 @@ export function localDate(date: string, lang: string): string {
 /** The kinds where the CPO can hand the step to the buyer instead of doing it ("Delega a Marta"). */
 const DELEGABLE = ["approve", "policy", "sigok", "nout", "alt"];
 
+/** The item's explanation: the situation assessment's (written in both languages) when there is one. */
+export function itemWhy(item: TodayItem, lang: string, tr: (x: Text | null | undefined) => string): string {
+  return item.assessment ? (lang === "it" ? item.assessment.why.it : item.assessment.why.en) : tr(item.why);
+}
+
+/** Days left, never negative: a passed deadline shows no count (the item says what happened instead). */
+export function dueDaysShown(item: TodayItem): number | null {
+  return item.kind === "confirmTerm" || item.dueDays < 0 ? null : item.dueDays;
+}
+
 /**
  * Oggi (AskRaffa V4.dc.html lines 49-98): one next action, then what follows. Never a dashboard.
  * Header (role line, title, subtitle); "Punto zero" on an empty workspace; progress dots + the Focus
@@ -128,16 +138,22 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
           ? t("{n} steps wait on colleagues or suppliers — see them in Renewals.", { n: team.length })
           : t("No open renewal.");
 
+  // "Start & assign to …" only with a real colleague to assign to; otherwise just start it.
+  const canAssign = !!viewer?.isApprover && !!assigneeFirst;
   const focusCta = f
     ? f.kind === "unassigned"
-      ? viewer?.isApprover
+      ? canAssign
         ? t("Start & assign to {name}", { name: assigneeFirst })
         : t("Start the renewal")
-      : f.kind === "quote"
-        ? t("Open the check")
-        : t("Do it now — open the step")
+      : f.kind === "confirmTerm"
+        ? t("Confirm the renewal term")
+        : f.kind === "quote"
+          ? t("Open the check")
+          : t("Do it now — open the step")
     : "";
-  const hasAlt = !!f && !!viewer?.isApprover && (f.kind === "unassigned" || (DELEGABLE.includes(f.kind) && !!feed?.assignee));
+  const hasAlt = !!f && !!viewer?.isApprover && ((f.kind === "unassigned" && canAssign) || (DELEGABLE.includes(f.kind) && !!feed?.assignee));
+  const fDays = f ? dueDaysShown(f) : null;
+  const info = feed?.info ?? [];
   const altLabel = f?.kind === "unassigned" ? t("I’ll handle it") : t("Delegate to {name}", { name: assigneeFirst });
 
   const steps: Array<[string, string]> = [
@@ -162,7 +178,7 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
         : {
             where: f ? t("Today · {n} things for you", { n: mine.length }) : t("Today · nothing pending"),
             now: f ? `${tr(f.title)} — ${f.supplier}` : t("Look at the renewals, or rest."),
-            why: f ? tr(f.why) : t("When a colleague closes a step that waits for you, it shows up here."),
+            why: f ? itemWhy(f, lang, tr) : t("When a colleague closes a step that waits for you, it shows up here."),
             next: mine[1] ? t("Then {supplier}: {title}", { supplier: mine[1].supplier, title: tr(mine[1].title) }) : t("Then you are done."),
             cta: f ? { label: t("Do now"), onClick: () => open(f) } : { label: t("See the renewals"), onClick: () => navigate("/renewals") },
           },
@@ -225,11 +241,11 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
                 {f.supplier} <span>{f.contract}</span>
               </div>
               <div className="o4-ftitle">{tr(f.title)}</div>
-              <div className="o4-why">{tr(f.why)}</div>
+              <div className="o4-why">{itemWhy(f, lang, tr)}</div>
               <div className="o4-due">
                 <span>{f.dueLabel ? tr(f.dueLabel) : t("Notice deadline")}</span>{" "}
-                <strong className={f.dueDays <= 30 ? "is-urgent" : undefined}>
-                  {f.due} · {t("{n} days", { n: f.dueDays })}
+                <strong className={fDays !== null && fDays <= 30 ? "is-urgent" : undefined}>
+                  {fDays !== null ? `${f.due} · ${t("{n} days", { n: fDays })}` : f.due}
                 </strong>
               </div>
               <div className="o4-actions">
@@ -263,7 +279,9 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
                   <div key={x.key} className="r-row o4-row" onClick={() => open(x)}>
                     <span className="o4-row-sup">{x.supplier}</span>
                     <span className="o4-row-title">{tr(x.title)}</span>
-                    <span className={x.dueDays <= 30 ? "o4-row-days is-urgent" : "o4-row-days"}>{t("{n} d", { n: x.dueDays })}</span>
+                    <span className={(dueDaysShown(x) ?? 0) <= 30 ? "o4-row-days is-urgent" : "o4-row-days"}>
+                      {dueDaysShown(x) !== null ? t("{n} d", { n: dueDaysShown(x) }) : t("to verify")}
+                    </span>
                   </div>
                 ))}
                 {mine.length <= 1 ? <div className="o4-empty">{t("Nothing else: this is the only thing for today.")}</div> : null}
@@ -304,6 +322,24 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
               {t("See the renewals")}
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {info.length > 0 ? (
+        <div className="o4-info" data-screen-label="Per tua informazione">
+          <div className="o4-snoozed-head">{t("For your information")}</div>
+          {info.map((x) => (
+            <div key={x.key} className="o4-snoozed-row o4-info-row">
+              <strong>{x.supplier}</strong>
+              <span className="o4-info-text">
+                <span className="o4-info-title">{x.assessment ? (lang === "it" ? x.assessment.headline.it : x.assessment.headline.en) : tr(x.title)}</span>
+                <span className="o4-info-why">{itemWhy(x, lang, tr)}</span>
+              </span>
+              <button type="button" className="btn btn-ghost" onClick={() => void snooze(x.key, true)}>
+                {t("Got it")}
+              </button>
+            </div>
+          ))}
         </div>
       ) : null}
 

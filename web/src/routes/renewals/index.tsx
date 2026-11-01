@@ -43,6 +43,7 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
   const open = useCallback(
     (x: RenewalsRow) => {
       if (x.caseId) navigate(`/renewals/${x.caseId}`);
+      else if (!x.hasCase && (x.termStatus === "expired" || x.termStatus === "needsReview")) navigate(`/contracts/${x.contractId}`);
       else if (board) void openContract(x.contractId, board.viewer.isApprover ? (board.assignee?.userId ?? board.viewer.userId) : board.viewer.userId);
     },
     [board, navigate, openContract],
@@ -62,9 +63,31 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
       : null,
   );
 
+  // "Start & assign" only when there is a real colleague to assign to.
+  const canAssign = !!board?.viewer.isApprover && !!board?.assignee;
+  const toContract = (x: RenewalsRow) => !x.hasCase && (x.termStatus === "expired" || x.termStatus === "needsReview");
   const next = (x: RenewalsRow): string =>
-    x.hasCase ? tr(x.next) : x.days <= 120 ? t("Start & assign") : t("To start by {date}", { date: x.startBy });
-  const cta = (x: RenewalsRow): string => (x.hasCase ? (x.myTurn ? t("Do now") : t("Open⟦action⟧")) : board?.viewer.isApprover ? t("Start & assign") : t("Start⟦action⟧"));
+    x.hasCase ? tr(x.next) : toContract(x) ? t("Open the contract") : x.days <= 120 ? (canAssign ? t("Start & assign") : t("Start the renewal")) : t("To start by {date}", { date: x.startBy });
+  const cta = (x: RenewalsRow): string =>
+    x.hasCase ? (x.myTurn ? t("Do now") : t("Open⟦action⟧")) : toContract(x) ? t("Open the contract") : canAssign ? t("Start & assign") : t("Start⟦action⟧");
+  /** The phase line of a row without a case whose notice deadline passed (what happened by itself). */
+  const situation = (x: RenewalsRow): string | null => {
+    if (x.hasCase) return null;
+    switch (x.termStatus) {
+      case "rolledOver":
+        return x.renewedOn
+          ? t(x.renewedOnPassed ? "Renewed by itself on {date} · next notice by {notice}" : "Renews by itself on {date} · next notice by {notice}", { date: x.renewedOn, notice: x.notice })
+          : t("Renewed by itself");
+      case "ending":
+        return t("Ends on {date} without renewal", { date: x.end ?? "" });
+      case "expired":
+        return t("Expired on {date}", { date: x.end ?? "" });
+      case "needsReview":
+        return t("Renewal term to confirm");
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="r4-page" data-screen-label="Pratiche">
@@ -87,13 +110,13 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
                   {x.supplier} <span>{x.contract}</span>
                 </div>
                 <div className="r4-phase">
-                  {x.hasCase ? t("Phase {n}/6 · {label}", { n: x.stage + 1, label: tr(x.stageLabel) }) : t("Not started")} · <strong>{next(x)}</strong>
+                  {situation(x) ?? (x.hasCase ? t("Phase {n}/6 · {label}", { n: x.stage + 1, label: tr(x.stageLabel) }) : t("Not started"))} · <strong>{next(x)}</strong>
                 </div>
               </div>
               <div className="r4-notice">
-                <div className="r4-label">{t("Notice by")}</div>
-                <div className={x.days <= 30 ? "r4-days is-urgent" : "r4-days"}>
-                  {x.notice} · {t("{n} d", { n: x.days })}
+                <div className="r4-label">{x.termStatus === "rolledOver" ? t("Next notice by") : x.days < 0 ? t("Notice deadline passed on") : t("Notice by")}</div>
+                <div className={x.days >= 0 && x.days <= 30 ? "r4-days is-urgent" : "r4-days"}>
+                  {x.days >= 0 ? `${x.notice} · ${t("{n} d", { n: x.days })}` : x.notice}
                 </div>
               </div>
               <div className="r4-owner">{x.owner ? `${t("Owner⟦short⟧")} ${x.owner.split(" ")[0]}` : t("No owner")}</div>

@@ -29,6 +29,9 @@ export function useCaseNavigation(apiClient: ApiClient, tenantId: string | undef
         navigate(`/quotes/${item.quoteId}`);
       } else if (item.kind === "review" && item.documentId) {
         navigate(`/contracts/review/${item.documentId}`);
+      } else if (item.kind === "confirmTerm" && item.contractId) {
+        // The renewal term is confirmed on the contract (Contract 360), where the dates are.
+        navigate(`/contracts/${item.contractId}`);
       } else if (item.kind === "unassigned" && item.contractId) {
         await openContract(item.contractId, viewer.isApprover ? (assignee?.userId ?? viewer.userId) : viewer.userId);
       } else if (item.caseId) {
