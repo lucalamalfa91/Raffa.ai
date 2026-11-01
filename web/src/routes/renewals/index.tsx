@@ -116,7 +116,13 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
               <div className="r4-notice">
                 <div className="r4-label">{x.termStatus === "rolledOver" ? t("Next notice by") : x.days < 0 ? t("Notice deadline passed on") : t("Notice by")}</div>
                 <div className={x.days >= 0 && x.days <= 30 ? "r4-days is-urgent" : "r4-days"}>
-                  {x.days >= 0 ? `${x.notice} · ${t("{n} d", { n: x.days })}` : x.notice}
+                  {x.days >= 0 ? (
+                    <>
+                      {x.notice} · {t("{n} d", { n: x.days })}
+                    </>
+                  ) : (
+                    x.notice
+                  )}
                 </div>
               </div>
               <div className="r4-owner">{x.owner ? `${t("Owner⟦short⟧")} ${x.owner.split(" ")[0]}` : t("No owner")}</div>

@@ -140,7 +140,13 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
                 {row.termStatus === "rolledOver" ? t("Next notice by") : row.noticeDays < 0 ? t("Notice deadline passed on") : t("Notice by")}
               </div>
               <div className={row.noticeDays >= 0 && row.noticeDays <= URGENT_NOTICE_DAYS ? "c4-row-notice-value c4-urgent" : "c4-row-notice-value"}>
-                {row.noticeDays >= 0 ? `${row.noticeDeadline} · ${row.noticeDays} ${t("d⟦days⟧")}` : row.noticeDeadline}
+                {row.noticeDays >= 0 ? (
+                  <>
+                    {row.noticeDeadline} · {row.noticeDays} {t("d⟦days⟧")}
+                  </>
+                ) : (
+                  row.noticeDeadline
+                )}
               </div>
               {row.termStatus === "rolledOver" && row.renewedOn ? (
                 <div className="c4-row-renewed">

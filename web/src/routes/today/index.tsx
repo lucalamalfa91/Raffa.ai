@@ -245,7 +245,13 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
               <div className="o4-due">
                 <span>{f.dueLabel ? tr(f.dueLabel) : t("Notice deadline")}</span>{" "}
                 <strong className={fDays !== null && fDays <= 30 ? "is-urgent" : undefined}>
-                  {fDays !== null ? `${f.due} · ${t("{n} days", { n: fDays })}` : f.due}
+                  {fDays !== null ? (
+                    <>
+                      {f.due} · {t("{n} days", { n: fDays })}
+                    </>
+                  ) : (
+                    f.due
+                  )}
                 </strong>
               </div>
               <div className="o4-actions">
