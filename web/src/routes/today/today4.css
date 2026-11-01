@@ -9,7 +9,7 @@
 }
 .v4 h6.o4-role { color: var(--color-neutral-600); margin-bottom: 4px; }
 .v4 h2.o4-title { margin: 0 0 6px; }
-.o4-sub { font-size: 14px; color: var(--color-neutral-700); text-wrap: pretty; }
+.o4-sub { font-size: 15px; color: var(--color-neutral-700); text-wrap: pretty; }
 
 /* — Punto zero — */
 .o4-zero {
@@ -33,9 +33,9 @@
 .o4-zero-step { border-top: 3px solid var(--color-divider); padding: 8px 8px 0 0; --o4-fg: var(--color-neutral-500); --o4-w: 600; }
 .o4-zero-step.is-now { border-top-color: var(--color-accent); --o4-fg: var(--color-accent-700); --o4-w: 800; }
 .o4-zero-step.is-done { border-top-color: var(--color-text); --o4-fg: var(--color-text); }
-.o4-zero-n { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--o4-fg); }
+.o4-zero-n { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--o4-fg); }
 .o4-zero-t { font-family: var(--font-heading); font-weight: var(--o4-w); font-size: 15px; margin-top: 3px; color: var(--o4-fg); }
-.o4-zero-h { font-size: 12px; color: var(--color-neutral-600); margin-top: 3px; text-wrap: pretty; }
+.o4-zero-h { font-size: 13px; color: var(--color-neutral-600); margin-top: 3px; text-wrap: pretty; }
 .o4-zero-cta {
   display: flex;
   gap: 12px;
@@ -45,7 +45,7 @@
   border-top: 1px solid var(--color-divider);
 }
 .v4 .o4-zero-cta .btn { min-height: 46px; font-size: 15px; padding: 0 20px; }
-.o4-note { font-size: 12px; color: var(--color-neutral-600); }
+.o4-note { font-size: 13px; color: var(--color-neutral-600); }
 
 /* — Focus — */
 .o4-dots { display: flex; gap: 6px; margin: 22px 0 14px; }
@@ -70,7 +70,7 @@
   display: flex;
   gap: 6px 14px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-neutral-600);
@@ -86,14 +86,14 @@
 .o4-supplier span {
   font-family: var(--font-body);
   font-weight: 400;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--color-neutral-600);
   letter-spacing: 0;
 }
 .o4-ftitle { font-size: 17px; font-weight: 700; line-height: 1.3; text-wrap: pretty; }
-.o4-why { font-size: 14px; color: var(--color-neutral-700); text-wrap: pretty; max-width: 64ch; }
-.o4-due { font-size: 13px; }
-.o4-due span { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600); }
+.o4-why { font-size: 15px; color: var(--color-neutral-700); text-wrap: pretty; max-width: 64ch; }
+.o4-due { font-size: 14px; }
+.o4-due span { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600); }
 .o4-due .is-urgent { color: var(--color-accent); }
 .o4-actions {
   display: flex;
@@ -106,12 +106,12 @@
 }
 .v4 .o4-actions .o4-btn-main { min-height: 46px; font-size: 15px; padding: 0 20px; }
 .v4 .o4-actions .o4-btn-alt { min-height: 46px; }
-.v4 .o4-actions .o4-btn-later { font-size: 13px; }
+.v4 .o4-actions .o4-btn-later { font-size: 14px; }
 
 /* — Poi, per te / In attesa di altri — */
 .o4-side { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
 .o4-side-head {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-neutral-600);
@@ -124,26 +124,26 @@
   align-items: baseline;
   padding: 10px 4px 10px 0;
   border-bottom: 1px solid var(--color-divider);
-  font-size: 13px;
+  font-size: 14px;
 }
 .o4-row.is-team { color: var(--color-neutral-700); }
 .o4-row-sup { font-family: var(--font-heading); font-weight: 800; font-size: 15px; flex: 0 0 100px; color: var(--color-text); }
 .o4-row-title { flex: 1; min-width: 0; text-wrap: pretty; }
 .o4-row-days { font-weight: 600; white-space: nowrap; }
 .o4-row-days.is-urgent { color: var(--color-accent); }
-.o4-row-who { white-space: nowrap; font-size: 12px; }
-.o4-empty { font-size: 13px; color: var(--color-neutral-600); padding: 10px 0; }
+.o4-row-who { white-space: nowrap; font-size: 13px; }
+.o4-empty { font-size: 14px; color: var(--color-neutral-600); padding: 10px 0; }
 
 /* — calm state — */
 .o4-calm { border-top: 2px solid var(--color-text); margin-top: 24px; padding-top: 20px; max-width: 640px; }
 .o4-calm-head { font-family: var(--font-heading); font-weight: 800; font-size: 24px; line-height: 1.15; }
-.o4-calm-line { font-size: 14px; color: var(--color-neutral-700); margin-top: 8px; text-wrap: pretty; }
+.o4-calm-line { font-size: 15px; color: var(--color-neutral-700); margin-top: 8px; text-wrap: pretty; }
 .o4-calm-actions { display: flex; gap: 10px; margin-top: 16px; }
 
 /* — Rimandate — */
 .o4-snoozed { margin-top: 28px; }
 .o4-snoozed-head {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-neutral-600);
@@ -156,7 +156,13 @@
   align-items: baseline;
   padding: 10px 0;
   border-bottom: 1px solid var(--color-divider);
-  font-size: 13px;
+  font-size: 14px;
 }
 .o4-snoozed-row span { color: var(--color-neutral-700); }
-.v4 .o4-snoozed-row .btn { margin-left: auto; padding: 0; font-size: 12px; }
+.v4 .o4-snoozed-row .btn { margin-left: auto; padding: 0; font-size: 13px; }
+
+/* "Per tua informazione": a contract that renewed by itself -- information, not an action. */
+.o4-info { margin-top: 28px; }
+.o4-info-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.o4-snoozed-row .o4-info-title { color: var(--color-neutral-900); font-weight: 600; }
+.o4-snoozed-row .o4-info-why { color: var(--color-neutral-600); font-size: 13px; line-height: 1.45; }

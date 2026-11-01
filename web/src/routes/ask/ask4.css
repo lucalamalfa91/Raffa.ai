@@ -28,15 +28,15 @@
   gap: 8px;
 }
 .k6-rail-title {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-neutral-600);
 }
-.v4 .btn.k6-new { font-size: 12px; min-height: 30px; padding: 0 10px; white-space: nowrap; flex: none; }
+.v4 .btn.k6-new { font-size: 13px; min-height: 30px; padding: 0 10px; white-space: nowrap; flex: none; }
 .k6-group-label {
   padding: 14px 18px 4px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-neutral-600);
@@ -57,11 +57,11 @@
 }
 .v4 .k6-conv:hover { background: var(--color-neutral-200); }
 .v4 .k6-conv.is-current { border-left-color: var(--color-accent); background: var(--color-neutral-200); }
-.k6-conv-title { font-weight: 400; font-size: 13px; line-height: 1.3; text-wrap: pretty; }
+.k6-conv-title { font-weight: 400; font-size: 14px; line-height: 1.3; text-wrap: pretty; }
 .k6-conv.is-current .k6-conv-title { font-weight: 700; }
-.k6-conv-meta { font-size: 11px; color: var(--color-neutral-600); }
-.k6-group-empty { padding: 8px 18px; font-size: 12px; color: var(--color-neutral-600); }
-.v4 .btn.k6-archive-toggle { margin: 12px 18px 0; padding: 0; font-size: 12px; align-self: flex-start; }
+.k6-conv-meta { font-size: 12px; color: var(--color-neutral-600); }
+.k6-group-empty { padding: 8px 18px; font-size: 13px; color: var(--color-neutral-600); }
+.v4 .btn.k6-archive-toggle { margin: 12px 18px 0; padding: 0; font-size: 13px; align-self: flex-start; }
 
 /* — right: the conversation — */
 .k6-pane { display: flex; flex-direction: column; min-height: 0; }
@@ -86,10 +86,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.k6-pane-meta { font-size: 11px; color: var(--color-neutral-600); }
-.v4 .btn.k6-pane-archive { margin-left: auto; padding: 0; font-size: 12px; }
+.k6-pane-meta { font-size: 12px; color: var(--color-neutral-600); }
+.v4 .btn.k6-pane-archive { margin-left: auto; padding: 0; font-size: 13px; }
 .k6-scroll { flex: 1; overflow: auto; padding: 24px 40px; min-height: 0; }
-.k6-thread { max-width: 900px; display: flex; flex-direction: column; gap: 22px; }
+.k6-thread { max-width: none; display: flex; flex-direction: column; gap: 22px; }
 
 .k6-empty-title {
   font-family: var(--font-heading);
@@ -98,7 +98,7 @@
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
-.k6-empty-sub { font-size: 13px; color: var(--color-neutral-700); margin-top: 8px; max-width: 64ch; text-wrap: pretty; }
+.k6-empty-sub { font-size: 14px; color: var(--color-neutral-700); margin-top: 8px; max-width: 64ch; text-wrap: pretty; }
 .k6-intents {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -117,17 +117,17 @@
 }
 .v4 .k6-intent:hover { background: var(--color-neutral-200); }
 .k6-intent-label { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
-.k6-intent-hint { font-size: 12px; color: var(--color-neutral-700); margin-top: 4px; text-wrap: pretty; }
+.k6-intent-hint { font-size: 13px; color: var(--color-neutral-700); margin-top: 4px; text-wrap: pretty; }
 
 .k6-pick { border: 2px solid var(--color-text); padding: 16px 20px; }
 .k6-pick-title { font-family: var(--font-heading); font-weight: 800; font-size: 17px; }
 .k6-pick-opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.v4 .btn.k6-pick-opt { font-size: 13px; }
-.v4 .btn.k6-pick-cancel { font-size: 12px; }
+.v4 .btn.k6-pick-opt { font-size: 14px; }
+.v4 .btn.k6-pick-cancel { font-size: 13px; }
 
-.k6-qa { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 16px; font-size: 14px; }
+.k6-qa { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 16px; font-size: 15px; }
 .k6-qa-by {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-neutral-600);
@@ -143,16 +143,16 @@
   line-height: 1.35;
   font-family: var(--font-heading);
 }
-.k6-qa.is-raffa .k6-qa-text { font-weight: 400; font-size: 14px; font-family: var(--font-body); }
-.k6-qa-src { font-size: 12px; color: var(--color-neutral-600); margin-top: 6px; }
-.v4 .btn.k6-qa-cta { font-size: 12px; margin-top: 10px; }
+.k6-qa.is-raffa .k6-qa-text { font-weight: 400; font-size: 15px; font-family: var(--font-body); }
+.k6-qa-src { font-size: 13px; color: var(--color-neutral-600); margin-top: 6px; }
+.v4 .btn.k6-qa-cta { font-size: 13px; margin-top: 10px; }
 
 /* — composer (the one shadow of the design) — */
 .k6-composer-wrap { flex: none; padding: 8px 40px 16px; }
 .k6-composer {
   display: flex;
   gap: 8px;
-  max-width: 900px;
+  max-width: none;
   border: 1px solid rgba(32, 30, 29, 0.2);
   padding: 6px 6px 6px 14px;
   background: #fff;
@@ -160,4 +160,4 @@
 }
 .v4 .input.k6-composer-input { flex: 1; border: 0; background: transparent; font-size: 15px; min-height: 38px; }
 .v4 .btn.k6-composer-send { min-height: 38px; }
-.k6-composer-foot { font-size: 11px; color: var(--color-neutral-600); margin-top: 6px; }
+.k6-composer-foot { font-size: 12px; color: var(--color-neutral-600); margin-top: 6px; }

@@ -405,6 +405,13 @@ public sealed class FixtureAiGateway(
         {
             payload = BuildFixtureInvestigation(input);
         }
+        else if (string.Equals(request.AgentName, ContractSituationAgentName, StringComparison.OrdinalIgnoreCase))
+        {
+            // The situation assessor's double: Raffa's own deterministic wording ("rules"), echoed —
+            // so fixture mode and tests read exactly the deterministic copy, through the guard.
+            using var doc = JsonDocument.Parse(request.InputJson);
+            payload = doc.RootElement.TryGetProperty("rules", out var rules) ? rules.GetRawText() : "{}";
+        }
         else if (isPlanner)
         {
             payload = BuildFixtureOfferPlan(items);
@@ -597,6 +604,9 @@ public sealed class FixtureAiGateway(
     /// <summary>ADR-031's capability investigator (<c>Raffa.AiFlows.CapabilityGaps
     /// .CapabilityInvestigatorAgent.Name</c>).</summary>
     private const string CapabilityInvestigatorAgentName = "capability-investigator";
+
+    /// <summary>The contract situation assessor (<c>Raffa.AiFlows.ContractSituation.ContractSituationAgent.Name</c>).</summary>
+    private const string ContractSituationAgentName = "contract-situation-assessor";
 
     // The investigator double's one discovered gap: a request (a verb or "can you") for a
     // deliverable no screen produces — a report, a presentation, slides, a dashboard, a chart.

@@ -58,3 +58,12 @@ Every screen in `screenshots/` (names = golden names), in IT; plus EN for *Oggi*
 3. Copy matches `COPY-CATALOGUE.md` (IT and EN).
 4. Behaviour matches the flow in `parity/flow.ts` end to end, including the max-3-buttons rule.
 5. No deviation from the reference. B3 and B4 (see `DESIGN-GAPS.md`) are already fixed in the reference itself.
+
+## Approved deviations (product owner, after the 4.0 release)
+The app differs from the prototype only by these rules. `web/parity/deviations.ts` applies the same rules to the prototype before the goldens are captured, so parity still proves "prototype + approved deviations" pixel for pixel.
+
+| # | Rule | Why |
+|---|---|---|
+| D1 | Body text in **Inter** (`--font-body`); headings stay Archivo 800. | Archivo is hard to read at 10–13px. |
+| D2 | Every font size up to 14px is **one pixel larger** (10→11 … 14→15, root 15px). | Readability, without changing the hierarchy. |
+| D3 | No page **max-width at or above 900px** (1100/1400/900): screens use the whole window, with or without the Guida Raffa panel. Text measures (`ch`) and small blocks (<900px) are kept. | Use the screen width; the layout organises better on large windows. |

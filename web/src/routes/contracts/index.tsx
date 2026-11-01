@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { ApiClient, ContractListRowV4Body, ContractListV4Body } from "../../api/client";
 import { useGuide } from "../../components/shell/guide";
 import { useI18n } from "../../i18n/I18nProvider";
-import { chfK, URGENT_NOTICE_DAYS, useTenantId } from "./contracts4";
+import { chfK, CONTRACTS_CHANGED_EVENT, URGENT_NOTICE_DAYS, useTenantId } from "./contracts4";
 import { reviewPath, useContractUpload } from "./useContractUpload";
 import "./contracts4.css";
 
@@ -16,6 +16,8 @@ const STATUS_LABEL: Record<ContractListRowV4Body["status"], string> = {
   caseOpen: "Case open",
   renewed: "Renewed",
   terminated: "Terminated",
+  autoRenewed: "Renewed automatically",
+  expired: "Expired",
 };
 
 /** While a document is being read the banner follows it. */
@@ -50,7 +52,14 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
     void load();
   }, [load]);
 
-  const reading = list?.document?.status === "processing";
+  // Re-read after uploads (one per file of a bulk upload) and validations.
+  useEffect(() => {
+    const reload = () => void load();
+    window.addEventListener(CONTRACTS_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(CONTRACTS_CHANGED_EVENT, reload);
+  }, [load]);
+
+  const reading = list?.document?.status === "processing" || (list?.document?.reading ?? 0) > 0;
   useEffect(() => {
     if (!reading) return undefined;
     const timer = window.setInterval(() => void load(), POLL_MS);
@@ -87,6 +96,32 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
         </button>
       </div>
 
+      {upload.bulk ? (
+        <div className="c4-banner c4-bulk" role="status" aria-live="polite">
+          <span>
+            {upload.bulk.finished ? (
+              <strong>{t("{n} files uploaded", { n: upload.bulk.uploaded })}</strong>
+            ) : (
+              <strong>{t("Uploading {done} of {total}", { done: upload.bulk.done, total: upload.bulk.total })}</strong>
+            )}
+            {upload.bulk.duplicates > 0 ? <> · {t("{n} already uploaded", { n: upload.bulk.duplicates })}</> : null}
+            {upload.bulk.failed.length > 0 ? (
+              <> · <span className="c4-bulk-failed" title={upload.bulk.failed.join("\n")}>{t("{n} did not go through", { n: upload.bulk.failed.length })}</span></>
+            ) : null}
+            {upload.bulk.finished ? <> · {t("Raffa reads them one after the other; you verify only the doubtful fields.")}</> : null}
+          </span>
+          {upload.bulk.finished ? (
+            <button type="button" className="btn btn-ghost c4-banner-cta" onClick={upload.dismissBulk}>
+              {t("Close")}
+            </button>
+          ) : (
+            <span className="c4-bulk-bar" aria-hidden="true">
+              <span style={{ width: `${Math.round((upload.bulk.done / Math.max(upload.bulk.total, 1)) * 100)}%` }} />
+            </span>
+          )}
+        </div>
+      ) : null}
+
       {doc ? (
         <div
           className="r-row c4-banner"
@@ -96,10 +131,20 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
           onKeyDown={(e) => onKey(e, () => navigate(reviewPath(doc.documentId)))}
         >
           <span>
-            <strong>{doc.file}</strong> ·{" "}
-            {doc.status === "processing"
-              ? t("being read…")
-              : t(doc.flagged === 1 ? "1 field to verify before use" : "{n} fields to verify before use", { n: doc.flagged })}
+            {(doc.reading ?? 0) + (doc.toReview ?? 0) > 1 ? (
+              <>
+                <strong>{t("{n} documents being read", { n: doc.reading ?? 0 })}</strong> ·{" "}
+                {t("{n} to verify", { n: doc.toReview ?? 0 })}
+                {doc.status === "review" ? <> · {t("next: {file}", { file: doc.file })}</> : null}
+              </>
+            ) : (
+              <>
+                <strong>{doc.file}</strong> ·{" "}
+                {doc.status === "processing"
+                  ? t("being read…")
+                  : t(doc.flagged === 1 ? "1 field to verify before use" : "{n} fields to verify before use", { n: doc.flagged })}
+              </>
+            )}
           </span>
           <span className="c4-banner-cta">{t(doc.status === "processing" ? "See" : "Verify now")} →</span>
         </div>
@@ -134,10 +179,23 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
               <div className="c4-row-name">{row.name}</div>
             </div>
             <div className="c4-row-notice">
-              <div className="c4-label">{t("Notice by")}</div>
-              <div className={row.noticeDays <= URGENT_NOTICE_DAYS ? "c4-row-notice-value c4-urgent" : "c4-row-notice-value"}>
-                {row.noticeDeadline} · {row.noticeDays} {t("d⟦days⟧")}
+              <div className="c4-label">
+                {row.termStatus === "rolledOver" ? t("Next notice by") : row.noticeDays < 0 ? t("Notice deadline passed on") : t("Notice by")}
               </div>
+              <div className={row.noticeDays >= 0 && row.noticeDays <= URGENT_NOTICE_DAYS ? "c4-row-notice-value c4-urgent" : "c4-row-notice-value"}>
+                {row.noticeDays >= 0 ? (
+                  <>
+                    {row.noticeDeadline} · {row.noticeDays} {t("d⟦days⟧")}
+                  </>
+                ) : (
+                  row.noticeDeadline
+                )}
+              </div>
+              {row.termStatus === "rolledOver" && row.renewedOn ? (
+                <div className="c4-row-renewed">
+                  {t(row.renewedOnPassed ? "Renewed by itself on {date}" : "Renews by itself on {date}", { date: row.renewedOn })}
+                </div>
+              ) : null}
             </div>
             <div className="c4-row-end">
               <div className="c4-label">{t("Contract end")}</div>

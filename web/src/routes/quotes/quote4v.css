@@ -1,7 +1,7 @@
 /* Offerta (AskRaffa V4.dc.html lines 284-296): the prototype's inline styles as classes. */
 
-.q6-offer { padding: 22px 40px 48px; width: 100%; max-width: 1100px; box-sizing: border-box; }
-.v4 .btn.q6-back { padding: 0; font-size: 12px; margin-bottom: 8px; white-space: nowrap; }
+.q6-offer { padding: 22px 40px 48px; width: 100%; max-width: none; box-sizing: border-box; }
+.v4 .btn.q6-back { padding: 0; font-size: 13px; margin-bottom: 8px; white-space: nowrap; }
 .v4 h6.q6-meta { color: var(--color-neutral-600); margin-bottom: 4px; text-transform: none; letter-spacing: 0; }
 .v4 h2.q6-title { margin: 0; }
 
@@ -10,7 +10,7 @@
   flex: 1;
   border-top: 3px solid var(--color-divider);
   padding: 6px 8px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   color: inherit;
 }
@@ -27,14 +27,14 @@
   background: #fff;
 }
 .q6-kicker {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-accent-700);
   font-weight: 700;
 }
 .q6-head { font-family: var(--font-heading); font-weight: 800; font-size: 22px; line-height: 1.15; margin-top: 4px; }
-.q6-sub { font-size: 13px; color: var(--color-neutral-700); margin-top: 4px; text-wrap: pretty; }
+.q6-sub { font-size: 14px; color: var(--color-neutral-700); margin-top: 4px; text-wrap: pretty; }
 
 /* step 1 */
 .q6-line {
@@ -43,9 +43,9 @@
   gap: 12px;
   padding: 8px 0;
   border-bottom: 1px solid var(--color-divider);
-  font-size: 13px;
+  font-size: 14px;
 }
-.q6-stated { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--color-divider); font-size: 13px; }
+.q6-stated { display: flex; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--color-divider); font-size: 14px; }
 .q6-stated-k { color: var(--color-neutral-600); flex: 0 0 160px; }
 .q6-stated-v.is-missing { color: var(--color-accent-700); }
 .v4 .btn.q6-next { min-height: 44px; }
@@ -58,26 +58,26 @@
   border-top: 2px solid var(--color-text);
 }
 .q6-cell { padding: 10px 12px 10px 0; }
-.q6-cell-k { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600); }
+.q6-cell-k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600); }
 .q6-cell-v { font-family: var(--font-heading); font-weight: 800; font-size: 20px; margin-top: 3px; color: inherit; }
 .q6-cell-v.is-alert { color: var(--color-accent-700); }
-.q6-cell-sub { font-size: 11px; color: var(--color-neutral-600); }
+.q6-cell-sub { font-size: 12px; color: var(--color-neutral-600); }
 .q6-point {
   display: flex;
   gap: 12px;
   align-items: baseline;
   padding: 8px 0;
   border-bottom: 1px solid var(--color-divider);
-  font-size: 13px;
+  font-size: 14px;
 }
 .q6-dot { width: 8px; height: 8px; background: var(--color-text); flex: none; position: relative; top: 1px; }
 .q6-dot.is-alert { background: var(--color-accent); }
 .q6-point-text { flex: 1; text-wrap: pretty; }
-.q6-point-src { font-size: 11px; color: var(--color-neutral-600); white-space: nowrap; }
-.q6-missing { font-size: 13px; color: var(--color-accent-700); }
+.q6-point-src { font-size: 12px; color: var(--color-neutral-600); white-space: nowrap; }
+.q6-missing { font-size: 14px; color: var(--color-accent-700); }
 
 /* step 3 */
 .q6-verdict { font-size: 16px; line-height: 1.45; text-wrap: pretty; }
 .q6-choices { display: flex; gap: 10px; flex-wrap: wrap; }
-.v4 .btn.q6-choice { min-height: 44px; font-size: 13px; }
-.q6-status { font-size: 12px; color: var(--color-neutral-600); }
+.v4 .btn.q6-choice { min-height: 44px; font-size: 14px; }
+.q6-status { font-size: 13px; color: var(--color-neutral-600); }

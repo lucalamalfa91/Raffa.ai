@@ -99,8 +99,9 @@ public static class ResultsReportBuilder
             .ToDictionary(g => g.Key, g => g.Last());
         bool IsClosed(Guid contractId) => caseByContract.TryGetValue(contractId, out var c) && !c.IsOpen;
 
+        // An expired contract (no automatic renewal, end passed) has no objective left to set.
         var open = validated
-            .Where(c => !IsClosed(c.ContractId))
+            .Where(c => !IsClosed(c.ContractId) && c.TermStatus != "expired")
             .Select(c =>
             {
                 caseByContract.TryGetValue(c.ContractId, out var cc);
@@ -187,7 +188,7 @@ public static class ResultsReportBuilder
         }
 
         var nextNotice = validated
-            .Where(c => !IsClosed(c.ContractId))
+            .Where(c => !IsClosed(c.ContractId) && c.Days >= 0)
             .OrderBy(c => c.Days)
             .Select(c => c.NoticeDeadline is { } d ? new ResultsNextNotice(c.ContractId, c.Supplier, d, c.Days) : null)
             .FirstOrDefault(n => n is not null);

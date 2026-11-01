@@ -12,6 +12,10 @@
 .v4 {
   --color-bg: #ffffff;
   --color-surface: #f3f2f2;
+  /* Approved deviation D1 (PARITY.md): body text in Inter, clearer than Archivo at small sizes;
+     headings stay Archivo 800. D2: every size up to 14px is one pixel larger. D3: no page
+     max-width at or above 900px — screens use the whole window. */
+  --font-body: "Inter", system-ui, sans-serif;
   width: 100vw;
   height: 100vh;
   display: flex;
@@ -19,7 +23,7 @@
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
 }
 html:has(.v4),
@@ -48,7 +52,7 @@ html:has(.v4) #root {
 .v4 h3 { font-size: 25px; }
 .v4 h4 { font-size: 20px; }
 .v4 h5 { font-size: 16px; }
-.v4 h6 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+.v4 h6 { font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; }
 .v4 p { margin: 0 0 var(--space-3); }
 .v4 .text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 .v4 :focus { outline: none; }
@@ -61,7 +65,7 @@ html:has(.v4) #root {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   cursor: pointer; text-decoration: none; text-align: center;
   font-family: var(--font-heading); font-weight: 800;
-  font-size: 14px; line-height: 1.2; color: var(--color-text);
+  font-size: 15px; line-height: 1.2; color: var(--color-text);
   background: transparent; border: 1px solid transparent;
   padding: var(--space-2) calc(var(--space-3) * 1.2);
   border-radius: 0;
@@ -83,12 +87,12 @@ html:has(.v4) #root {
 
 /* — forms — */
 .v4 .field > label {
-  display: block; font-size: 12px; margin-bottom: 5px; font-weight: 400;
+  display: block; font-size: 13px; margin-bottom: 5px; font-weight: 400;
   color: color-mix(in srgb, var(--color-text) 70%, transparent);
 }
 .v4 .input {
   width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
-  font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
+  font-size: 15px; color: var(--color-text); caret-color: var(--color-accent);
   background: var(--color-surface);
   border: 1px solid var(--color-divider); border-radius: 0;
 }
@@ -101,17 +105,17 @@ html:has(.v4) #root {
   display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-3); border: 0; border-radius: 0; background: var(--color-surface);
 }
-.v4 .card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
+.v4 .card-kicker { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
 .v4 .card-title { font-family: var(--font-heading); font-weight: 800; font-size: 17px; line-height: 1.2; }
-.v4 .card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
+.v4 .card-body { margin: 0; font-size: 14px; opacity: 0.8; flex: 1; }
 .v4 .card-meta {
-  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  display: flex; align-items: center; gap: 6px; font-size: 12px;
   color: color-mix(in srgb, var(--color-text) 50%, transparent);
 }
 
 /* — tags — */
 .v4 .tag {
-  display: inline-flex; align-items: center; gap: 0; font-size: 11px; font-weight: 400;
+  display: inline-flex; align-items: center; gap: 0; font-size: 12px; font-weight: 400;
   line-height: inherit; letter-spacing: 0.02em; padding: 3px 10px;
   border: 0; border-radius: 0; white-space: normal;
 }
@@ -121,9 +125,9 @@ html:has(.v4) #root {
 .v4 .tag-outline { background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent); }
 
 /* — tables — */
-.v4 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.v4 .table { width: 100%; border-collapse: collapse; font-size: 15px; }
 .v4 .table th {
-  text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  text-align: left; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
   color: color-mix(in srgb, var(--color-text) 60%, transparent);
   padding: var(--space-2); border-bottom: 2px solid var(--color-divider);
 }

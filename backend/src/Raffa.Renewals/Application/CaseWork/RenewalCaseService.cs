@@ -72,7 +72,8 @@ public sealed partial class RenewalCaseService(
     IOpenQuoteDecisions quoteDecisions,
     IDocumentsNeedingReview documentsNeedingReview,
     IAuditWriter auditWriter,
-    IClock clock)
+    IClock clock,
+    IContractSituationAssessor? situationAssessor = null)
 {
     public const int SnoozeDays = 3;
 
@@ -120,7 +121,7 @@ public sealed partial class RenewalCaseService(
             return CaseResult.NotFound("No validated contract with this id.");
         }
 
-        var cf = CaseFactsMapper.ToCaseFacts(facts);
+        var cf = CaseFactsMapper.ToCaseFacts(facts, Today);
         var existing = await OpenRecordAsync(tenantId, contractId, ct).ConfigureAwait(false);
         if (existing is not null)
         {
@@ -400,7 +401,7 @@ public sealed partial class RenewalCaseService(
     private async Task<CaseContractFacts?> FactsAsync(TenantId tenantId, RenewalCaseRecord record, CancellationToken ct)
     {
         var facts = await factsReader.GetAsync(tenantId, record.ContractId, ct).ConfigureAwait(false);
-        return facts is null ? null : CaseFactsMapper.ToCaseFacts(facts);
+        return facts is null ? null : CaseFactsMapper.ToCaseFacts(facts, Today);
     }
 
     /// <summary>Creates the record of a new case (also used by the fixture seeder).</summary>

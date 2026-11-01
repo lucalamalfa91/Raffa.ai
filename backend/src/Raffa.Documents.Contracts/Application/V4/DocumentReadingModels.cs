@@ -52,7 +52,9 @@ public sealed record DocumentReadingView(
     IReadOnlyList<ReadingField> Fields);
 
 /// <summary>The Contratti banner: a document being read or waiting for review.</summary>
-public sealed record DocumentAttention(Guid DocumentId, string File, string Status, int Flagged);
+/// <param name="Reading">Documents still being read (uploaded or processing) — a bulk upload shows them as one line.</param>
+/// <param name="ToReview">Documents waiting for the user's check of their doubtful fields.</param>
+public sealed record DocumentAttention(Guid DocumentId, string File, string Status, int Flagged, int Reading = 0, int ToReview = 0);
 
 /// <summary>The five reading stages (prototype <c>upload()</c>).</summary>
 public static class ReadingStages

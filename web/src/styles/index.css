@@ -16,7 +16,7 @@
  * precede all other rules, hence the empty-of-declarations import chain
  * below and why the actual token declarations must live in tokens.css.
  */
-@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Inter:wght@400;500;600;700;800&display=swap");
 @import "./tokens.css";
 @import "./base.css";
 @import "./components.css";

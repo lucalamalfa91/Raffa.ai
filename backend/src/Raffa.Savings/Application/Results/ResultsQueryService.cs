@@ -39,15 +39,22 @@ public sealed class ResultsQueryService(
         return facts
             .OrderBy(f => f.ValidatedAt)
             .ThenBy(f => f.FixtureId ?? int.MaxValue)
-            .Select(f => new ResultsContract(
-                f.ContractId,
-                f.Supplier,
-                f.Category,
-                f.Spend,
-                f.NoticeDeadline,
-                ResultsReportBuilder.DaysTo(f.NoticeDeadline, today, f.CancelDays),
-                f.Uplift,
-                string.Equals(f.Auto, "Yes", StringComparison.OrdinalIgnoreCase)))
+            .Select(f =>
+            {
+                // The effective term: a contract that renewed by itself is read on its next notice deadline.
+                var term = ContractTermCalculator.Compute(f, today);
+                var deadline = term.RolledOver ? term.NoticeDeadline : f.NoticeDeadline;
+                return new ResultsContract(
+                    f.ContractId,
+                    f.Supplier,
+                    f.Category,
+                    f.Spend,
+                    deadline,
+                    ResultsReportBuilder.DaysTo(deadline, today, f.CancelDays),
+                    f.Uplift,
+                    string.Equals(f.Auto, "Yes", StringComparison.OrdinalIgnoreCase),
+                    term.Status);
+            })
             .ToList();
     }
 

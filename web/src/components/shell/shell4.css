@@ -46,7 +46,7 @@
   padding: 16px 0 13px;
   font-family: var(--font-heading);
   font-weight: 800;
-  font-size: 14px;
+  font-size: 15px;
   line-height: normal;
   cursor: pointer;
   color: inherit;
@@ -60,7 +60,7 @@
 .v4 .v4-tab.is-active { border-bottom-color: var(--color-accent); }
 .v4-tab-badge {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--color-accent-700);
 }
@@ -69,7 +69,7 @@
   border: 1px solid var(--color-text);
   background: transparent;
   color: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: normal;
   padding: 6px 12px;
@@ -120,19 +120,19 @@
   border: 0;
   background: transparent;
   color: var(--color-neutral-400);
-  font-size: 12px;
+  font-size: 13px;
   line-height: normal;
   padding: 1px 6px;
   cursor: pointer;
 }
 .v4-guide-live { display: flex; flex-direction: column; gap: 16px; }
 .v4-guide-label {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-neutral-400);
 }
-.v4-guide-where { font-size: 14px; font-weight: 700; margin-top: 3px; }
+.v4-guide-where { font-size: 15px; font-weight: 700; margin-top: 3px; }
 .v4-guide-now {
   font-family: var(--font-heading);
   font-weight: 800;
@@ -142,16 +142,16 @@
   text-wrap: pretty;
 }
 .v4-guide-text {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   color: var(--color-neutral-300);
   margin-top: 3px;
   text-wrap: pretty;
 }
 /* .btn is declared in ds-modernist.css, which may load after this sheet: outrank it. */
-.v4 .btn.v4-guide-cta { font-size: 13px; }
+.v4 .btn.v4-guide-cta { font-size: 14px; }
 .v4-guide-foot {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-neutral-500);
   margin-top: auto;
   text-wrap: pretty;

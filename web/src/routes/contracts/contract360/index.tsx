@@ -27,7 +27,7 @@ const CHOICES: ReadonlyArray<{ value: DecisionPointChoice; label: string; record
  */
 export default function Contract360Route({ apiClient }: Contract360RouteProps) {
   const { contractId = "" } = useParams();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const navigate = useNavigate();
   const tenantId = useTenantId();
   const [contract, setContract] = useState<ContractV4Body | null>(null);
@@ -123,17 +123,28 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
     version: contract.version,
     value: chfK(contract.annualValue),
   });
+  // A term that rolled over by itself is shown on its effective dates, labelled as such; a passed
+  // deadline never shows a negative count.
+  const rolled = d.termStatus === "rolledOver";
+  const renewedLabel = d.renewedOn ? t(d.renewedOnPassed ? "Renewed by itself on {date}" : "Renews by itself on {date}", { date: d.renewedOn }) : "";
+  const a = contract.assessment;
   const dates = [
     {
-      label: t("Notice by"),
+      label: rolled ? t("Next notice by") : t("Notice by"),
       value: d.noticeDeadline,
-      sub: t("last day · in {n} days", { n: d.noticeDays }),
-      cls: d.noticeDays <= URGENT_NOTICE_DAYS ? "c4-urgent" : "",
+      sub: d.noticeDays >= 0 ? t("last day · in {n} days", { n: d.noticeDays }) : t("passed"),
+      cls: d.noticeDays >= 0 && d.noticeDays <= URGENT_NOTICE_DAYS ? "c4-urgent" : "",
     },
     {
       label: t("Contract end"),
       value: d.end,
-      sub: d.autoRenew ? t("then auto-renewal {n} months", { n: d.renewalMonths ?? 12 }) : t("no auto-renewal"),
+      sub: rolled
+        ? renewedLabel
+        : d.autoRenew
+          ? d.renewalMonths != null
+            ? t("then auto-renewal {n} months", { n: d.renewalMonths })
+            : t("then auto-renewal · term to confirm")
+          : t("no auto-renewal"),
       cls: "",
     },
     {
@@ -142,7 +153,7 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
       sub: t("if nothing is negotiated"),
       cls: d.uplift !== "0%" ? "c4-accent-text" : "",
     },
-    { label: t("Start date"), value: d.start, sub: t("current term"), cls: "" },
+    { label: t("Start date"), value: d.start, sub: rolled ? t("current term, renewed by itself") : t("current term"), cls: "" },
   ];
 
   return (
@@ -163,6 +174,14 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
           </div>
         ))}
       </div>
+
+      {a ? (
+        <div className={`c4-situation is-${a.urgency}`} data-screen-label="Situazione">
+          <div className="c4-label">{t("Situation")}</div>
+          <div className="c4-situation-head">{lang === "it" ? a.headline.it : a.headline.en}</div>
+          <div className="c4-situation-why">{lang === "it" ? a.why.it : a.why.en}</div>
+        </div>
+      ) : null}
 
       <div className="c4-decisions">
         <div className="c4-decisions-head">

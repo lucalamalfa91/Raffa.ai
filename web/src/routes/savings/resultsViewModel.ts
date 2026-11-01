@@ -158,8 +158,8 @@ export function buildResultsView(r: SavingsResultsBody, t: Translate): ResultsVi
             : t("Custom objective"),
     status: o.hasCase ? t("In negotiation") : t("To evaluate"),
     tag: o.hasCase ? "tag-accent" : "tag-outline",
-    days: t("{n} d to notice", { n: o.days }),
-    fg: o.days <= 45 ? ACCENT : INHERIT,
+    days: o.days >= 0 ? t("{n} d to notice", { n: o.days }) : t("notice passed"),
+    fg: o.days >= 0 && o.days <= 45 ? ACCENT : INHERIT,
     caseId: o.caseId ?? null,
     contractId: o.contractId,
   }));
@@ -249,8 +249,8 @@ export function buildGoalView(p: SavingsGoalProgressBody, t: Translate): GoalVie
       spend: k(r.spend),
       line: parts.join(" · "),
       ifHit: t("{amount} / year", { amount: k(r.ifHit) }),
-      days: String(r.days),
-      fg: r.days <= 45 ? ACCENT : INHERIT,
+      days: r.days >= 0 ? String(r.days) : "—",
+      fg: r.days >= 0 && r.days <= 45 ? ACCENT : INHERIT,
       cta: r.hasCase ? t("Open the case") : t("Start the renewal"),
       cls: r.primary ? "btn-primary" : "btn-secondary",
     };

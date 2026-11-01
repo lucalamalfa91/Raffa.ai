@@ -1963,12 +1963,18 @@ export interface ContractListRowV4Body {
   end: string;
   annualValue: number;
   currency: string;
-  status: "validated" | "caseOpen" | "renewed" | "terminated";
+  status: "validated" | "caseOpen" | "renewed" | "terminated" | "autoRenewed" | "expired";
   caseId: string | null;
+  /** active | rolledOver | ending | expired | needsReview | unknown. */
+  termStatus?: string;
+  /** When the term rolled over by itself: the day the current term began. */
+  renewedOn?: string | null;
+  renewedOnPassed?: boolean;
 }
 export interface ContractListV4Body {
   rows: ContractListRowV4Body[];
-  document: { documentId: string; file: string; status: "processing" | "review"; flagged: number } | null;
+  /** The banner: the first document to act on, plus how many are still being read / waiting for review (bulk uploads). */
+  document: { documentId: string; file: string; status: "processing" | "review"; flagged: number; reading?: number; toReview?: number } | null;
 }
 export interface OpenRenewalCaseRequest {
   contractId: string;

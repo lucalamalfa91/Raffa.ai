@@ -38,6 +38,12 @@ public sealed record ContractFacts
 
     /// <summary>"Yes" | "No" (auto-renewal).</summary>
     public string Auto { get; init; } = "";
+
+    /// <summary>Months each automatic renewal adds (null when the contract does not say, or for
+    /// facts written before it was carried; <see cref="ContractTermCalculator.RenewalMonths"/> then
+    /// reads the "Renewal term" key term).</summary>
+    public int? RenewalTermMonths { get; init; }
+
     public string Risk { get; init; } = "";
     public int Score { get; init; }
     public string Uplift { get; init; } = "";
