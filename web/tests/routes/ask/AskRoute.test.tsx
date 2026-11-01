@@ -12,6 +12,7 @@ import type {
   ListDocumentsResult,
   PostMessageResult,
 } from "../../../src/api/client";
+import { contractsV4Mocks } from "../../helpers/contractsV4Mocks";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 const CONVERSATION_ID = "22222222-2222-2222-2222-222222222222";
@@ -134,6 +135,7 @@ function validatedWorkspace(contractCount = 1) {
 
 function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),

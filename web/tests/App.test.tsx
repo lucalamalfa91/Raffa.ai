@@ -4,6 +4,7 @@ import { InteractionStatus } from "@azure/msal-browser";
 import App from "../src/App";
 import type { AppConfig } from "../src/config/appConfig";
 import type { ApiClient, HealthCheckResult } from "../src/api/client";
+import { contractsV4Mocks } from "./helpers/contractsV4Mocks";
 
 // App.tsx (task E06/F03/US01/T01 onward) is only the composition root: run
 // the /health proof-of-connectivity effect, then mount ./routes/signin
@@ -29,6 +30,7 @@ const appConfig: AppConfig = {
 /** src/api/client.ts (task E01/F07/US01/T02, extended by E06/F03/US01/T01) is exercised by its own tests/api/client.test.ts; here it is a plain mock so App's rendering is isolated. */
 function mockApiClient(result: Promise<HealthCheckResult> | HealthCheckResult): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn().mockReturnValue(Promise.resolve(result)),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),

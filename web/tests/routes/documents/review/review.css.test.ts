@@ -25,7 +25,7 @@ function ruleBodyFor(css: string, selector: string): string {
 }
 
 describe("review.css (E11/F07/US01/T01 -- list/legend/evidence-pane vs day1-demo.html)", () => {
-  const css = readSource("../../../../src/routes/contracts/review/review.css");
+  const css = readSource("../../../../src/routes/documents/review/review.css");
 
   it("no longer references the non-existent --space-5 token (scale skips 5/7)", () => {
     expect(css).not.toMatch(/--space-5/);

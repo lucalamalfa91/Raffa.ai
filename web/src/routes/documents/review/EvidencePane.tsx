@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { ContractFieldEvidenceBody } from "../../../api/client";
 import { CONTRACT_TYPE_OPTIONS, splitPassage, type CorrectableFieldName, type ReviewFieldRow } from "./reviewViewModel";
-import { getContractTypeLabel } from "../portfolioTableFormatters";
-import { DocumentViewerLink } from "../../documents/viewer/DocumentViewerOverlay";
-import { buildDocumentViewerHref } from "../../documents/viewer/documentViewerViewModel";
+import { getContractTypeLabel } from "../../contracts/portfolioTableFormatters";
+import { DocumentViewerLink } from "../viewer/DocumentViewerOverlay";
+import { buildDocumentViewerHref } from "../viewer/documentViewerViewModel";
 
 export interface EvidencePaneProps {
   /** `null` before any row has been selected (initial state). */

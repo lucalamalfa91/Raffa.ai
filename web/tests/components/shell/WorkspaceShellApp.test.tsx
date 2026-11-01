@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { ShellRoutes } from "../../../src/components/shell/WorkspaceShellApp";
 import type { WorkspaceRole } from "../../../src/components/shell/navItems";
 import type { ApiClient } from "../../../src/api/client";
+import { contractsV4Mocks } from "../../helpers/contractsV4Mocks";
 
 // Task E06/F05/US01/T01 (document-upload) / E06/F05/US02/T01
 // (document-status-readback) added the `documents` route's real content,
@@ -22,6 +23,7 @@ const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 
 function mockApiClient(): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),
@@ -221,7 +223,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/contracts");
 
-    expect(screen.getByRole("heading", { name: "Portfolio" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Contracts" })).toBeInTheDocument();
     expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
@@ -300,7 +302,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(screen.queryByText(/ships in epic-06\/feature-05-document-upload-ui/i)).not.toBeInTheDocument();
   });
 
-  it("renders the real Portfolio screen instead of a scaffold placeholder (task E07/F01/US01/T01)", () => {
+  it("renders the AskRaffa 4.0 Contratti screen at /contracts", () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -308,11 +310,11 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/contracts");
 
-    expect(screen.getByRole("heading", { name: "Portfolio" })).toBeInTheDocument();
-    expect(screen.queryByText(/ships in epic-07\/feature-01-portfolio-ui/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Contracts" })).toBeInTheDocument();
+    expect(document.querySelector('[data-screen-label="Contratti"]')).not.toBeNull();
   });
 
-  it("renders the real Contract 360 screen instead of a scaffold placeholder (task E07/F02/US01/T01)", async () => {
+  it("renders the AskRaffa 4.0 Contratto screen at /contracts/:contractId", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -320,12 +322,8 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/contracts/22222222-2222-2222-2222-222222222222");
 
-    // The shared mockApiClient() above resolves getContract360 to a 404 -- proves the real route
-    // (which renders its own named "not found" state) is mounted, not the scaffold; the fetch-outcome
-    // matrix itself (populated/loading/error/not-found) is covered in depth by
-    // tests/routes/contracts/contract360/*.test.tsx.
-    expect(await screen.findByText(/contract not found/i)).toBeInTheDocument();
-    expect(screen.queryByText(/ships in epic-07\/feature-02-contract-360-ui/i)).not.toBeInTheDocument();
+    // The shared mock answers getContractV4 with a 404: the route shows its inline error (A3).
+    expect(await screen.findByText(/the contract could not be loaded/i)).toBeInTheDocument();
   });
 
   it("renders the real Renewals screen instead of a scaffold placeholder (task E08/F01/US01/T01)", async () => {

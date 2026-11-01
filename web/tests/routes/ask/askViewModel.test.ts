@@ -35,6 +35,7 @@ import {
   toCitationCorpus,
   WEB_SEARCH_ON_HINT,
 } from "../../../src/routes/ask/askViewModel";
+import { contractsV4Mocks } from "../../helpers/contractsV4Mocks";
 
 function citation(overrides: Partial<ConversationCitationBody> = {}): ConversationCitationBody {
   return {
@@ -617,6 +618,7 @@ describe("parseScopeContractId", () => {
 describe("createConversationAndAsk", () => {
   function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
     return {
+      ...contractsV4Mocks(),
       getHealth: vi.fn(),
       createWorkspace: vi.fn(),
       inviteWorkspaceMember: vi.fn(),

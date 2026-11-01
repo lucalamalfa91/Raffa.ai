@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import GlobalAskBar from "../../../src/components/ask-bar/GlobalAskBar";
 import type { ApiClient, CapabilityBody } from "../../../src/api/client";
 import type { WorkspaceRole } from "../../../src/components/shell/navItems";
+import { contractsV4Mocks } from "../../helpers/contractsV4Mocks";
 
 /** Renders whatever router state `/ask` was reached with, so a test can assert on `newChat`/`query`
  * without `routes/ask/**` itself (this task's own "do not touch" boundary) -- a plain
@@ -23,6 +24,7 @@ function AskProbe() {
  * stand-in for "the catalog has not loaded yet". */
 function mockApiClient(getCapabilities: ApiClient["getCapabilities"] = vi.fn(() => new Promise<never>(() => {}))): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),

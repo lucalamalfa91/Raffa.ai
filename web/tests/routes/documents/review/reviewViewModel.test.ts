@@ -18,7 +18,7 @@ import {
   reviewTitle,
   splitPassage,
   type ReviewFieldRow,
-} from "../../../../src/routes/contracts/review/reviewViewModel";
+} from "../../../../src/routes/documents/review/reviewViewModel";
 
 const CONTRACT_ID = "11111111-1111-1111-1111-111111111111";
 
