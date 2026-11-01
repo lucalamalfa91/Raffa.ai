@@ -38,6 +38,7 @@
 .c4-row-name { font-size: 13px; color: var(--color-neutral-600); margin-top: 2px; }
 .c4-row-notice { flex: 0 0 150px; }
 .c4-row-notice-value { font-size: 14px; font-weight: 700; }
+.c4-row-renewed { font-size: 12px; color: var(--color-neutral-600); margin-top: 2px; }
 .c4-row-end { flex: 0 0 130px; }
 .c4-row-end-value { font-size: 14px; }
 .c4-row-spend { flex: 0 0 110px; text-align: right; font-weight: 600; }
@@ -58,6 +59,13 @@
 .c4-accent-text { color: var(--color-accent-700); }
 
 .c4-decisions { margin-top: 22px; }
+/* The situation once the notice deadline has passed (renewed by itself, ending, expired, term to confirm). */
+.c4-situation {
+  margin-top: 16px; padding: 12px 14px; border-left: 2px solid var(--color-divider); background: var(--color-neutral-50, transparent);
+}
+.c4-situation.is-now, .c4-situation.is-soon { border-left-color: var(--color-accent); background: var(--color-accent-100); }
+.c4-situation-head { font-weight: 700; font-size: 15px; margin-top: 2px; }
+.c4-situation-why { font-size: 14px; color: var(--color-neutral-700); margin-top: 4px; line-height: 1.5; text-wrap: pretty; }
 .c4-decisions-head {
   font-family: var(--font-heading); font-weight: 800; font-size: 16px;
   padding-bottom: 8px; border-bottom: 2px solid var(--color-text);

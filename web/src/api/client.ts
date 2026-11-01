@@ -1963,8 +1963,13 @@ export interface ContractListRowV4Body {
   end: string;
   annualValue: number;
   currency: string;
-  status: "validated" | "caseOpen" | "renewed" | "terminated";
+  status: "validated" | "caseOpen" | "renewed" | "terminated" | "autoRenewed" | "expired";
   caseId: string | null;
+  /** active | rolledOver | ending | expired | needsReview | unknown. */
+  termStatus?: string;
+  /** When the term rolled over by itself: the day the current term began. */
+  renewedOn?: string | null;
+  renewedOnPassed?: boolean;
 }
 export interface ContractListV4Body {
   rows: ContractListRowV4Body[];

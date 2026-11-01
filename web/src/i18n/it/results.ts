@@ -162,4 +162,5 @@ export const IT_RESULTS: Readonly<Record<string, string>> = {
   "Every target set in a case adds up here; it truly counts only at signature.":
     "Ogni target fissato in una pratica si somma qui; conta davvero solo alla firma.",
   "Open the first contract": "Apri il primo contratto",
+  "notice passed": "disdetta passata",
 };

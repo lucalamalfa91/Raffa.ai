@@ -43,14 +43,14 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         return new RenewalsDbContext(b.Options);
     }
 
-    private async Task<RenewalCaseService> ServiceAsync(ICaseScriptServices? script = null)
+    private async Task<RenewalCaseService> ServiceAsync(ICaseScriptServices? script = null, DateTimeOffset? now = null)
     {
         var db = Db();
         await db.Database.MigrateAsync();
         return new RenewalCaseService(
             db, _tenantContext, _facts, new Members(), script ?? FixtureCaseScriptServices.Instance,
             new NoAnswerer(), _terms, new NoSavings(), new NoObjectives(),
-            new NoOpenQuoteDecisions(), new NoDocumentsNeedingReview(), _audit, new FixedClock(Now));
+            new NoOpenQuoteDecisions(), new NoDocumentsNeedingReview(), _audit, new FixedClock(now ?? Now));
     }
 
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 14, 0, 0, TimeSpan.Zero);
@@ -274,6 +274,58 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         var after = await s.TodayAsync(_tenant, LucaOid);
         Assert.DoesNotContain(after.Mine, x => x.Key == key);
         Assert.Contains(after.Snoozed, x => x.Key == key);
+    }
+
+    [Fact]
+    public async Task Today_never_lists_a_passed_notice_deadline_as_without_an_owner()
+    {
+        // 01 Nov 2026: DocuSign's notice (02 Oct) and Salesforce's (18 Oct) have passed; both renew
+        // by themselves for 12 months, so their next notice deadlines are a year away.
+        var s = await ServiceAsync(now: new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero));
+        var luca = await s.TodayAsync(_tenant, LucaOid);
+
+        Assert.DoesNotContain(luca.Mine.Concat(luca.Waiting), x => x.Kind == "unassigned");
+        Assert.All(luca.Mine.Concat(luca.Waiting).Concat(luca.Info!), x => Assert.True(x.DueDays >= 0, x.Key));
+
+        // DocuSign renewed by itself yesterday: one informational item, not "your action".
+        var docusign = Assert.Single(luca.Info!, x => x.ContractId == _facts.Id(4));
+        Assert.Equal("renewedInfo", docusign.Kind);
+        Assert.Equal("Renewed by itself on {date}", docusign.Title.Id);
+        Assert.Equal("02 Oct 2027", docusign.Due);
+        Assert.Equal(ContractTermStatus.RolledOver, docusign.Assessment!.Status);
+        Assert.Equal("31 Oct 2027", docusign.Assessment.End);
+        var row = (await s.BoardAsync(_tenant, LucaOid)).Groups.SelectMany(g => g.Items).Single(r => r.ContractId == _facts.Id(4));
+        Assert.Equal("02 Oct 2027", row.Notice);
+        Assert.Equal(ContractTermStatus.RolledOver, row.TermStatus);
+        Assert.Equal("31 Oct 2026", row.RenewedOn);
+        Assert.True(row.RenewedOnPassed);
+
+        // The next notice deadline still ahead is Microsoft's, not a passed one.
+        Assert.Equal("Microsoft", luca.NextDeadline!.Supplier);
+
+        // Dismissed once, it does not come back.
+        Assert.True(await s.SnoozeAsync(_tenant, LucaOid, docusign.Key, true));
+        Assert.DoesNotContain((await s.TodayAsync(_tenant, LucaOid)).Info!, x => x.Key == docusign.Key);
+    }
+
+    [Fact]
+    public async Task Without_a_procurement_colleague_there_is_no_assignee()
+    {
+        var db = Db();
+        await db.Database.MigrateAsync();
+        var s = new RenewalCaseService(
+            db, _tenantContext, _facts, new OnlyAdmin(), FixtureCaseScriptServices.Instance,
+            new NoAnswerer(), _terms, new NoSavings(), new NoObjectives(),
+            new NoOpenQuoteDecisions(), new NoDocumentsNeedingReview(), _audit, new FixedClock(Now));
+        var feed = await s.TodayAsync(_tenant, LucaOid);
+        Assert.Null(feed.Assignee);
+        Assert.Contains(feed.Mine, x => x.Kind == "unassigned");
+    }
+
+    private sealed class OnlyAdmin : ICaseMemberDirectory
+    {
+        public Task<IReadOnlyList<CaseMember>> ListAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<CaseMember>>([new CaseMember(LucaId, LucaOid, CaseFixtures.Luca, "Head of Procurement", true)]);
     }
 
     private sealed class Members : ICaseMemberDirectory

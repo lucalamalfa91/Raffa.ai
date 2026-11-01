@@ -158,4 +158,26 @@ export const IT_TODAY: Readonly<Record<string, string>> = {
   "Not available in this release — the reply is kept word for word in the case.": "Non disponibile in questo rilascio — la risposta resta parola per parola nella pratica.",
   "Read it and record what changed in the terms yourself.": "Leggila e registra tu cosa cambia nelle condizioni.",
   "not read automatically — check it in the document": "non letto automaticamente — verificalo nel documento",
+
+  // — Situation once a notice deadline has passed (renewed by itself, ending, expired, term to confirm) —
+  "Next notice deadline without an owner": "Prossima scadenza di disdetta senza responsabile",
+  "Renews by itself for {n} months if nothing happens by {date}. Start the renewal and assign it.":
+    "Si rinnova da solo per {n} mesi se non succede nulla entro il {date}. Avvia il rinnovo e assegnalo.",
+  "Renews by itself if nothing happens by {date}. Start the renewal and assign it.":
+    "Si rinnova da solo se non succede nulla entro il {date}. Avvia il rinnovo e assegnalo.",
+  "Ends on {date} without renewal": "Termina il {date} senza rinnovo",
+  "Confirm the renewal term": "Conferma la durata del rinnovo",
+  "Notice deadline passed on": "Disdetta scaduta il",
+  "To verify": "Da verificare",
+  "to verify": "da verificare",
+  "Renewed by itself": "Rinnovato da solo",
+  "Renewed by itself on {date}": "Rinnovato da solo il {date}",
+  "Renews by itself on {date}": "Si rinnova da solo il {date}",
+  "Next notice by": "Prossima disdetta entro",
+  "For your information": "Per tua informazione",
+  "Renewed by itself on {date} · next notice by {notice}": "Rinnovato da solo il {date} · prossima disdetta entro il {notice}",
+  "Renews by itself on {date} · next notice by {notice}": "Si rinnova da solo il {date} · prossima disdetta entro il {notice}",
+  "Expired on {date}": "Scaduto il {date}",
+  "Renewal term to confirm": "Durata del rinnovo da confermare",
+  "Ended without renewal": "Terminati senza rinnovo",
 };

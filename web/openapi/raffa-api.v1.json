@@ -13480,6 +13480,38 @@
                         },
                         "start": {
                           "type": "string"
+                        },
+                        "termStatus": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "rolledOver",
+                            "ending",
+                            "expired",
+                            "needsReview",
+                            "unknown"
+                          ]
+                        },
+                        "renewedOn": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "renewedOnPassed": {
+                          "type": "boolean"
+                        },
+                        "originalEnd": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "originalNoticeDeadline": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         }
                       }
                     },
@@ -13763,6 +13795,209 @@
                           "src": {
                             "type": "string"
                           }
+                        }
+                      }
+                    },
+                    "assessment": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "The contract's situation assessment once its notice deadline has passed (null while it is ahead): the effective term computed deterministically, and the judgement written by the model (origin \"ai\", validated by a guard) or by the rules (origin \"rules\").",
+                      "required": [
+                        "status",
+                        "rolledOver",
+                        "renewedOn",
+                        "renewedOnPassed",
+                        "lockedOn",
+                        "start",
+                        "end",
+                        "noticeDeadline",
+                        "noticeDays",
+                        "endDays",
+                        "originalEnd",
+                        "originalNoticeDeadline",
+                        "renewalTermMonths",
+                        "headline",
+                        "why",
+                        "recommendedAction",
+                        "urgency",
+                        "source",
+                        "origin"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "rolledOver",
+                            "ending",
+                            "expired",
+                            "needsReview",
+                            "unknown"
+                          ]
+                        },
+                        "rolledOver": {
+                          "type": "boolean"
+                        },
+                        "renewedOn": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "renewedOnPassed": {
+                          "type": "boolean"
+                        },
+                        "lockedOn": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "start": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "end": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "noticeDeadline": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "noticeDays": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "endDays": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "originalEnd": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "originalNoticeDeadline": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "renewalTermMonths": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "headline": {
+                          "type": "object",
+                          "required": [
+                            "en",
+                            "it"
+                          ],
+                          "properties": {
+                            "en": {
+                              "type": "string"
+                            },
+                            "it": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "why": {
+                          "type": "object",
+                          "required": [
+                            "en",
+                            "it"
+                          ],
+                          "properties": {
+                            "en": {
+                              "type": "string"
+                            },
+                            "it": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "recommendedAction": {
+                          "type": "string",
+                          "enum": [
+                            "start_renewal",
+                            "prepare_next_notice",
+                            "negotiate_mid_term",
+                            "plan_replacement",
+                            "confirm_terms",
+                            "none"
+                          ]
+                        },
+                        "urgency": {
+                          "type": "string",
+                          "enum": [
+                            "now",
+                            "soon",
+                            "later",
+                            "none"
+                          ]
+                        },
+                        "source": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "required": [
+                            "key",
+                            "doc",
+                            "page",
+                            "section",
+                            "quote"
+                          ],
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "doc": {
+                              "type": "string"
+                            },
+                            "page": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "section": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "quote": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          }
+                        },
+                        "origin": {
+                          "type": "string",
+                          "enum": [
+                            "ai",
+                            "rules"
+                          ]
                         }
                       }
                     }

@@ -11,8 +11,11 @@ using Raffa.SharedKernel.Text;
 namespace Raffa.Renewals.Application.CaseWork;
 
 /// <summary>One Oggi item (BACKEND-SPEC §2.12).</summary>
-/// <param name="Kind">An engine todo kind (approve, plan, send …), or <c>unassigned</c>, <c>quote</c>, <c>review</c>.</param>
+/// <param name="Kind">An engine todo kind (approve, plan, send …), or <c>unassigned</c>, <c>quote</c>,
+/// <c>review</c>, <c>confirmTerm</c> (renewal term to confirm) or <c>renewedInfo</c> (informational).</param>
 /// <param name="Who">Display name of who acts.</param>
+/// <param name="Assessment">The contract's situation assessment when its term is not simply active
+/// (rolled over by itself, ending, renewal term to confirm): dates computed, wording by the model or the rules.</param>
 public sealed record TodayItem(
     string Key,
     string Kind,
@@ -30,7 +33,8 @@ public sealed record TodayItem(
     int Stage,
     CaseText StageLabel,
     string Who,
-    int Stalled);
+    int Stalled,
+    ContractAssessmentView? Assessment = null);
 
 public sealed record TodayViewer(Guid? UserId, string Name, string Title, bool IsApprover, string Date);
 
@@ -42,6 +46,7 @@ public sealed record TodayNextDeadline(string Supplier, string Date, int Days);
 /// <param name="EmptyWorkspace">No validated contract yet ("Punto zero").</param>
 /// <param name="Mine">The caller's own actions, nearest due first.</param>
 /// <param name="Waiting">Items waiting on colleagues or suppliers.</param>
+/// <param name="Info">Informational items, not an action (a contract that renewed by itself recently).</param>
 public sealed record TodayFeed(
     TodayViewer Viewer,
     bool EmptyWorkspace,
@@ -50,8 +55,12 @@ public sealed record TodayFeed(
     IReadOnlyList<TodayItem> Snoozed,
     TodayNextDeadline? NextDeadline,
     CaseAssignee? Assignee,
-    IReadOnlyList<DocumentNeedingReview> Documents);
+    IReadOnlyList<DocumentNeedingReview> Documents,
+    IReadOnlyList<TodayItem>? Info = null);
 
+/// <param name="Notice">The effective notice deadline (the next one when the term rolled over by itself).</param>
+/// <param name="TermStatus"><see cref="ContractTermStatus"/>: active | rolledOver | ending | expired | needsReview | unknown.</param>
+/// <param name="RenewedOn">When the term rolled over by itself: the day the current term began.</param>
 public sealed record RenewalsRow(
     Guid ContractId,
     Guid? CaseId,
@@ -67,7 +76,11 @@ public sealed record RenewalsRow(
     bool MyTurn,
     bool HasCase,
     bool Done,
-    bool Waiting);
+    bool Waiting,
+    string TermStatus = ContractTermStatus.Active,
+    string? RenewedOn = null,
+    string? End = null,
+    bool RenewedOnPassed = false);
 
 public sealed record RenewalsGroup(string Key, CaseText Label, IReadOnlyList<RenewalsRow> Items);
 
@@ -85,11 +98,20 @@ public sealed record ReminderView(Guid Id, Guid? CaseId, string Kind, string Due
 /// <summary>Today feed, Renewals board, snoozes, reminders and the cross-module read models.</summary>
 public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICaseEmailDraftSink, ICaseGoalsReader
 {
+    /// <summary>A contract that renewed by itself shows once, as information, this many days after.</summary>
+    public const int RenewedInfoDays = 30;
+
+    /// <summary>Dismissing the informational item hides it past its window.</summary>
+    public const int InfoSnoozeDays = RenewedInfoDays + 1;
+
     private sealed record Portfolio(
         IReadOnlyList<CaseMember> Members,
         CaseCaller Caller,
         string? Approver,
-        List<(ContractFacts Facts, CaseContractFacts Cf, RenewalCaseRecord? Record, RenewalCase? Case)> Contracts);
+        List<(ContractFacts Facts, CaseContractFacts Cf, RenewalCaseRecord? Record, RenewalCase? Case)> Contracts)
+    {
+        public Dictionary<Guid, EffectiveContractTerm> Terms { get; init; } = [];
+    }
 
     private async Task<Portfolio> LoadAsync(TenantId tenantId, string? callerIdentity, CancellationToken ct)
     {
@@ -106,22 +128,37 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
         {
             var rec = records.Where(r => r.ContractId.Value == f.ContractId)
                 .OrderBy(r => r.ClosedAt is null ? 0 : 1).ThenByDescending(r => r.OpenedAt).FirstOrDefault();
-            return (f, CaseFactsMapper.ToCaseFacts(f), rec, rec is null ? null : RenewalCaseJson.Deserialize(rec.State));
+            return (f, CaseFactsMapper.ToCaseFacts(f, Today), rec, rec is null ? null : RenewalCaseJson.Deserialize(rec.State));
         }).ToList();
-        return new Portfolio(members, caller, Approver(members), list);
+        var today = Today;
+        return new Portfolio(members, caller, Approver(members), list)
+        {
+            Terms = facts.GroupBy(f => f.ContractId).ToDictionary(g => g.Key, g => ContractTermCalculator.Compute(g.First(), today)),
+        };
     }
 
     private TodayViewer Viewer(Portfolio p) =>
         new(p.Caller.UserId, p.Caller.Name, p.Caller.Title, p.Caller.Name == p.Approver, CaseFormat.Date(Today));
 
+    /// <summary>A real colleague to hand a renewal to: a Procurement member (a "Buyer") other than the
+    /// approver. Null when the workspace has none — the screens then offer only "Start the renewal".</summary>
     private static CaseAssignee? Assignee(Portfolio p) =>
-        p.Members.Where(m => m.Name != p.Approver && !m.IsAdmin).OrderBy(m => m.Name, StringComparer.Ordinal)
+        p.Members.Where(m => m.Name != p.Approver && !m.IsAdmin && m.Title == "Buyer" && !string.IsNullOrWhiteSpace(m.Name))
+            .OrderBy(m => m.Name, StringComparer.Ordinal)
             .Select(m => new CaseAssignee(m.UserId, m.Name)).FirstOrDefault();
 
-    /// <summary>Every item of the tenant (RC.todo of each open case + unassigned deadlines + quotes + reviews).</summary>
-    private async Task<List<TodayItem>> AllItemsAsync(TenantId tenantId, Portfolio p, CancellationToken ct)
+    private async Task<ContractAssessmentView> AssessAsync(TenantId tenantId, ContractFacts f, CancellationToken ct)
+    {
+        var assessor = situationAssessor ?? new RulesContractSituationAssessor();
+        return ContractAssessmentView.Of(await assessor.AssessAsync(tenantId, f, Today, ct).ConfigureAwait(false));
+    }
+
+    /// <summary>Every item of the tenant (RC.todo of each open case + unassigned deadlines + quotes + reviews),
+    /// and the informational ones apart.</summary>
+    private async Task<(List<TodayItem> Items, List<TodayItem> Info)> AllItemsAsync(TenantId tenantId, Portfolio p, CancellationToken ct)
     {
         var items = new List<TodayItem>();
+        var info = new List<TodayItem>();
         foreach (var (f, cf, rec, c) in p.Contracts)
         {
             var shortName = CaseFactsMapper.ShortName(cf.Name);
@@ -138,22 +175,86 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                         f.ContractId + ":" + x.Kind, x.Kind, rec.Id.Value, f.ContractId, null, null, cf.Supplier, shortName,
                         x.Title, x.Why, x.Due, x.DueDays, null, x.Stage, x.StageLabel, x.Who, x.Stalled));
                 }
+
+                continue;
             }
-            else
+
+            if (p.Approver is null)
             {
-                var days = cf.Cancel.DayNumber - Today.DayNumber;
-                if (days <= 120 && p.Approver is not null)
+                continue;
+            }
+
+            var term = p.Terms[f.ContractId];
+            switch (term.Status)
+            {
+                case ContractTermStatus.Active:
                 {
-                    var date = CaseFormat.Date(cf.Cancel);
-                    items.Add(new TodayItem(
-                        f.ContractId + ":unassigned", "unassigned", null, f.ContractId, null, null, cf.Supplier, shortName,
-                        CaseText.Message("Notice deadline without an owner"),
-                        CaseText.Message(cf.Auto
-                                ? "Renews by itself for 12 months if nothing happens by {date}. Start the renewal and assign it."
-                                : "Expires if nothing happens by {date}. Start the renewal and assign it.",
-                            ("date", date)),
-                        date, days, null, -1, CaseText.Message("Not started"), p.Approver, 0));
+                    var days = cf.Cancel.DayNumber - Today.DayNumber;
+                    if (days <= ContractSituationCopy.StartWindowDays)
+                    {
+                        var date = CaseFormat.Date(cf.Cancel);
+                        items.Add(Unassigned(f, cf, shortName, p.Approver, CaseText.Message("Notice deadline without an owner"), ActiveWhy(cf, term, date), date, days, null, null));
+                    }
+
+                    break;
                 }
+
+                case ContractTermStatus.RolledOver:
+                {
+                    var days = term.NoticeDays ?? int.MaxValue;
+                    var assessment = days <= ContractSituationCopy.StartWindowDays || term.DaysSinceRenewal is <= RenewedInfoDays
+                        ? await AssessAsync(tenantId, f, ct).ConfigureAwait(false)
+                        : null;
+                    if (days <= ContractSituationCopy.StartWindowDays)
+                    {
+                        var date = CaseFormat.Date(term.NoticeDeadline!.Value);
+                        items.Add(Unassigned(f, cf, shortName, p.Approver, CaseText.Message("Next notice deadline without an owner"),
+                            CaseText.Of(assessment!.Why.En), date, days, CaseText.Message("Next notice deadline"), assessment));
+                    }
+                    else if (assessment is not null)
+                    {
+                        var renewed = CaseFormat.Date(term.RenewedOn!.Value);
+                        info.Add(new TodayItem(
+                            "info:" + f.ContractId + ":renewed:" + term.RenewedOn.Value.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture),
+                            "renewedInfo", null, f.ContractId, null, null, cf.Supplier, shortName,
+                            CaseText.Message(term.RenewedOn <= Today ? "Renewed by itself on {date}" : "Renews by itself on {date}", ("date", renewed)),
+                            CaseText.Of(assessment.Why.En),
+                            CaseFormat.Date(term.NoticeDeadline!.Value), days, CaseText.Message("Next notice by"), -1,
+                            CaseText.Message("Renewed by itself"), string.Empty, 0, assessment));
+                    }
+
+                    break;
+                }
+
+                case ContractTermStatus.Ending:
+                {
+                    var days = term.EndDays ?? int.MaxValue;
+                    if (days <= ContractSituationCopy.StartWindowDays)
+                    {
+                        var assessment = await AssessAsync(tenantId, f, ct).ConfigureAwait(false);
+                        items.Add(Unassigned(f, cf, shortName, p.Approver,
+                            CaseText.Message("Ends on {date} without renewal", ("date", CaseFormat.Date(term.End!.Value))),
+                            CaseText.Of(assessment.Why.En), CaseFormat.Date(term.End!.Value), days, CaseText.Message("Contract ends"), assessment));
+                    }
+
+                    break;
+                }
+
+                case ContractTermStatus.NeedsReview:
+                {
+                    var assessment = await AssessAsync(tenantId, f, ct).ConfigureAwait(false);
+                    var passed = term.OriginalNoticeDeadline is { } od ? CaseFormat.Date(od) : string.Empty;
+                    items.Add(new TodayItem(
+                        f.ContractId + ":confirmTerm", "confirmTerm", null, f.ContractId, null, null, cf.Supplier, shortName,
+                        CaseText.Message("Confirm the renewal term"), CaseText.Of(assessment.Why.En),
+                        passed, 0, CaseText.Message("Notice deadline passed on"), -1, CaseText.Message("To verify"), p.Approver, 0, assessment));
+                    break;
+                }
+
+                // Expired: Contratti shows it as "Scaduto"; nothing to do today. Unknown dates: the
+                // document review asks for them.
+                default:
+                    break;
             }
         }
 
@@ -179,14 +280,36 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                 d.OwnerName ?? p.Approver ?? p.Caller.Name, 0));
         }
 
-        return items;
+        return (items, info);
+    }
+
+    private static TodayItem Unassigned(
+        ContractFacts f, CaseContractFacts cf, string shortName, string approver, CaseText title, CaseText why, string date, int days, CaseText? dueLabel, ContractAssessmentView? assessment) =>
+        new(f.ContractId + ":unassigned", "unassigned", null, f.ContractId, null, null, cf.Supplier, shortName,
+            title, why, date, days, dueLabel, -1, CaseText.Message("Not started"), approver, 0, assessment);
+
+    /// <summary>The prototype's copy for a notice deadline still ahead (unchanged), with the renewal
+    /// term as the contract states it instead of an assumed 12 months.</summary>
+    private static CaseText ActiveWhy(CaseContractFacts cf, EffectiveContractTerm term, string date)
+    {
+        if (!cf.Auto)
+        {
+            return CaseText.Message("Expires if nothing happens by {date}. Start the renewal and assign it.", ("date", date));
+        }
+
+        return term.RenewalTermMonths switch
+        {
+            12 => CaseText.Message("Renews by itself for 12 months if nothing happens by {date}. Start the renewal and assign it.", ("date", date)),
+            { } n => CaseText.Message("Renews by itself for {n} months if nothing happens by {date}. Start the renewal and assign it.", ("n", n), ("date", date)),
+            null => CaseText.Message("Renews by itself if nothing happens by {date}. Start the renewal and assign it.", ("date", date)),
+        };
     }
 
     /// <summary><c>GET /api/today</c>: the caller's items by due date, then what waits on others; snoozed apart.</summary>
     public async Task<TodayFeed> TodayAsync(TenantId tenantId, string? callerIdentity, CancellationToken ct = default)
     {
         var p = await LoadAsync(tenantId, callerIdentity, ct).ConfigureAwait(false);
-        var items = await AllItemsAsync(tenantId, p, ct).ConfigureAwait(false);
+        var (items, info) = await AllItemsAsync(tenantId, p, ct).ConfigureAwait(false);
         HashSet<string> snoozed = [];
         if (p.Caller.UserId is { } uid)
         {
@@ -199,7 +322,12 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
         var visible = items.Where(x => !snoozed.Contains(x.Key)).ToList();
         var mine = visible.Where(x => x.Who == p.Caller.Name).OrderBy(x => x.DueDays).ToList();
         var waiting = visible.Where(x => x.Who != p.Caller.Name).OrderBy(x => x.DueDays).ToList();
-        var next = p.Contracts.Where(x => x.Case?.Outcome is null).OrderBy(x => x.Cf.Cancel).Select(x => new TodayNextDeadline(x.Cf.Supplier, CaseFormat.Date(x.Cf.Cancel), x.Cf.Cancel.DayNumber - Today.DayNumber)).FirstOrDefault();
+        // The next notice deadline still ahead, on the effective (possibly rolled-over) term.
+        var next = p.Contracts
+            .Where(x => x.Case?.Outcome is null && p.Terms[x.Facts.ContractId].NoticeOpen)
+            .OrderBy(x => x.Cf.Cancel)
+            .Select(x => new TodayNextDeadline(x.Cf.Supplier, CaseFormat.Date(x.Cf.Cancel), x.Cf.Cancel.DayNumber - Today.DayNumber))
+            .FirstOrDefault();
         var docs = await documentsNeedingReview.ListAsync(tenantId, ct).ConfigureAwait(false);
         return new TodayFeed(
             Viewer(p),
@@ -209,17 +337,20 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
             items.Where(x => snoozed.Contains(x.Key)).ToList(),
             next,
             Assignee(p),
-            docs);
+            docs,
+            p.Approver == p.Caller.Name ? info.Where(x => !snoozed.Contains(x.Key)).OrderBy(x => x.DueDays).ToList() : []);
     }
 
-    /// <summary><c>GET /api/renewals?view=v4</c>: rows by notice deadline in five groups (Your turn … Closed).</summary>
+    /// <summary><c>GET /api/renewals?view=v4</c>: rows by notice deadline in five groups (Your turn … Closed),
+    /// plus the contracts that ended without renewal.</summary>
     public async Task<RenewalsBoard> BoardAsync(TenantId tenantId, string? callerIdentity, CancellationToken ct = default)
     {
         var p = await LoadAsync(tenantId, callerIdentity, ct).ConfigureAwait(false);
-        var items = await AllItemsAsync(tenantId, p, ct).ConfigureAwait(false);
+        var (items, _) = await AllItemsAsync(tenantId, p, ct).ConfigureAwait(false);
         var rows = p.Contracts.Select(x =>
         {
             var (f, cf, rec, c) = x;
+            var term = p.Terms[f.ContractId];
             var it = items.FirstOrDefault(i => i.ContractId == f.ContractId && i.Kind != "quote");
             var myTurn = it is not null && it.Who == p.Caller.Name;
             var stage = c is null ? -1 : RenewalCaseEngine.Stage(c);
@@ -228,28 +359,35 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                 f.ContractId, rec?.Id.Value, cf.Supplier, CaseFactsMapper.ShortName(cf.Name), stage,
                 RenewalCaseEngine.StageLabel(stage), next, CaseFormat.Date(cf.Cancel), cf.Cancel.DayNumber - Today.DayNumber,
                 CaseFormat.Date(cf.Cancel.AddDays(-60)), c?.Owner, myTurn, c is not null, c?.Outcome is not null,
-                c is not null && c.Phase is CasePhases.Waiting or CasePhases.DocWait);
+                c is not null && c.Phase is CasePhases.Waiting or CasePhases.DocWait,
+                term.Status, term.RenewedOn is { } r ? CaseFormat.Date(r) : null, term.End is { } e ? CaseFormat.Date(e) : null,
+                term.RenewedOn is { } rp && rp <= Today);
         }).OrderBy(r => r.Days).ToList();
 
+        static bool Expired(RenewalsRow r) => !r.HasCase && r.TermStatus == ContractTermStatus.Expired;
         var groups = new (string Key, string Label, Func<RenewalsRow, bool> Fn)[]
         {
             ("mine", "Your turn", r => !r.Done && r.MyTurn),
             ("team", "In progress with the team", r => !r.Done && !r.MyTurn && r.HasCase && !r.Waiting),
             ("supplier", "Waiting for the supplier", r => !r.Done && r.Waiting && !r.MyTurn),
-            ("start", "To start", r => !r.Done && !r.HasCase && !r.MyTurn),
+            ("start", "To start", r => !r.Done && !r.HasCase && !r.MyTurn && !Expired(r)),
             ("closed", "Closed", r => r.Done),
+            ("expired", "Ended without renewal", Expired),
         };
         return new RenewalsBoard(
             Viewer(p),
             groups.Select(g => new RenewalsGroup(g.Key, CaseText.Message(g.Label), rows.Where(g.Fn).ToList())).Where(g => g.Items.Count > 0).ToList(),
             rows.Count(r => r.HasCase && !r.Done),
-            rows.Count(r => !r.HasCase),
+            rows.Count(r => !r.HasCase && !Expired(r)),
             rows.Count == 0,
             Assignee(p),
             rows.Where(r => r.HasCase && !r.Done).ToList());
     }
 
-    /// <summary><c>POST/DELETE /api/today/{key}/snooze</c> (3 days).</summary>
+    /// <summary>An informational item, once dismissed, stays hidden past its window; anything else 3 days.</summary>
+    private static int SnoozeLength(string key) => key.StartsWith("info:", StringComparison.Ordinal) ? InfoSnoozeDays : SnoozeDays;
+
+    /// <summary><c>POST/DELETE /api/today/{key}/snooze</c> (3 days; an informational item: for good).</summary>
     public async Task<bool> SnoozeAsync(TenantId tenantId, string? callerIdentity, string key, bool on, CancellationToken ct = default)
     {
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
@@ -265,11 +403,11 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
         {
             if (row is null)
             {
-                db.TodaySnoozes.Add(new TodaySnoozeRecord { TenantId = tenantId, UserId = uid, ItemKey = key, Until = Today.AddDays(SnoozeDays), CreatedAt = clock.UtcNow });
+                db.TodaySnoozes.Add(new TodaySnoozeRecord { TenantId = tenantId, UserId = uid, ItemKey = key, Until = Today.AddDays(SnoozeLength(key)), CreatedAt = clock.UtcNow });
             }
             else
             {
-                row.Until = Today.AddDays(SnoozeDays);
+                row.Until = Today.AddDays(SnoozeLength(key));
             }
         }
         else if (row is not null)
@@ -364,7 +502,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                 var facts = await factsReader.GetAsync(tenantId, r.ContractId, cancellationToken).ConfigureAwait(false);
                 if (facts is not null)
                 {
-                    var hdrNext = RenewalCaseEngine.View(c, Ctx(CaseFactsMapper.ToCaseFacts(facts), c.Owner)).Hdr.Next;
+                    var hdrNext = RenewalCaseEngine.View(c, Ctx(CaseFactsMapper.ToCaseFacts(facts, Today), c.Owner)).Hdr.Next;
                     next = ToMessage(hdrNext);
                 }
             }

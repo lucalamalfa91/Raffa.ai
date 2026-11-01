@@ -238,6 +238,39 @@ export interface CaseEnvelope {
   demo: boolean;
 }
 
+/** A text the server already wrote in both languages (the situation assessment's judgement). */
+export interface LocalizedText {
+  en: string;
+  it: string;
+}
+
+/**
+ * A contract's situation once its notice deadline has passed: the effective term (computed by the
+ * server, never by a model) and the judgement on it (`origin`: "ai" when the model's answer passed
+ * the guard, else "rules").
+ */
+export interface ContractAssessment {
+  status: "active" | "rolledOver" | "ending" | "expired" | "needsReview" | "unknown";
+  rolledOver: boolean;
+  renewedOn: string | null;
+  renewedOnPassed: boolean;
+  lockedOn: string | null;
+  start: string | null;
+  end: string | null;
+  noticeDeadline: string | null;
+  noticeDays: number | null;
+  endDays: number | null;
+  originalEnd: string | null;
+  originalNoticeDeadline: string | null;
+  renewalTermMonths: number | null;
+  headline: LocalizedText;
+  why: LocalizedText;
+  recommendedAction: "start_renewal" | "prepare_next_notice" | "negotiate_mid_term" | "plan_replacement" | "confirm_terms" | "none";
+  urgency: "now" | "soon" | "later" | "none";
+  source: { key: string; doc: string; page: number | null; section: string | null; quote: string | null } | null;
+  origin: "ai" | "rules";
+}
+
 export interface TodayItem {
   key: string;
   kind: string;
@@ -256,6 +289,8 @@ export interface TodayItem {
   stageLabel: Text;
   who: string;
   stalled: number;
+  /** Set when the contract's notice deadline has passed (rolled over, ending, renewal term to confirm). */
+  assessment?: ContractAssessment | null;
 }
 
 export interface TodayViewer {
@@ -280,6 +315,8 @@ export interface TodayFeed {
   nextDeadline: { supplier: string; date: string; days: number } | null;
   assignee: CaseAssignee | null;
   documents: { documentId: string; file: string; fieldsToCheck: number; ownerName: string | null; due: string | null }[];
+  /** Informational, not an action: a contract that renewed by itself recently. */
+  info?: TodayItem[];
 }
 
 export interface RenewalsRow {
@@ -298,6 +335,13 @@ export interface RenewalsRow {
   hasCase: boolean;
   done: boolean;
   waiting: boolean;
+  /** active | rolledOver | ending | expired | needsReview | unknown. */
+  termStatus?: string;
+  /** When the term rolled over by itself: the day the current term began. */
+  renewedOn?: string | null;
+  /** The renewal already took effect (false: it will on `renewedOn`, the notice having passed). */
+  renewedOnPassed?: boolean;
+  end?: string | null;
 }
 
 export interface RenewalsBoard {

@@ -28,8 +28,11 @@ public sealed class ContractFactsReader(DocumentsContractsDbContext dbContext, I
         var versions = await CurrentVersionsAsync(tenantId, rows.Select(r => r.ContractId).ToList(), cancellationToken)
             .ConfigureAwait(false);
 
-        return rows
+        var list = rows
             .Select(r => Apply(Deserialize(r.Facts, r.ContractId, r.ValidatedAt), versions.GetValueOrDefault(r.ContractId)))
+            .ToList();
+        list = await EnrichAsync(tenantId, list, cancellationToken).ConfigureAwait(false);
+        return list
             .OrderBy(f => f.NoticeDeadline ?? DateOnly.MaxValue)
             .ThenBy(f => f.Supplier, StringComparer.Ordinal)
             .ToList();
@@ -49,8 +52,75 @@ public sealed class ContractFactsReader(DocumentsContractsDbContext dbContext, I
         }
 
         var versions = await CurrentVersionsAsync(tenantId, [row.ContractId], cancellationToken).ConfigureAwait(false);
-        return Apply(Deserialize(row.Facts, row.ContractId, row.ValidatedAt), versions.GetValueOrDefault(row.ContractId));
+        var facts = Apply(Deserialize(row.Facts, row.ContractId, row.ValidatedAt), versions.GetValueOrDefault(row.ContractId));
+        return (await EnrichAsync(tenantId, [facts], cancellationToken).ConfigureAwait(false))[0];
     }
+
+    /// <summary>Extraction evidence fields that can back the renewal/notice situation, by the
+    /// evidence key the situation assessment looks for.</summary>
+    private static readonly Dictionary<string, string> RenewalEvidenceKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["renewalTermMonths"] = "x_renewterm",
+        ["autoRenewal"] = "x_renew",
+        ["noticePeriodDays"] = "x_notice",
+        ["cancellationDeadline"] = "x_notice_deadline",
+        ["endDate"] = "x_term",
+    };
+
+    /// <summary>Facts written before the renewal term was carried get it from the contract row, and
+    /// facts with no renewal/notice evidence get the extraction's cited page for those fields (so
+    /// the situation assessment can cite the clause instead of saying it cannot).</summary>
+    private async Task<List<ContractFacts>> EnrichAsync(TenantId tenantId, List<ContractFacts> facts, CancellationToken cancellationToken)
+    {
+        var needTerm = facts.Where(f => f.RenewalTermMonths is null).Select(f => new EntityId(f.ContractId)).ToList();
+        var needEvidence = facts
+            .Where(f => !f.Evidence.Keys.Any(k => k.Contains("renew", StringComparison.OrdinalIgnoreCase) || k.Contains("notice", StringComparison.OrdinalIgnoreCase)))
+            .Select(f => new EntityId(f.ContractId))
+            .ToList();
+        if (needTerm.Count == 0 && needEvidence.Count == 0)
+        {
+            return facts;
+        }
+
+        Dictionary<Guid, int?> months = needTerm.Count == 0
+            ? []
+            : await dbContext.Contracts.AsNoTracking()
+                .Where(c => c.TenantId == tenantId && needTerm.Contains(c.Id) && c.RenewalTermMonths != null)
+                .Select(c => new { c.Id, c.RenewalTermMonths })
+                .ToDictionaryAsync(c => c.Id.Value, c => c.RenewalTermMonths, cancellationToken)
+                .ConfigureAwait(false);
+        var fields = RenewalEvidenceKeys.Keys.ToList();
+        List<CitedField> evidence = needEvidence.Count == 0
+            ? []
+            : await dbContext.ExtractionEvidences.AsNoTracking()
+                .Where(e => e.TenantId == tenantId && needEvidence.Contains(e.ContractId) && e.SourcePage != null && fields.Contains(e.FieldName))
+                .Select(e => new CitedField(e.ContractId.Value, e.FieldName, e.SourcePage, e.SourceSpan, e.CreatedAt))
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+        return facts.Select(f =>
+        {
+            var term = f.RenewalTermMonths ?? months.GetValueOrDefault(f.ContractId);
+            var cited = evidence.Where(e => e.ContractId == f.ContractId)
+                .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.OrderByDescending(e => e.CreatedAt).First())
+                .ToList();
+            if (cited.Count == 0)
+            {
+                return term == f.RenewalTermMonths ? f : f with { RenewalTermMonths = term };
+            }
+
+            var merged = new Dictionary<string, ContractEvidence>(f.Evidence, StringComparer.Ordinal);
+            foreach (var e in cited)
+            {
+                merged.TryAdd(RenewalEvidenceKeys[e.FieldName], new ContractEvidence(f.File, e.SourcePage ?? 0, "", "", e.SourceSpan ?? "", ""));
+            }
+
+            return f with { RenewalTermMonths = term, Evidence = merged };
+        }).ToList();
+    }
+
+    private sealed record CitedField(Guid ContractId, string FieldName, int? SourcePage, string? SourceSpan, DateTimeOffset CreatedAt);
 
     public static string Serialize(ContractFacts facts) => JsonSerializer.Serialize(facts, Json);
 

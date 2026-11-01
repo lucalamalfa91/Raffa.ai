@@ -37,11 +37,22 @@ public sealed record CaseCaller(Guid? UserId, string Name, string Title, bool Is
 /// <summary>Maps the shared <see cref="ContractFacts"/> onto the engine's <see cref="CaseContractFacts"/>.</summary>
 public static class CaseFactsMapper
 {
-    public static CaseContractFacts ToCaseFacts(ContractFacts f)
+    /// <param name="today">When given, a term that rolled over by itself (notice passed, automatic
+    /// renewal) is read on its effective dates (<see cref="ContractTermCalculator"/>), so a case and
+    /// Oggi work on the next notice deadline, not on one that passed.</param>
+    public static CaseContractFacts ToCaseFacts(ContractFacts f, DateOnly? today = null)
     {
         ArgumentNullException.ThrowIfNull(f);
         var end = f.EndDate ?? Parse(f.End) ?? DateOnly.MinValue;
         var cancel = f.NoticeDeadline ?? Parse(f.Cancel) ?? end.AddDays(-f.Notice);
+        var start = f.StartDate ?? Parse(f.Start) ?? DateOnly.MinValue;
+        if (today is { } d && ContractTermCalculator.Compute(f, d) is { RolledOver: true } term)
+        {
+            start = term.Start ?? start;
+            end = term.End ?? end;
+            cancel = term.NoticeDeadline ?? cancel;
+        }
+
         return new CaseContractFacts
         {
             Id = f.FixtureId ?? 0,
@@ -50,7 +61,7 @@ public static class CaseFactsMapper
             Type = f.Type,
             File = f.File,
             Spend = (double)f.Spend,
-            Start = f.StartDate ?? Parse(f.Start) ?? DateOnly.MinValue,
+            Start = start,
             End = end,
             Cancel = cancel,
             Notice = f.Notice,

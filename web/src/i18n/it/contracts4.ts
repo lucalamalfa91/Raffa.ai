@@ -141,4 +141,19 @@ export const IT_CONTRACTS4: Readonly<Record<string, string>> = {
   "{n} to verify": "{n} da verificare",
   "next: {file}": "il prossimo: {file}",
   "Close": "Chiudi",
+
+  // — Situation once a notice deadline has passed —
+  "Renewed automatically": "Rinnovato automaticamente",
+  "Expired": "Scaduto",
+  "Next notice by": "Prossima disdetta entro",
+  "Notice deadline passed on": "Disdetta scaduta il",
+  "Renewed by itself on {date}": "Rinnovato da solo il {date}",
+  "Renews by itself on {date}": "Si rinnova da solo il {date}",
+  "passed": "passata",
+  "then auto-renewal · term to confirm": "poi rinnovo automatico · durata da confermare",
+  "current term, renewed by itself": "periodo in corso, rinnovato da solo",
+  "Confirm the renewal term": "Conferma la durata del rinnovo",
+  "Expired on {date}: plan a new contract if you still use the service":
+    "Scaduto il {date}: pianifica un nuovo contratto se usi ancora il servizio",
+  "Negotiate a new contract before {date}": "Negozia un nuovo contratto prima del {date}",
 };

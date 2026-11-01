@@ -331,6 +331,7 @@ public sealed class DocumentReadingService(
             CancelDays = deadline is { } dl ? dl.DayNumber - today.DayNumber : 0,
             Notice = contract.NoticePeriodDays ?? 0,
             Auto = contract.AutoRenewal ? "Yes" : "No",
+            RenewalTermMonths = contract.RenewalTermMonths,
             Uplift = "",
             StartDate = contract.StartDate ?? contract.EffectiveDate,
             EndDate = contract.EndDate,
