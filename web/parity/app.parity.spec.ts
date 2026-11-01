@@ -16,7 +16,7 @@ for (const vp of VIEWPORTS) {
       await page.waitForTimeout(700);
       await stabilise(page);
       // Soft: every shot is compared and reported, a mismatch does not stop the click-path.
-      await expect.soft(page).toHaveScreenshot(`${vp.name}/${s.shot}.png`, {
+      await expect.soft(page).toHaveScreenshot([vp.name, `${s.shot}.png`], {
         clip: { x: 0, y: 36, width: vp.width, height: vp.height - 36 }, // same clip as the goldens (demo bar excluded)
         maxDiffPixelRatio: 0.002, threshold: 0.1, animations: 'disabled',
       });
