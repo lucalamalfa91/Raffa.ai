@@ -18,6 +18,7 @@ using Microsoft.Graph;
 using Raffa.Insights;
 using Raffa.Market;
 using Raffa.Quotes.Infrastructure;
+using Raffa.Renewals.Application.CaseWork;
 using Raffa.Renewals.Infrastructure;
 using Raffa.Savings.Infrastructure;
 using Raffa.SharedKernel;
@@ -366,6 +367,11 @@ var renewalsConnectionString = BoundPostgres(
 
 builder.Services.AddRenewalsModule(renewalsConnectionString);
 
+// AskRaffa 4.0 renewal case (slices 2+3): the case service, its cross-module ports (honest defaults,
+// replaced by the modules that own them) and the workspace members a case can name.
+builder.Services.AddRenewalCases();
+builder.Services.AddScoped<Raffa.Renewals.Application.CaseWork.ICaseMemberDirectory, WorkspaceCaseMemberDirectory>();
+
 // Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3):
 // RenewalAlertRecomputeService is host-composition wiring, the same kind as
 // NegotiationOutcomePropagationService below ("the one place... that calls both
@@ -536,6 +542,9 @@ app.MapPortfolioEndpoints();
 // RenewalsEndpointExtensions and PortfolioEndpointExtensions' own comments for why this gap is not
 // promoted to reports/open-questions.md by this task.
 app.MapRenewalsEndpoints();
+
+// AskRaffa 4.0 (slices 2+3): renewal case, Today feed, reminders.
+app.MapRenewalCaseEndpoints();
 
 // Task E04/F02/US02/T01 (savings-opportunity, AC-1): GET /api/savings (list) and PATCH
 // /api/savings/{id} (update status/owner), tenant-scoped (ADR-009). Same interim X-Tenant-Id

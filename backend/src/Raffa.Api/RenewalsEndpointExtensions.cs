@@ -145,8 +145,16 @@ public static class RenewalsEndpointExtensions
         IClock clock,
         ITenantContext tenantContext,
         ICallerContext callerContext,
+        IServiceProvider services,
         CancellationToken cancellationToken)
     {
+        // AskRaffa 4.0 (slices 2+3): `?view=v4` is the Renewals board (groups of cases by whose turn).
+        if (string.Equals(request.Query["view"], "v4", StringComparison.Ordinal))
+        {
+            return await RenewalCasesEndpointExtensions.BoardAsync(
+                request, services.GetRequiredService<Raffa.Renewals.Application.CaseWork.RenewalCaseService>(), callerContext, cancellationToken).ConfigureAwait(false);
+        }
+
         // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
         // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
         // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope
