@@ -18,6 +18,10 @@ export async function stabilise(page: Page) {
 export const btn = (page: Page, name: RegExp | string) => page.getByRole('button', { name }).first();
 export const tab = (page: Page, name: string) => page.getByRole('link', { name }).or(page.getByRole('button', { name })).first();
 
+/** Demo-bar control: hidden by stabilise() (visibility:hidden), so it is clicked by event, not by pointer. */
+export const demo = (page: Page, name: RegExp) =>
+  page.locator('[data-no-i18n] button').filter({ hasText: name }).first().dispatchEvent('click');
+
 export type Step = { shot: string; run: (p: Page) => Promise<void> };
 
 /** The golden click-path = the screens in /screenshots. IT, scenario "Da zero" then "Con dati". Same order and names. */
@@ -42,13 +46,13 @@ export const FLOW_ZERO: Step[] = [
 ];
 
 export const FLOW_FULL: Step[] = [
-  { shot: '18-oggi-con-dati', run: async p => { await btn(p, /^Con dati$/).click(); await tab(p, 'Oggi').click(); } },
+  { shot: '18-oggi-con-dati', run: async p => { await demo(p, /^Con dati$/); await tab(p, 'Oggi').click(); } },
   { shot: '19-rinnovi-con-dati', run: async p => { await tab(p, 'Rinnovi').click(); } },
   { shot: '20-rinnovo-docusign', run: async p => { await tab(p, 'Oggi').click(); await btn(p, /Fai ora/).click(); } },
   { shot: '21-rinnovo-panoramica', run: async p => { await btn(p, /Rivedi la panoramica/).click(); } },
   { shot: '22-offerta-verifica', run: async p => { await tab(p, 'Chiedi').click(); await btn(p, /Confronta un/).click(); await btn(p, /Databricks/).click(); } },
   { shot: '23-offerta-confronto', run: async p => { await btn(p, /Conferma i dati letti/).click(); } },
   { shot: '24-offerta-decisione', run: async p => { await btn(p, /Vai alla decisione/).click(); } },
-  { shot: '25-oggi-en', run: async p => { await btn(p, /^EN$/).click(); await tab(p, 'Today').click(); } },
-  { shot: '26-oggi-guida-chiusa', run: async p => { await btn(p, /^IT$/).click(); await p.locator('[data-screen-label="Guida Raffa"] >> text=Nascondi').click(); await tab(p, 'Oggi').click(); } },
+  { shot: '25-oggi-en', run: async p => { await demo(p, /^EN$/); await tab(p, 'Today').click(); } },
+  { shot: '26-oggi-guida-chiusa', run: async p => { await demo(p, /^IT$/); await p.locator('[data-screen-label="Guida Raffa"] >> text=Nascondi').click(); await tab(p, 'Oggi').click(); } },
 ];
