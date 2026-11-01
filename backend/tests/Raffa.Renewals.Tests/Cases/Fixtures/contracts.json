@@ -1,0 +1,575 @@
+[
+ {
+  "id": 1,
+  "supplier": "Salesforce",
+  "name": "Sales Cloud Enterprise — MSA + Order Form",
+  "type": "MSA",
+  "file": "Salesforce_MSA_2024.pdf",
+  "spend": 640000,
+  "start": "01 Mar 2024",
+  "end": "15 Jan 2027",
+  "cancel": "18 Oct 2026",
+  "cancelDays": 40,
+  "notice": 90,
+  "auto": true,
+  "uplift": "7%",
+  "products": [
+   {
+    "name": "Sales Cloud Enterprise",
+    "sku": "SC-ENT-U",
+    "unit": "user / month",
+    "qty": 300,
+    "price": 156
+   },
+   {
+    "name": "Sales Cloud CPQ",
+    "sku": "SC-CPQ-U",
+    "unit": "user / month",
+    "qty": 60,
+    "price": 75
+   },
+   {
+    "name": "Premier Success Plan",
+    "sku": "PSP-20",
+    "unit": "flat / year",
+    "qty": 1,
+    "price": 24400
+   }
+  ],
+  "push": [
+   {
+    "type": "Price increase",
+    "norm": "Up to 7% or CPI, whichever is higher, at each renewal.",
+    "ask": "Cap at 3% or freeze for the renewed term.",
+    "src": "p.9 §6.2"
+   },
+   {
+    "type": "Auto-renewal",
+    "norm": "Renews for successive 12-month terms unless notice ≥90 days before term end.",
+    "ask": "Shorten notice to 30 days; remove auto-renewal.",
+    "src": "p.12 §8.4"
+   }
+  ],
+  "raise": [
+   {
+    "type": "Limitation of liability",
+    "norm": "Capped at 12 months of fees; carve-outs for confidentiality and IP.",
+    "ask": "Raise to 24 months; add data-breach carve-out.",
+    "src": "p.27 §17.2"
+   },
+   {
+    "type": "Termination for convenience",
+    "norm": "Not permitted during the term.",
+    "ask": "Allow termination at each anniversary with 60 days notice.",
+    "src": "p.26 §16.1"
+   },
+   {
+    "type": "Payment terms",
+    "norm": "Annual in advance, Net 30.",
+    "ask": "Quarterly in advance — improves cash by ~CHF 480k.",
+    "src": "p.5 §5.1"
+   },
+   {
+    "type": "Service credits",
+    "norm": "99.9% uptime; credits capped at 10% of monthly fee.",
+    "ask": "Lift the cap to 25%; add chronic-failure exit.",
+    "src": "Sch. 2 SLA"
+   }
+  ],
+  "terms": [
+   {
+    "label": "Annual spend",
+    "value": "CHF 640,000"
+   },
+   {
+    "label": "Total contract value",
+    "value": "CHF 1,840,000"
+   },
+   {
+    "label": "Term",
+    "value": "01 Mar 2024 → 15 Jan 2027"
+   },
+   {
+    "label": "Renewal term",
+    "value": "12 months, automatic"
+   },
+   {
+    "label": "Notice period",
+    "value": "90 days"
+   },
+   {
+    "label": "Uplift at renewal",
+    "value": "7% or CPI"
+   },
+   {
+    "label": "Payment terms",
+    "value": "Annual in advance · Net 30"
+   },
+   {
+    "label": "Governing law",
+    "value": "Switzerland"
+   }
+  ],
+  "oblYou": [
+   {
+    "text": "Give non-renewal or renegotiation notice",
+    "when": "by 18 Oct 2026",
+    "priority": "High",
+    "cadence": "once"
+   },
+   {
+    "text": "Pay annual subscription fee in advance",
+    "when": "01 Mar each year",
+    "priority": "High",
+    "cadence": "yearly"
+   },
+   {
+    "text": "Certify user counts for the true-up",
+    "when": "01 Feb each year",
+    "priority": "Medium",
+    "cadence": "yearly"
+   },
+   {
+    "text": "Keep two named admin contacts on file",
+    "when": "—",
+    "priority": "Low",
+    "cadence": "ongoing"
+   }
+  ],
+  "oblSup": [
+   {
+    "text": "Notify any price increase",
+    "when": "≥60 days before renewal — by 16 Nov 2026",
+    "priority": "High",
+    "cadence": "once"
+   },
+   {
+    "text": "Maintain 99.9% monthly uptime",
+    "when": "every month",
+    "priority": "High",
+    "cadence": "monthly"
+   },
+   {
+    "text": "Deliver SOC 2 Type II report",
+    "when": "on request, annually",
+    "priority": "Medium",
+    "cadence": "yearly"
+   },
+   {
+    "text": "Return customer data after termination",
+    "when": "within 30 days",
+    "priority": "Medium",
+    "cadence": "once"
+   }
+  ]
+ },
+ {
+  "id": 2,
+  "supplier": "Microsoft",
+  "name": "Enterprise Agreement · M365 E5",
+  "type": "MSA",
+  "file": "Microsoft_EA_Enrollment.pdf",
+  "spend": 1200000,
+  "start": "01 Jul 2024",
+  "end": "30 Jun 2027",
+  "cancel": "31 Mar 2027",
+  "cancelDays": 204,
+  "notice": 90,
+  "auto": true,
+  "uplift": "5%",
+  "products": [
+   {
+    "name": "Microsoft 365 E5",
+    "sku": "CFQ7TTC0LFLX",
+    "unit": "user / month",
+    "qty": 1200,
+    "price": 52
+   },
+   {
+    "name": "Microsoft 365 E3",
+    "sku": "CFQ7TTC0LFLZ",
+    "unit": "user / month",
+    "qty": 400,
+    "price": 33
+   },
+   {
+    "name": "Power BI Pro",
+    "sku": "CFQ7TTC0LHSF",
+    "unit": "user / month",
+    "qty": 600,
+    "price": 9.5
+   },
+   {
+    "name": "Azure consumption commit",
+    "sku": "AZ-MACC",
+    "unit": "flat / year",
+    "qty": 1,
+    "price": 224400
+   }
+  ],
+  "push": [
+   {
+    "type": "Price protection",
+    "norm": "Prices fixed for the term; true-up counts cannot be reduced within a year.",
+    "ask": "Allow downward adjustment at each anniversary.",
+    "src": "p.9 §5"
+   }
+  ],
+  "raise": [
+   {
+    "type": "Limitation of liability",
+    "norm": "Amounts paid under the affected Enrollment in the preceding 12 months.",
+    "ask": "Raise to 24 months for data-protection claims.",
+    "src": "p.22 §14"
+   },
+   {
+    "type": "Licence reassignment",
+    "norm": "Reassignment allowed after 90 days.",
+    "ask": "Reduce to 30 days to enable faster right-sizing.",
+    "src": "p.11 §6"
+   },
+   {
+    "type": "Azure commit shortfall",
+    "norm": "Unused commit is forfeited at term end.",
+    "ask": "Carry forward up to 20% into the next term.",
+    "src": "MACC §3"
+   }
+  ],
+  "terms": [
+   {
+    "label": "Annual spend",
+    "value": "CHF 1,200,000"
+   },
+   {
+    "label": "Total contract value",
+    "value": "CHF 3,600,000"
+   },
+   {
+    "label": "Term",
+    "value": "01 Jul 2024 → 30 Jun 2027"
+   },
+   {
+    "label": "Renewal term",
+    "value": "36 months"
+   },
+   {
+    "label": "Notice period",
+    "value": "90 days"
+   },
+   {
+    "label": "Uplift at renewal",
+    "value": "5%"
+   },
+   {
+    "label": "Payment terms",
+    "value": "Annual in advance · Net 30"
+   },
+   {
+    "label": "Governing law",
+    "value": "Ireland"
+   }
+  ],
+  "oblYou": [
+   {
+    "text": "Submit the annual true-up order",
+    "when": "by 01 Jul each year",
+    "priority": "High",
+    "cadence": "yearly"
+   },
+   {
+    "text": "Give non-renewal notice",
+    "when": "by 31 Mar 2027",
+    "priority": "High",
+    "cadence": "once"
+   },
+   {
+    "text": "Pay the annual enrollment fee",
+    "when": "01 Jul each year",
+    "priority": "High",
+    "cadence": "yearly"
+   },
+   {
+    "text": "Keep licence assignment records for SAM",
+    "when": "—",
+    "priority": "Medium",
+    "cadence": "ongoing"
+   }
+  ],
+  "oblSup": [
+   {
+    "text": "Hold prices for the enrollment term",
+    "when": "through 30 Jun 2027",
+    "priority": "High",
+    "cadence": "ongoing"
+   },
+   {
+    "text": "Meet 99.9% financially backed SLA",
+    "when": "every month",
+    "priority": "Medium",
+    "cadence": "monthly"
+   },
+   {
+    "text": "Give 12 months notice of product retirement",
+    "when": "—",
+    "priority": "Medium",
+    "cadence": "ongoing"
+   }
+  ]
+ },
+ {
+  "id": 3,
+  "supplier": "AWS",
+  "name": "Enterprise Discount Program",
+  "type": "Amendment",
+  "file": "AWS_EDP_Amendment_3.pdf",
+  "spend": 2400000,
+  "start": "01 Sep 2024",
+  "end": "31 Aug 2027",
+  "cancel": "01 Jun 2027",
+  "cancelDays": 266,
+  "notice": 90,
+  "auto": false,
+  "uplift": "0%",
+  "products": [
+   {
+    "name": "EC2 + RDS committed usage",
+    "sku": "EDP-COMPUTE",
+    "unit": "commit / year",
+    "qty": 1,
+    "price": 1800000
+   },
+   {
+    "name": "S3 + data transfer",
+    "sku": "EDP-STORAGE",
+    "unit": "commit / year",
+    "qty": 1,
+    "price": 400000
+   },
+   {
+    "name": "Enterprise Support",
+    "sku": "ENT-SUP",
+    "unit": "10% of usage",
+    "qty": 1,
+    "price": 200000
+   }
+  ],
+  "push": [
+   {
+    "type": "Commit shortfall",
+    "norm": "Unused commit is invoiced at term end.",
+    "ask": "Allow a one-year carry-forward of up to 15%.",
+    "src": "p.6 §4"
+   }
+  ],
+  "raise": [
+   {
+    "type": "Limitation of liability",
+    "norm": "Greater of USD 500k or 12 months fees; carve-outs for confidentiality and IP.",
+    "ask": "Add a data-breach carve-out.",
+    "src": "p.19 §11.2"
+   },
+   {
+    "type": "Support fees",
+    "norm": "10% of monthly usage.",
+    "ask": "Tiered rate above CHF 1m.",
+    "src": "p.8 §7"
+   }
+  ],
+  "terms": [
+   {
+    "label": "Annual spend",
+    "value": "CHF 2,400,000"
+   },
+   {
+    "label": "Total contract value",
+    "value": "CHF 7,200,000"
+   },
+   {
+    "label": "Term",
+    "value": "01 Sep 2024 → 31 Aug 2027"
+   },
+   {
+    "label": "Renewal term",
+    "value": "None — renegotiate"
+   },
+   {
+    "label": "Notice period",
+    "value": "90 days"
+   },
+   {
+    "label": "Uplift at renewal",
+    "value": "0%"
+   },
+   {
+    "label": "Payment terms",
+    "value": "Monthly · Net 30"
+   },
+   {
+    "label": "Governing law",
+    "value": "Luxembourg"
+   }
+  ],
+  "oblYou": [
+   {
+    "text": "Meet the annual commit of CHF 2.4m",
+    "when": "by 31 Aug each year",
+    "priority": "High",
+    "cadence": "yearly"
+   },
+   {
+    "text": "Pay monthly invoices",
+    "when": "Net 30",
+    "priority": "Medium",
+    "cadence": "monthly"
+   },
+   {
+    "text": "Notify intent to renegotiate before term end",
+    "when": "by 01 Jun 2027",
+    "priority": "High",
+    "cadence": "once"
+   }
+  ],
+  "oblSup": [
+   {
+    "text": "Apply the discount tier to monthly usage",
+    "when": "every month",
+    "priority": "High",
+    "cadence": "monthly"
+   },
+   {
+    "text": "Quarterly TAM business review",
+    "when": "every quarter",
+    "priority": "Medium",
+    "cadence": "quarterly"
+   },
+   {
+    "text": "Give 12 months notice of service deprecation",
+    "when": "—",
+    "priority": "Medium",
+    "cadence": "ongoing"
+   }
+  ]
+ },
+ {
+  "id": 4,
+  "supplier": "DocuSign",
+  "name": "eSignature Business Pro",
+  "type": "Order Form",
+  "file": "DocuSign_OrderForm.pdf",
+  "spend": 58000,
+  "start": "01 Nov 2023",
+  "end": "31 Oct 2026",
+  "cancel": "02 Oct 2026",
+  "cancelDays": 24,
+  "notice": 30,
+  "auto": true,
+  "uplift": "8%",
+  "products": [
+   {
+    "name": "eSignature Business Pro",
+    "sku": "ESIG-BP",
+    "unit": "seat / month",
+    "qty": 60,
+    "price": 48
+   },
+   {
+    "name": "Envelope allowance",
+    "sku": "ENV-12K",
+    "unit": "12,000 / year",
+    "qty": 1,
+    "price": 18000
+   },
+   {
+    "name": "Premier Support",
+    "sku": "SUP-PREM",
+    "unit": "flat / year",
+    "qty": 1,
+    "price": 5440
+   }
+  ],
+  "push": [
+   {
+    "type": "Auto-renewal",
+    "norm": "Renews for 12 months unless 30-day notice.",
+    "ask": "Give notice by 02 Oct 2026; re-sign on the smaller plan.",
+    "src": "p.2 §4"
+   },
+   {
+    "type": "Price increase",
+    "norm": "Up to 8% at renewal.",
+    "ask": "Freeze for the renewed term.",
+    "src": "p.2 §5"
+   }
+  ],
+  "raise": [
+   {
+    "type": "Unused envelopes",
+    "norm": "Non-refundable; do not roll over.",
+    "ask": "Roll over up to 25% into the next year.",
+    "src": "p.2 §3"
+   }
+  ],
+  "terms": [
+   {
+    "label": "Annual spend",
+    "value": "CHF 58,000"
+   },
+   {
+    "label": "Total contract value",
+    "value": "CHF 174,000"
+   },
+   {
+    "label": "Term",
+    "value": "01 Nov 2023 → 31 Oct 2026"
+   },
+   {
+    "label": "Renewal term",
+    "value": "12 months, automatic"
+   },
+   {
+    "label": "Notice period",
+    "value": "30 days"
+   },
+   {
+    "label": "Uplift at renewal",
+    "value": "8%"
+   },
+   {
+    "label": "Payment terms",
+    "value": "Annual in advance"
+   },
+   {
+    "label": "Governing law",
+    "value": "Ireland"
+   }
+  ],
+  "oblYou": [
+   {
+    "text": "Give non-renewal notice",
+    "when": "by 02 Oct 2026",
+    "priority": "High",
+    "cadence": "once"
+   },
+   {
+    "text": "Pay annual fee in advance",
+    "when": "01 Nov each year",
+    "priority": "Medium",
+    "cadence": "yearly"
+   }
+  ],
+  "oblSup": [
+   {
+    "text": "Maintain 99.9% uptime",
+    "when": "every month",
+    "priority": "Medium",
+    "cadence": "monthly"
+   },
+   {
+    "text": "Provide monthly envelope usage report",
+    "when": "every month",
+    "priority": "Low",
+    "cadence": "monthly"
+   }
+  ]
+ }
+]
