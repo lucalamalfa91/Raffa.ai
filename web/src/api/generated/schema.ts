@@ -997,6 +997,118 @@ export interface operations {
       };
     };
   };
+  askConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  archiveConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  unarchiveConversation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  listAskContracts: {
+    responses: {
+      200: {
+        content: {
+          "application/json": (unknown)[];
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getQuoteOffer: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  confirmQuoteExtraction: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  decideQuote: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+      409: {
+        content: {
+        };
+      };
+    };
+  };
+  createQuoteCounterProposal: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -1148,5 +1260,29 @@ export interface paths {
   };
   "/api/fixtures/session": {
     get: operations["getFixtureSession"];
+  };
+  "/api/conversations/ask": {
+    post: operations["askConversation"];
+  };
+  "/api/conversations/{id}/archive": {
+    post: operations["archiveConversation"];
+  };
+  "/api/conversations/{id}/unarchive": {
+    post: operations["unarchiveConversation"];
+  };
+  "/api/ask/contracts": {
+    get: operations["listAskContracts"];
+  };
+  "/api/quotes/{id}/v4": {
+    get: operations["getQuoteOffer"];
+  };
+  "/api/quotes/{id}/confirm-extraction": {
+    post: operations["confirmQuoteExtraction"];
+  };
+  "/api/quotes/{id}/decision": {
+    post: operations["decideQuote"];
+  };
+  "/api/quotes/{id}/counter-proposal": {
+    post: operations["createQuoteCounterProposal"];
   };
 }

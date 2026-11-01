@@ -1,0 +1,163 @@
+/* Chiedi (AskRaffa V4.dc.html lines 256-282): the prototype's inline styles as classes. */
+
+.k6-chiedi {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* — left: conversations — */
+.k6-rail {
+  border-right: 2px solid var(--color-divider);
+  overflow: auto;
+  padding: 0 0 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.k6-rail-head {
+  height: 56px;
+  box-sizing: border-box;
+  flex: none;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--color-divider);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.k6-rail-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+.v4 .btn.k6-new { font-size: 12px; min-height: 30px; padding: 0 10px; white-space: nowrap; flex: none; }
+.k6-group-label {
+  padding: 14px 18px 4px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+.v4 .k6-conv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  padding: 9px 16px 9px 15px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.v4 .k6-conv:hover { background: var(--color-neutral-200); }
+.v4 .k6-conv.is-current { border-left-color: var(--color-accent); background: var(--color-neutral-200); }
+.k6-conv-title { font-weight: 400; font-size: 13px; line-height: 1.3; text-wrap: pretty; }
+.k6-conv.is-current .k6-conv-title { font-weight: 700; }
+.k6-conv-meta { font-size: 11px; color: var(--color-neutral-600); }
+.k6-group-empty { padding: 8px 18px; font-size: 12px; color: var(--color-neutral-600); }
+.v4 .btn.k6-archive-toggle { margin: 12px 18px 0; padding: 0; font-size: 12px; align-self: flex-start; }
+
+/* — right: the conversation — */
+.k6-pane { display: flex; flex-direction: column; min-height: 0; }
+.k6-pane-head {
+  height: 56px;
+  box-sizing: border-box;
+  flex: none;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--color-divider);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+}
+.k6-mark { width: 10px; height: 10px; background: var(--color-accent); display: inline-block; flex: none; }
+.k6-pane-title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.k6-pane-meta { font-size: 11px; color: var(--color-neutral-600); }
+.v4 .btn.k6-pane-archive { margin-left: auto; padding: 0; font-size: 12px; }
+.k6-scroll { flex: 1; overflow: auto; padding: 24px 40px; min-height: 0; }
+.k6-thread { max-width: 900px; display: flex; flex-direction: column; gap: 22px; }
+
+.k6-empty-title {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: clamp(24px, 2.4vw, 32px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.k6-empty-sub { font-size: 13px; color: var(--color-neutral-700); margin-top: 8px; max-width: 64ch; text-wrap: pretty; }
+.k6-intents {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  border-top: 2px solid var(--color-text);
+}
+.v4 .k6-intent {
+  text-align: left;
+  border: 0;
+  border-right: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+  background: transparent;
+  padding: 14px 16px 14px 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.v4 .k6-intent:hover { background: var(--color-neutral-200); }
+.k6-intent-label { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
+.k6-intent-hint { font-size: 12px; color: var(--color-neutral-700); margin-top: 4px; text-wrap: pretty; }
+
+.k6-pick { border: 2px solid var(--color-text); padding: 16px 20px; }
+.k6-pick-title { font-family: var(--font-heading); font-weight: 800; font-size: 17px; }
+.k6-pick-opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.v4 .btn.k6-pick-opt { font-size: 13px; }
+.v4 .btn.k6-pick-cancel { font-size: 12px; }
+
+.k6-qa { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 16px; font-size: 14px; }
+.k6-qa-by {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+  padding-top: 4px;
+}
+.k6-qa.is-raffa .k6-qa-by { color: var(--color-accent); }
+.k6-qa-body { min-width: 0; }
+.k6-qa-text {
+  white-space: pre-line;
+  text-wrap: pretty;
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.35;
+  font-family: var(--font-heading);
+}
+.k6-qa.is-raffa .k6-qa-text { font-weight: 400; font-size: 14px; font-family: var(--font-body); }
+.k6-qa-src { font-size: 12px; color: var(--color-neutral-600); margin-top: 6px; }
+.v4 .btn.k6-qa-cta { font-size: 12px; margin-top: 10px; }
+
+/* — composer (the one shadow of the design) — */
+.k6-composer-wrap { flex: none; padding: 8px 40px 16px; }
+.k6-composer {
+  display: flex;
+  gap: 8px;
+  max-width: 900px;
+  border: 1px solid rgba(32, 30, 29, 0.2);
+  padding: 6px 6px 6px 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+.v4 .input.k6-composer-input { flex: 1; border: 0; background: transparent; font-size: 15px; min-height: 38px; }
+.v4 .btn.k6-composer-send { min-height: 38px; }
+.k6-composer-foot { font-size: 11px; color: var(--color-neutral-600); margin-top: 6px; }

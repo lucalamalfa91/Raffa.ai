@@ -29,6 +29,9 @@ public sealed class QuoteOfferService(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>The order the offer's terms are shown in (<c>SQ.QUOTES[].stated</c>).</summary>
+    private static readonly string[] StatedOrder = ["payment", "uplift", "renewal", "liability", "sla"];
+
     /// <summary>The offers of the 4.0 flow (those with a decision status), newest first;
     /// <paramref name="statuses"/> empty = every status.</summary>
     public async Task<IReadOnlyList<QuoteOfferListItem>> ListAsync(
@@ -286,9 +289,12 @@ public sealed class QuoteOfferService(
             return [];
         }
 
+        // jsonb does not keep key order: show the terms in the prototype's order, then any other.
         using var doc = JsonDocument.Parse(json);
         return doc.RootElement.EnumerateObject()
             .Select(p => new KeyValuePair<string, string?>(p.Name, p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : null))
+            .OrderBy(kv => Array.IndexOf(StatedOrder, kv.Key) is var i && i >= 0 ? i : StatedOrder.Length)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
             .ToList();
     }
 

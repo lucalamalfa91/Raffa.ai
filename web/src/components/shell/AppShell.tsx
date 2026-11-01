@@ -6,8 +6,6 @@ import { usePollBudget } from "./usePollBudget";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import { DocumentViewerProvider } from "../../routes/documents/viewer/DocumentViewerOverlay";
-import { AskSessionsProvider } from "../../routes/ask/AskSessionsContext";
-import AskReplyNotifier from "../../routes/ask/AskReplyNotifier";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import DemoBar from "../../fixtures/DemoBar";
 import { useFixtureSession } from "../../fixtures/FixtureSessionContext";
@@ -43,9 +41,7 @@ export default function AppShell(props: AppShellProps) {
     <I18nProvider>
       <GuideProvider>
         <DocumentViewerProvider apiClient={props.apiClient}>
-          <AskSessionsProvider>
-            <ShellLayout {...props} />
-          </AskSessionsProvider>
+          <ShellLayout {...props} />
         </DocumentViewerProvider>
       </GuideProvider>
     </I18nProvider>
@@ -84,7 +80,6 @@ function ShellLayout({ workspaceId, apiClient }: AppShellProps) {
         </main>
         {open ? <GuidePanel /> : null}
       </div>
-      <AskReplyNotifier />
     </div>
   );
 }

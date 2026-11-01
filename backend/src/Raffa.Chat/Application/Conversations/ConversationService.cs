@@ -270,7 +270,7 @@ public sealed class ConversationService(
         // the user's own turn, so a system-authored first turn (there is none today, but nothing
         // rules one out for a future onboarding message) never sets it — the title stays
         // DefaultTitle until a real You turn arrives.
-        if (isFirstMessage && request.Role == ConversationRole.You)
+        if (isFirstMessage && request.Role == ConversationRole.You && conversation.Title == DefaultTitle)
         {
             conversation.Title = DeriveTitle(request.Markdown);
         }

@@ -1911,6 +1911,7 @@ export function createApiClient(
   // request settles, and any write drops what is in flight). One instance per client, so nothing
   // leaks between clients.
   const apiFetch = createCoalescingFetch(options.fetch);
+  const transport: AskOfferTransport = { baseUrl, getAccessToken, fetch: apiFetch };
   const client: ApiClient = {
     async getHealth() {
       let response: Response;
@@ -3961,5 +3962,304 @@ export function createApiClient(
       };
     },
   };
+  askOfferTransports.set(client, transport);
   return client;
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// AskRaffa 4.0 slice 6 -- Chiedi (conversations, sourced answers, archive) and Offerta (quote
+// check without benchmark, decision). Kept beside `ApiClient` (like `contractCorrectionCount`) so
+// the interface -- and every test double of it -- is unchanged: `askOfferApi(client)` returns the
+// calls for a client made by `createApiClient`, or for a transport a test registered.
+// ---------------------------------------------------------------------------------------------
+
+export interface AskOfferTransport {
+  baseUrl: string;
+  getAccessToken: GetAccessToken;
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
+
+const askOfferTransports = new WeakMap<object, AskOfferTransport>();
+
+/** Test doubles: make `askOfferApi(double)` use `transport`. */
+export function registerAskOfferTransport(client: object, transport: AskOfferTransport): void {
+  askOfferTransports.set(client, transport);
+}
+
+/** Never throws: `{ ok, status, data }`, `data` null on failure. */
+export interface AskOfferResult<T> {
+  ok: boolean;
+  status: number | null;
+  data: T | null;
+}
+
+export type ConversationState = "recent" | "archived" | "case";
+
+export interface ConversationSummary4 {
+  id: string;
+  title: string;
+  customTitle: string | null;
+  scopeContractId: string | null;
+  updatedAt: string;
+  archived: boolean;
+  archivedAt: string | null;
+  caseId: string | null;
+  questionCount: number;
+}
+
+export interface ConversationMessage4 {
+  id: string;
+  role: "you" | "raffa";
+  kind: string;
+  markdown: string;
+  citations: Array<{ title?: string; page?: number | null; section?: string | null }>;
+  actions: Array<{ kind?: string; contractId?: string | null }>;
+  createdAt: string;
+}
+
+export interface ConversationDetail4 {
+  id: string;
+  title: string;
+  customTitle: string | null;
+  scopeContractId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  caseId: string | null;
+  messages: ConversationMessage4[];
+}
+
+export interface AskTurnRequest {
+  conversationId?: string | null;
+  question: string;
+  contractId?: string | null;
+  answerOnly?: boolean;
+  lang?: "it" | "en";
+}
+
+export interface AskTurnResult {
+  conversationId: string;
+  needsContract: boolean;
+  conversation: ConversationDetail4;
+}
+
+export interface AskContract {
+  contractId: string;
+  supplier: string;
+  name: string;
+  noticeDeadline: string | null;
+}
+
+export type QuoteStatus4 = "checked" | "negotiating" | "signing" | "signed" | "declined";
+
+export interface QuoteListItem4 {
+  id: string;
+  reference: string | null;
+  supplier: string;
+  fileName: string;
+  kind: string | null;
+  status: QuoteStatus4;
+  contractId: string | null;
+  caseId: string | null;
+  validUntil: string | null;
+  quoteDate: string | null;
+  checkedBy: string | null;
+  annualTotal: number;
+  annualTotalLabel: string;
+}
+
+export interface QuoteEvidencePoint4 {
+  kind: string;
+  tone: "ok" | "alert" | "neutral";
+  text: string;
+  src: string;
+}
+
+export interface QuoteView4 {
+  id: string;
+  reference: string | null;
+  supplier: string;
+  fileName: string;
+  kind: string | null;
+  status: QuoteStatus4;
+  term: string | null;
+  valid: string | null;
+  validUntil: string | null;
+  quoteDate: string | null;
+  checkedBy: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  contractId: string | null;
+  caseId: string | null;
+  extractionConfirmedAt: string | null;
+  lines: Array<{
+    name: string;
+    sku: string | null;
+    qty: number;
+    unit: string;
+    price: number;
+    annual: number;
+    existing: number | null;
+    existingLabel: string | null;
+    delta: number | null;
+    qtyLabel: string;
+    priceLabel: string;
+    annualLabel: string;
+  }>;
+  stated: Array<{ key: string; value: string | null }>;
+  assessment: {
+    verdict: "nocompare" | "misses_target" | "meets_target" | "below_current" | "above_current" | "same";
+    basis: "current" | "others" | "none";
+    total: number;
+    totalLabel: string;
+    curTotal: number | null;
+    curTotalLabel: string | null;
+    own: number | null;
+    ownLabel: string | null;
+    partial: boolean;
+    target: { kind: string; label: string | null; budget: number | null } | null;
+    targetTotal: number | null;
+    targetMet: boolean | null;
+    points: QuoteEvidencePoint4[];
+    missing: string[];
+    gaps: string[];
+    evaluable: string[];
+  };
+}
+
+export interface CounterProposal4 {
+  available: boolean;
+  caseId: string | null;
+  emailId: string | null;
+  subject: string;
+  body: string;
+}
+
+/** One open renewal case as the Chiedi rail lists it (read tolerantly from `GET /api/renewals`). */
+export interface OpenCase4 {
+  caseId: string;
+  supplier: string;
+  contract: string;
+  phase: string;
+}
+
+export interface AskOfferApi {
+  listConversations(tenantId: string, state: ConversationState): Promise<AskOfferResult<ConversationSummary4[]>>;
+  getConversation(tenantId: string, id: string): Promise<AskOfferResult<ConversationDetail4>>;
+  ask(tenantId: string, request: AskTurnRequest): Promise<AskOfferResult<AskTurnResult>>;
+  setArchived(tenantId: string, id: string, archived: boolean): Promise<AskOfferResult<ConversationSummary4>>;
+  listAskContracts(tenantId: string): Promise<AskOfferResult<AskContract[]>>;
+  listQuotes(tenantId: string, status?: QuoteStatus4[] | "any"): Promise<AskOfferResult<QuoteListItem4[]>>;
+  getQuote(tenantId: string, id: string, lang: "it" | "en"): Promise<AskOfferResult<QuoteView4>>;
+  confirmQuoteExtraction(tenantId: string, id: string, lang: "it" | "en"): Promise<AskOfferResult<QuoteView4>>;
+  decideQuote(tenantId: string, id: string, status: QuoteStatus4, lang: "it" | "en"): Promise<AskOfferResult<QuoteView4>>;
+  counterProposal(tenantId: string, id: string): Promise<AskOfferResult<CounterProposal4>>;
+  listOpenCases(tenantId: string): Promise<AskOfferResult<OpenCase4[]>>;
+  openRenewalCase(tenantId: string, contractId: string): Promise<AskOfferResult<{ caseId: string }>>;
+}
+
+function pickField(record: Record<string, unknown>, ...keys: string[]): unknown {
+  for (const key of keys) if (record[key] !== undefined && record[key] !== null) return record[key];
+  return undefined;
+}
+
+function plainText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const inner = pickField(value as Record<string, unknown>, "it", "label", "name", "en", "id");
+    return typeof inner === "string" ? inner : "";
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+/** `GET /api/renewals` belongs to the Renewals slice; its 4.0 shape is read tolerantly (array or
+ * `{items|cases}`; `caseId|id`, `supplier`, `contract|contractName`, `phaseLabel|phase`), keeping
+ * only open cases. Anything else reads as "no open case". */
+export function readOpenCases(body: unknown): OpenCase4[] {
+  const rows = Array.isArray(body)
+    ? body
+    : body && typeof body === "object"
+      ? pickField(body as Record<string, unknown>, "items", "cases", "rows")
+      : [];
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row: unknown) => {
+    if (!row || typeof row !== "object") return [];
+    const r = row as Record<string, unknown>;
+    const caseId = pickField(r, "caseId");
+    const supplier = plainText(pickField(r, "supplier", "supplierName"));
+    if (typeof caseId !== "string" || !supplier) return [];
+    const closed =
+      pickField(r, "closed", "isClosed") === true || pickField(r, "outcome") !== undefined || pickField(r, "group") === "closed";
+    if (closed) return [];
+    return [
+      {
+        caseId,
+        supplier,
+        contract: plainText(pickField(r, "contract", "contractName", "name")),
+        phase: plainText(pickField(r, "phaseLabel", "stageLabel", "phase", "stage")),
+      },
+    ];
+  });
+}
+
+export function askOfferApi(client: object): AskOfferApi {
+  const transport = askOfferTransports.get(client) ?? null;
+
+  async function call<T>(
+    method: string,
+    path: string,
+    tenantId: string,
+    body?: unknown,
+    map?: (raw: unknown) => T,
+  ): Promise<AskOfferResult<T>> {
+    if (transport === null) return { ok: false, status: null, data: null };
+    let response: Response;
+    try {
+      response = await transport.fetch(new URL(path, transport.baseUrl), {
+        method,
+        headers: {
+          "X-Tenant-Id": tenantId,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(await authHeaders(transport.getAccessToken)),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        cache: "no-store",
+      });
+    } catch {
+      return { ok: false, status: null, data: null };
+    }
+    if (!response.ok) return { ok: false, status: response.status, data: null };
+    try {
+      const raw: unknown = await response.json();
+      return { ok: true, status: response.status, data: map ? map(raw) : (raw as T) };
+    } catch {
+      return { ok: false, status: response.status, data: null };
+    }
+  }
+
+  const seg = (value: string) => encodeURIComponent(value);
+  return {
+    listConversations: (tenantId, state) => call("GET", `/api/conversations?state=${state}`, tenantId),
+    getConversation: (tenantId, conversationId) => call("GET", `/api/conversations/${seg(conversationId)}`, tenantId),
+    ask: (tenantId, request) => call("POST", "/api/conversations/ask", tenantId, request),
+    setArchived: (tenantId, conversationId, archived) =>
+      call("POST", `/api/conversations/${seg(conversationId)}/${archived ? "archive" : "unarchive"}`, tenantId, {}),
+    listAskContracts: (tenantId) => call("GET", "/api/ask/contracts", tenantId),
+    listQuotes: (tenantId, status = "any") =>
+      call("GET", `/api/quotes?status=${status === "any" ? "any" : status.join(",")}`, tenantId),
+    getQuote: (tenantId, quoteId, lang) => call("GET", `/api/quotes/${seg(quoteId)}/v4?lang=${lang}`, tenantId),
+    confirmQuoteExtraction: (tenantId, quoteId, lang) =>
+      call("POST", `/api/quotes/${seg(quoteId)}/confirm-extraction?lang=${lang}`, tenantId, {}),
+    decideQuote: (tenantId, quoteId, status, lang) =>
+      call("POST", `/api/quotes/${seg(quoteId)}/decision?lang=${lang}`, tenantId, { status }),
+    counterProposal: (tenantId, quoteId) => call("POST", `/api/quotes/${seg(quoteId)}/counter-proposal`, tenantId, {}),
+    listOpenCases: (tenantId) => call("GET", "/api/renewals", tenantId, undefined, readOpenCases),
+    openRenewalCase: (tenantId, contractId) =>
+      call("POST", "/api/renewals", tenantId, { contractId, branch: "renew" }, (raw) => {
+        const r = (raw ?? {}) as Record<string, unknown>;
+        const nested = (r.case ?? {}) as Record<string, unknown>;
+        return { caseId: String(pickField(r, "caseId", "id") ?? pickField(nested, "caseId", "id") ?? "") };
+      }),
+  };
 }

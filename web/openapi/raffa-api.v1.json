@@ -4572,6 +4572,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "AskRaffa 4.0: `any` or a comma list of checked|negotiating|signing|signed|declined -> the 4.0 offer list (array) instead of the legacy {items}."
           }
         ],
         "responses": {
@@ -5995,6 +6004,20 @@
               "type": "boolean"
             },
             "description": "true lists only archived conversations, false only the ones in use; absent lists both. Each is its own most-recent-first `take`. 400 for anything but true/false."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "recent",
+                "archived",
+                "case"
+              ]
+            },
+            "description": "AskRaffa 4.0 groups by explicit archived_at / case_id; each item adds archivedAt, caseId, questionCount."
           }
         ],
         "responses": {
@@ -10806,6 +10829,436 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/conversations/ask": {
+      "post": {
+        "operationId": "askConversation",
+        "summary": "AskRaffa 4.0 Chiedi: one question -> a sourced answer (or needsContract for the picker); creates the conversation on the first question; writing reopens an archived one.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation after the turn: {conversationId, needsContract, conversation}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not the caller's)."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "question"
+                ],
+                "properties": {
+                  "conversationId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "question": {
+                    "type": "string"
+                  },
+                  "contractId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "answerOnly": {
+                    "type": "boolean"
+                  },
+                  "lang": {
+                    "type": "string",
+                    "enum": [
+                      "it",
+                      "en"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/archive": {
+      "post": {
+        "operationId": "archiveConversation",
+        "summary": "Archive a conversation explicitly (archived_at).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not the caller's)."
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/unarchive": {
+      "post": {
+        "operationId": "unarchiveConversation",
+        "summary": "Take a conversation out of the archive.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The conversation summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not the caller's)."
+          }
+        }
+      }
+    },
+    "/api/ask/contracts": {
+      "get": {
+        "operationId": "listAskContracts",
+        "summary": "The validated contracts the Chiedi pickers offer.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "[{contractId, supplier, name, noticeDeadline}]",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not the caller's)."
+          }
+        }
+      }
+    },
+    "/api/quotes/{id}/v4": {
+      "get": {
+        "operationId": "getQuoteOffer",
+        "summary": "AskRaffa 4.0 Offerta: header, lines, stated/omitted terms and the no-benchmark assessment (verdict nocompare|misses_target|meets_target|below_current|above_current|same, <=5 points with source, missing[]).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "it",
+                "en"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offer view.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not the caller's)."
+          }
+        }
+      }
+    },
+    "/api/quotes/{id}/confirm-extraction": {
+      "post": {
+        "operationId": "confirmQuoteExtraction",
+        "summary": "Step 1: the user confirms what Raffa read.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "it",
+                "en"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offer view.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not the caller's)."
+          }
+        }
+      }
+    },
+    "/api/quotes/{id}/decision": {
+      "post": {
+        "operationId": "decideQuote",
+        "summary": "Record the decision on this proposal (checked|negotiating|signing|signed|declined); 409 on an impossible transition.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "it",
+                "en"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offer view.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not the caller's)."
+          },
+          "400": {
+            "description": "Unknown status."
+          },
+          "409": {
+            "description": "Transition not allowed."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "checked",
+                      "negotiating",
+                      "signing",
+                      "signed",
+                      "declined"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/quotes/{id}/counter-proposal": {
+      "post": {
+        "operationId": "createQuoteCounterProposal",
+        "summary": "Hand the counter-proposal to the renewal case as a draft email (never sent). available=false when no case module takes drafts.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{available, caseId, emailId, subject, body}",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found (or not the caller's)."
           }
         }
       }
