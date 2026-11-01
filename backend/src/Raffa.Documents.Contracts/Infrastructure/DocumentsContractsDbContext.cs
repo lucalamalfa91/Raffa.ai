@@ -35,6 +35,9 @@ public sealed class DocumentsContractsDbContext(DbContextOptions<DocumentsContra
     /// <summary>Each line item's last market comparison (<see cref="Application.LineItemMarketPriceService"/>).</summary>
     public DbSet<ContractLineItemMarketPrice> ContractLineItemMarketPrices => Set<ContractLineItemMarketPrice>();
 
+    /// <summary>AskRaffa 4.0 contract facts (jsonb profile per contract, see <see cref="ContractFactsRecord"/>).</summary>
+    public DbSet<ContractFactsRecord> ContractFacts => Set<ContractFactsRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Required so migrations emit `CREATE EXTENSION IF NOT EXISTS "vector"` (ADR-003).
@@ -54,6 +57,7 @@ public sealed class DocumentsContractsDbContext(DbContextOptions<DocumentsContra
         modelBuilder.ApplyConfiguration(new ExtractionEvidenceConfiguration());
         modelBuilder.ApplyConfiguration(new ContractNegotiationStepConfiguration());
         modelBuilder.ApplyConfiguration(new ContractLineItemMarketPriceConfiguration());
+        modelBuilder.ApplyConfiguration(new ContractFactsRecordConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

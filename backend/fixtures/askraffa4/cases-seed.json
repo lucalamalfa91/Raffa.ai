@@ -1,0 +1,301 @@
+{
+  "_comment": "The three cases the prototype seed() creates in scenario 'full' (AskRaffa V4.dc.html): RC.create(cid, ctx(Luca), null, {owner: Marta}) then RC.act(case, type, payload, ctx(who)) for each action in order. 'who' is the acting fixture user. Replayed server-side by the Renewals fixture seeder (slice 2+3).",
+  "scenario": "full",
+  "cases": [
+    {
+      "fixtureContractId": 4,
+      "createdBy": "luca",
+      "owner": "marta",
+      "updated": "07 Sep 2026",
+      "actions": [
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 0,
+            "val": "keep"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 1,
+            "val": "12"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 2,
+            "val": "none"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "q3done",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "confirmPlan",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "toEx",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "luca",
+          "type": "approve",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "copy",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sentOpen",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sentOk",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "remOk",
+          "payload": {
+            "rid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sampleReply",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "reply",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "decide",
+          "payload": {
+            "did": 0,
+            "opt": "b"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "toEx",
+          "payload": {
+            "eid": 1
+          }
+        },
+        {
+          "who": "marta",
+          "type": "requestAppr",
+          "payload": {
+            "eid": 1
+          }
+        }
+      ],
+      "updatedDate": "2026-09-07"
+    },
+    {
+      "fixtureContractId": 2,
+      "createdBy": "luca",
+      "owner": "marta",
+      "updated": "30 Aug 2026",
+      "actions": [
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 0,
+            "val": "keep"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 1,
+            "val": "36"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 2,
+            "val": "p5"
+          }
+        }
+      ],
+      "updatedDate": "2026-08-30"
+    },
+    {
+      "fixtureContractId": 3,
+      "createdBy": "luca",
+      "owner": "marta",
+      "updated": "05 Sep 2026",
+      "actions": [
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 0,
+            "val": "keep"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 1,
+            "val": "24"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "ans",
+          "payload": {
+            "q": 2,
+            "val": "none"
+          }
+        },
+        {
+          "who": "marta",
+          "type": "policy",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "q3done",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "confirmPlan",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "toEx",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "luca",
+          "type": "approve",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "copy",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sentOpen",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sentOk",
+          "payload": {
+            "eid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "remOk",
+          "payload": {
+            "rid": 0
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sampleReply",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "reply",
+          "payload": {}
+        },
+        {
+          "who": "luca",
+          "type": "approve",
+          "payload": {
+            "eid": 1
+          }
+        },
+        {
+          "who": "marta",
+          "type": "copy",
+          "payload": {
+            "eid": 1
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sentOpen",
+          "payload": {
+            "eid": 1
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sentOk",
+          "payload": {
+            "eid": 1
+          }
+        },
+        {
+          "who": "marta",
+          "type": "remOk",
+          "payload": {
+            "rid": 1
+          }
+        },
+        {
+          "who": "marta",
+          "type": "sampleReply",
+          "payload": {}
+        },
+        {
+          "who": "marta",
+          "type": "reply",
+          "payload": {}
+        }
+      ],
+      "updatedDate": "2026-09-05"
+    }
+  ]
+}

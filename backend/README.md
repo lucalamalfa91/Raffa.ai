@@ -3412,6 +3412,50 @@ so neither is curl-able yet; `R4EndToEndTests` proves both directly against the 
 container instead, the same "no dedicated route exists yet" convention this backend has used since
 R2.
 
+## AskRaffa 4.0 fixture mode and the `Parity` environment
+
+Test/demo only (`docs/design/Raffa.ai/design_handoff_askraffa_v4/IMPLEMENTATION-PLAN.md` §2).
+`Fixtures:Enabled` (default `false`; the host refuses to start with it on in `Production`) turns on:
+
+- **Scenario clock** — `IClock` = the request's `X-Raffa-Now: YYYY-MM-DD` date (else
+  `Fixtures:Now`, default `2026-09-08`) at the real time of day (`Raffa.Api/Fixtures/FixtureClock.cs`).
+- **`Fixture` authentication scheme** — `X-Raffa-Fixture-User: luca|marta` signs the request in as
+  that member of the fixture tenant *Helvetia Foods AG* (tenant `4a5ec0de-a4a4-4f00-8000-000000000001`)
+  with the same `oid`/`email` claims an Entra token carries, so `ICallerContext` resolves the caller
+  and membership unchanged. Luca Lamalfa = Head of Procurement, approver (Admin + Procurement);
+  Marta Keller = Buyer (Procurement).
+- **`POST /api/fixtures/reset {"scenario":"zero"|"full"}`** — every `IFixtureScenarioSeeder`
+  (`Raffa.SharedKernel.Fixtures`, one per module, registered in
+  `Raffa.Api/Fixtures/FixtureServiceCollectionExtensions.cs`) wipes (descending `Order`), every
+  `tenant_id` table of every configured database is swept for the fixture tenant (RLS claim set,
+  never a bypass), then every seeder seeds (ascending `Order`). **`GET /api/fixtures/session`** —
+  tenant, users, last scenario, scenario date.
+- **CORS** for `Fixtures:CorsOrigins` (the parity web origin).
+
+Fixture data lives only in `backend/fixtures/askraffa4/*.json` (converted from the prototype:
+`contracts.json` = `RD.CONTRACTS` + `RD.DEEP` + `RD.EVIDENCE` + `weakFields`, `quotes.json`,
+`history.json`, `conversations.json`, `cases-seed.json`); `Fixtures:DataPath` overrides the folder.
+Contract ids are deterministic (`FixtureIds.Contract(tenant, 1..4)`, UUIDv5). Contracts are read by
+other modules only through `IContractFactsReader` (`contract_facts`, jsonb, RLS).
+
+**`Parity` environment** (`appsettings.Parity.json`): Postgres only — fixtures on, in-memory document
+storage (`ConnectionStrings:Storage = InMemory`), in-process extraction queue and inline job queue
+(no `ServiceBus:*`), `FixtureAiGateway` (no `AiGateway:Endpoint`), no startup warm-up, market in
+its in-memory mock (no `ConnectionStrings:Market`). Run it against a database with every module
+script applied in ADR-021 order:
+
+```bash
+# one command for DB + API + web + reference: scripts/parity-local.sh (see PARITY.md "Run locally")
+export ConnectionStrings__IdentityWorkspace="Host=localhost;Port=55432;Database=raffa_parity;Username=raffa;Password=raffa"
+# ...same value for DocumentsContracts, Audit, Renewals, Savings, Quotes, Chat, Suppliers
+ASPNETCORE_ENVIRONMENT=Parity ASPNETCORE_URLS=http://localhost:5180 \
+  dotnet run --project backend/src/Raffa.Api -c Release --no-launch-profile
+curl -X POST -H 'Content-Type: application/json' -d '{"scenario":"full"}' http://localhost:5180/api/fixtures/reset
+curl http://localhost:5180/api/fixtures/session
+```
+
+`--no-launch-profile` matters: `launchSettings.json` would otherwise force `Development`.
+
 ## Containers and CI
 
 `.github/workflows/backend.yml` (path-filtered to `backend/**`):

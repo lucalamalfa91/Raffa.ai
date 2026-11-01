@@ -54,6 +54,17 @@ public sealed class CapabilitiesEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Carries_the_askraffa4_feature_flags_all_on()
+    {
+        var payload = await _client!.GetFromJsonAsync<JsonElement>("/api/capabilities");
+        var flags = payload.GetProperty("flags");
+
+        Assert.True(flags.GetProperty("askraffa4.guidedFlow").GetBoolean());
+        Assert.True(flags.GetProperty("askraffa4.noBenchmark").GetBoolean());
+        Assert.True(flags.GetProperty("savings.results").GetBoolean());
+    }
+
+    [Fact]
     public async Task Spoofed_role_headers_do_not_change_the_response()
     {
         var anonymous = await ReadBodyAsync(headers: null);

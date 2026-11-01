@@ -218,6 +218,49 @@ namespace Raffa.Documents.Contracts.Migrations
                     b.ToTable("contract", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractFactsRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("Facts")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("facts");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateTimeOffset?>("ValidatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("validated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_facts");
+
+                    b.HasIndex("ContractId")
+                        .HasDatabaseName("ix_contract_facts_contract_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_contract_facts_tenant_id");
+
+                    b.HasIndex("TenantId", "ContractId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contract_facts_tenant_id_contract_id");
+
+                    b.ToTable("contract_facts", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractLineItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1267,6 +1310,16 @@ namespace Raffa.Documents.Contracts.Migrations
                         .HasForeignKey("ParentContractId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_contract_contract_parent_contract_id");
+                });
+
+            modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractFactsRecord", b =>
+                {
+                    b.HasOne("Raffa.Documents.Contracts.Domain.Contract", null)
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_facts_contract_contract_id");
                 });
 
             modelBuilder.Entity("Raffa.Documents.Contracts.Domain.ContractLineItem", b =>

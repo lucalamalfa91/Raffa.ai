@@ -66,3 +66,6 @@ web/playwright/.cache/
 web/parity/goldens/
 web/parity-report/
 web/parity/test-results/
+
+# Local AskRaffa 4.0 parity stack (scripts/parity-local.sh)
+.parity-local/

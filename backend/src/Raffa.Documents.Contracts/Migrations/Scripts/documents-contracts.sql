@@ -1117,6 +1117,10 @@ BEGIN
     VALUES ('20260922184249_AddContractLineItemMarketPrice', '10.0.4');
     END IF;
 END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
 DO $EF$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260923122306_AddContractLineItemMarketPriceMatchKind') THEN
@@ -1131,7 +1135,9 @@ BEGIN
     VALUES ('20260923122306_AddContractLineItemMarketPriceMatchKind', '10.0.4');
     END IF;
 END $EF$;
+COMMIT;
 
+START TRANSACTION;
 
 DO $EF$
 BEGIN
@@ -1203,6 +1209,7 @@ BEGIN
     VALUES ('20260924153558_AddContractLineItemMarketPriceEstimate', '10.0.4');
     END IF;
 END $EF$;
+COMMIT;
 
 START TRANSACTION;
 
@@ -1358,6 +1365,65 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex') THEN
     INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
     VALUES ('20261008144403_AddExtractionRunCheckpointNoticePeriodAndDocumentChecksumIndex', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101111515_AddContractFacts') THEN
+    CREATE TABLE contract_facts (
+        id uuid NOT NULL,
+        contract_id uuid NOT NULL,
+        facts jsonb NOT NULL,
+        validated_at timestamp with time zone,
+        updated_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_contract_facts PRIMARY KEY (id),
+        CONSTRAINT fk_contract_facts_contract_contract_id FOREIGN KEY (contract_id) REFERENCES contract (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101111515_AddContractFacts') THEN
+    CREATE INDEX ix_contract_facts_contract_id ON contract_facts (contract_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101111515_AddContractFacts') THEN
+    CREATE INDEX ix_contract_facts_tenant_id ON contract_facts (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101111515_AddContractFacts') THEN
+    CREATE UNIQUE INDEX ix_contract_facts_tenant_id_contract_id ON contract_facts (tenant_id, contract_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101111515_AddContractFacts') THEN
+    ALTER TABLE "contract_facts" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "contract_facts" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "contract_facts"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101111515_AddContractFacts') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261101111515_AddContractFacts', '10.0.4');
     END IF;
 END $EF$;
 COMMIT;

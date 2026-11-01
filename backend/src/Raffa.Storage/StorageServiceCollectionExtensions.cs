@@ -34,4 +34,21 @@ public static class StorageServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>The value of <c>ConnectionStrings:Storage</c> that selects <see cref="InMemoryDocumentStorage"/>.</summary>
+    public const string InMemoryConnectionString = "InMemory";
+
+    /// <summary>Blob storage, or the in-memory store when the connection string is <c>InMemory</c>
+    /// (the Postgres-only <c>Parity</c> environment).</summary>
+    public static IServiceCollection AddDocumentStorage(this IServiceCollection services, string connectionString)
+    {
+        if (string.Equals(connectionString, InMemoryConnectionString, StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<InMemoryDocumentStorage>();
+            services.AddSingleton<IDocumentStorage>(sp => sp.GetRequiredService<InMemoryDocumentStorage>());
+            return services;
+        }
+
+        return services.AddAzureBlobDocumentStorage(connectionString);
+    }
 }

@@ -5,6 +5,7 @@ using Azure.Communication.Email;
 using Azure.Identity;
 using Raffa.AiFlows;
 using Raffa.Api;
+using Raffa.Api.Fixtures;
 using Raffa.Api.Infrastructure;
 using Raffa.Audit.Infrastructure;
 using Raffa.Chat.Infrastructure;
@@ -38,6 +39,11 @@ var builder = WebApplication.CreateBuilder(args);
 var postgresMaxPoolSize = builder.Configuration.GetValue<int?>(PostgresConnectionPool.MaxPoolSizeConfigurationKey)
     ?? PostgresConnectionPool.DefaultMaxPoolSize;
 string BoundPostgres(string connectionString) => PostgresConnectionPool.WithBudget(connectionString, postgresMaxPoolSize);
+
+// AskRaffa 4.0 fixture mode (IMPLEMENTATION-PLAN.md §2; Fixtures:Enabled, default off, refused in
+// Production): scenario clock, fixture users, POST /api/fixtures/reset. Bound before every
+// AddXxxModule so its IClock wins over the modules' TryAdd system clock.
+var fixtureOptions = builder.AddFixtureMode();
 
 // Module registration: each module exposes an AddXxx(IServiceCollection) extension method
 // (ADR-002); the host calls it once it takes a dependency on that module. Documents/Contracts
@@ -137,7 +143,7 @@ var azureAdOptions = builder.Configuration.GetSection(AzureAdOptions.SectionName
     ?? new AzureAdOptions();
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(fixtureOptions.Enabled ? FixtureAuthenticationHandler.SchemeName : JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         // Preserves the token's own claim names (e.g. `oid`, `tid`, `scp`) instead of JwtBearer's
@@ -179,7 +185,9 @@ builder.Services
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(2),
         };
-    });
+    })
+    // Fixture mode only: the X-Raffa-Fixture-User scheme (see FixtureAuthenticationHandler).
+    .AddFixtureScheme(fixtureOptions);
 builder.Services.AddAuthorization();
 
 // Object storage (ADR-005 "Object storage" row, ADR-011): the Azure Blob Storage adapter is
@@ -190,7 +198,9 @@ var storageConnectionString = builder.Configuration.GetConnectionString("Storage
         "Missing required configuration 'ConnectionStrings:Storage' " +
         "(set env var ConnectionStrings__Storage in deployed environments).");
 
-builder.Services.AddAzureBlobDocumentStorage(storageConnectionString);
+// ConnectionStrings:Storage = "InMemory" (the Postgres-only Parity environment) keeps documents in
+// process memory instead of Blob Storage.
+Raffa.Storage.StorageServiceCollectionExtensions.AddDocumentStorage(builder.Services, storageConnectionString);
 // ADR-027 §D2 (task E16/F02/US03/T01): the upload publishes its ExtractionRequested pointer
 // before committing; this picks Service Bus when ServiceBus:FullyQualifiedNamespace is set
 // (every deployed environment, via infra/modules/containerapps) and the in-process channel
@@ -475,6 +485,9 @@ app.UseResponseCompression();
 app.UseStartupWarmupYielding();
 app.UseDatabaseSaturationHandling();
 
+// Fixture mode only: CORS for the parity web origin (Fixtures:CorsOrigins).
+app.UseFixtureMode(fixtureOptions);
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -602,6 +615,9 @@ app.MapNegotiationsEndpoints();
 // untouched — the invite/revoke and members/remove routes it composes are that file's own and
 // WorkspaceMembersEndpointExtensions' own additions, not a second Program.cs edit.
 app.MapInvitationEndpoints();
+
+// Fixture mode only: POST /api/fixtures/reset and GET /api/fixtures/session.
+app.MapFixtureMode(fixtureOptions);
 
 app.Run();
 
