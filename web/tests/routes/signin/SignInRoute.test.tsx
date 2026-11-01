@@ -6,6 +6,7 @@ import SignInRoute from "../../../src/routes/signin";
 import type { AppConfig } from "../../../src/config/appConfig";
 import type { ApiClient, WorkspaceSummaryBody } from "../../../src/api/client";
 import type { WorkspacePickerState } from "../../../src/routes/signin/WorkspacePickerScreen";
+import { contractsV4Mocks } from "../../helpers/contractsV4Mocks";
 
 // SignInRoute (src/routes/signin/index.tsx) is screen 1's thin composition root (ADR-018 route
 // `/signin`): it owns only the MSAL useMsal() branch between SignInScreen and WorkspacePickerScreen.
@@ -34,6 +35,7 @@ const appConfig: AppConfig = {
 
 function mockApiClient(): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),

@@ -159,7 +159,7 @@ public sealed class ContractsV4QueryService(
         if (status.HasCase)
         {
             return new ContractNextActionV4(true, status.CaseId, status.Outcome,
-                status.NextAction ?? ContractMessage.Of("Open the case"));
+                status.NextAction ?? ContractMessage.Of("Open the case⟦contract⟧"));
         }
 
         if (noticeDays <= StartWindowDays || facts.NoticeDeadline is null)

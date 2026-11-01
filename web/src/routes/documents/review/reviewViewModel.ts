@@ -6,7 +6,7 @@ import type {
   PortfolioContractType,
 } from "../../../api/client";
 import { getConfidenceTag, type SemanticTag } from "../../../styles/semantics";
-import { formatDateOnly, getContractTypeLabel } from "../portfolioTableFormatters";
+import { formatDateOnly, getContractTypeLabel } from "../../contracts/portfolioTableFormatters";
 
 /**
  * Pure view-model helpers for the Review / correction screen (route `/contracts/:contractId/review`

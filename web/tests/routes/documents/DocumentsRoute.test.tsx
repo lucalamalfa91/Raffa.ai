@@ -17,11 +17,13 @@ import type {
   ListDocumentsResult,
   UploadDocumentResult,
 } from "../../../src/api/client";
+import { contractsV4Mocks } from "../../helpers/contractsV4Mocks";
 
 const WORKSPACE_ID = "11111111-1111-1111-1111-111111111111";
 
 function mockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
+    ...contractsV4Mocks(),
     getHealth: vi.fn(),
     createWorkspace: vi.fn(),
     inviteWorkspaceMember: vi.fn(),

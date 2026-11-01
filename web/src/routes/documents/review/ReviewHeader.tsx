@@ -2,7 +2,7 @@ import type { Contract360HeaderBody } from "../../../api/client";
 import { CopyTip } from "../../../components/InfoTip";
 import { TIPS } from "../../../components/infoTipCopy";
 import ScreenTitle from "../../../components/ScreenTitle";
-import { formatSupplier, getContractTypeLabel } from "../portfolioTableFormatters";
+import { formatSupplier, getContractTypeLabel } from "../../contracts/portfolioTableFormatters";
 import {
   blockedReason,
   isValidationBlocked,

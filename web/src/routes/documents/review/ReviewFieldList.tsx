@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { getContractTypeLabel } from "../portfolioTableFormatters";
+import { getContractTypeLabel } from "../../contracts/portfolioTableFormatters";
 import { CopyTip } from "../../../components/InfoTip";
 import { buildReviewConfidenceTip, TIPS } from "../../../components/infoTipCopy";
 import { CONTRACT_TYPE_OPTIONS, fieldTag, isFieldBlocking, legendThresholdPct, type CorrectableFieldName, type ReviewFieldRow } from "./reviewViewModel";

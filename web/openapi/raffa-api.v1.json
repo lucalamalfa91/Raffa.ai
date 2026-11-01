@@ -1790,6 +1790,18 @@
               "type": "integer"
             },
             "description": "Defaults to 25; PortfolioPageRequest.MaxPageSize caps it at 100."
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "v4"
+              ]
+            },
+            "description": "AskRaffa 4.0 Contratti: `view=v4` returns {rows: [{contractId, supplier, name, noticeDeadline, noticeDays, end, annualValue, currency, status: validated|caseOpen|renewed|terminated, caseId}], document: {documentId, file, status: processing|review, flagged} | null} instead of the portfolio page (typed by hand in web/src/api/client.ts as ContractListV4Body)."
           }
         ],
         "responses": {
@@ -3771,6 +3783,83 @@
                 }
               }
             }
+          }
+        }
+      },
+      "post": {
+        "operationId": "openRenewalCase",
+        "summary": "Open (idempotently) the renewal case of a contract.",
+        "description": "AskRaffa 4.0: opening a case twice for one contract returns the same case. Implemented by the Renewals slice (renewal_case).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "contractId"
+                ],
+                "properties": {
+                  "contractId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "branch": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ownerUserId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "caseId"
+                  ],
+                  "properties": {
+                    "caseId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed id or missing X-Tenant-Id."
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Unknown id, or the caller is not a member of the tenant."
           }
         }
       }
@@ -10806,6 +10895,1355 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/documents/sample": {
+      "post": {
+        "operationId": "uploadSampleDocument",
+        "summary": "Fixture mode only: upload the sample contract (Salesforce_MSA_2024.pdf).",
+        "description": "AskRaffa 4.0 Punto zero CTA in fixture mode. Creates the scripted sample document (its reading advances one stage every 600 ms, then asks the two flagged fields); uploading it again returns the same document. 404 when fixtures are off.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sample document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "documentId"
+                  ],
+                  "properties": {
+                    "documentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed id or missing X-Tenant-Id."
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Unknown id, or the caller is not a member of the tenant."
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/reading": {
+      "get": {
+        "operationId": "getDocumentReading",
+        "summary": "The reading of a document: stage, then the fields to verify one at a time.",
+        "description": "Maps the pipeline status (processing stages; review with the weak extraction_evidence fields, their flagReason, page, quote and critical flag; done; failed with a recoverable message).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Document id (GUID)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reading.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "documentId",
+                    "contractId",
+                    "file",
+                    "supplier",
+                    "status",
+                    "stage",
+                    "stageLabel",
+                    "failure",
+                    "fields"
+                  ],
+                  "properties": {
+                    "documentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "contractId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "supplier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "processing",
+                        "review",
+                        "done",
+                        "failed"
+                      ]
+                    },
+                    "stage": {
+                      "type": "integer",
+                      "description": "1..5 while processing (Caricamento, Classificazione, Lettura del testo, Sezioni e tabelle, Estrazione dei fatti)."
+                    },
+                    "stageLabel": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": "object",
+                          "description": "Placeholder values (string, number or a nested message)."
+                        }
+                      },
+                      "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                    },
+                    "failure": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": "object",
+                          "description": "Placeholder values (string, number or a nested message)."
+                        }
+                      },
+                      "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "label",
+                          "value",
+                          "page",
+                          "src",
+                          "why",
+                          "flagReason",
+                          "quote",
+                          "critical",
+                          "decision",
+                          "correctedValue"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "description": "The field's label. Either a message {id, vars} or a plain string (the document's own text)."
+                          },
+                          "value": {
+                            "type": "string"
+                          },
+                          "page": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "src": {
+                            "type": "string",
+                            "description": "Where it was read, e.g. \"p.14 §9.1\"."
+                          },
+                          "why": {
+                            "description": "What to check (why the field is flagged). Either a message {id, vars} or a plain string (the document's own text)."
+                          },
+                          "flagReason": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "quote": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "before",
+                              "mark",
+                              "after"
+                            ],
+                            "properties": {
+                              "before": {
+                                "type": "string"
+                              },
+                              "mark": {
+                                "type": "string"
+                              },
+                              "after": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "critical": {
+                            "type": "boolean"
+                          },
+                          "decision": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "accept",
+                              "correct",
+                              null
+                            ]
+                          },
+                          "correctedValue": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "description": "Where the reading of one document is (AskRaffa 4.0 Revisione)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed id or missing X-Tenant-Id."
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Unknown id, or the caller is not a member of the tenant."
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/reading/fields/{key}": {
+      "post": {
+        "operationId": "decideReadingField",
+        "summary": "Accept or correct one flagged field; the last decision validates the document.",
+        "description": "When every flagged field is decided the document is validated and the contract's facts are written, so it feeds Today, Renewals and Contracts.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Document id (GUID)."
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The field key from the reading."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision"
+                ],
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "accept",
+                      "correct"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The reading after the decision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "documentId",
+                    "contractId",
+                    "file",
+                    "supplier",
+                    "status",
+                    "stage",
+                    "stageLabel",
+                    "failure",
+                    "fields"
+                  ],
+                  "properties": {
+                    "documentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "contractId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "uuid"
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "supplier": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "processing",
+                        "review",
+                        "done",
+                        "failed"
+                      ]
+                    },
+                    "stage": {
+                      "type": "integer",
+                      "description": "1..5 while processing (Caricamento, Classificazione, Lettura del testo, Sezioni e tabelle, Estrazione dei fatti)."
+                    },
+                    "stageLabel": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": "object",
+                          "description": "Placeholder values (string, number or a nested message)."
+                        }
+                      },
+                      "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                    },
+                    "failure": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "vars": {
+                          "type": "object",
+                          "description": "Placeholder values (string, number or a nested message)."
+                        }
+                      },
+                      "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                    },
+                    "fields": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "label",
+                          "value",
+                          "page",
+                          "src",
+                          "why",
+                          "flagReason",
+                          "quote",
+                          "critical",
+                          "decision",
+                          "correctedValue"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "description": "The field's label. Either a message {id, vars} or a plain string (the document's own text)."
+                          },
+                          "value": {
+                            "type": "string"
+                          },
+                          "page": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "src": {
+                            "type": "string",
+                            "description": "Where it was read, e.g. \"p.14 §9.1\"."
+                          },
+                          "why": {
+                            "description": "What to check (why the field is flagged). Either a message {id, vars} or a plain string (the document's own text)."
+                          },
+                          "flagReason": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "quote": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "before",
+                              "mark",
+                              "after"
+                            ],
+                            "properties": {
+                              "before": {
+                                "type": "string"
+                              },
+                              "mark": {
+                                "type": "string"
+                              },
+                              "after": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "critical": {
+                            "type": "boolean"
+                          },
+                          "decision": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "accept",
+                              "correct",
+                              null
+                            ]
+                          },
+                          "correctedValue": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "description": "Where the reading of one document is (AskRaffa 4.0 Revisione)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed id or missing X-Tenant-Id."
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Unknown id, or the caller is not a member of the tenant."
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/v4": {
+      "get": {
+        "operationId": "getContractV4",
+        "summary": "Contract 360 for AskRaffa 4.0 (decisive dates, decision points, next action, full contract).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Contract id (GUID)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "contractId",
+                    "supplier",
+                    "name",
+                    "type",
+                    "version",
+                    "validated",
+                    "annualValue",
+                    "currency",
+                    "dates",
+                    "decisionPoints",
+                    "nextAction",
+                    "terms",
+                    "products",
+                    "oblYou",
+                    "oblSup",
+                    "std"
+                  ],
+                  "properties": {
+                    "contractId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "supplier": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "validated": {
+                      "type": "boolean"
+                    },
+                    "annualValue": {
+                      "type": "number"
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "dates": {
+                      "type": "object",
+                      "required": [
+                        "noticeDeadline",
+                        "noticeDays",
+                        "end",
+                        "autoRenew",
+                        "renewalMonths",
+                        "uplift",
+                        "start"
+                      ],
+                      "properties": {
+                        "noticeDeadline": {
+                          "type": "string"
+                        },
+                        "noticeDays": {
+                          "type": "integer"
+                        },
+                        "end": {
+                          "type": "string"
+                        },
+                        "autoRenew": {
+                          "type": "boolean"
+                        },
+                        "renewalMonths": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ]
+                        },
+                        "uplift": {
+                          "type": "string"
+                        },
+                        "start": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "decisionPoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "tag",
+                          "kind",
+                          "title",
+                          "says",
+                          "why",
+                          "proposal",
+                          "source",
+                          "policyNote",
+                          "decision",
+                          "decidedBy",
+                          "decidedAt"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "enum": [
+                              "discuss",
+                              "risk",
+                              "sla"
+                            ]
+                          },
+                          "kind": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "says": {
+                            "type": "string"
+                          },
+                          "why": {
+                            "description": "Why it matters. Either a message {id, vars} or a plain string (the document's own text)."
+                          },
+                          "proposal": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "policyNote": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "decision": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "negotiate",
+                              "accept",
+                              "clarify",
+                              null
+                            ]
+                          },
+                          "decidedBy": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "decidedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    },
+                    "nextAction": {
+                      "type": "object",
+                      "required": [
+                        "hasCase",
+                        "caseId",
+                        "outcome",
+                        "text"
+                      ],
+                      "properties": {
+                        "hasCase": {
+                          "type": "boolean"
+                        },
+                        "caseId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "uuid"
+                        },
+                        "outcome": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "renewed",
+                            "terminated",
+                            null
+                          ]
+                        },
+                        "text": {
+                          "type": "object",
+                          "required": [
+                            "id"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "vars": {
+                              "type": "object",
+                              "description": "Placeholder values (string, number or a nested message)."
+                            }
+                          },
+                          "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                        }
+                      }
+                    },
+                    "terms": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "label",
+                          "value"
+                        ],
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "products": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "unit",
+                          "quantity",
+                          "unitPrice",
+                          "annual"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "unit": {
+                            "type": "string"
+                          },
+                          "quantity": {
+                            "type": "number"
+                          },
+                          "unitPrice": {
+                            "type": "number"
+                          },
+                          "annual": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "oblYou": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "when",
+                          "high"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "when": {
+                            "type": "string"
+                          },
+                          "high": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "oblSup": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "when",
+                          "high"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "when": {
+                            "type": "string"
+                          },
+                          "high": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "std": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "normalized",
+                          "src"
+                        ],
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "normalized": {
+                            "type": "string"
+                          },
+                          "src": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "description": "Contract 360, decisions first (AskRaffa 4.0 Contratto). Dates are the contract's display form (\"18 Oct 2026\")."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed id or missing X-Tenant-Id."
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Unknown id, or the caller is not a member of the tenant."
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/decision-points": {
+      "get": {
+        "operationId": "getDecisionPoints",
+        "summary": "The ≤3 points of a contract that require a decision, with the recorded choices.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Contract id (GUID)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The points.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "points"
+                  ],
+                  "properties": {
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "tag",
+                          "kind",
+                          "title",
+                          "says",
+                          "why",
+                          "proposal",
+                          "source",
+                          "policyNote",
+                          "decision",
+                          "decidedBy",
+                          "decidedAt"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "enum": [
+                              "discuss",
+                              "risk",
+                              "sla"
+                            ]
+                          },
+                          "kind": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "says": {
+                            "type": "string"
+                          },
+                          "why": {
+                            "description": "Why it matters. Either a message {id, vars} or a plain string (the document's own text)."
+                          },
+                          "proposal": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "policyNote": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "decision": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "negotiate",
+                              "accept",
+                              "clarify",
+                              null
+                            ]
+                          },
+                          "decidedBy": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "decidedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed id or missing X-Tenant-Id."
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Unknown id, or the caller is not a member of the tenant."
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/decision-points/{pointKey}": {
+      "put": {
+        "operationId": "setDecisionPoint",
+        "summary": "Record (or clear with null) the choice on one point: negotiate | accept | clarify.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Contract id (GUID)."
+          },
+          {
+            "name": "pointKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The point key."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision"
+                ],
+                "properties": {
+                  "decision": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "negotiate",
+                      "accept",
+                      "clarify",
+                      null
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The points after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "points"
+                  ],
+                  "properties": {
+                    "points": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "tag",
+                          "kind",
+                          "title",
+                          "says",
+                          "why",
+                          "proposal",
+                          "source",
+                          "policyNote",
+                          "decision",
+                          "decidedBy",
+                          "decidedAt"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "tag": {
+                            "type": "string",
+                            "enum": [
+                              "discuss",
+                              "risk",
+                              "sla"
+                            ]
+                          },
+                          "kind": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "says": {
+                            "type": "string"
+                          },
+                          "why": {
+                            "description": "Why it matters. Either a message {id, vars} or a plain string (the document's own text)."
+                          },
+                          "proposal": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "object",
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "policyNote": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "id"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "vars": {
+                                "type": "object",
+                                "description": "Placeholder values (string, number or a nested message)."
+                              }
+                            },
+                            "description": "A message the client translates: {id, vars}; id = the English text (Italian in web/src/i18n/it/*.ts)."
+                          },
+                          "decision": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "negotiate",
+                              "accept",
+                              "clarify",
+                              null
+                            ]
+                          },
+                          "decidedBy": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "decidedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed id or missing X-Tenant-Id."
+          },
+          "401": {
+            "description": "No validated caller identity."
+          },
+          "404": {
+            "description": "Unknown id, or the caller is not a member of the tenant."
           }
         }
       }

@@ -454,6 +454,27 @@ export interface operations {
       };
     };
   };
+  openRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { caseId: string };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
   getRenewalPriority: {
     responses: {
       200: {
@@ -997,6 +1018,132 @@ export interface operations {
       };
     };
   };
+  uploadSampleDocument: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getDocumentReading: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string; contractId: string | null; file: string; supplier: string | null; status: "processing" | "review" | "done" | "failed"; stage: number; stageLabel: { id: string; vars?: unknown }; failure: { id: string; vars?: unknown } | null; fields: ({ key: string; label: unknown; value: string; page: number | null; src: string; why: unknown; flagReason: { id: string; vars?: unknown } | null; quote: { before: string; mark: string; after: string } | null; critical: boolean; decision: "accept" | "correct" | null; correctedValue: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  decideReadingField: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string; contractId: string | null; file: string; supplier: string | null; status: "processing" | "review" | "done" | "failed"; stage: number; stageLabel: { id: string; vars?: unknown }; failure: { id: string; vars?: unknown } | null; fields: ({ key: string; label: unknown; value: string; page: number | null; src: string; why: unknown; flagReason: { id: string; vars?: unknown } | null; quote: { before: string; mark: string; after: string } | null; critical: boolean; decision: "accept" | "correct" | null; correctedValue: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getContractV4: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { contractId: string; supplier: string; name: string; type: string; version: number; validated: boolean; annualValue: number; currency: string; dates: { noticeDeadline: string; noticeDays: number; end: string; autoRenew: boolean; renewalMonths: number | null; uplift: string; start: string }; decisionPoints: ({ key: string; tag: "discuss" | "risk" | "sla"; kind: { id: string; vars?: unknown }; title: string; says: string; why: unknown; proposal: string; source: { id: string; vars?: unknown }; policyNote: { id: string; vars?: unknown } | null; decision: "negotiate" | "accept" | "clarify" | null; decidedBy: string | null; decidedAt: string | null })[]; nextAction: { hasCase: boolean; caseId: string | null; outcome: "renewed" | "terminated" | null; text: { id: string; vars?: unknown } }; terms: ({ label: string; value: string })[]; products: ({ name: string; unit: string; quantity: number; unitPrice: number; annual: number })[]; oblYou: ({ text: string; when: string; high: boolean })[]; oblSup: ({ text: string; when: string; high: boolean })[]; std: ({ type: string; normalized: string; src: string })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  getDecisionPoints: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { points: ({ key: string; tag: "discuss" | "risk" | "sla"; kind: { id: string; vars?: unknown }; title: string; says: string; why: unknown; proposal: string; source: { id: string; vars?: unknown }; policyNote: { id: string; vars?: unknown } | null; decision: "negotiate" | "accept" | "clarify" | null; decidedBy: string | null; decidedAt: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
+  setDecisionPoint: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { points: ({ key: string; tag: "discuss" | "risk" | "sla"; kind: { id: string; vars?: unknown }; title: string; says: string; why: unknown; proposal: string; source: { id: string; vars?: unknown }; policyNote: { id: string; vars?: unknown } | null; decision: "negotiate" | "accept" | "clarify" | null; decidedBy: string | null; decidedAt: string | null })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -1063,6 +1210,7 @@ export interface paths {
   };
   "/api/renewals": {
     get: operations["getRenewals"];
+    post: operations["openRenewalCase"];
   };
   "/api/renewals/{contractId}/priority": {
     get: operations["getRenewalPriority"];
@@ -1148,5 +1296,23 @@ export interface paths {
   };
   "/api/fixtures/session": {
     get: operations["getFixtureSession"];
+  };
+  "/api/documents/sample": {
+    post: operations["uploadSampleDocument"];
+  };
+  "/api/documents/{id}/reading": {
+    get: operations["getDocumentReading"];
+  };
+  "/api/documents/{id}/reading/fields/{key}": {
+    post: operations["decideReadingField"];
+  };
+  "/api/contracts/{id}/v4": {
+    get: operations["getContractV4"];
+  };
+  "/api/contracts/{id}/decision-points": {
+    get: operations["getDecisionPoints"];
+  };
+  "/api/contracts/{id}/decision-points/{pointKey}": {
+    put: operations["setDecisionPoint"];
   };
 }

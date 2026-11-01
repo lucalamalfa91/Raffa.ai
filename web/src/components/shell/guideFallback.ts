@@ -20,7 +20,7 @@ const TODAY: Fallback = {
   now: "Upload the first contract.",
   why: "Raffa works only on read and verified contracts: a doubtful notice date cannot drive a decision.",
   next: "Contract validated → the notice deadline appears in Today → you run the renewal through to signature.",
-  cta: { label: "Upload the first contract", to: "/documents" },
+  cta: { label: "Upload the first contract", to: "/contracts/review/new" },
 };
 const RENEWALS: Fallback = {
   where: "Renewals⟦guide⟧",
@@ -39,7 +39,7 @@ const CONTRACTS: Fallback = {
   now: "Open a contract or upload the next one.",
   why: "Only validated contracts feed Today and Renewals.",
   next: "A new file goes reading → verification → validation.",
-  cta: { label: "Upload a contract", to: "/documents" },
+  cta: { label: "Upload a contract", to: "/contracts/review/new" },
 };
 const CONTRACT: Fallback = {
   where: "Contracts⟦guide⟧",

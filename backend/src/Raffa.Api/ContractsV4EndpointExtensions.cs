@@ -9,10 +9,10 @@ using Raffa.SharedKernel;
 namespace Raffa.Api;
 
 /// <summary><c>POST /api/documents/{id}/reading/fields/{key}</c> body.</summary>
-public sealed record ReadingFieldDecisionRequest(string? Decision, string? Value);
+internal sealed record ReadingFieldDecisionRequest(string? Decision, string? Value);
 
 /// <summary><c>PUT /api/contracts/{id}/decision-points/{pointKey}</c> body (<c>decision: null</c> clears it).</summary>
-public sealed record DecisionPointRequest(string? Decision);
+internal sealed record DecisionPointRequest(string? Decision);
 
 /// <summary>
 /// AskRaffa 4.0 slice 4 (Contratti, Contratto, Revisione): the document reading (stages → the

@@ -94,7 +94,7 @@ public static class ReadingFieldLabels
         ["renewalTermMonths"] = "Renewal term",
         ["noticePeriodDays"] = "Notice period",
         ["autoRenewal"] = "Auto-renewal",
-        ["paymentTerms"] = "Payment terms",
+        ["paymentTerms"] = "Payment terms⟦field⟧",
         ["governingLaw"] = "Governing law",
         ["currency"] = "Currency",
         ["supplier"] = "Supplier",

@@ -1863,6 +1863,22 @@ export interface ApiClient {
    * outcome.
    */
   getMarketRecord(id: string): Promise<GetMarketRecordResult>;
+
+  // AskRaffa 4.0 slice 4 (Contratti, Contratto, Revisione). Each never throws: `{ ok, statusCode, data, error }`.
+  /** `POST /api/documents/sample` (fixture mode only): the sample contract; 404 outside fixture mode. */
+  uploadSampleDocument(tenantId: string): Promise<V4Result<SampleDocumentBody>>;
+  /** `GET /api/documents/{id}/reading`: stage, then the fields to verify one at a time. */
+  getDocumentReading(tenantId: string, documentId: string): Promise<V4Result<DocumentReadingBody>>;
+  /** `POST /api/documents/{id}/reading/fields/{key}`: accept or correct one field (the last one validates). */
+  decideReadingField(tenantId: string, documentId: string, key: string, body: ReadingFieldDecisionBody): Promise<V4Result<DocumentReadingBody>>;
+  /** `GET /api/contracts?view=v4`: Contratti rows + the document banner. */
+  listContractsV4(tenantId: string): Promise<V4Result<ContractListV4Body>>;
+  /** `GET /api/contracts/{id}/v4`: Contract 360, decisions first. */
+  getContractV4(tenantId: string, contractId: string): Promise<V4Result<ContractV4Body>>;
+  /** `PUT /api/contracts/{id}/decision-points/{pointKey}`: record or clear (null) a choice. */
+  setDecisionPoint(tenantId: string, contractId: string, pointKey: string, decision: DecisionPointChoice | null): Promise<V4Result<DecisionPointsBody>>;
+  /** `POST /api/renewals` (Renewals slice): open the contract's renewal case, idempotently. */
+  openRenewalCase(tenantId: string, request: OpenRenewalCaseRequest): Promise<V4Result<OpenRenewalCaseBody>>;
 }
 
 
@@ -1885,6 +1901,86 @@ export function contractCorrectionCount(client: object): number {
  * every `200` from `correctContract`; it is exported for test doubles that stand in for that call. */
 export function noteContractCorrection(client: object): void {
   contractCorrections.set(client, contractCorrectionCount(client) + 1);
+}
+
+// AskRaffa 4.0 slice 4 (Contratti, Contratto, Revisione): response shapes anchored to the generated
+// `paths`; the v4 contract list (`GET /api/contracts?view=v4`) shares its path with the portfolio
+// page, so its body is typed here (documented on the `view` parameter in the OpenAPI file).
+export interface V4Result<T> {
+  ok: boolean;
+  statusCode: number | null;
+  data: T | null;
+  error: string | null;
+}
+export type SampleDocumentBody = paths["/api/documents/sample"]["post"]["responses"][200]["content"]["application/json"];
+export type DocumentReadingBody = paths["/api/documents/{id}/reading"]["get"]["responses"][200]["content"]["application/json"];
+export type ReadingFieldBody = DocumentReadingBody["fields"][number];
+export interface ReadingFieldDecisionBody {
+  decision: "accept" | "correct";
+  value?: string | null;
+}
+export type ContractV4Body = paths["/api/contracts/{id}/v4"]["get"]["responses"][200]["content"]["application/json"];
+export type DecisionPointsBody = paths["/api/contracts/{id}/decision-points"]["get"]["responses"][200]["content"]["application/json"];
+export type DecisionPointBody = DecisionPointsBody["points"][number];
+export type DecisionPointChoice = "negotiate" | "accept" | "clarify";
+export interface ContractListRowV4Body {
+  contractId: string;
+  supplier: string;
+  name: string;
+  noticeDeadline: string;
+  noticeDays: number;
+  end: string;
+  annualValue: number;
+  currency: string;
+  status: "validated" | "caseOpen" | "renewed" | "terminated";
+  caseId: string | null;
+}
+export interface ContractListV4Body {
+  rows: ContractListRowV4Body[];
+  document: { documentId: string; file: string; status: "processing" | "review"; flagged: number } | null;
+}
+export interface OpenRenewalCaseRequest {
+  contractId: string;
+  branch?: string | null;
+  ownerUserId?: string | null;
+}
+export type OpenRenewalCaseBody = paths["/api/renewals"]["post"]["responses"][200]["content"]["application/json"];
+
+/** One JSON call for the v4 endpoints: never throws; `data` only on 2xx. */
+async function v4Request<T>(
+  apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  baseUrl: string,
+  getAccessToken: GetAccessToken,
+  tenantId: string,
+  path: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<V4Result<T>> {
+  let response: Response;
+  try {
+    response = await apiFetch(new URL(path, baseUrl), {
+      method: init.method ?? "GET",
+      headers: {
+        "X-Tenant-Id": tenantId,
+        ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...await authHeaders(getAccessToken),
+      },
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      cache: "no-store",
+    });
+  } catch (cause) {
+    return { ok: false, statusCode: null, data: null, error: `Unable to reach ${baseUrl}${path}. Cause: ${cause instanceof Error ? cause.message : String(cause)}` };
+  }
+  if (response.ok) {
+    return { ok: true, statusCode: response.status, data: (await response.json()) as T, error: null };
+  }
+  let error: string;
+  try {
+    const body: unknown = await response.json();
+    error = typeof body === "string" ? body : JSON.stringify(body);
+  } catch {
+    error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+  }
+  return { ok: false, statusCode: response.status, data: null, error };
 }
 
 /**
@@ -3960,6 +4056,23 @@ export function createApiClient(
         error: `Request failed with HTTP ${response.status} ${response.statusText}.`,
       };
     },
+    // AskRaffa 4.0 slice 4.
+    uploadSampleDocument: (tenantId) =>
+      v4Request<SampleDocumentBody>(apiFetch, baseUrl, getAccessToken, tenantId, "/api/documents/sample", { method: "POST", body: {} }),
+    getDocumentReading: (tenantId, documentId) =>
+      v4Request<DocumentReadingBody>(apiFetch, baseUrl, getAccessToken, tenantId, `/api/documents/${encodeURIComponent(documentId)}/reading`),
+    decideReadingField: (tenantId, documentId, key, body) =>
+      v4Request<DocumentReadingBody>(apiFetch, baseUrl, getAccessToken, tenantId,
+        `/api/documents/${encodeURIComponent(documentId)}/reading/fields/${encodeURIComponent(key)}`, { method: "POST", body }),
+    listContractsV4: (tenantId) =>
+      v4Request<ContractListV4Body>(apiFetch, baseUrl, getAccessToken, tenantId, "/api/contracts?view=v4"),
+    getContractV4: (tenantId, contractId) =>
+      v4Request<ContractV4Body>(apiFetch, baseUrl, getAccessToken, tenantId, `/api/contracts/${encodeURIComponent(contractId)}/v4`),
+    setDecisionPoint: (tenantId, contractId, pointKey, decision) =>
+      v4Request<DecisionPointsBody>(apiFetch, baseUrl, getAccessToken, tenantId,
+        `/api/contracts/${encodeURIComponent(contractId)}/decision-points/${encodeURIComponent(pointKey)}`, { method: "PUT", body: { decision } }),
+    openRenewalCase: (tenantId, request) =>
+      v4Request<OpenRenewalCaseBody>(apiFetch, baseUrl, getAccessToken, tenantId, "/api/renewals", { method: "POST", body: { branch: null, ...request } }),
   };
   return client;
 }
