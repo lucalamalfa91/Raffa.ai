@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
 import type { TodayFeed, TodayItem } from "../../api/renewalCases";
@@ -6,6 +6,7 @@ import { useGuide, useNavBadge } from "../../components/shell/guide";
 import { useShellContext } from "../../components/shell/shellContext";
 import { useI18n } from "../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../i18n/translate";
+import { CONTRACTS_CHANGED, loadToday, notifyTodayChanged } from "./loadToday";
 import { useCaseNavigation } from "./useCaseNavigation";
 import "./today4.css";
 
@@ -39,8 +40,8 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
   const { openItem } = useCaseNavigation(apiClient, tenantId);
 
   const load = useCallback(async () => {
-    if (!tenantId || !apiClient.getToday) return;
-    const r = await apiClient.getToday(tenantId);
+    if (!tenantId) return;
+    const r = await loadToday(apiClient, tenantId);
     if (r.ok) {
       setFeed(r.body);
       setError(null);
@@ -51,6 +52,9 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
 
   useEffect(() => {
     void load();
+    const reload = () => void load();
+    window.addEventListener(CONTRACTS_CHANGED, reload);
+    return () => window.removeEventListener(CONTRACTS_CHANGED, reload);
   }, [load]);
 
   useEffect(() => {
@@ -61,9 +65,12 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
     async (key: string, on: boolean) => {
       if (!tenantId || !apiClient.snoozeTodayItem) return;
       const r = await apiClient.snoozeTodayItem(tenantId, key, on);
-      if (r.ok) setFeed(r.body);
+      if (r.ok) {
+        await load();
+        notifyTodayChanged();
+      }
     },
-    [apiClient, tenantId],
+    [apiClient, tenantId, load],
   );
 
   const startSample = useCallback(async () => {
@@ -73,11 +80,11 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
       navigate(`/contracts/review/${doc.documentId}`);
       return;
     }
-    if (!apiClient.startSampleUpload) return;
-    const r = await apiClient.startSampleUpload(tenantId);
-    if (r.ok) navigate(`/contracts/review/${r.body.documentId}`);
-    else setError(r.error);
-  }, [apiClient, tenantId, feed, navigate]);
+    const r = await apiClient.uploadSampleDocument(tenantId);
+    const documentId = r.ok ? (r.data as { documentId?: string } | null)?.documentId : undefined;
+    if (documentId) navigate(`/contracts/review/${documentId}`);
+    else setError(r.error ?? t("The sample contract could not be uploaded."));
+  }, [apiClient, tenantId, feed, navigate, t]);
 
   const delegate = useCallback(
     async (item: TodayItem) => {

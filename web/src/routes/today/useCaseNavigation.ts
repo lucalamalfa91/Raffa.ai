@@ -14,10 +14,10 @@ export function useCaseNavigation(apiClient: ApiClient, tenantId: string | undef
 
   const openContract = useCallback(
     async (contractId: string, ownerUserId: string | null | undefined) => {
-      if (!tenantId || !apiClient.openRenewalCase) return;
+      if (!tenantId) return;
       const r = await apiClient.openRenewalCase(tenantId, { contractId, ownerUserId: ownerUserId ?? null });
-      const env = r.ok ? r.body : r.current;
-      if (env) navigate(`/renewals/${env.caseId}`);
+      const caseId = (r.data as { caseId?: string } | null)?.caseId;
+      if (caseId) navigate(`/renewals/${caseId}`);
     },
     [apiClient, tenantId, navigate],
   );

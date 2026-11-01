@@ -2664,6 +2664,12 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       getMarketRecord: () => client.getMarketRecord("rec-1"),
       // AskRaffa 4.0 slice 4.
       uploadSampleDocument: () => client.uploadSampleDocument("tenant-1"),
+      getToday: () => client.getToday!("tenant-1"),
+      snoozeTodayItem: () => client.snoozeTodayItem!("tenant-1", "k", true),
+      getRenewalsBoard: () => client.getRenewalsBoard!("tenant-1"),
+      getRenewalCase: () => client.getRenewalCase!("tenant-1", "case-1"),
+      postRenewalCaseAction: () => client.postRenewalCaseAction!("tenant-1", "case-1", "visit", null, 1),
+      askRenewalCase: () => client.askRenewalCase!("tenant-1", "case-1", "q", 1),
       getDocumentReading: () => client.getDocumentReading("tenant-1", "doc-1"),
       decideReadingField: () => client.decideReadingField("tenant-1", "doc-1", "sf_uplift", { decision: "accept" }),
       listContractsV4: () => client.listContractsV4("tenant-1"),

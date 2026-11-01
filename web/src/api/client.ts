@@ -1909,7 +1909,7 @@ export interface ApiClient {
   /** `POST /api/renewals/{caseId}/actions` -- one engine action at `version`. */
   postRenewalCaseAction?(tenantId: string, caseId: string, type: string, payload: CaseActionPayload | null, version: number | null): Promise<CaseCallResult<CaseEnvelope>>;
   /** `POST /api/renewals/{caseId}/ask` -- the case composer (sourced answer, then back to the step). */
-  askRenewalCase?(tenantId: string, caseId: string, text: string, version: number | null): Promise<CaseCallResult<CaseEnvelope>>;
+  askRenewalCase?(tenantId: string, caseId: string, text: string, version: number | null, lang?: string): Promise<CaseCallResult<CaseEnvelope>>;
 }
 
 
@@ -4222,8 +4222,8 @@ export function createApiClient(
       return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/actions`, { type, payload, version });
     },
 
-    askRenewalCase(tenantId, caseId, text, version) {
-      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/ask`, { text, version });
+    askRenewalCase(tenantId, caseId, text, version, lang) {
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/ask`, { text, version, lang: lang ?? null });
     },
 
   };

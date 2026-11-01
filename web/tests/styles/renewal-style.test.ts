@@ -7,10 +7,9 @@ import { describe, expect, it } from "vitest";
  * failing line rather than as something to notice in a screenshot.
  */
 const SHEETS = [
-  "src/routes/renewals/renewals.css",
-  "src/routes/renewals/case/chat/renewalChat.css",
-  "src/routes/today/today.css",
-  "src/routes/renewals/tabs/caseTabs.css",
+  "src/routes/renewals/renewals4.css",
+  "src/routes/renewals/case/case4.css",
+  "src/routes/today/today4.css",
 ];
 
 function lines(path: string): Array<[number, string]> {

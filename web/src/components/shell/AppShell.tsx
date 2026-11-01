@@ -12,6 +12,7 @@ import { useFixtureSession } from "../../fixtures/FixtureSessionContext";
 import TopNav from "./TopNav";
 import GuidePanel from "./GuidePanel";
 import { GuideProvider, useGuideState } from "./guide";
+import { useTodayBadge } from "../../routes/today/loadToday";
 import "./shell4.css";
 
 export { isAskRoute } from "./isAskRoute";
@@ -56,6 +57,8 @@ function ShellLayout({ workspaceId, apiClient }: AppShellProps) {
   const refreshKey = `${location.pathname}:${pollTick}`;
   const documentCounts = useDocumentCounts(apiClient, refreshKey);
   const { count, kbReady } = useValidatedContractCount(apiClient, refreshKey);
+  // Oggi badge on every screen (README "Top nav"): the caller's items.
+  useTodayBadge(apiClient, workspaceId, location.pathname);
 
   const fingerprint = useMemo(
     () =>
