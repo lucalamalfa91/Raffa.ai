@@ -66,12 +66,14 @@ function coalescingKey(input: RequestInfo | URL, init: RequestInit | undefined):
  * One instance per API client (its entries are that client's in-flight requests; nothing is shared
  * across clients or tests).
  */
-export function createCoalescingFetch(): CoalescingFetch {
+export function createCoalescingFetch(baseFetch?: CoalescingFetch): CoalescingFetch {
   const inFlight = new Map<string, InFlightGet>();
 
+  // `baseFetch` (fixture mode only: adds the fixture headers) defaults to the platform fetch, looked
+  // up at call time.
   const network = (input: RequestInfo | URL, init: RequestInit | undefined): Promise<Response> =>
     // Resolved through a promise so a synchronous throw from `fetch` rejects like a network failure.
-    new Promise<Response>((resolve) => resolve(globalThis.fetch(input, init)));
+    new Promise<Response>((resolve) => resolve(baseFetch ? baseFetch(input, init) : globalThis.fetch(input, init)));
 
   return async function coalescingFetch(input, init) {
     if (!isGet(init)) {

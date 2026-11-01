@@ -1,0 +1,57 @@
+/* The prototype's demo bar (AskRaffa V4.dc.html lines 28-36), value for value. */
+.demo-bar {
+  flex: none;
+  height: 36px;
+  box-sizing: border-box;
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-300);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  font-size: 11px;
+  border-bottom: 2px solid var(--color-accent);
+}
+.demo-bar-kicker {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-400);
+}
+.demo-bar-clock {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.demo-bar-label { color: var(--color-neutral-400); }
+.demo-bar-seg {
+  display: flex;
+  border: 1px solid var(--color-neutral-600);
+  height: 22px;
+  box-sizing: border-box;
+}
+.demo-bar-seg button {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.demo-bar-seg button.is-on { background: var(--color-accent); }
+.demo-bar-lang button { color: var(--color-neutral-300); letter-spacing: 0.06em; white-space: normal; }
+.demo-bar-lang button.is-on { color: #fff; }
+.demo-bar-reset {
+  height: 22px;
+  border: 1px solid var(--color-neutral-600);
+  background: transparent;
+  color: var(--color-neutral-300);
+  font-size: 11px;
+  padding: 0 10px;
+  cursor: pointer;
+}

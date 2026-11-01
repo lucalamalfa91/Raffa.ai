@@ -5,5 +5,6 @@
 
 import { IT_CASE } from "./case";
 import { IT_RENEWALS } from "./renewals";
+import { IT_SHELL } from "./shell";
 
-export const IT: Readonly<Record<string, string>> = { ...IT_CASE, ...IT_RENEWALS };
+export const IT: Readonly<Record<string, string>> = { ...IT_CASE, ...IT_RENEWALS, ...IT_SHELL };

@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { DEFAULT_LANG, isLang, translate, type Lang, type Translate } from "./translate";
+import { useFixtureSession } from "../fixtures/FixtureSessionContext";
 
-export const LANG_STORAGE_KEY = "raffa.lang";
+/** Shared with the AskRaffa 4.0 prototype (`localStorage['raffa4.lang']`). */
+export const LANG_STORAGE_KEY = "raffa4.lang";
 
 export interface I18nValue {
   lang: Lang;
@@ -36,13 +38,15 @@ function writeStored(lang: Lang): void {
 }
 
 /**
- * The language of the interface: `?lang=` (and remembered), else what was remembered, else English.
- * Screens outside this provider read English, so a bare component test needs no setup.
+ * The language of the interface: `?lang=` (and remembered), else what was remembered, else Italian
+ * in fixture mode (as the prototype) and English otherwise. Screens outside this provider read
+ * English, so a bare component test needs no setup.
  */
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [search] = useSearchParams();
   const requested = search.get("lang");
-  const [lang, setLangState] = useState<Lang>(() => (isLang(requested) ? requested : (readStored() ?? DEFAULT_LANG)));
+  const fallback: Lang = useFixtureSession() ? "it" : DEFAULT_LANG;
+  const [lang, setLangState] = useState<Lang>(() => (isLang(requested) ? requested : (readStored() ?? fallback)));
 
   useEffect(() => {
     if (isLang(requested)) {

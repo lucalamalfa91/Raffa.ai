@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import AppShell from "./AppShell";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
@@ -38,8 +38,10 @@ export interface WorkspaceShellAppProps {
 }
 
 /**
- * V2 route table (ADR-024 amendment to ADR-018's locked "Route map"; `ia-v2.md` "Route map (V2)"):
- * `/` -> `/ask` (R-WEB-01, sign-in and every stale bookmark lands on the new home); `ask` /
+ * AskRaffa 4.0 (IMPLEMENTATION-PLAN.md §1): `/` -> `/today`, the five top-nav tabs are
+ * `/today /renewals /contracts /savings /ask`; `/renewals/:caseId` and `/contracts/review/:documentId`
+ * are the v4 case and review routes. Earlier V2 notes, still true for the rest of the table:
+ * V2 route table (ADR-024 amendment to ADR-018's locked "Route map"; `ia-v2.md` "Route map (V2)"): `ask` /
  * `ask/:conversationId` -> `AskRoute`; `savings` -> `SavingsRoute` (rail item under "From your
  * contracts", also reached from Ask actions, Renewals and Contract 360); `review` redirects to `/documents?filter=attention`
  * (Review is a *state* of Documents in V2, not a rail destination or its own screen -- the old
@@ -81,7 +83,7 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
           />
         }
       >
-        <Route index element={<Navigate to="/ask" replace />} />
+        <Route index element={<Navigate to="/today" replace />} />
         <Route path="today" element={<TodayRoute userLabel={userLabel} />} />
         <Route path="ask" element={<AskRoute apiClient={apiClient} />} />
         <Route path="ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
@@ -89,8 +91,14 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
         <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} userLabel={userLabel} />} />
         <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
+        {/* AskRaffa 4.0 Revisione is by document (IMPLEMENTATION-PLAN.md §1); until slice 4 rewrites
+            it, a document's review is the Documents screen's review state. */}
+        <Route path="contracts/review/:documentId" element={<Navigate to="/documents?filter=attention" replace />} />
         <Route path="renewals" element={<RenewalsRoute userLabel={userLabel} />} />
         <Route path="renewals/:contractId/chat" element={<RenewalChatRoute userLabel={userLabel} />} />
+        {/* AskRaffa 4.0 case route (IMPLEMENTATION-PLAN.md §1); served by the current renewal chat
+            until slice 3 replaces it with the server-side case. */}
+        <Route path="renewals/:caseId" element={<CaseRouteAlias />} />
         <Route path="quotes" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="quotes/:quoteId" element={<QuoteCheckRoute apiClient={apiClient} />} />
         <Route path="documents" element={<DocumentsRoute apiClient={apiClient} role={role} />} />
@@ -101,6 +109,12 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
       </Route>
     </Routes>
   );
+}
+
+/** `/renewals/:caseId` -> the renewal chat of that id (slice 3 replaces both with the guided case). */
+function CaseRouteAlias() {
+  const { caseId = "" } = useParams();
+  return <Navigate to={`/renewals/${encodeURIComponent(caseId)}/chat`} replace />;
 }
 
 /**

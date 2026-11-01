@@ -1,0 +1,158 @@
+/*
+ * AskRaffa 4.0 shell (AskRaffa V4.dc.html lines 26, 38-47, 309-318): top nav, main grid, Guida
+ * Raffa. Values from the prototype's inline styles (STYLE-INVENTORY.md "Shell").
+ */
+
+/* — top nav — */
+.v4-nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px 28px;
+  padding: 0 40px;
+  border-bottom: 2px solid var(--color-text);
+  flex-wrap: wrap;
+}
+.v4-nav-logo {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0;
+  margin-right: 12px;
+}
+.v4-mark {
+  width: 12px;
+  height: 12px;
+  background: var(--color-accent);
+  display: inline-block;
+  flex: none;
+}
+.v4-mark-sm {
+  width: 10px;
+  height: 10px;
+  background: var(--color-accent);
+  display: inline-block;
+  flex: none;
+}
+/* The tabs sit in the header's own flex row, as the prototype's buttons do. */
+.v4-nav-tabs { display: contents; }
+.v4 .v4-tab {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  padding: 16px 0 13px;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 14px;
+  line-height: normal;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  white-space: nowrap;
+}
+.v4 .v4-tab:hover { color: inherit; }
+.v4 .v4-tab.is-active { border-bottom-color: var(--color-accent); }
+.v4-tab-badge {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-accent-700);
+}
+.v4 .v4-guide-toggle {
+  margin-left: auto;
+  border: 1px solid var(--color-text);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: normal;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.v4 .v4-guide-toggle.is-open {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* — main grid — */
+.v4-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  min-height: 0;
+}
+.v4-body.is-guide-closed { grid-template-columns: minmax(0, 1fr); }
+.v4-main {
+  min-width: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  align-items: stretch;
+}
+
+/* — Guida Raffa — */
+.v4-guide {
+  background: var(--color-text);
+  color: var(--color-bg);
+  border-top: 3px solid var(--color-accent);
+  padding: 18px 20px 24px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+.v4-guide-head { display: flex; align-items: center; gap: 10px; }
+.v4-guide-title { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
+.v4 .v4-guide-hide {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-neutral-400);
+  font-size: 12px;
+  line-height: normal;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+.v4-guide-live { display: flex; flex-direction: column; gap: 16px; }
+.v4-guide-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-neutral-400);
+}
+.v4-guide-where { font-size: 14px; font-weight: 700; margin-top: 3px; }
+.v4-guide-now {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 19px;
+  line-height: 1.2;
+  margin-top: 3px;
+  text-wrap: pretty;
+}
+.v4-guide-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-neutral-300);
+  margin-top: 3px;
+  text-wrap: pretty;
+}
+/* .btn is declared in ds-modernist.css, which may load after this sheet: outrank it. */
+.v4 .btn.v4-guide-cta { font-size: 13px; }
+.v4-guide-foot {
+  font-size: 11px;
+  color: var(--color-neutral-500);
+  margin-top: auto;
+  text-wrap: pretty;
+}

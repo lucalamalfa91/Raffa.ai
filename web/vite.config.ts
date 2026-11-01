@@ -24,6 +24,8 @@ export default defineConfig({
     // runners' test sets disjoint by construction, not by convention.
     // Spread `configDefaults.exclude` first so this doesn't drop Vitest's
     // own default excludes (node_modules, dist, ...).
-    exclude: [...configDefaults.exclude, "e2e/**"],
+    // `parity/**` is the AskRaffa 4.0 Playwright parity suite (.github/workflows/parity.yml), same
+    // reason as `e2e/**`.
+    exclude: [...configDefaults.exclude, "e2e/**", "parity/**"],
   },
 });

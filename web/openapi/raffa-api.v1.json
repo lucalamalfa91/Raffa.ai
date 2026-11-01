@@ -8211,6 +8211,26 @@
                           }
                         }
                       }
+                    },
+                    "flags": {
+                      "type": "object",
+                      "description": "AskRaffa 4.0 feature flags (IMPLEMENTATION-PLAN.md §2): all on in this release.",
+                      "required": [
+                        "askraffa4.guidedFlow",
+                        "askraffa4.noBenchmark",
+                        "savings.results"
+                      ],
+                      "properties": {
+                        "askraffa4.guidedFlow": {
+                          "type": "boolean"
+                        },
+                        "askraffa4.noBenchmark": {
+                          "type": "boolean"
+                        },
+                        "savings.results": {
+                          "type": "boolean"
+                        }
+                      }
                     }
                   }
                 }
@@ -10583,6 +10603,209 @@
           },
           "404": {
             "description": "The caller is not a live member of this workspace."
+          }
+        }
+      }
+    },
+    "/api/fixtures/reset": {
+      "post": {
+        "operationId": "resetFixtures",
+        "summary": "Wipe and reseed the fixture tenant (Helvetia Foods AG) for a scenario.",
+        "description": "AskRaffa 4.0 fixture mode only (IMPLEMENTATION-PLAN.md §2): mapped only when Fixtures:Enabled is true, which the API refuses to start with in Production. Served by backend/src/Raffa.Api/Fixtures/FixturesEndpointExtensions.cs. No caller identity is needed. Body: {\"scenario\": \"zero\" | \"full\"}. Calls every registered IFixtureScenarioSeeder (wipe, sweep of the tenant's rows, seed).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scenario"
+                ],
+                "properties": {
+                  "scenario": {
+                    "type": "string",
+                    "enum": [
+                      "zero",
+                      "full"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The fixture session after the reset.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantId",
+                    "tenantName",
+                    "scenario",
+                    "now",
+                    "users"
+                  ],
+                  "properties": {
+                    "tenantId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "tenantName": {
+                      "type": "string"
+                    },
+                    "scenario": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "\"zero\" | \"full\": what the last reset seeded; null after an API restart."
+                    },
+                    "now": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The scenario clock date for this request (X-Raffa-Now, else Fixtures:Now)."
+                    },
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "displayName",
+                          "title",
+                          "email",
+                          "role",
+                          "isApprover"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "enum": [
+                              "luca",
+                              "marta"
+                            ]
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "admin",
+                              "procurement"
+                            ]
+                          },
+                          "isApprover": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown scenario."
+          }
+        }
+      }
+    },
+    "/api/fixtures/session": {
+      "get": {
+        "operationId": "getFixtureSession",
+        "summary": "The fixture tenant, its users, the last seeded scenario and the scenario clock.",
+        "description": "AskRaffa 4.0 fixture mode only (IMPLEMENTATION-PLAN.md §2): mapped only when Fixtures:Enabled is true, which the API refuses to start with in Production. Served by backend/src/Raffa.Api/Fixtures/FixturesEndpointExtensions.cs. No caller identity is needed.",
+        "responses": {
+          "200": {
+            "description": "The fixture session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantId",
+                    "tenantName",
+                    "scenario",
+                    "now",
+                    "users"
+                  ],
+                  "properties": {
+                    "tenantId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "tenantName": {
+                      "type": "string"
+                    },
+                    "scenario": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "\"zero\" | \"full\": what the last reset seeded; null after an API restart."
+                    },
+                    "now": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The scenario clock date for this request (X-Raffa-Now, else Fixtures:Now)."
+                    },
+                    "users": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "displayName",
+                          "title",
+                          "email",
+                          "role",
+                          "isApprover"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "enum": [
+                              "luca",
+                              "marta"
+                            ]
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "admin",
+                              "procurement"
+                            ]
+                          },
+                          "isApprover": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

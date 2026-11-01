@@ -1895,15 +1895,22 @@ export function noteContractCorrection(client: object): void {
  * against it with the platform `URL` parser rather than hand-rolled string
  * concatenation.
  */
+export interface ApiClientOptions {
+  /** The transport every request goes through; defaults to the platform `fetch`. Fixture mode
+   * (`src/fixtures/`) passes one that adds the fixture headers. */
+  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
+
 export function createApiClient(
   baseUrl: string,
   getAccessToken: GetAccessToken = () => Promise.resolve(null),
+  options: ApiClientOptions = {},
 ): ApiClient {
   // Every request of this client goes through `apiFetch`: identical GETs that are in flight at the
   // same instant share one network request (see ./coalescingFetch.ts -- nothing is cached after a
   // request settles, and any write drops what is in flight). One instance per client, so nothing
   // leaks between clients.
-  const apiFetch = createCoalescingFetch();
+  const apiFetch = createCoalescingFetch(options.fetch);
   const client: ApiClient = {
     async getHealth() {
       let response: Response;

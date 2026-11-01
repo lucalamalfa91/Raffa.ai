@@ -775,7 +775,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { version: string; capabilities: ({ key: string; title: string; routePattern: string; description: string; exampleQuestions: (string)[]; roleGate: "any" | "admin"; availability: "always" | "needsValidatedContract" | "admin"; howTo: (string)[] })[] };
+          "application/json": { version: string; capabilities: ({ key: string; title: string; routePattern: string; description: string; exampleQuestions: (string)[]; roleGate: "any" | "admin"; availability: "always" | "needsValidatedContract" | "admin"; howTo: (string)[] })[]; flags?: { "askraffa4.guidedFlow": boolean; "askraffa4.noBenchmark": boolean; "savings.results": boolean } };
         };
       };
     };
@@ -975,6 +975,28 @@ export interface operations {
       };
     };
   };
+  resetFixtures: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { tenantId: string; tenantName: string; scenario: string | null; now: string; users: ({ key: "luca" | "marta"; displayName: string; title: string; email: string; role: "admin" | "procurement"; isApprover: boolean })[] };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+    };
+  };
+  getFixtureSession: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { tenantId: string; tenantName: string; scenario: string | null; now: string; users: ({ key: "luca" | "marta"; displayName: string; title: string; email: string; role: "admin" | "procurement"; isApprover: boolean })[] };
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -1120,5 +1142,11 @@ export interface paths {
   "/api/workspaces/{tenantId}/settings": {
     get: operations["getWorkspaceSettings"];
     patch: operations["updateWorkspaceSettings"];
+  };
+  "/api/fixtures/reset": {
+    post: operations["resetFixtures"];
+  };
+  "/api/fixtures/session": {
+    get: operations["getFixtureSession"];
   };
 }

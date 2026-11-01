@@ -191,22 +191,21 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     window.sessionStorage.clear();
   });
 
-  it("redirects / to /ask and renders the rail alongside the real Ask Raffa screen (R-WEB-01)", async () => {
+  it("redirects / to /today and renders the AskRaffa 4.0 top nav and Guida Raffa around it", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
     );
 
+    Object.defineProperty(window, "innerWidth", { value: 1440, configurable: true });
     renderShell("admin");
 
     expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
-    // This suite's own mockApiClient() above resolves getPortfolio to an empty page (0 validated
-    // contracts), so the real V2 AskRoute this shell mounts renders its off state (AskOffState.tsx),
-    // not the "What do you want to know?" on-state -- proves the real route (task E13/F09/US01/T04),
-    // not a scaffold, is mounted, the same "assert on the real route's own honest content" convention
-    // every other screen in this suite already follows (see e.g. the Contract 360/Renewals cases
-    // below). The full off/on state matrix is covered in depth by tests/routes/ask/AskRoute.test.tsx.
-    expect(await screen.findByRole("heading", { name: "Ask needs at least one validated contract." })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^Today/ })).toHaveAttribute("aria-current", "page");
+    for (const name of ["Renewals", "Contracts", "Results", "Ask"]) {
+      expect(screen.getByRole("link", { name })).toHaveAttribute("href", expect.stringMatching(/^\//));
+    }
+    expect(screen.getByRole("complementary", { name: "Raffa guide" })).toBeInTheDocument();
     expect(screen.queryByRole("search")).not.toBeInTheDocument();
   });
 
@@ -255,7 +254,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     expect(screen.queryByText(/members table \+ invite ships in epic-06\/feature-04-workspace-members-ui/i)).not.toBeInTheDocument();
   });
 
-  it("redirects an unknown path to Ask (via / -- there is no Home to fall back to in V2)", async () => {
+  it("redirects an unknown path to Today (via /)", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -263,11 +262,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/this-route-does-not-exist");
 
-    // See the identical assertion (and its own comment) in the "redirects / to /ask..." test above --
-    // this suite's shared mock always resolves 0 validated contracts, so the real Ask screen the
-    // catch-all redirect lands on is its off state.
-    expect(await screen.findByRole("heading", { name: "Ask needs at least one validated contract." })).toBeInTheDocument();
-    expect(screen.queryByRole("search")).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^Today/ })).toHaveAttribute("aria-current", "page");
   });
 
   it("/review redirects to /documents?filter=attention (Review is a state of Documents in V2, not a rail destination)", async () => {

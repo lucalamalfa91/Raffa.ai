@@ -263,7 +263,7 @@ describe("App", () => {
       return apiClient;
     }
 
-    it("renders the rail nav instead of the workspace picker once resolution finds exactly one membership", async () => {
+    it("renders the top nav instead of the workspace picker once resolution finds exactly one membership", async () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
         accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
@@ -272,12 +272,12 @@ describe("App", () => {
 
       render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
 
-      expect(await screen.findByText("Acme Procurement")).toBeInTheDocument();
-      expect(screen.getByText("Portfolio")).toBeInTheDocument();
+      expect(await screen.findByRole("navigation", { name: /primary/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Contracts" })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: /choose a workspace/i })).not.toBeInTheDocument();
     });
 
-    it("does not double-wrap the app shell's own <main> either (AppShell.tsx already owns `.shell-main`)", async () => {
+    it("does not double-wrap the app shell's own <main> either (AppShell.tsx already owns `.v4-main`)", async () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
         accounts: [{ username: "user@example.test", homeAccountId: "home-1" }],
@@ -285,11 +285,11 @@ describe("App", () => {
       });
 
       const { container } = render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
-      await screen.findByText("Acme Procurement");
+      await screen.findByRole("navigation", { name: /primary/i });
 
       const mains = container.querySelectorAll("main");
       expect(mains).toHaveLength(1);
-      expect(mains[0]).toHaveClass("shell-main");
+      expect(mains[0]).toHaveClass("v4-main");
     });
 
     it("still renders the always-on health status above the shell", async () => {
@@ -302,7 +302,7 @@ describe("App", () => {
       render(<App appConfig={appConfig} apiClient={oneWorkspaceClient()} />);
 
       expect(await screen.findByText(/API: reachable \(Healthy\)/)).toBeInTheDocument();
-      expect(await screen.findByText("Acme Procurement")).toBeInTheDocument();
+      expect(await screen.findByRole("navigation", { name: /primary/i })).toBeInTheDocument();
     });
   });
 
@@ -343,7 +343,7 @@ describe("App", () => {
 
       render(<App appConfig={appConfig} apiClient={apiClient} />);
 
-      expect(await screen.findByText("Invited Co")).toBeInTheDocument();
+      expect(await screen.findByRole("navigation", { name: /primary/i })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: /create your workspace/i })).not.toBeInTheDocument();
       // Exactly once -- the guard against a retry loop -- not a listWorkspaces() count: once the
       // shell mounts, useValidatedContractCount.ts fires its own independent listWorkspaces() call

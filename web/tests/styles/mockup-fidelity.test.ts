@@ -71,14 +71,6 @@ describe("signin.css -- north-star type and statement ground (AC-2, gaps G-S1-TY
   });
 });
 
-describe("shell.css -- rail defaults to 232px beside the fluid main track (gap G-SHELL)", () => {
-  it("keeps .shell-layout's grid at 232px 1fr by default (raffa-v2/markup.html); the rail is resizable through --shell-rail-width", () => {
-    const css = readSource("../../src/components/shell/shell.css");
-    const body = ruleBodyFor(css, ".shell-layout");
-    expect(body).toMatch(/grid-template-columns:\s*var\(--shell-rail-width,\s*232px\)\s+1fr/);
-  });
-});
-
 describe("ask-bar.css -- V2 two-row bar (raffa-v2/markup.html)", () => {
   it("keeps the 18px heading input, 44px min-height, and a 2px text underline", () => {
     const css = readSource("../../src/components/ask-bar/ask-bar.css");

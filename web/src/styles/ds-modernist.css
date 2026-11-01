@@ -1,0 +1,131 @@
+/*
+ * AskRaffa 4.0 — the Modernist design system's component rules, scoped to the v4 shell (`.v4`).
+ *
+ * Source: docs/design/Raffa.ai/design_handoff_askraffa_v4/reference/_ds/modernist-.../styles.css
+ * (tokens are identical to styles/tokens.css and are not repeated) plus the prototype's own
+ * `<style>` block (AskRaffa V4.dc.html lines 17-24). Imported after components.css: the older,
+ * unscoped `.btn`/`.tag`/`.input` rules there differ from the DS (2px borders, flush-left labels,
+ * transitions), so every rule below restates the properties those set, to win inside `.v4`.
+ */
+
+/* — the v4 root (prototype line 26) and the page ground (prototype `:root` override) — */
+.v4 {
+  --color-bg: #ffffff;
+  --color-surface: #f3f2f2;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+}
+html:has(.v4),
+html:has(.v4) body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+}
+html:has(.v4) #root {
+  height: 100%;
+}
+.v4 a { color: var(--color-accent-700); }
+.v4 a:hover { color: var(--color-accent); }
+.v4 button { font-family: inherit; text-align: center; }
+.r-row:hover { background: var(--color-neutral-200) !important; cursor: pointer; }
+@keyframes r-spin { to { transform: rotate(360deg); } }
+
+/* — base elements — */
+.v4 h1, .v4 h2, .v4 h3, .v4 h4, .v4 h5, .v4 h6 {
+  font-family: var(--font-heading); font-weight: 800;
+  line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 var(--space-2);
+}
+.v4 h1 { font-size: 42px; }
+.v4 h2 { font-size: 32px; }
+.v4 h3 { font-size: 25px; }
+.v4 h4 { font-size: 20px; }
+.v4 h5 { font-size: 16px; }
+.v4 h6 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+.v4 p { margin: 0 0 var(--space-3); }
+.v4 .text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.v4 :focus { outline: none; }
+.v4 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.v4 ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+.v4 .hr { height: 2px; border: 0; margin: var(--space-4) 0; background: var(--color-divider); }
+
+/* — buttons — */
+.v4 .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; text-decoration: none; text-align: center;
+  font-family: var(--font-heading); font-weight: 800;
+  font-size: 14px; line-height: 1.2; color: var(--color-text);
+  background: transparent; border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: 0;
+  transition: none;
+}
+.v4 .btn svg { display: block; }
+.v4 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.v4 .btn-primary { background: var(--color-accent); color: var(--color-bg); border-color: transparent; }
+.v4 .btn-primary:hover { background: var(--color-accent-600); border-color: transparent; }
+.v4 .btn-primary:active { background: var(--color-accent-700); border-color: transparent; }
+.v4 .btn-secondary { background: transparent; color: var(--color-text); border-color: var(--color-divider); }
+.v4 .btn-secondary:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.v4 .btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.v4 .btn-ghost { color: var(--color-accent); background: transparent; border-color: transparent; padding-inline: var(--space-1); }
+.v4 .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.v4 .btn-ghost:active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.v4 .btn-icon { width: 36px; height: 36px; padding: 0; }
+.v4 .btn-block { display: inline-flex; width: 100%; margin-top: var(--space-2); justify-content: flex-start; text-align: left; }
+
+/* — forms — */
+.v4 .field > label {
+  display: block; font-size: 12px; margin-bottom: 5px; font-weight: 400;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+}
+.v4 .input {
+  width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
+  font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider); border-radius: 0;
+}
+.v4 .input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.v4 .input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+.v4 textarea.input { min-height: 90px; resize: vertical; }
+
+/* — cards — */
+.v4 .card {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3); border: 0; border-radius: 0; background: var(--color-surface);
+}
+.v4 .card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
+.v4 .card-title { font-family: var(--font-heading); font-weight: 800; font-size: 17px; line-height: 1.2; }
+.v4 .card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
+.v4 .card-meta {
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+}
+
+/* — tags — */
+.v4 .tag {
+  display: inline-flex; align-items: center; gap: 0; font-size: 11px; font-weight: 400;
+  line-height: inherit; letter-spacing: 0.02em; padding: 3px 10px;
+  border: 0; border-radius: 0; white-space: normal;
+}
+.v4 .tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+.v4 .tag-accent-2 { background: var(--color-accent-2-100, #fff2ef); color: var(--color-accent-2-800, #71261b); }
+.v4 .tag-neutral { background: var(--color-neutral-100); color: var(--color-neutral-800); }
+.v4 .tag-outline { background: transparent; border: 1px solid var(--color-accent); color: var(--color-accent); }
+
+/* — tables — */
+.v4 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.v4 .table th {
+  text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  padding: var(--space-2); border-bottom: 2px solid var(--color-divider);
+}
+.v4 .table td { padding: var(--space-2); border-bottom: 1px solid var(--color-divider); }
+.v4 .table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }

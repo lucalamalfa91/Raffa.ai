@@ -19,7 +19,7 @@ body {
    mockup (ADR-018/019/020: 232px rail + fluid main; sign-in a 100vh
    two-column page) into a centered ~640px card. The bare `<main>` element
    now carries no width opinion at all -- each screen owns its own full-bleed
-   layout (signin.css `.signin-screen`, shell.css `.shell-main`). Only the
+   layout (signin.css `.signin-screen`, shell4.css `.v4-main`). Only the
    one-off startup-config-error alert below keeps a narrow, readable column;
    it is not a shipped mockup screen. */
 .startup-error {

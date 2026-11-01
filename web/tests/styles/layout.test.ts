@@ -48,26 +48,6 @@ describe("index.css (E06/F06/US01/T01 -- no 40rem main wrapper)", () => {
   });
 });
 
-describe("shell.css (E06/F06/US01/T01 -- shell-main fills the rail's 1fr track)", () => {
-  const css = readSource("../../src/components/shell/shell.css");
-
-  it("does not cap `.shell-main`'s width (it must fill the grid's 1fr track, not float as a card inside it)", () => {
-    const body = ruleBodyFor(css, ".shell-main");
-    expect(body).toMatch(/max-width:\s*none/);
-  });
-
-  it("places the chat-list search with tokens, its lens on the chat titles' 28px column", () => {
-    // Task: a lighter search field (lens, hairline, ink edge on focus) replaced the boxed `.input`.
-    const wrapper = ruleBodyFor(css, ".shell-rail-search");
-    expect(wrapper).toMatch(/margin:\s*var\(--space-2\)\s+var\(--space-3\)\s+var\(--space-2\)\s+20px/);
-    expect(ruleBodyFor(css, ".shell-rail-search-icon")).toMatch(/left:\s*var\(--space-2\)/);
-    const field = ruleBodyFor(css, ".shell-rail-conv-search");
-    expect(field).toMatch(/background:\s*var\(--color-surface\)/);
-    expect(field).toMatch(/border-radius:\s*var\(--radius-sm\)/);
-    expect(ruleBodyFor(css, ".shell-rail-conv-search:focus")).toMatch(/border-color:\s*var\(--color-text\)/);
-  });
-});
-
 describe("signin.css (E06/F06/US01/T01 -- full-viewport two-column sign-in canvas)", () => {
   const css = readSource("../../src/routes/signin/signin.css");
 
