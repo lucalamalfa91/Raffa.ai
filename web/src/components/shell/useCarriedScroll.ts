@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
  * The main column is one scroll container shared by every screen, as in the prototype: moving to
  * another screen keeps the scroll offset. A screen that first renders a short loading state would
  * let the browser clamp that offset to 0, so the offset the user left is carried over the route
- * change and re-applied as the new screen's content grows (only until the user scrolls or the
+ * change and re-applied as the new screen's content grows (only until the user scrolls, clicks or the
  * carry window ends).
  */
 export function useCarriedScroll(pathname: string) {
@@ -44,6 +44,7 @@ export function useCarriedScroll(pathname: string) {
     main.addEventListener("wheel", stopCarry, { passive: true });
     main.addEventListener("touchmove", stopCarry, { passive: true });
     main.addEventListener("keydown", stopCarry);
+    main.addEventListener("pointerdown", stopCarry);
     return () => {
       observer?.disconnect();
       mutations?.disconnect();
@@ -51,6 +52,7 @@ export function useCarriedScroll(pathname: string) {
       main.removeEventListener("wheel", stopCarry);
       main.removeEventListener("touchmove", stopCarry);
       main.removeEventListener("keydown", stopCarry);
+      main.removeEventListener("pointerdown", stopCarry);
     };
   }, []);
 
