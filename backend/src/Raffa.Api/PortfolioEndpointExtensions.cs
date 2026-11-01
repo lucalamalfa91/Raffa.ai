@@ -66,6 +66,12 @@ public static class PortfolioEndpointExtensions
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
+        // AskRaffa 4.0 Contratti (slice 4): `?view=v4` returns the v4 rows instead of the portfolio page.
+        if (string.Equals(request.Query["view"], "v4", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ContractsV4EndpointExtensions.ListV4Async(request, callerContext, cancellationToken).ConfigureAwait(false);
+        }
+
         // NW-05 (ADR-010 w15 footer; ADR-022 w15 footer clause 2): identity first, then the tenant
         // header as an authorized selector, then membership -- 401 / 400 / 404 in that order, all
         // owned by ICallerContext (acceptance A15-8). The scope it hands back is the tenant scope

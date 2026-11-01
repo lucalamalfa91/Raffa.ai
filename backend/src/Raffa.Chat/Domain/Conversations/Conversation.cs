@@ -67,4 +67,18 @@ public sealed class Conversation : TenantScopedEntity
     /// and what decides whether the chat is archived (<c>ConversationService.ArchiveAfter</c>).
     /// </summary>
     public required DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>
+    /// AskRaffa 4.0 (BACKEND-SPEC §2.8): when the user archived this conversation explicitly
+    /// (<c>POST /api/conversations/{id}/archive</c>), or <see langword="null"/> while it is in the
+    /// recent list. Distinct from deletion and from the older idle-based "archived" reading of
+    /// <see cref="UpdatedAt"/>; writing in an archived conversation reopens it.
+    /// </summary>
+    public DateTimeOffset? ArchivedAt { get; set; }
+
+    /// <summary>
+    /// The renewal case this conversation belongs to (case chat), or <see langword="null"/> for a
+    /// free Chiedi conversation. Cross-module id only, no FK (ADR-002).
+    /// </summary>
+    public EntityId? CaseId { get; set; }
 }

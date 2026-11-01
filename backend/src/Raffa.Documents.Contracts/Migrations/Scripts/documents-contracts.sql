@@ -1428,3 +1428,169 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE TABLE contract_point_decision (
+        id uuid NOT NULL,
+        contract_id uuid NOT NULL,
+        point_key character varying(120) NOT NULL,
+        decision character varying(20) NOT NULL,
+        decided_by character varying(200) NOT NULL,
+        decided_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_contract_point_decision PRIMARY KEY (id),
+        CONSTRAINT fk_contract_point_decision_contract_contract_id FOREIGN KEY (contract_id) REFERENCES contract (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE TABLE contract_term_version (
+        id uuid NOT NULL,
+        contract_id uuid NOT NULL,
+        source_document_id uuid,
+        case_id uuid,
+        valid_from date NOT NULL,
+        valid_to date NOT NULL,
+        notice_days integer,
+        annual_value numeric(18,2),
+        currency character varying(3) NOT NULL,
+        auto_renew boolean,
+        uplift_pct numeric(9,4),
+        is_current boolean NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_contract_term_version PRIMARY KEY (id),
+        CONSTRAINT fk_contract_term_version_contract_contract_id FOREIGN KEY (contract_id) REFERENCES contract (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE TABLE document_field_decision (
+        id uuid NOT NULL,
+        document_id uuid NOT NULL,
+        field_key character varying(120) NOT NULL,
+        decision character varying(20) NOT NULL,
+        value character varying(1000),
+        decided_by character varying(200) NOT NULL,
+        decided_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_document_field_decision PRIMARY KEY (id),
+        CONSTRAINT fk_document_field_decision_document_document_id FOREIGN KEY (document_id) REFERENCES document (id) ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE INDEX ix_contract_point_decision_contract_id ON contract_point_decision (contract_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE INDEX ix_contract_point_decision_tenant_id ON contract_point_decision (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE UNIQUE INDEX ix_contract_point_decision_tenant_id_contract_id_point_key ON contract_point_decision (tenant_id, contract_id, point_key);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE INDEX ix_contract_term_version_contract_id ON contract_term_version (contract_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE INDEX ix_contract_term_version_tenant_id ON contract_term_version (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE UNIQUE INDEX ix_contract_term_version_tenant_id_contract_id ON contract_term_version (tenant_id, contract_id) WHERE is_current;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE INDEX ix_document_field_decision_document_id ON document_field_decision (document_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE INDEX ix_document_field_decision_tenant_id ON document_field_decision (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    CREATE UNIQUE INDEX ix_document_field_decision_tenant_id_document_id_field_key ON document_field_decision (tenant_id, document_id, field_key);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    ALTER TABLE "contract_point_decision" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "contract_point_decision" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "contract_point_decision"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    ALTER TABLE "contract_term_version" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "contract_term_version" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "contract_term_version"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    ALTER TABLE "document_field_decision" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "document_field_decision" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "document_field_decision"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114921_AddContractsV4DecisionsTermsReview') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261101114921_AddContractsV4DecisionsTermsReview', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

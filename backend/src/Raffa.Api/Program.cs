@@ -522,6 +522,9 @@ app.MapDocumentsEndpoints();
 // aggregation for the GET (ADR-009).
 app.MapContractsEndpoints();
 
+// AskRaffa 4.0 slice 4: Revisione reading, decision points, Contratti/Contratto v4 read models.
+app.MapContractsV4Endpoints();
+
 // Task E01/F06/US02/T02 (us-02-audit-baseline, AC-2), guard swapped from claims to membership by
 // wave w16's NW-08 (task E18/F02/US02/T01, ADR-025 §K): authorized, tenant-scoped GET /api/audit.
 // See AuditEndpointExtensions for the endpoint itself -- ICallerContext resolves identity and the
@@ -561,6 +564,7 @@ app.MapSavingsEndpoints();
 // endpoints above (ADR-010 is not in force for this task either) — see that file's own comment
 // for why this gap is not promoted to reports/open-questions.md by this task.
 app.MapSavingsKpiEndpoints();
+app.MapSavingsResultsEndpoints();
 
 // Task E13/F06/US01/T01 (ask-engine, ADR-024 §6): POST /api/chat/query — kept one release as a
 // thin alias that creates a conversation and delegates into AskCopilotService (see
@@ -600,6 +604,10 @@ app.MapMarketEndpoints();
 // term with evidence + confidence). See QuotesEndpointExtensions/QuoteExtractionPipeline for the
 // endpoint and orchestration respectively.
 app.MapQuotesEndpoints();
+
+// AskRaffa 4.0 slice 6: Offerta (no-benchmark quote check + decision) and Chiedi (sourced Q&A, archive).
+app.MapQuoteOffersEndpoints();
+app.MapAskConversationsEndpoints();
 
 // Task E05/F03/US02/T01 (negotiation-outcome, parent story us-02-outcome-capture AC-1): POST
 // /api/negotiations/outcomes — records the final negotiated outcome (original/target/final/

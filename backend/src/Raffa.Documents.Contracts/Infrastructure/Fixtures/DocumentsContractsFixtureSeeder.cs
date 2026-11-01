@@ -44,7 +44,7 @@ public sealed class DocumentsContractsFixtureSeeder(DocumentsContractsDbContext 
         foreach (var fixtureId in validated)
         {
             var facts = BuildFacts(context, file, fixtureId) with { ValidatedAt = context.Now };
-            AddContract(context, facts);
+            AddContract(dbContext, context, facts, DocumentProcessingStatus.Completed, context.Now);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -87,8 +87,13 @@ public sealed class DocumentsContractsFixtureSeeder(DocumentsContractsDbContext 
         };
     }
 
-    /// <summary>Writes the contract, its (already read) document and its facts row.</summary>
-    private void AddContract(FixtureSeedContext context, ContractFacts facts)
+    /// <summary>Writes the contract, its document (in <paramref name="status"/>) and its facts row.</summary>
+    internal static EntityId AddContract(
+        DocumentsContractsDbContext dbContext,
+        FixtureSeedContext context,
+        ContractFacts facts,
+        DocumentProcessingStatus status,
+        DateTimeOffset now)
     {
         var contractId = new EntityId(facts.ContractId);
         var type = facts.Type switch
@@ -118,7 +123,7 @@ public sealed class DocumentsContractsFixtureSeeder(DocumentsContractsDbContext 
             NoticePeriodDays = facts.Notice,
             PaymentTerms = facts.Deep.Terms.FirstOrDefault(t => t.Label == "Payment terms")?.Value,
             GoverningLaw = facts.Deep.Terms.FirstOrDefault(t => t.Label == "Governing law")?.Value,
-            CreatedAt = context.Now,
+            CreatedAt = now,
         });
 
         var documentId = context.Id("document", facts.FixtureId ?? 0);
@@ -131,9 +136,9 @@ public sealed class DocumentsContractsFixtureSeeder(DocumentsContractsDbContext 
             MimeType = "application/pdf",
             DocumentType = type,
             StoragePath = DocumentStoragePath.Build(context.TenantId, documentId, 1, facts.File),
-            Checksum = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("askraffa4:" + facts.File))),
-            ProcessingStatus = DocumentProcessingStatus.Completed,
-            CreatedAt = context.Now,
+            Checksum = SampleChecksum(facts.File),
+            ProcessingStatus = status,
+            CreatedAt = now,
         });
 
         dbContext.ContractFacts.Add(new ContractFactsRecord
@@ -143,9 +148,14 @@ public sealed class DocumentsContractsFixtureSeeder(DocumentsContractsDbContext 
             ContractId = contractId,
             Facts = ContractFactsReader.Serialize(facts),
             ValidatedAt = facts.ValidatedAt,
-            UpdatedAt = context.Now,
+            UpdatedAt = now,
         });
+        return documentId;
     }
+
+    /// <summary>The checksum the fixture documents carry (marks the scripted sample).</summary>
+    public static string SampleChecksum(string fileName) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("askraffa4:" + fileName)));
 
     /// <summary>"18 Oct 2026" → 2026-10-18.</summary>
     public static DateOnly? ParseDate(string? text) =>
@@ -169,6 +179,9 @@ public static class DocumentsContractsFixtureServiceCollectionExtensions
     public static IServiceCollection AddDocumentsContractsFixtureSeeder(this IServiceCollection services)
     {
         services.AddScoped<IFixtureScenarioSeeder, DocumentsContractsFixtureSeeder>();
+        // Slice 4: the scripted sample upload ("Carica il primo contratto") and its timed reading.
+        services.AddSingleton<Application.V4.ISampleDocumentReading, FixtureSampleDocumentReading>();
+        services.AddScoped<FixtureSampleDocuments>();
         return services;
     }
 }

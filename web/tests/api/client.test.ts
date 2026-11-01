@@ -2645,6 +2645,12 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       askRaffa: () => client.askRaffa("tenant-1", { question: "?" }),
       getSavingsKpis: () => client.getSavingsKpis("tenant-1"),
       getSavingsOpportunities: () => client.getSavingsOpportunities("tenant-1"),
+      getSavingsResults: () => client.getSavingsResults!("tenant-1", "fy"),
+      parseSavingsGoal: () => client.parseSavingsGoal!("tenant-1", "10% on cloud"),
+      confirmSavingsGoal: () => client.confirmSavingsGoal!("tenant-1", { text: "10% on cloud" }),
+      getActiveSavingsGoal: () => client.getActiveSavingsGoal!("tenant-1"),
+      clearSavingsGoal: () => client.clearSavingsGoal!("tenant-1"),
+      getSavingsGoalProgress: () => client.getSavingsGoalProgress!("tenant-1"),
       listConversations: () => client.listConversations("tenant-1"),
       createConversation: () => client.createConversation("tenant-1"),
       getConversation: () => client.getConversation("tenant-1", "conv-1"),
@@ -2656,6 +2662,14 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       restoreConversation: () => client.restoreConversation("tenant-1", "conv-1"),
       getCapabilities: () => client.getCapabilities(),
       getMarketRecord: () => client.getMarketRecord("rec-1"),
+      // AskRaffa 4.0 slice 4.
+      uploadSampleDocument: () => client.uploadSampleDocument("tenant-1"),
+      getDocumentReading: () => client.getDocumentReading("tenant-1", "doc-1"),
+      decideReadingField: () => client.decideReadingField("tenant-1", "doc-1", "sf_uplift", { decision: "accept" }),
+      listContractsV4: () => client.listContractsV4("tenant-1"),
+      getContractV4: () => client.getContractV4("tenant-1", "contract-1"),
+      setDecisionPoint: () => client.setDecisionPoint("tenant-1", "contract-1", "price-increase", "negotiate"),
+      openRenewalCase: () => client.openRenewalCase("tenant-1", { contractId: "contract-1" }),
     };
 
     expect(Object.keys(invocations).sort()).toEqual(Object.keys(client).sort());

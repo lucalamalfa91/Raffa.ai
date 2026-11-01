@@ -7,6 +7,8 @@ using Raffa.Renewals.Domain.Cases;
 using Raffa.Renewals.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Cases;
+using Raffa.SharedKernel.Renewals;
+using Raffa.SharedKernel.Savings;
 using Raffa.SharedKernel.Contracts;
 using Raffa.SharedKernel.Tenancy;
 using Raffa.SharedKernel.Text;
@@ -65,7 +67,8 @@ public sealed partial class RenewalCaseService(
     ICaseScriptServices scriptServices,
     ICaseQuestionAnswerer answerer,
     IContractTermWriter termWriter,
-    ISavingResultWriter savingWriter,
+    ISavingResultRecorder savingRecorder,
+    ICaseObjectiveWriter objectiveWriter,
     IOpenQuoteDecisions quoteDecisions,
     IDocumentsNeedingReview documentsNeedingReview,
     IAuditWriter auditWriter,
@@ -230,7 +233,7 @@ public sealed partial class RenewalCaseService(
     /// the person back to the pending step. Commands (approva, copia, ho inviato, conferma piano) are
     /// routed by the engine's <c>say</c>.
     /// </summary>
-    public async Task<CaseResult> AskAsync(TenantId tenantId, string? callerIdentity, Guid caseId, string text, int? version, CancellationToken ct = default)
+    public async Task<CaseResult> AskAsync(TenantId tenantId, string? callerIdentity, Guid caseId, string text, int? version, string? lang = null, CancellationToken ct = default)
     {
         var q = (text ?? string.Empty).Trim();
         if (q.Length == 0)
@@ -238,7 +241,7 @@ public sealed partial class RenewalCaseService(
             return CaseResult.Bad("Write a question.");
         }
 
-        CaseAnswer? answer = null;
+        CaseQuestionAnswer? answer = null;
         if (!CommandRegex().IsMatch(q))
         {
             using var scope = tenantContext.BeginScope(tenantId);
@@ -248,7 +251,7 @@ public sealed partial class RenewalCaseService(
                 return CaseResult.NotFound("No case with this id.");
             }
 
-            answer = await answerer.AnswerAsync(tenantId, new EntityId(contractId.Value), q, ct).ConfigureAwait(false);
+            answer = await answerer.AnswerAsync(tenantId, new EntityId(contractId.Value), q, lang, ct).ConfigureAwait(false);
         }
 
         return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (c, ctx, _) =>
@@ -258,7 +261,9 @@ public sealed partial class RenewalCaseService(
             {
                 list.Add(("answer", new CaseActionPayload
                 {
-                    Text = CaseText.Message("{text}\n(Source: {src})", ("text", answer.Text), ("src", answer.Source)),
+                    Text = string.IsNullOrWhiteSpace(answer.Source)
+                        ? CaseText.Of(answer.Text)
+                        : CaseText.Message("{text}\n(Source: {src})", ("text", answer.Text), ("src", answer.Source)),
                     Resume = CaseText.Message("Back to the pending step — {next}", ("next", RenewalCaseEngine.View(c, ctx).Hdr.Next)),
                 }));
             }
@@ -460,6 +465,7 @@ public sealed partial class RenewalCaseService(
         await ProjectDelegationsAsync(record, clean, members, now, ct).ConfigureAwait(false);
         await ProjectRemindersAsync(record, clean, members, now, ct).ConfigureAwait(false);
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        await UpsertObjectiveAsync(record.TenantId, record, clean, ct).ConfigureAwait(false);
     }
 
     private static RenewalCase Clean(RenewalCase c)
@@ -626,34 +632,62 @@ public sealed partial class RenewalCaseService(
             return;
         }
 
-        await termWriter.WriteRenewedTermsAsync(tenantId, new RenewedContractTerms(
+        // BACKEND-SPEC §2.9: the renewed terms become the contract's current version (Contratti,
+        // Rinnovi, Oggi and Risultati read the new dates through IContractFactsReader).
+        await termWriter.WriteCurrentAsync(tenantId, new ContractTermVersionInput(
             record.ContractId.Value,
-            record.Id.Value,
-            o.Start,
+            null,
+            o.Start ?? cf.End.AddDays(1),
             o.End,
-            o.Cancel,
             cf.Notice,
             o.Spend is { } s ? (decimal)s : null,
             "CHF",
-            o.File), ct).ConfigureAwait(false);
+            cf.Auto,
+            null,
+            record.Id.Value), ct).ConfigureAwait(false);
 
+        // A saving counts only with the signed contract: the price result (never an estimate).
         if (o.Delta is { } delta && delta > 0)
         {
-            await savingWriter.RecordAsync(tenantId, new SavingResultRecord(
+            var p = cf.Products.FirstOrDefault();
+            await savingRecorder.RecordAsync(tenantId, new SavingResultRecord(
                 record.ContractId.Value,
                 record.Id.Value,
                 cf.Supplier,
+                CaseFactsMapper.ShortName(cf.Name),
+                null,
                 "price",
-                true,
                 (decimal)delta,
                 "CHF",
+                o.Price?.Render() ?? string.Empty,
                 "previous contract price, same quantities",
+                p is null ? null : (decimal)p.Price,
+                c.Agreed is { } ag ? (decimal)ag.Price : null,
+                p is null ? null : (decimal)p.Qty,
                 "(old − new unit price) × contracted quantity",
                 o.Start,
                 o.End,
-                o.File,
+                o.Start is { } st ? "new term from " + CaseFormat.Date(st) : string.Empty,
+                null,
+                o.File ?? string.Empty,
+                c.Owner,
+                o.When ?? Today,
                 c.Owner), ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>Keeps the case objective (Risultati "Obiettivi nelle pratiche") in step with the case.</summary>
+    private async Task UpsertObjectiveAsync(TenantId tenantId, RenewalCaseRecord record, RenewalCase c, CancellationToken ct)
+    {
+        var kind = c.Goals.Target;
+        if (kind is null && c.Outcome is null)
+        {
+            return;
+        }
+
+        decimal? pct = kind switch { "p5" => 5m, "p10" => 10m, "budget" => 10m, _ => null };
+        await objectiveWriter.UpsertAsync(tenantId, new CaseObjectiveInfo(
+            record.Id.Value, record.ContractId.Value, c.Owner, kind, pct, null, c.Goals.TargetText, c.Outcome?.Kind), ct).ConfigureAwait(false);
     }
 
     private CaseEnvelope Envelope(RenewalCaseRecord record, RenewalCase c, CaseContractFacts cf, string viewer)

@@ -15,4 +15,6 @@ public sealed record ConversationDetailResult(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<ConversationMessageResult> Messages,
-    string? CustomTitle = null);
+    string? CustomTitle = null,
+    DateTimeOffset? ArchivedAt = null,
+    EntityId? CaseId = null);

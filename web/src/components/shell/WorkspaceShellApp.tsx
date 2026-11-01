@@ -4,7 +4,7 @@ import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import DocumentsRoute from "../../routes/documents";
 import DocumentViewerRoute from "../../routes/documents/viewer";
-import PortfolioRoute from "../../routes/contracts";
+import ContractsRoute from "../../routes/contracts";
 import Contract360Route from "../../routes/contracts/contract360";
 import ReviewRoute from "../../routes/contracts/review";
 import RenewalsRoute from "../../routes/renewals";
@@ -88,12 +88,12 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
         <Route path="ask" element={<AskRoute apiClient={apiClient} />} />
         <Route path="ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
         <Route path="savings" element={<SavingsRoute apiClient={apiClient} />} />
-        <Route path="contracts" element={<PortfolioRoute apiClient={apiClient} />} />
+        <Route path="contracts" element={<ContractsRoute apiClient={apiClient} />} />
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} userLabel={userLabel} />} />
-        <Route path="contracts/:contractId/review" element={<ReviewRoute apiClient={apiClient} />} />
-        {/* AskRaffa 4.0 Revisione is by document (IMPLEMENTATION-PLAN.md §1); until slice 4 rewrites
-            it, a document's review is the Documents screen's review state. */}
-        <Route path="contracts/review/:documentId" element={<Navigate to="/documents?filter=attention" replace />} />
+        {/* AskRaffa 4.0 Revisione is by document (IMPLEMENTATION-PLAN.md §1); the old by-contract
+            review URL leads to the documents waiting for review. */}
+        <Route path="contracts/:contractId/review" element={<Navigate to="/documents?filter=attention" replace />} />
+        <Route path="contracts/review/:documentId" element={<ReviewRoute apiClient={apiClient} />} />
         <Route path="renewals" element={<RenewalsRoute userLabel={userLabel} />} />
         <Route path="renewals/:contractId/chat" element={<RenewalChatRoute userLabel={userLabel} />} />
         {/* AskRaffa 4.0 case route (IMPLEMENTATION-PLAN.md §1); served by the current renewal chat

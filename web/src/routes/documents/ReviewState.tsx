@@ -1,10 +1,10 @@
 import type { ApiClient } from "../../api/client";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
-import ReviewHeader from "../contracts/review/ReviewHeader";
-import ReviewFieldList from "../contracts/review/ReviewFieldList";
-import EvidencePane from "../contracts/review/EvidencePane";
-import { useReviewSession } from "../contracts/review/useReviewSession";
-import "../contracts/review/review.css";
+import ReviewHeader from "./review/ReviewHeader";
+import ReviewFieldList from "./review/ReviewFieldList";
+import EvidencePane from "./review/EvidencePane";
+import { useReviewSession } from "./review/useReviewSession";
+import "./review/review.css";
 
 export interface ReviewStateProps {
   apiClient: ApiClient;

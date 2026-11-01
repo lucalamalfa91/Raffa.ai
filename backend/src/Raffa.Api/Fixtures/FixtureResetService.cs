@@ -134,6 +134,13 @@ internal sealed class FixtureResetService(
                     await rollback.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                     blocked.Add(table);
                 }
+                catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.InsufficientPrivilege)
+                {
+                    // An append-only table (audit_event's trigger refuses DELETE): its rows stay —
+                    // the audit trail of earlier fixture runs is history, not seed data.
+                    await using var rollback = new NpgsqlCommand("ROLLBACK TO SAVEPOINT sweep", connection, transaction);
+                    await rollback.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
             if (blocked.Count == remaining.Count)

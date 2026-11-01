@@ -5,6 +5,7 @@ using Raffa.Renewals.Domain.Cases;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Cases;
 using Raffa.SharedKernel.Contracts;
+using Raffa.SharedKernel.Renewals;
 using Raffa.SharedKernel.Text;
 
 namespace Raffa.Renewals.Application.CaseWork;
@@ -76,12 +77,13 @@ public sealed record RenewalsBoard(
     int OpenCases,
     int ToStart,
     bool Empty,
-    CaseAssignee? Assignee);
+    CaseAssignee? Assignee,
+    IReadOnlyList<RenewalsRow> Cases);
 
 public sealed record ReminderView(Guid Id, Guid? CaseId, string Kind, string DueDate, string State);
 
 /// <summary>Today feed, Renewals board, snoozes, reminders and the cross-module read models.</summary>
-public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICaseObjectiveSource, ICaseEmailDraftSink
+public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICaseEmailDraftSink, ICaseGoalsReader
 {
     private sealed record Portfolio(
         IReadOnlyList<CaseMember> Members,
@@ -243,7 +245,8 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
             rows.Count(r => r.HasCase && !r.Done),
             rows.Count(r => !r.HasCase),
             rows.Count == 0,
-            Assignee(p));
+            Assignee(p),
+            rows.Where(r => r.HasCase && !r.Done).ToList());
     }
 
     /// <summary><c>POST/DELETE /api/today/{key}/snooze</c> (3 days).</summary>
@@ -333,71 +336,111 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
 
     /* ---------------- cross-module read models ---------------- */
 
-    async Task<IReadOnlyList<ContractCaseStatus>> IContractCaseStatusReader.ListAsync(TenantId tenantId, CancellationToken cancellationToken)
+    /// <summary>Contratti/Contratto (slice 4): per contract, the latest case (open first), its outcome and next action.</summary>
+    async Task<IReadOnlyDictionary<Guid, ContractCaseStatus>> IContractCaseStatusReader.GetAsync(TenantId tenantId, IReadOnlyCollection<Guid> contractIds, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(contractIds);
         List<RenewalCaseRecord> records;
         using (tenantContext.BeginScope(tenantId))
         {
-            records = await db.RenewalCases.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
+            var ids = contractIds.Distinct().Select(x => new EntityId(x)).ToList();
+            records = await db.RenewalCases.AsNoTracking().Where(r => ids.Contains(r.ContractId)).ToListAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        return records.GroupBy(r => r.ContractId)
-            .Select(g => g.OrderBy(r => r.ClosedAt is null ? 0 : 1).ThenByDescending(r => r.OpenedAt).First())
-            .Select(Status).ToList();
-    }
-
-    async Task<ContractCaseStatus?> IContractCaseStatusReader.GetAsync(TenantId tenantId, EntityId contractId, CancellationToken cancellationToken)
-    {
-        using var scope = tenantContext.BeginScope(tenantId);
-        var rec = await db.RenewalCases.AsNoTracking().Where(r => r.ContractId == contractId)
-            .OrderBy(r => r.ClosedAt == null ? 0 : 1).ThenByDescending(r => r.OpenedAt).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-        return rec is null ? null : Status(rec);
-    }
-
-    private static ContractCaseStatus Status(RenewalCaseRecord r)
-    {
-        var c = RenewalCaseJson.Deserialize(r.State);
-        return new ContractCaseStatus(r.ContractId.Value, r.ClosedAt is null, r.Id.Value, r.OutcomeKind, RenewalCaseEngine.Stage(c), r.OwnerUserId, c.Owner, null);
-    }
-
-    async Task<IReadOnlyList<CaseObjective>> ICaseObjectiveSource.ListAsync(TenantId tenantId, CancellationToken cancellationToken)
-    {
-        List<RenewalCaseRecord> records;
-        using (tenantContext.BeginScope(tenantId))
+        var result = new Dictionary<Guid, ContractCaseStatus>();
+        foreach (var id in contractIds.Distinct())
         {
-            records = await db.RenewalCases.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
-        }
+            var r = records.Where(x => x.ContractId.Value == id).OrderBy(x => x.ClosedAt is null ? 0 : 1).ThenByDescending(x => x.OpenedAt).FirstOrDefault();
+            if (r is null)
+            {
+                result[id] = ContractCaseStatus.None(id);
+                continue;
+            }
 
-        return records.Select(r =>
-        {
             var c = RenewalCaseJson.Deserialize(r.State);
-            var kind = c.Goals.Target ?? "none";
-            decimal? pct = kind switch { "p5" => 5m, "p10" => 10m, "budget" => 10m, _ => null };
-            return new CaseObjective(r.Id.Value, r.ContractId.Value, kind, pct, null, c.Goals.TargetText, c.Owner, r.ClosedAt is null);
-        }).Where(o => o.Kind != "none").ToList();
+            ContractMessage? next = null;
+            if (r.ClosedAt is null)
+            {
+                var facts = await factsReader.GetAsync(tenantId, r.ContractId, cancellationToken).ConfigureAwait(false);
+                if (facts is not null)
+                {
+                    var hdrNext = RenewalCaseEngine.View(c, Ctx(CaseFactsMapper.ToCaseFacts(facts), c.Owner)).Hdr.Next;
+                    next = ToMessage(hdrNext);
+                }
+            }
+
+            result[id] = new ContractCaseStatus(id, r.ClosedAt is null, r.Id.Value, r.OutcomeKind, next);
+        }
+
+        return result;
     }
 
-    async Task<CaseEmailDraftResult> ICaseEmailDraftSink.AddCounterProposalDraftAsync(TenantId tenantId, EntityId contractId, string subject, string body, string actorExternalId, CancellationToken cancellationToken)
+    private static ContractMessage ToMessage(CaseText t) =>
+        t.IsMessage
+            ? new ContractMessage(t.Id!, t.Vars?.ToDictionary(kv => kv.Key, kv => (object?)(kv.Value.IsMessage ? ToMessage(kv.Value) : kv.Value.Plain), StringComparer.Ordinal))
+            : new ContractMessage(t.Plain ?? string.Empty);
+
+    /// <summary>Offerta (slice 6): a counter-proposal draft enters the open case's email lifecycle — draft, no recipient, never sent.</summary>
+    async Task<CaseEmailDraftResult> ICaseEmailDraftSink.CreateDraftAsync(TenantId tenantId, CaseEmailDraftRequest request, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(request);
         using var scope = tenantContext.BeginScope(tenantId);
-        var record = await OpenRecordAsync(tenantId, contractId.Value, cancellationToken).ConfigureAwait(false);
+        RenewalCaseRecord? record = null;
+        if (request.CaseId is { } cid)
+        {
+            record = await db.RenewalCases.FirstOrDefaultAsync(x => x.Id == cid && x.ClosedAt == null, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (record is null && request.ContractId is { } kid)
+        {
+            record = await OpenRecordAsync(tenantId, kid.Value, cancellationToken).ConfigureAwait(false);
+        }
+
         if (record is null)
         {
-            return new CaseEmailDraftResult(false, null, null, "No open renewal case for this contract.");
+            return CaseEmailDraftResult.NotAvailable;
         }
 
         var members = await memberDirectory.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
-        var caller = CaseCaller.From(members, actorExternalId);
+        var actor = members.FirstOrDefault(m => m.ExternalSubjectId == request.Actor || m.Name == request.Actor)?.Name ?? request.Actor;
         var cf = await FactsAsync(tenantId, record, cancellationToken).ConfigureAwait(false);
         if (cf is null)
         {
-            return new CaseEmailDraftResult(false, record.Id.Value, null, "The contract of this case is no longer available.");
+            return CaseEmailDraftResult.NotAvailable;
         }
 
-        var c = RenewalCaseEngine.AddExternalDraft(RenewalCaseJson.Deserialize(record.State), Ctx(cf, caller.Name), "counter", subject, body);
-        await AppendEventAsync(tenantId, record, caller.Name, "email_drafted", CaseActionPayload.None, c.Emails.Count - 1, cancellationToken).ConfigureAwait(false);
+        var c = RenewalCaseEngine.AddExternalDraft(RenewalCaseJson.Deserialize(record.State), Ctx(cf, actor), "counter", request.Subject, request.Body);
+        await AppendEventAsync(tenantId, record, actor, "email_drafted", CaseActionPayload.None, c.Emails.Count - 1, cancellationToken).ConfigureAwait(false);
         await SaveStateAsync(record, c, cf, members, cancellationToken).ConfigureAwait(false);
-        return new CaseEmailDraftResult(true, record.Id.Value, c.Emails.Count - 1, null);
+        var emailRow = await db.CaseEmails.AsNoTracking().Where(x => x.CaseId == record.Id && x.EmailIndex == c.Emails.Count - 1)
+            .Select(x => (Guid?)x.Id.Value).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        return new CaseEmailDraftResult(true, record.Id, emailRow is { } eid ? new EntityId(eid) : null);
+    }
+
+    /// <summary>Offerta (slice 6): the case target, planned term and liability policy for the quote assessment.</summary>
+    async Task<Raffa.SharedKernel.Renewals.CaseGoals?> ICaseGoalsReader.GetAsync(TenantId tenantId, EntityId? caseId, EntityId? contractId, CancellationToken cancellationToken)
+    {
+        using var scope = tenantContext.BeginScope(tenantId);
+        RenewalCaseRecord? record = null;
+        if (caseId is { } cid)
+        {
+            record = await db.RenewalCases.AsNoTracking().FirstOrDefaultAsync(x => x.Id == cid, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (record is null && contractId is { } kid)
+        {
+            record = await db.RenewalCases.AsNoTracking().Where(x => x.ContractId == kid)
+                .OrderBy(x => x.ClosedAt == null ? 0 : 1).ThenByDescending(x => x.OpenedAt).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (record is null)
+        {
+            return null;
+        }
+
+        var c = RenewalCaseJson.Deserialize(record.State);
+        int? term = int.TryParse(c.Goals.Term, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : null;
+        return new Raffa.SharedKernel.Renewals.CaseGoals(record.Id, c.Goals.Target, term, c.Goals.Policy ? 24 : null);
     }
 
     /// <summary>Snapshot used by tests and the fixture seeder.</summary>

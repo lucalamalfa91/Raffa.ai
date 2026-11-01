@@ -95,4 +95,75 @@ public sealed class Quote : TenantScopedEntity
     public DateOnly? PurchaseDate { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+
+    // ---- AskRaffa 4.0 Offerta (BACKEND-SPEC §2.11): a quote checked against the customer's own
+    // contract, target, other offers and policy — never a market benchmark. Null on quotes that
+    // predate 4.0 (they keep the old benchmark surface).
+
+    /// <summary><c>new</c> | <c>renewal</c>.</summary>
+    public string? Kind { get; set; }
+
+    /// <summary>The contract this offer would replace or extend (cross-module id, no FK).</summary>
+    public EntityId? ContractId { get; set; }
+
+    /// <summary>The renewal case it belongs to (cross-module id, no FK).</summary>
+    public EntityId? CaseId { get; set; }
+
+    /// <summary><see cref="QuoteDecisionStatus"/> as text: checked | negotiating | signing | signed | declined.</summary>
+    public string? Status { get; set; }
+
+    public string? DecidedBy { get; set; }
+
+    public DateTimeOffset? DecidedAt { get; set; }
+
+    /// <summary>The offer's own validity ("valida fino al").</summary>
+    public DateOnly? ValidUntil { get; set; }
+
+    /// <summary>The offer's own reference shown to the user (e.g. "QC-07").</summary>
+    public string? Reference { get; set; }
+
+    /// <summary>The term as the offer states it ("12 months").</summary>
+    public string? TermLabel { get; set; }
+
+    /// <summary>The date of the offer (when it was checked).</summary>
+    public DateOnly? QuoteDate { get; set; }
+
+    /// <summary>Who checked it (display name).</summary>
+    public string? CheckedBy { get; set; }
+
+    /// <summary>When the user confirmed what Raffa read (step 1 "Conferma i dati letti").</summary>
+    public DateTimeOffset? ExtractionConfirmedAt { get; set; }
+
+    /// <summary>jsonb: what the offer states for payment, uplift, renewal, liability, sla (null = not stated).</summary>
+    public string? StatedTermsJson { get; set; }
+
+    /// <summary>jsonb: what the offer omits, bilingual <c>[{en,it}]</c>.</summary>
+    public string? MissingJson { get; set; }
+
+    /// <summary>jsonb: a target recorded on the offer itself <c>{kind,label}</c> (when no case holds one).</summary>
+    public string? TargetJson { get; set; }
+}
+
+/// <summary>Offerta decision states (BACKEND-SPEC §3.3).</summary>
+public static class QuoteDecisionStatus
+{
+    public const string Checked = "checked";
+    public const string Negotiating = "negotiating";
+    public const string Signing = "signing";
+    public const string Signed = "signed";
+    public const string Declined = "declined";
+
+    public static readonly IReadOnlyList<string> All = [Checked, Negotiating, Signing, Signed, Declined];
+
+    /// <summary>checked → negotiating | signing | declined; negotiating → signing | signed | declined;
+    /// signing → signed | declined; any → checked (reopen).</summary>
+    public static bool CanMove(string from, string to) => to switch
+    {
+        Checked => true,
+        Negotiating => from == Checked,
+        Signing => from is Checked or Negotiating,
+        Signed => from is Negotiating or Signing,
+        Declined => from is Checked or Negotiating or Signing,
+        _ => false,
+    };
 }

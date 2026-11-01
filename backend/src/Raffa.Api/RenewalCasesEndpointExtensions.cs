@@ -19,7 +19,7 @@ public static class RenewalCasesEndpointExtensions
 
     public sealed record CaseActionRequest(string Type, CaseActionPayload? Payload, int? Version);
 
-    public sealed record CaseAskRequest(string Text, int? Version);
+    public sealed record CaseAskRequest(string Text, int? Version, string? Lang);
 
     public sealed record CaseVersionRequest(int? Version);
 
@@ -135,7 +135,7 @@ public static class RenewalCasesEndpointExtensions
         WithCaller(request, callerContext, ct, async caller => Map(await service.ActAsync(caller.TenantId, caller.Identity, caseId, type, payload, version, ct).ConfigureAwait(false)));
 
     private static Task<IResult> AskAsync(Guid caseId, CaseAskRequest body, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>
-        WithCaller(request, callerContext, ct, async caller => Map(await service.AskAsync(caller.TenantId, caller.Identity, caseId, body.Text, body.Version, ct).ConfigureAwait(false)));
+        WithCaller(request, callerContext, ct, async caller => Map(await service.AskAsync(caller.TenantId, caller.Identity, caseId, body.Text, body.Version, body.Lang, ct).ConfigureAwait(false)));
 
     private static Task<IResult> TimelineAsync(Guid caseId, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>
         WithCaller(request, callerContext, ct, async caller =>

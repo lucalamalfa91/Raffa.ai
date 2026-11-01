@@ -1,4 +1,5 @@
 using Raffa.Savings.Domain;
+using Raffa.Savings.Domain.Results;
 using Raffa.Savings.Infrastructure.Configurations;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,10 +29,26 @@ public sealed class SavingsDbContext(DbContextOptions<SavingsDbContext> options)
     /// <c>AuditEvent</c>).</summary>
     public DbSet<RealizedSavings> RealizedSavingsRecords => Set<RealizedSavings>();
 
+    // AskRaffa 4.0 verifiable savings (BACKEND-SPEC §2.10).
+    public DbSet<SavingResult> SavingResults => Set<SavingResult>();
+
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+
+    public DbSet<SavingRealization> SavingRealizations => Set<SavingRealization>();
+
+    public DbSet<SavingsGoal> SavingsGoals => Set<SavingsGoal>();
+
+    public DbSet<CaseObjective> CaseObjectives => Set<CaseObjective>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new SavingsOpportunityConfiguration());
         modelBuilder.ApplyConfiguration(new RealizedSavingsConfiguration());
+        modelBuilder.ApplyConfiguration(new SavingResultConfiguration());
+        modelBuilder.ApplyConfiguration(new InvoiceConfiguration());
+        modelBuilder.ApplyConfiguration(new SavingRealizationConfiguration());
+        modelBuilder.ApplyConfiguration(new SavingsGoalConfiguration());
+        modelBuilder.ApplyConfiguration(new CaseObjectiveConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

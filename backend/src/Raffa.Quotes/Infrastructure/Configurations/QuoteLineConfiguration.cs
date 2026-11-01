@@ -54,5 +54,9 @@ public sealed class QuoteLineConfiguration : IEntityTypeConfiguration<QuoteLine>
 
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => new { e.TenantId, e.QuoteId });
+
+        // AskRaffa 4.0: the customer's own current price for the line.
+        builder.Property(e => e.ExistingUnitPrice).HasPrecision(18, 4);
+        builder.Property(e => e.ExistingPriceLabel).HasMaxLength(200);
     }
 }

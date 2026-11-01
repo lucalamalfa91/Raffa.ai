@@ -7,6 +7,8 @@ using Raffa.Renewals.Tests.TestSupport;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Cases;
 using Raffa.SharedKernel.Contracts;
+using Raffa.SharedKernel.Renewals;
+using Raffa.SharedKernel.Savings;
 using Raffa.SharedKernel.Tenancy;
 using Testcontainers.PostgreSql;
 
@@ -47,7 +49,7 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         await db.Database.MigrateAsync();
         return new RenewalCaseService(
             db, _tenantContext, _facts, new Members(), script ?? FixtureCaseScriptServices.Instance,
-            new ContractFactsQuestionAnswerer(_facts, new FixedClock(Now)), _terms, new NoSavingResultWriter(),
+            new NoAnswerer(), _terms, new NoSavings(), new NoObjectives(),
             new NoOpenQuoteDecisions(), new NoDocumentsNeedingReview(), _audit, new FixedClock(Now));
     }
 
@@ -245,9 +247,11 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         var written = Assert.Single(_terms.Written);
         Assert.Equal(_facts.Id(1), written.ContractId);
         Assert.True(written.ValidTo > new DateOnly(2027, 1, 15));
+        Assert.Equal(e.CaseId, written.CaseId);
         IContractCaseStatusReader reader = s;
         Assert.True(version > 1);
-        var status = (await reader.ListAsync(_tenant)).Single(x => x.CaseId == e.CaseId);
+        var status = (await reader.GetAsync(_tenant, [_facts.Id(1)]))[_facts.Id(1)];
+        Assert.Equal(e.CaseId, status.CaseId);
         Assert.Equal("renewed", status.Outcome);
         Assert.False(status.HasOpenCase);
 
@@ -284,13 +288,29 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
 
     private sealed class RecordingTermWriter : IContractTermWriter
     {
-        public List<RenewedContractTerms> Written { get; } = [];
+        public List<ContractTermVersionInput> Written { get; } = [];
 
-        public Task WriteRenewedTermsAsync(TenantId tenantId, RenewedContractTerms terms, CancellationToken cancellationToken = default)
+        public Task<Guid> WriteCurrentAsync(TenantId tenantId, ContractTermVersionInput input, CancellationToken cancellationToken = default)
         {
-            Written.Add(terms);
-            return Task.CompletedTask;
+            Written.Add(input);
+            return Task.FromResult(Guid.NewGuid());
         }
+    }
+
+    private sealed class NoAnswerer : ICaseQuestionAnswerer
+    {
+        public Task<CaseQuestionAnswer> AnswerAsync(TenantId tenantId, EntityId contractId, string text, string? lang = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new CaseQuestionAnswer("No basis.", null));
+    }
+
+    private sealed class NoSavings : ISavingResultRecorder
+    {
+        public Task<Guid> RecordAsync(TenantId tenantId, SavingResultRecord result, CancellationToken cancellationToken = default) => Task.FromResult(Guid.NewGuid());
+    }
+
+    private sealed class NoObjectives : ICaseObjectiveWriter
+    {
+        public Task UpsertAsync(TenantId tenantId, CaseObjectiveInfo objective, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     /// <summary>The four prototype contracts as <see cref="ContractFacts"/> (validated).</summary>
