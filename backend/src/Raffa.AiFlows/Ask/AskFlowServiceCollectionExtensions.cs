@@ -66,7 +66,12 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<AskCopilotService>();
 
         // AskRaffa 4.0 Chiedi answers (TryAdd: fixture mode registers its deterministic one).
-        services.TryAddScoped<Raffa.Chat.Application.Ask4.IAskAnswerService, V4.CopilotAskAnswerService>();
+        // Replaces the Chat module's honest "cannot answer" default, but never a fixture-mode registration.
+        var askAnswer = services.FirstOrDefault(d => d.ServiceType == typeof(Raffa.Chat.Application.Ask4.IAskAnswerService));
+        if (askAnswer is null || askAnswer.ImplementationType == typeof(Raffa.Chat.Application.Ask4.NoAskAnswerService))
+        {
+            services.Replace(ServiceDescriptor.Scoped<Raffa.Chat.Application.Ask4.IAskAnswerService, V4.CopilotAskAnswerService>());
+        }
         services.AddScoped<GateReplyBuilder>();
         services.AddScoped<AbstainRecovery>();
         services.AddScoped<AskTurnAudit>();

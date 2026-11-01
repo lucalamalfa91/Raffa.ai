@@ -63,6 +63,7 @@ public static class ServiceCollectionExtensions
         // AskRaffa 4.0: flags for the Chiedi answer services and the case-scoped Q&A the Renewals
         // composer calls (over whichever IAskAnswerService the host registered).
         services.TryAddSingleton(new AskAnswerOptions());
+        services.TryAddScoped<IAskAnswerService, NoAskAnswerService>();
         services.TryAddScoped<ICaseQuestionAnswerer, CaseQuestionAnswerer>();
 
         if (chatConnectionString is not null)
