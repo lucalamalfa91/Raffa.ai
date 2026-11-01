@@ -47,3 +47,20 @@ Source of truth: `reference/AskRaffa V4.dc.html`. Parity is proved by `web/parit
 ## 4. Parity in CI
 
 Workflow `.github/workflows/parity.yml` (PR + push to main): Postgres (pgvector) service → apply all module SQL scripts → `dotnet run` API (`ASPNETCORE_ENVIRONMENT=Parity`, fixtures on) → `vite build` with fixture config + `vite preview` → static server for `reference/` → `reference.capture.spec.ts` (goldens captured in the same runner, so fonts/rasterisation match) → `app.parity.spec.ts` (soft assertions, every screen reported) + `geometry.spec.ts`. Report + diffs uploaded as artifact.
+
+## 5. VERIFY points — verified against the code (2026-11-01)
+
+| Spec point | Reality in the repo | Consequence |
+|---|---|---|
+| Dedup by hash | `document.checksum` (SHA-256) + partial unique index `ux_document_tenant_checksum`; duplicate upload returns **200** `{alreadyUploaded:true, existingDocumentUrl}`, not 409; no `?asNewVersion`; `document_version` table unused | Keep the 200 contract (frontend shows "già caricato" → open existing); document it in OpenAPI. |
+| Unreadable | No status; `Rejected` + `rejection_reason=no_readable_text` (terminal, blob deleted) | Revisione maps `no_readable_text` to the A3 inline error with "Carica un'altra versione". |
+| Per-field confidence / page / why-flagged | `extraction_evidence` has value, source_span/page, confidence, decision (threshold 0.90). Critical list exists in code (`ExtractionConfidencePolicy`) but is **not exposed**; **no flag reason** | Add `flagReason` + `critical` to the evidence response (slice 4). |
+| Review/validate | `GET /api/contracts/{id}/evidence`, `PATCH /api/contracts/{id}` corrections, `POST /api/documents/{id}/validate` | Reused by Revisione. |
+| Conversations restore | No `archived_at`: "archived" = `updated_at < now−7d`; restore bumps `updated_at`; DELETE is hard | Add explicit `archived_at` + `case_id` (slice 6); restore ≠ unarchive. |
+| `estimated_savings_*` | Exposed by `GET /api/savings`, `/kpis`, `PATCH`; rendered in savings dashboard | Removed from 4.0 surfaces; new `/api/savings/results` (slice 5). Columns kept. |
+| Raffa.Market | Used by Ask packs, contract read (`MarketPriceEstimator`), insights strategy, quotes assessment (P25/P50/P75), renewal priority `benchmarkOpportunity`, re-price job. **No feature flag**; capabilities is a static catalog | Add `askraffa4.noBenchmark`; when on, 4.0 code paths never call Market; market answers refuse honestly. |
+| Quote assessment | Percentile benchmark + target saving from P25/P50 | Replaced (new response version) by SQ-style comparison vs own contract/target/other offers/policy. |
+| Renewals | `renewal_action` thin; `renewal_alert` internal only; negotiation todos unused by screens; Renewals/Today run on client demo data | `renewal_case` aggregate + projections; old client engine removed. |
+| OpenAPI drift | `/api/chat/query` shape stale; several mapped endpoints missing (DELETE conversation/documents, PATCH evidence/{field}, quote reprocess/header, PATCH savings) | Fixed opportunistically when touched. |
+| Identity | Roles Admin/Procurement/Legal/Finance/ReadOnly; caller = `oid`; `X-Tenant-Id` header | "Approver" = case-level (`renewal_case.approver_user_id`, default the CPO/Admin); delegations per case. |
+| Clock | `IClock` injectable everywhere (5 direct `UtcNow` bypasses in Market/Foundry/warm-up) | Fixture clock honoured by all 4.0 code. |
