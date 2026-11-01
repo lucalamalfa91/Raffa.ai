@@ -307,6 +307,8 @@ export interface RenewalsBoard {
   toStart: number;
   empty: boolean;
   assignee: CaseAssignee | null;
+  /** The open cases, flat (read by Chiedi's "Pratiche aperte"). */
+  cases: RenewalsRow[];
 }
 
 /** A case call's result: the body, or the error with the current case the server returned with it. */

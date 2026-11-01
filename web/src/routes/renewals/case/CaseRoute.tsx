@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { ApiClient } from "../../../api/client";
 import type { CaseActionPayload, CaseButton, CaseCardStep, CaseEnvelope, CaseInput, CaseRow, Tone } from "../../../api/renewalCases";
 import { useGuide } from "../../../components/shell/guide";
-import { useShellContext } from "../../../components/shell/shellContext";
+import { useTenantId } from "../../../routes/contracts/contracts4";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../../i18n/translate";
 import { notifyTodayChanged } from "../../today/loadToday";
@@ -53,7 +53,7 @@ const isEmpty = (x: Text | null | undefined): boolean => x == null || (typeof x 
  */
 export default function CaseRoute({ apiClient }: CaseRouteProps) {
   const { caseId = "" } = useParams();
-  const tenantId = useShellContext()?.workspaceId;
+  const tenantId = useTenantId() ?? undefined;
   const { t, lang } = useI18n();
   const tr = useCallback((x: Text | null | undefined) => resolveText(x, lang), [lang]);
   const navigate = useNavigate();

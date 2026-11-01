@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
 import type { RenewalsBoard, RenewalsRow } from "../../api/renewalCases";
 import { useGuide } from "../../components/shell/guide";
-import { useShellContext } from "../../components/shell/shellContext";
+import { useTenantId } from "../../routes/contracts/contracts4";
 import { useI18n } from "../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../i18n/translate";
 import { useCaseNavigation } from "../today/useCaseNavigation";
@@ -19,7 +19,7 @@ export interface RenewalsRouteProps {
  * sorted by notice deadline. A row opens the case (the same one, never a second).
  */
 export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
-  const tenantId = useShellContext()?.workspaceId;
+  const tenantId = useTenantId() ?? undefined;
   const { t, lang } = useI18n();
   const tr = useCallback((x: Text | null | undefined) => resolveText(x, lang), [lang]);
   const navigate = useNavigate();

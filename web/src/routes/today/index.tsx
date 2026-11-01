@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
 import type { TodayFeed, TodayItem } from "../../api/renewalCases";
 import { useGuide, useNavBadge } from "../../components/shell/guide";
-import { useShellContext } from "../../components/shell/shellContext";
+import { useTenantId } from "../../routes/contracts/contracts4";
 import { useI18n } from "../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../i18n/translate";
 import { CONTRACTS_CHANGED, loadToday, notifyTodayChanged } from "./loadToday";
@@ -30,7 +30,7 @@ const DELEGABLE = ["approve", "policy", "sigok", "nout", "alt"];
  * card (max 3 buttons) with "Poi, per te" and "In attesa di altri"; the calm state; "Rimandate".
  */
 export default function TodayRoute({ apiClient }: TodayRouteProps) {
-  const tenantId = useShellContext()?.workspaceId;
+  const tenantId = useTenantId() ?? undefined;
   const { t, lang } = useI18n();
   const tr = useCallback((x: Text | null | undefined) => resolveText(x, lang), [lang]);
   const navigate = useNavigate();
