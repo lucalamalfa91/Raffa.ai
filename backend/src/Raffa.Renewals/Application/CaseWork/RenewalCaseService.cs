@@ -146,6 +146,8 @@ public sealed partial class RenewalCaseService(
         var approver = Approver(members) ?? caller.Name;
         var c = RenewalCaseEngine.Create(cf.Id, Ctx(cf, caller.Name), branch, owner?.Name ?? caller.Name, approver, members.Select(m => m.Name).ToList());
         var record = await InsertAsync(tenantId, contractId, c, cf, members, caller.Name, ct).ConfigureAwait(false);
+        // An open case is an objective "to set" in Risultati from the moment it exists.
+        await UpsertObjectiveAsync(tenantId, record, c, ct).ConfigureAwait(false);
         return CaseResult.Ok(Envelope(record, RenewalCaseJson.Deserialize(record.State), cf, caller.Name));
     }
 
@@ -680,11 +682,6 @@ public sealed partial class RenewalCaseService(
     private async Task UpsertObjectiveAsync(TenantId tenantId, RenewalCaseRecord record, RenewalCase c, CancellationToken ct)
     {
         var kind = c.Goals.Target;
-        if (kind is null && c.Outcome is null)
-        {
-            return;
-        }
-
         decimal? pct = kind switch { "p5" => 5m, "p10" => 10m, "budget" => 10m, _ => null };
         await objectiveWriter.UpsertAsync(tenantId, new CaseObjectiveInfo(
             record.Id.Value, record.ContractId.Value, c.Owner, kind, pct, null, c.Goals.TargetText, c.Outcome?.Kind), ct).ConfigureAwait(false);
