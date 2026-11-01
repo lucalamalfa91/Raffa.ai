@@ -7,5 +7,7 @@ import { IT_CASE } from "./case";
 import { IT_CONTRACTS4 } from "./contracts4";
 import { IT_RENEWALS } from "./renewals";
 import { IT_SHELL } from "./shell";
+import { IT_ASK4 } from "./ask4";
+import { IT_QUOTE4V } from "./quote4v";
 
-export const IT: Readonly<Record<string, string>> = { ...IT_CASE, ...IT_RENEWALS, ...IT_SHELL, ...IT_CONTRACTS4 };
+export const IT: Readonly<Record<string, string>> = { ...IT_CASE, ...IT_RENEWALS, ...IT_SHELL, ...IT_CONTRACTS4, ...IT_ASK4, ...IT_QUOTE4V };

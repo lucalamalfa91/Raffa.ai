@@ -372,9 +372,16 @@ public static class QuotesEndpointExtensions
     private static async Task<IResult> ListQuotesAsync(
         HttpRequest request,
         QuoteQueryService queryService,
+        Raffa.Quotes.Application.AssessmentV4.QuoteOfferService offerService,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
+        // AskRaffa 4.0: `?status=` asks for the 4.0 offers (Oggi decisions, Chiedi picker).
+        if (request.Query.ContainsKey("status"))
+        {
+            return await QuoteOffersEndpointExtensions.ListAsync(request, offerService, callerContext, cancellationToken).ConfigureAwait(false);
+        }
+
         var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
         if (caller.Failure is not null)
         {

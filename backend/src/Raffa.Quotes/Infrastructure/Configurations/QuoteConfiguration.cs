@@ -36,6 +36,20 @@ public sealed class QuoteConfiguration : IEntityTypeConfiguration<Quote>
         builder.Property(e => e.Currency).HasMaxLength(3);
         builder.Property(e => e.Geography).HasMaxLength(100);
 
+        // AskRaffa 4.0 Offerta.
+        builder.Property(e => e.Kind).HasMaxLength(20);
+        builder.Property(e => e.ContractId).HasConversion(ValueConverters.NullableEntityIdConverter);
+        builder.Property(e => e.CaseId).HasConversion(ValueConverters.NullableEntityIdConverter);
+        builder.Property(e => e.Status).HasMaxLength(20);
+        builder.Property(e => e.DecidedBy).HasMaxLength(200);
+        builder.Property(e => e.Reference).HasMaxLength(50);
+        builder.Property(e => e.TermLabel).HasMaxLength(100);
+        builder.Property(e => e.CheckedBy).HasMaxLength(200);
+        builder.Property(e => e.StatedTermsJson).HasColumnName("stated_terms").HasColumnType("jsonb");
+        builder.Property(e => e.MissingJson).HasColumnName("missing_json").HasColumnType("jsonb");
+        builder.Property(e => e.TargetJson).HasColumnName("target_json").HasColumnType("jsonb");
+
         builder.HasIndex(e => e.TenantId);
+        builder.HasIndex(e => new { e.TenantId, e.Status });
     }
 }

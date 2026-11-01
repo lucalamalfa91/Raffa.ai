@@ -28,6 +28,14 @@ namespace Raffa.Chat.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<Guid?>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -47,8 +55,8 @@ namespace Raffa.Chat.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasMaxLength(48)
-                        .HasColumnType("character varying(48)")
+                        .HasMaxLength(96)
+                        .HasColumnType("character varying(96)")
                         .HasColumnName("title");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
@@ -66,6 +74,9 @@ namespace Raffa.Chat.Migrations
 
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_conversation_tenant_id");
+
+                    b.HasIndex("TenantId", "CaseId")
+                        .HasDatabaseName("ix_conversation_tenant_id_case_id");
 
                     b.HasIndex("TenantId", "UserId", "UpdatedAt")
                         .HasDatabaseName("ix_conversation_tenant_id_user_id_updated_at");
