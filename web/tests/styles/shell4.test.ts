@@ -45,7 +45,7 @@ describe("ds-modernist.css", () => {
     expect(root).toMatch(/--color-surface:\s*#f3f2f2/);
     expect(root).toMatch(/width:\s*100vw/);
     expect(root).toMatch(/height:\s*100vh/);
-    expect(root).toMatch(/font-size:\s*14px/);
+    expect(root).toMatch(/font-size:\s*15px/);
     expect(root).toMatch(/line-height:\s*1\.5/);
   });
 

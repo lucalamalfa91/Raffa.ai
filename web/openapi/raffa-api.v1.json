@@ -1801,7 +1801,7 @@
                 "v4"
               ]
             },
-            "description": "AskRaffa 4.0 Contratti: `view=v4` returns {rows: [{contractId, supplier, name, noticeDeadline, noticeDays, end, annualValue, currency, status: validated|caseOpen|renewed|terminated, caseId}], document: {documentId, file, status: processing|review, flagged} | null} instead of the portfolio page (typed by hand in web/src/api/client.ts as ContractListV4Body)."
+            "description": "AskRaffa 4.0 Contratti: `view=v4` returns {rows: [{contractId, supplier, name, noticeDeadline, noticeDays, end, annualValue, currency, status: validated|caseOpen|renewed|terminated, caseId}], document: {documentId, file, status: processing|review, flagged, reading, toReview} | null} — the first document to act on (oldest waiting for review, else newest being read) and the counts of a bulk upload instead of the portfolio page (typed by hand in web/src/api/client.ts as ContractListV4Body)."
           }
         ],
         "responses": {

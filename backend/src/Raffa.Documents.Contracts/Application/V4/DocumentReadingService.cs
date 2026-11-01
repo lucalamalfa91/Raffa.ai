@@ -56,10 +56,27 @@ public sealed class DocumentReadingService(
     public async Task<DocumentAttention?> GetAttentionAsync(TenantId tenantId, CancellationToken cancellationToken = default)
     {
         using var _ = tenantContext.BeginScope(tenantId);
-        var open = await dbContext.Documents
+        var pending = await dbContext.Documents
             .Where(d => d.TenantId == tenantId && (d.ProcessingStatus == DocumentProcessingStatus.Uploaded
                 || d.ProcessingStatus == DocumentProcessingStatus.Processing
                 || d.ProcessingStatus == DocumentProcessingStatus.NeedsReview))
+            .GroupBy(d => d.ProcessingStatus)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var reading = pending.Where(p => p.Status != DocumentProcessingStatus.NeedsReview).Sum(p => p.Count);
+        var toReview = pending.Where(p => p.Status == DocumentProcessingStatus.NeedsReview).Sum(p => p.Count);
+
+        // The banner leads to what the user can act on first: the oldest document waiting for review,
+        // else the newest one being read.
+        var open = await dbContext.Documents
+            .Where(d => d.TenantId == tenantId && d.ProcessingStatus == DocumentProcessingStatus.NeedsReview)
+            .OrderBy(d => d.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? await dbContext.Documents
+            .Where(d => d.TenantId == tenantId && (d.ProcessingStatus == DocumentProcessingStatus.Uploaded
+                || d.ProcessingStatus == DocumentProcessingStatus.Processing))
             .OrderByDescending(d => d.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -74,7 +91,7 @@ public sealed class DocumentReadingService(
             return null;
         }
 
-        return new DocumentAttention(view.DocumentId, view.File, view.Status, view.Fields.Count(f => f.Decision is null));
+        return new DocumentAttention(view.DocumentId, view.File, view.Status, view.Fields.Count(f => f.Decision is null), reading, toReview);
     }
 
     /// <summary>

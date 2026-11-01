@@ -132,4 +132,13 @@ export const IT_CONTRACTS4: Readonly<Record<string, string>> = {
     "Questo file non sembra un contratto. Carica un altro file.",
   "The reading did not finish. Upload another version or try again.":
     "La lettura non è terminata. Carica un’altra versione o riprova.",
+  "Uploading {done} of {total}": "Caricamento {done} di {total}",
+  "{n} files uploaded": "{n} file caricati",
+  "{n} already uploaded": "{n} già caricati",
+  "{n} did not go through": "{n} non riusciti",
+  "Raffa reads them one after the other; you verify only the doubtful fields.": "Raffa li legge uno dopo l’altro; tu verifichi solo i campi dubbi.",
+  "{n} documents being read": "{n} documenti in lettura",
+  "{n} to verify": "{n} da verificare",
+  "next: {file}": "il prossimo: {file}",
+  "Close": "Chiudi",
 };

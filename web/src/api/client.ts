@@ -1968,7 +1968,8 @@ export interface ContractListRowV4Body {
 }
 export interface ContractListV4Body {
   rows: ContractListRowV4Body[];
-  document: { documentId: string; file: string; status: "processing" | "review"; flagged: number } | null;
+  /** The banner: the first document to act on, plus how many are still being read / waiting for review (bulk uploads). */
+  document: { documentId: string; file: string; status: "processing" | "review"; flagged: number; reading?: number; toReview?: number } | null;
 }
 export interface OpenRenewalCaseRequest {
   contractId: string;

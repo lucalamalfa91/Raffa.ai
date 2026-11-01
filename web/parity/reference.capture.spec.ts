@@ -1,5 +1,6 @@
 import { test, Page } from '@playwright/test';
 import { FLOW_FULL, FLOW_ZERO, VIEWPORTS, stabilise } from './flow';
+import { APPROVED_DEVIATIONS } from './deviations';
 
 /** Captures the golden screenshots FROM THE REFERENCE PROTOTYPE. Run once, commit the PNGs. */
 const URL = process.env.REFERENCE_URL!; // e.g. http://localhost:4173/AskRaffa%20V4.dc.html
@@ -9,6 +10,7 @@ for (const vp of VIEWPORTS) {
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1, locale: 'it-IT', reducedMotion: 'reduce' });
     const page: Page = await ctx.newPage();
     await page.addInitScript(() => { localStorage.setItem('raffa4.mode', 'zero'); localStorage.setItem('raffa4.lang', 'it'); });
+    await page.addInitScript(APPROVED_DEVIATIONS); // PARITY.md "Approved deviations" D1-D3
     await page.goto(URL);
     await stabilise(page);
     for (const s of [...FLOW_ZERO, ...FLOW_FULL]) {
