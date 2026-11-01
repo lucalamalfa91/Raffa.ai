@@ -1,108 +1,319 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { DEMO_TITLES } from "../renewals/case/fixtures";
-import { groupByBand, inQueueScope, type Scope } from "../renewals/case/portfolio";
-import { useRenewalsWorkspace } from "../renewals/case/useRenewalsWorkspace";
-import QueueGroups from "../renewals/queue/QueueGroups";
-import SegControl from "../renewals/SegControl";
-import "../renewals/renewals.css";
-import "./today.css";
+import type { ApiClient } from "../../api/client";
+import type { TodayFeed, TodayItem } from "../../api/renewalCases";
+import { useGuide, useNavBadge } from "../../components/shell/guide";
+import { useShellContext } from "../../components/shell/shellContext";
+import { useI18n } from "../../i18n/I18nProvider";
+import { resolveText, type Text } from "../../i18n/translate";
+import { useCaseNavigation } from "./useCaseNavigation";
+import "./today4.css";
 
 export interface TodayRouteProps {
-  /** The signed-in account's label (the demo person it maps to is resolved in the workspace hook). */
-  userLabel: string;
+  apiClient: ApiClient;
 }
 
+const IT_MONTHS: Record<string, string> = { Jan: "Gen", May: "Mag", Jun: "Giu", Jul: "Lug", Aug: "Ago", Sep: "Set", Oct: "Ott", Dec: "Dic" };
+
+/** "08 Sep 2026" → "08 Set 2026" in Italian (the role line; contract dates stay as written). */
+export function localDate(date: string, lang: string): string {
+  return lang === "it" ? date.replace(/\b(Jan|May|Jun|Jul|Aug|Sep|Oct|Dec)\b/, (m) => IT_MONTHS[m] ?? m) : date;
+}
+
+/** The kinds where the CPO can hand the step to the buyer instead of doing it ("Delega a Marta"). */
+const DELEGABLE = ["approve", "policy", "sigok", "nout", "alt"];
+
 /**
- * Route `/today` -- the task queue, by urgency. Everything anybody must do, nearest notice deadline
- * first, in three bands (within 30 days, 31–120, later), for you, for the team, or with no owner yet.
- * Each row opens the case at the step that needs doing; a person can delegate (approver), snooze it
- * for three days, or mark it done.
+ * Oggi (AskRaffa V4.dc.html lines 49-98): one next action, then what follows. Never a dashboard.
+ * Header (role line, title, subtitle); "Punto zero" on an empty workspace; progress dots + the Focus
+ * card (max 3 buttons) with "Poi, per te" and "In attesa di altri"; the calm state; "Rimandate".
  */
-export default function TodayRoute({ userLabel }: TodayRouteProps) {
-  const w = useRenewalsWorkspace(userLabel);
-  const { t } = w;
+export default function TodayRoute({ apiClient }: TodayRouteProps) {
+  const tenantId = useShellContext()?.workspaceId;
+  const { t, lang } = useI18n();
+  const tr = useCallback((x: Text | null | undefined) => resolveText(x, lang), [lang]);
   const navigate = useNavigate();
-  const [scope, setScope] = useState<Scope>("mine");
+  const setBadge = useNavBadge();
+  const [feed, setFeed] = useState<TodayFeed | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { openItem } = useCaseNavigation(apiClient, tenantId);
 
-  const counts = useMemo(
-    () => ({
-      mine: inQueueScope(w.queue, "mine").length,
-      team: inQueueScope(w.queue, "team").length,
-      unassigned: inQueueScope(w.queue, "unassigned").length,
-    }),
-    [w.queue],
+  const load = useCallback(async () => {
+    if (!tenantId || !apiClient.getToday) return;
+    const r = await apiClient.getToday(tenantId);
+    if (r.ok) {
+      setFeed(r.body);
+      setError(null);
+    } else {
+      setError(r.error);
+    }
+  }, [apiClient, tenantId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (feed) setBadge(feed.mine.length || null);
+  }, [feed, setBadge]);
+
+  const snooze = useCallback(
+    async (key: string, on: boolean) => {
+      if (!tenantId || !apiClient.snoozeTodayItem) return;
+      const r = await apiClient.snoozeTodayItem(tenantId, key, on);
+      if (r.ok) setFeed(r.body);
+    },
+    [apiClient, tenantId],
   );
-  const rows = useMemo(() => inQueueScope(w.queue, scope), [w.queue, scope]);
-  const bands = useMemo(() => groupByBand(rows, t), [rows, t]);
 
-  const title = DEMO_TITLES[w.viewer];
-  const nextDeadline = w.summaries.filter((x) => !x.done)[0];
-  const empty: Record<Scope, string> = {
-    mine: t("Nothing needs you right now. When a colleague finishes a step that needs your approval, it appears here."),
-    team: t("No renewal in progress with the team."),
-    unassigned: t("Every notice deadline has an owner."),
-  };
+  const startSample = useCallback(async () => {
+    if (!tenantId) return;
+    const doc = feed?.documents[0];
+    if (doc) {
+      navigate(`/contracts/review/${doc.documentId}`);
+      return;
+    }
+    if (!apiClient.startSampleUpload) return;
+    const r = await apiClient.startSampleUpload(tenantId);
+    if (r.ok) navigate(`/contracts/review/${r.body.documentId}`);
+    else setError(r.error);
+  }, [apiClient, tenantId, feed, navigate]);
+
+  const delegate = useCallback(
+    async (item: TodayItem) => {
+      if (!tenantId || !item.caseId || !feed?.assignee || !apiClient.postRenewalCaseAction) return;
+      await apiClient.postRenewalCaseAction(tenantId, item.caseId, "delegate", { who: feed.assignee.name, on: true }, null);
+      await load();
+    },
+    [apiClient, tenantId, feed, load],
+  );
+
+  const viewer = feed?.viewer;
+  const mine = feed?.mine ?? [];
+  const team = feed?.waiting ?? [];
+  const f = mine[0] ?? null;
+  const startOn = !!feed?.emptyWorkspace;
+  const hasDoc = (feed?.documents.length ?? 0) > 0;
+  const stP = hasDoc ? 2 : 0;
+  const assigneeFirst = feed?.assignee?.name.split(" ")[0] ?? "";
+
+  const open = useCallback(
+    (item: TodayItem) => {
+      if (feed) void openItem(item, feed.viewer, feed.assignee);
+    },
+    [feed, openItem],
+  );
+
+  const title = startOn
+    ? t("Start here.")
+    : f
+      ? mine.length === 1
+        ? t("Today you have 1 thing to do.")
+        : t("Today you have {n} things to do. One at a time.", { n: mine.length })
+      : t("Nothing needs your action today.");
+  const sub = startOn
+    ? t(hasDoc ? "The reading is done. I only ask about the fields I am not sure of." : "No contract yet. Raffa works only on contracts that are read and verified: you upload the first, check the doubtful fields, and the renewal starts from there.")
+    : f
+      ? t("I start from the nearest deadline. Each card has one main action; everything else stays saved.")
+      : team.length === 1
+        ? t("1 step waits on a colleague or the supplier — see it in Renewals.")
+        : team.length
+          ? t("{n} steps wait on colleagues or suppliers — see them in Renewals.", { n: team.length })
+          : t("No open renewal.");
+
+  const focusCta = f
+    ? f.kind === "unassigned"
+      ? viewer?.isApprover
+        ? t("Start & assign to {name}", { name: assigneeFirst })
+        : t("Start the renewal")
+      : f.kind === "quote"
+        ? t("Open the check")
+        : t("Do it now — open the step")
+    : "";
+  const hasAlt = !!f && !!viewer?.isApprover && (f.kind === "unassigned" || (DELEGABLE.includes(f.kind) && !!feed?.assignee));
+  const altLabel = f?.kind === "unassigned" ? t("I’ll handle it") : t("Delegate to {name}", { name: assigneeFirst });
+
+  const steps: Array<[string, string]> = [
+    ["Upload the contract", "A PDF: dates, prices and notice terms are read page by page."],
+    ["Raffa reads it", "A few seconds in the demo."],
+    ["You verify the doubtful fields", "One at a time, with the quote from the document."],
+    ["The renewal starts", "The notice deadline shows up here, in Today."],
+  ];
+  const startCta = hasDoc ? t("Verify the fields") : t("Upload the first contract");
+
+  useGuide(
+    !feed
+      ? null
+      : startOn
+        ? {
+            where: t("Today · start"),
+            now: hasDoc ? t("Verify the two doubtful fields.") : t("Upload the first contract."),
+            why: t("Raffa works only on read and verified contracts: a doubtful notice date cannot drive a decision."),
+            next: t("Contract validated → the notice deadline appears in Today → you run the renewal through to signature."),
+            cta: { label: startCta, onClick: () => void startSample() },
+          }
+        : {
+            where: f ? t("Today · {n} things for you", { n: mine.length }) : t("Today · nothing pending"),
+            now: f ? `${tr(f.title)} — ${f.supplier}` : t("Look at the renewals, or rest."),
+            why: f ? tr(f.why) : t("When a colleague closes a step that waits for you, it shows up here."),
+            next: mine[1] ? t("Then {supplier}: {title}", { supplier: mine[1].supplier, title: tr(mine[1].title) }) : t("Then you are done."),
+            cta: f ? { label: t("Do now"), onClick: () => open(f) } : { label: t("See the renewals"), onClick: () => navigate("/renewals") },
+          },
+  );
+
+  const roleLine = viewer ? `${viewer.name} · ${viewer.title ? t(viewer.title) + " · " : ""}${localDate(viewer.date, lang)}` : "";
+
+  if (!feed) {
+    return (
+      <div className="o4-page" data-screen-label="Oggi">
+        {error ? <div className="o4-sub">{error}</div> : null}
+      </div>
+    );
+  }
 
   return (
-    <div className="rn-today" data-screen-label="Today">
-      <header className="today-header">
-        <div>
-          <p className="today-kicker">{title ? `${w.viewer} · ${t(title)}` : w.viewer}</p>
-          <h2 className="today-title">
-            {t("Today")} · {w.today}
-          </h2>
-          <p className="today-summary">{t(counts.mine === 1 ? "{n} action waiting for you · ordered by notice deadline" : "{n} actions waiting for you · ordered by notice deadline", { n: counts.mine })}</p>
-        </div>
-        <SegControl
-          label={t("Show")}
-          value={scope}
-          onChange={setScope}
-          options={[
-            { value: "mine", label: t("Mine"), badge: counts.mine },
-            { value: "team", label: t("Team"), badge: counts.team },
-            { value: "unassigned", label: t("Unassigned"), badge: counts.unassigned },
-          ]}
-        />
-      </header>
+    <div className="o4-page" data-screen-label="Oggi">
+      <h6 className="o4-role">{roleLine}</h6>
+      <h2 className="o4-title">{title}</h2>
+      <div className="o4-sub">{sub}</div>
 
-      <div className="today-list">
-        <QueueGroups
-          groups={bands}
-          t={t}
-          actionsFor={w.actionsFor}
-          onRun={w.run}
-          onDelegate={w.delegate}
-          onSnooze={w.snooze}
-          onDone={w.dismiss}
-          onOpenInRenewals={(item) => navigate(`/renewals?select=${item.cid}&tab=now`)}
-        />
-        {bands.length === 0 && <p className="rn-empty">{empty[scope]}</p>}
-      </div>
-
-      {w.snoozed.length > 0 && (
-        <section className="today-snoozed" aria-label={t("Snoozed")}>
-          <h3 className="rn-label today-snoozed-head">{t("Snoozed")}</h3>
-          <ul>
-            {w.snoozed.map((item) => (
-              <li key={item.key}>
-                <span className="today-snoozed-title">{item.title}</span>
-                <span className="rn-small">
-                  {item.supplier} · {item.contract} · {t("until {date}", { date: item.until })}
-                </span>
-                <button type="button" className="btn btn-ghost" onClick={() => w.unsnooze(item.key)}>
-                  {t("Bring back")}
-                </button>
-              </li>
+      {startOn ? (
+        <div className="o4-zero" data-screen-label="Punto zero">
+          <div className="o4-zero-head">{t("Upload a contract. Everything else starts from there.")}</div>
+          <div className="o4-zero-steps">
+            {steps.map(([st, hint], i) => (
+              <div key={st} className={`o4-zero-step${i === stP ? " is-now" : i < stP ? " is-done" : ""}`}>
+                <div className="o4-zero-n">
+                  {t("Step")} {i + 1}
+                </div>
+                <div className="o4-zero-t">{t(st)}</div>
+                <div className="o4-zero-h">{t(hint)}</div>
+              </div>
             ))}
-          </ul>
-        </section>
-      )}
+          </div>
+          <div className="o4-zero-cta">
+            <button type="button" className="btn btn-primary" onClick={() => void startSample()}>
+              {startCta}
+            </button>
+            {!hasDoc ? <span className="o4-note">{t("Demo: upload “Salesforce_MSA_2024.pdf”, the sample contract.")}</span> : null}
+          </div>
+        </div>
+      ) : null}
 
-      <p className="today-foot">
-        {nextDeadline && `${t("Next notice deadline: {supplier} in {n} days ({date})", { supplier: nextDeadline.supplier, n: nextDeadline.noticeDays, date: nextDeadline.cancel })} · `}
-        {t("{n} in progress with the team", { n: counts.team })}
-      </p>
+      {f ? (
+        <>
+          <div className="o4-dots">
+            {mine.map((x, i) => (
+              <span key={x.key} className={i === 0 ? "is-now" : undefined} />
+            ))}
+          </div>
+          <div className="o4-grid">
+            <div className="o4-focus" data-screen-label="Focus">
+              <div className="o4-kicker">
+                <span className="o4-kicker-n">{t("1 of {n}", { n: mine.length })}</span>
+                <span>{t("Your action")}</span>
+                <span>{f.stage >= 0 ? t("Phase {n}/6 · {label}", { n: f.stage + 1, label: tr(f.stageLabel) }) : tr(f.stageLabel)}</span>
+              </div>
+              <div className="o4-supplier">
+                {f.supplier} <span>{f.contract}</span>
+              </div>
+              <div className="o4-ftitle">{tr(f.title)}</div>
+              <div className="o4-why">{tr(f.why)}</div>
+              <div className="o4-due">
+                <span>{f.dueLabel ? tr(f.dueLabel) : t("Notice deadline")}</span>{" "}
+                <strong className={f.dueDays <= 30 ? "is-urgent" : undefined}>
+                  {f.due} · {t("{n} days", { n: f.dueDays })}
+                </strong>
+              </div>
+              <div className="o4-actions">
+                <button type="button" className="btn btn-primary o4-btn-main" onClick={() => open(f)}>
+                  {focusCta}
+                </button>
+                {hasAlt ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary o4-btn-alt"
+                    onClick={() => {
+                      if (f.kind === "unassigned" && f.contractId && viewer) {
+                        void openItem({ ...f }, { ...viewer, isApprover: false }, null);
+                      } else {
+                        void delegate(f);
+                      }
+                    }}
+                  >
+                    {altLabel}
+                  </button>
+                ) : null}
+                <button type="button" className="btn btn-ghost o4-btn-later" onClick={() => void snooze(f.key, true)}>
+                  {t("Later · 3 days")}
+                </button>
+              </div>
+            </div>
+            <div className="o4-side">
+              <div>
+                <div className="o4-side-head">{t("Then, for you · {n}", { n: mine.length - 1 })}</div>
+                {mine.slice(1).map((x) => (
+                  <div key={x.key} className="r-row o4-row" onClick={() => open(x)}>
+                    <span className="o4-row-sup">{x.supplier}</span>
+                    <span className="o4-row-title">{tr(x.title)}</span>
+                    <span className={x.dueDays <= 30 ? "o4-row-days is-urgent" : "o4-row-days"}>{t("{n} d", { n: x.dueDays })}</span>
+                  </div>
+                ))}
+                {mine.length <= 1 ? <div className="o4-empty">{t("Nothing else: this is the only thing for today.")}</div> : null}
+              </div>
+              <div>
+                <div className="o4-side-head">{t("Waiting on others · {n}", { n: team.length })}</div>
+                {team.slice(0, 6).map((x) => (
+                  <div
+                    key={x.key}
+                    className="r-row o4-row is-team"
+                    onClick={() => {
+                      if (x.caseId) navigate(`/renewals/${x.caseId}`);
+                      else if (x.quoteId) navigate(`/quotes/${x.quoteId}`);
+                    }}
+                  >
+                    <span className="o4-row-sup">{x.supplier}</span>
+                    <span className="o4-row-title">{tr(x.title)}</span>
+                    <span className="o4-row-who">{x.who === "Supplier" || x.who === "Fornitore" ? t("supplier") : x.who.split(" ")[0]}</span>
+                  </div>
+                ))}
+                {team.length === 0 ? <div className="o4-empty">{t("No step waiting on colleagues or suppliers.")}</div> : null}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {!f && !startOn ? (
+        <div className="o4-calm">
+          <div className="o4-calm-head">{t("You are done for today.")}</div>
+          <div className="o4-calm-line">
+            {feed.nextDeadline
+              ? t("Next notice deadline: {supplier} on {date} ({n} days).", { supplier: feed.nextDeadline.supplier, date: feed.nextDeadline.date, n: feed.nextDeadline.days })
+              : t("Upload the next contract when you have it.")}
+          </div>
+          <div className="o4-calm-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => navigate("/renewals")}>
+              {t("See the renewals")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {feed.snoozed.length > 0 ? (
+        <div className="o4-snoozed">
+          <div className="o4-snoozed-head">{t("Postponed")}</div>
+          {feed.snoozed.map((z) => (
+            <div key={z.key} className="o4-snoozed-row">
+              <strong>{z.supplier}</strong>
+              <span>{tr(z.title)}</span>
+              <button type="button" className="btn btn-ghost" onClick={() => void snooze(z.key, false)}>
+                {t("Resume now")}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -454,6 +454,29 @@ export interface operations {
       };
     };
   };
+  openRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
   getRenewalPriority: {
     responses: {
       200: {
@@ -997,6 +1020,538 @@ export interface operations {
       };
     };
   };
+  getRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  postRenewalCaseAction: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  askRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  getRenewalCaseTimeline: {
+    responses: {
+      200: {
+        content: {
+          "application/json": (unknown)[];
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  patchRenewalCaseEmail: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  submitRenewalCaseEmail: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  approveRenewalCaseEmail: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  copyRenewalCaseEmail: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  confirmRenewalCaseEmailSent: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  putRenewalCaseDelegation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  deleteRenewalCaseDelegation: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  transferRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  closeRenewalCase: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  getRenewalCaseVendorMessages: {
+    responses: {
+      200: {
+        content: {
+          "application/json": (unknown)[];
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  postRenewalCaseVendorMessage: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      409: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  getToday: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  snoozeTodayItem: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  unsnoozeTodayItem: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  getReminders: {
+    responses: {
+      200: {
+        content: {
+          "application/json": (unknown)[];
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  postReminder: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  patchReminder: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      401: {
+        content: {
+        };
+      };
+      404: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  startSampleUpload: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { documentId: string };
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -1063,6 +1618,7 @@ export interface paths {
   };
   "/api/renewals": {
     get: operations["getRenewals"];
+    post: operations["openRenewalCase"];
   };
   "/api/renewals/{contractId}/priority": {
     get: operations["getRenewalPriority"];
@@ -1148,5 +1704,63 @@ export interface paths {
   };
   "/api/fixtures/session": {
     get: operations["getFixtureSession"];
+  };
+  "/api/renewals/{caseId}": {
+    get: operations["getRenewalCase"];
+  };
+  "/api/renewals/{caseId}/actions": {
+    post: operations["postRenewalCaseAction"];
+  };
+  "/api/renewals/{caseId}/ask": {
+    post: operations["askRenewalCase"];
+  };
+  "/api/renewals/{caseId}/timeline": {
+    get: operations["getRenewalCaseTimeline"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}": {
+    patch: operations["patchRenewalCaseEmail"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}/submit": {
+    post: operations["submitRenewalCaseEmail"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}/approve": {
+    post: operations["approveRenewalCaseEmail"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}/copy": {
+    post: operations["copyRenewalCaseEmail"];
+  };
+  "/api/renewals/{caseId}/emails/{eid}/sent": {
+    post: operations["confirmRenewalCaseEmailSent"];
+  };
+  "/api/renewals/{caseId}/delegations/{userId}": {
+    put: operations["putRenewalCaseDelegation"];
+    delete: operations["deleteRenewalCaseDelegation"];
+  };
+  "/api/renewals/{caseId}/transfer": {
+    post: operations["transferRenewalCase"];
+  };
+  "/api/renewals/{caseId}/close": {
+    post: operations["closeRenewalCase"];
+  };
+  "/api/renewals/{caseId}/vendor-messages": {
+    get: operations["getRenewalCaseVendorMessages"];
+    post: operations["postRenewalCaseVendorMessage"];
+  };
+  "/api/today": {
+    get: operations["getToday"];
+  };
+  "/api/today/{key}/snooze": {
+    post: operations["snoozeTodayItem"];
+    delete: operations["unsnoozeTodayItem"];
+  };
+  "/api/reminders": {
+    get: operations["getReminders"];
+    post: operations["postReminder"];
+  };
+  "/api/reminders/{id}": {
+    patch: operations["patchReminder"];
+  };
+  "/api/documents/sample": {
+    post: operations["startSampleUpload"];
   };
 }
