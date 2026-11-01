@@ -126,4 +126,10 @@ public sealed class QuoteLine : TenantScopedEntity
     public SkuMatchStatus MatchStatus { get; set; } = SkuMatchStatus.Unmatched;
 
     public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>AskRaffa 4.0: the customer's current contract price for the same thing, when known
+    /// (never a market price), and where it comes from.</summary>
+    public decimal? ExistingUnitPrice { get; set; }
+
+    public string? ExistingPriceLabel { get; set; }
 }

@@ -46,6 +46,9 @@ public sealed class ConversationService(
     /// <summary>R-CONV-01: "A conversation has a title (first question, &lt;= 48 chars)".</summary>
     public const int TitleMaxLength = 48;
 
+    /// <summary>AskRaffa 4.0 titles ("Supplier · " + the question cut at 50 chars + "…").</summary>
+    public const int ExplicitTitleMaxLength = 96;
+
     /// <summary>R-CONV-02: "The rail shows the user's last 5 conversations". A later task's own
     /// `GET /api/conversations` may still pass a different <c>limit</c> to
     /// <see cref="ListRecentAsync"/> — this is only the default when none is supplied.</summary>
@@ -80,6 +83,8 @@ public sealed class ConversationService(
     private const string AuditConversationDeletedAction = "conversation.deleted";
     private const string AuditConversationRenamedAction = "conversation.renamed";
     private const string AuditConversationRestoredAction = "conversation.restored";
+    private const string AuditConversationArchivedAction = "conversation.archived";
+    private const string AuditConversationUnarchivedAction = "conversation.unarchived";
     private const string AuditConversationResourceType = "conversation";
     private const string AuditConversationMessageResourceType = "conversation_message";
 
@@ -200,7 +205,9 @@ public sealed class ConversationService(
             conversation.CreatedAt,
             conversation.UpdatedAt,
             messages.Select(ToMessageResult).ToList(),
-            conversation.CustomTitle);
+            conversation.CustomTitle,
+            conversation.ArchivedAt,
+            conversation.CaseId);
     }
 
     /// <summary><see langword="null"/> under the identical "not this user's conversation in this
@@ -269,6 +276,9 @@ public sealed class ConversationService(
         }
 
         conversation.UpdatedAt = now;
+
+        // AskRaffa 4.0 Chiedi: "una conversazione archiviata si riapre scrivendo".
+        conversation.ArchivedAt = null;
 
         dbContext.ConversationMessages.Add(message);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -706,16 +716,142 @@ public sealed class ConversationService(
     }
 
     private static bool IsArchived(Conversation conversation, DateTimeOffset now) =>
-        conversation.UpdatedAt < now - ArchiveAfter;
+        conversation.ArchivedAt is not null || conversation.UpdatedAt < now - ArchiveAfter;
 
-    private static ConversationSummaryResult ToSummary(Conversation conversation, DateTimeOffset now) =>
+    private static ConversationSummaryResult ToSummary(Conversation conversation, DateTimeOffset now, int questionCount = 0) =>
         new(
             conversation.Id,
             conversation.Title,
             conversation.ScopeContractId,
             conversation.UpdatedAt,
             conversation.CustomTitle,
-            IsArchived(conversation, now));
+            IsArchived(conversation, now),
+            conversation.ArchivedAt,
+            conversation.CaseId,
+            questionCount);
+
+    /// <summary>
+    /// AskRaffa 4.0 Chiedi (BACKEND-SPEC §2.8): a new conversation with an explicit title (the
+    /// prototype's <c>convPush</c>: "Supplier · question", cut at 52 chars) and an optional case.
+    /// </summary>
+    public async Task<ConversationSummaryResult> CreateTitledAsync(
+        TenantId tenantId,
+        string userId,
+        string title,
+        EntityId? scopeContractId,
+        EntityId? caseId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        var created = await CreateAsync(tenantId, userId, scopeContractId, cancellationToken).ConfigureAwait(false);
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var conversation = await dbContext.Conversations
+            .SingleAsync(c => c.TenantId == tenantId && c.Id == created.ConversationId, cancellationToken)
+            .ConfigureAwait(false);
+        var single = string.Join(' ', title.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        conversation.Title = single.Length <= ExplicitTitleMaxLength ? single : single[..ExplicitTitleMaxLength];
+        conversation.CaseId = caseId;
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return ToSummary(conversation, clock.UtcNow);
+    }
+
+    /// <summary>
+    /// AskRaffa 4.0 Chiedi groups: the caller's conversations in one <paramref name="state"/>, most
+    /// recently active first, each with its number of questions (the user's own turns).
+    /// </summary>
+    public async Task<IReadOnlyList<ConversationSummaryResult>> ListByStateAsync(
+        TenantId tenantId,
+        string userId,
+        ConversationListState state,
+        int limit = MaxRecentLimit,
+        CancellationToken cancellationToken = default)
+    {
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var take = Math.Clamp(limit, 1, MaxRecentLimit);
+        var query = dbContext.Conversations
+            .AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.UserId == userId);
+        query = state switch
+        {
+            ConversationListState.Archived => query.Where(c => c.ArchivedAt != null),
+            ConversationListState.Case => query.Where(c => c.CaseId != null),
+            _ => query.Where(c => c.ArchivedAt == null && c.CaseId == null),
+        };
+
+        var conversations = await query
+            .OrderByDescending(c => c.UpdatedAt)
+            .Take(take)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (conversations.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = conversations.Select(c => c.Id).ToList();
+        var counts = await dbContext.ConversationMessages
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && ids.Contains(m.ConversationId) && m.Role == ConversationRole.You)
+            .GroupBy(m => m.ConversationId)
+            .Select(g => new { ConversationId = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var byId = counts.ToDictionary(c => c.ConversationId, c => c.Count);
+        var now = clock.UtcNow;
+        return conversations
+            .Select(c => ToSummary(c, now, byId.TryGetValue(c.Id, out var n) ? n : 0))
+            .ToList();
+    }
+
+    /// <summary>
+    /// AskRaffa 4.0 "Archivia" / "Riapri": sets or clears <see cref="Conversation.ArchivedAt"/>.
+    /// Null when the conversation is not the caller's. Idempotent.
+    /// </summary>
+    public async Task<ConversationSummaryResult?> SetArchivedAsync(
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        bool archived,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var conversation = await dbContext.Conversations
+            .SingleOrDefaultAsync(
+                c => c.TenantId == tenantId && c.UserId == userId && c.Id == conversationId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (conversation is null)
+        {
+            return null;
+        }
+
+        var now = clock.UtcNow;
+        var changed = archived ? conversation.ArchivedAt is null : conversation.ArchivedAt is not null;
+        if (changed)
+        {
+            conversation.ArchivedAt = archived ? now : null;
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await auditWriter.WriteAsync(
+                new AuditEntry(
+                    tenantId,
+                    userId,
+                    archived ? AuditConversationArchivedAction : AuditConversationUnarchivedAction,
+                    AuditConversationResourceType,
+                    conversationId.Value.ToString(),
+                    now,
+                    null),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        var questions = await dbContext.ConversationMessages
+            .AsNoTracking()
+            .CountAsync(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Role == ConversationRole.You, cancellationToken)
+            .ConfigureAwait(false);
+        return ToSummary(conversation, now, questions);
+    }
 
     private static ConversationMessageResult ToMessageResult(ConversationMessage message) =>
         new(

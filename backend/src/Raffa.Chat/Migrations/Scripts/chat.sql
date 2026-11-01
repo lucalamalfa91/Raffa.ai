@@ -252,3 +252,42 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114506_AddConversationArchiveAndCase') THEN
+    ALTER TABLE conversation ALTER COLUMN title TYPE character varying(96);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114506_AddConversationArchiveAndCase') THEN
+    ALTER TABLE conversation ADD archived_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114506_AddConversationArchiveAndCase') THEN
+    ALTER TABLE conversation ADD case_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114506_AddConversationArchiveAndCase') THEN
+    CREATE INDEX ix_conversation_tenant_id_case_id ON conversation (tenant_id, case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114506_AddConversationArchiveAndCase') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261101114506_AddConversationArchiveAndCase', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

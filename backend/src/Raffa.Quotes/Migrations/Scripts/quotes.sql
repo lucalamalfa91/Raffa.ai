@@ -367,3 +367,140 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote_line ADD existing_price_label character varying(200);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote_line ADD existing_unit_price numeric(18,4);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD case_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD checked_by character varying(200);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD contract_id uuid;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD decided_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD decided_by character varying(200);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD extraction_confirmed_at timestamp with time zone;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD kind character varying(20);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD missing_json jsonb;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD quote_date date;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD reference character varying(50);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD stated_terms jsonb;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD status character varying(20);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD target_json jsonb;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD term_label character varying(100);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    ALTER TABLE quote ADD valid_until date;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    CREATE INDEX ix_quote_tenant_id_status ON quote (tenant_id, status);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261101114912_AddQuoteOfferDecision') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261101114912_AddQuoteOfferDecision', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

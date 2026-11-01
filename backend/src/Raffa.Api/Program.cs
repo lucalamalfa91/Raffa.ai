@@ -592,6 +592,10 @@ app.MapMarketEndpoints();
 // endpoint and orchestration respectively.
 app.MapQuotesEndpoints();
 
+// AskRaffa 4.0 slice 6: Offerta (no-benchmark quote check + decision) and Chiedi (sourced Q&A, archive).
+app.MapQuoteOffersEndpoints();
+app.MapAskConversationsEndpoints();
+
 // Task E05/F03/US02/T01 (negotiation-outcome, parent story us-02-outcome-capture AC-1): POST
 // /api/negotiations/outcomes — records the final negotiated outcome (original/target/final/
 // saving/discount/duration/levers) as permissioned proprietary learning data (spec §12.2/§12.3).
