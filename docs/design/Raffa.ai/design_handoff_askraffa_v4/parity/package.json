@@ -1,0 +1,9 @@
+{
+  "name": "askraffa-parity",
+  "private": true,
+  "scripts": {
+    "goldens": "playwright test reference.capture.spec.ts",
+    "parity": "playwright test app.parity.spec.ts geometry.spec.ts"
+  },
+  "devDependencies": { "@playwright/test": "^1.48.0" }
+}
