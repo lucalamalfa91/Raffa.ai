@@ -338,7 +338,8 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
                     setDoneOpen({ 0: true });
                   }}
                 >
-                  ↺ {t("Review the case overview")}
+                  <span>↺</span>
+                  <span>{t("Review the case overview")}</span>
                 </button>
                 <button type="button" className="btn btn-ghost p4-hist-toggle" onClick={() => setHist((h) => !h)}>
                   {hist ? t("Hide completed steps ▴") : t("Completed steps · {n} ▾", { n: page.done.length })}

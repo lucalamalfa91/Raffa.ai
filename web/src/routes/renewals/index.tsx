@@ -64,7 +64,7 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
 
   const next = (x: RenewalsRow): string =>
     x.hasCase ? tr(x.next) : x.days <= 120 ? t("Start & assign") : t("To start by {date}", { date: x.startBy });
-  const cta = (x: RenewalsRow): string => (x.hasCase ? (x.myTurn ? t("Do now") : t("Open")) : board?.viewer.isApprover ? t("Start & assign") : t("Start"));
+  const cta = (x: RenewalsRow): string => (x.hasCase ? (x.myTurn ? t("Do now") : t("Open⟦action⟧")) : board?.viewer.isApprover ? t("Start & assign") : t("Start⟦action⟧"));
 
   return (
     <div className="r4-page" data-screen-label="Pratiche">
@@ -96,7 +96,7 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
                   {x.notice} · {t("{n} d", { n: x.days })}
                 </div>
               </div>
-              <div className="r4-owner">{x.owner ? `${t("Owner")} ${x.owner.split(" ")[0]}` : t("No owner")}</div>
+              <div className="r4-owner">{x.owner ? `${t("Owner⟦short⟧")} ${x.owner.split(" ")[0]}` : t("No owner")}</div>
               <button type="button" className={`btn ${x.myTurn || !x.hasCase ? "btn-primary" : "btn-secondary"} r4-cta`}>
                 {cta(x)}
               </button>
