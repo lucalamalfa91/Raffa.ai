@@ -336,3 +336,49 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102100000_AddPlatformAdminTables') THEN
+    CREATE TABLE platform_workspace (
+        tenant_id   uuid PRIMARY KEY,
+        name        character varying(200) NOT NULL,
+        admin_email character varying(320) NULL,
+        created_at  timestamp with time zone NOT NULL,
+        status      character varying(20) NOT NULL DEFAULT 'active',
+        CONSTRAINT ck_platform_workspace_status CHECK (status IN ('active', 'suspended'))
+    );
+
+    CREATE TABLE platform_invitation (
+        id                  uuid PRIMARY KEY,
+        email               character varying(320) NOT NULL,
+        token_hash          character varying(128) NOT NULL,
+        created_by          character varying(200) NOT NULL,
+        created_at          timestamp with time zone NOT NULL,
+        expires_at          timestamp with time zone NOT NULL,
+        accepted_at         timestamp with time zone NULL,
+        accepted_by_subject character varying(200) NULL,
+        workspace_id        uuid NULL,
+        revoked_at          timestamp with time zone NULL
+    );
+
+    CREATE UNIQUE INDEX ux_platform_invitation_token_hash ON platform_invitation (token_hash);
+    -- At most one live (not accepted, not revoked) invitation per address.
+    CREATE UNIQUE INDEX ux_platform_invitation_live_email ON platform_invitation (lower(email))
+        WHERE accepted_at IS NULL AND revoked_at IS NULL;
+    CREATE INDEX ix_platform_invitation_accepted_by ON platform_invitation (accepted_by_subject)
+        WHERE accepted_by_subject IS NOT NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102100000_AddPlatformAdminTables') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261102100000_AddPlatformAdminTables', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
