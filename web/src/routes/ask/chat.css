@@ -1,0 +1,421 @@
+/*
+ * Ask chat (the Claude.ai-style conversation surface, as before the 4.0 restyle): chat-local tokens, the
+ * reply text (paragraphs, headings, lists, source chips, one collapsed Sources row) and the right-hand
+ * artifact panel with its in-chat card (email drafts).
+ */
+.k6-chiedi {
+  --chat-radius-card: 12px;
+  --chat-radius-control: 8px;
+  --chat-hairline: color-mix(in srgb, var(--color-text) 15%, transparent);
+  --chat-hairline-strong: color-mix(in srgb, var(--color-text) 30%, transparent);
+  --chat-tint: color-mix(in srgb, var(--color-text) 5%, transparent);
+  --chat-tint-strong: color-mix(in srgb, var(--color-text) 9%, transparent);
+  --chat-paper: #fff;
+  --chat-muted: var(--color-neutral-600);
+  --chat-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+.k6-chiedi.has-panel { grid-template-columns: 260px minmax(0, 1fr) auto; }
+
+.reply-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.reply-markdown { display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.65; max-width: 74ch; text-wrap: pretty; }
+.reply-markdown p { margin: 0; white-space: pre-line; }
+.reply-markdown ul, .reply-markdown ol { margin: 0; padding-left: 1.3em; }
+.reply-markdown li + li { margin-top: 6px; }
+.v4 .reply-markdown h4.reply-heading {
+  margin: 8px 0 -2px; font-family: var(--font-heading); font-weight: 800; font-size: 15px; letter-spacing: -0.005em;
+}
+.reply-markdown strong { font-weight: 700; }
+
+.reply-citation { position: relative; display: inline-block; margin: 0 1px; vertical-align: 1px; line-height: 1; }
+.reply-citation-ref {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px;
+  border: 0; border-radius: 999px; background: var(--chat-tint-strong); font: inherit; font-size: 11px;
+  font-weight: var(--weight-body-strong); font-variant-numeric: tabular-nums; line-height: 1; color: var(--color-neutral-700);
+  cursor: pointer; transition: background-color 120ms ease, color 120ms ease;
+}
+.reply-citation-ref:hover, .reply-citation-ref:focus-visible { background: var(--color-accent-100); color: var(--color-accent-700); }
+.reply-citation-preview {
+  position: absolute; z-index: 20; left: 0; top: calc(100% + 6px); display: flex; flex-direction: column; gap: 3px;
+  width: max-content; max-width: min(320px, 80vw); padding: 10px 12px; border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control); background: var(--chat-paper); box-shadow: var(--shadow-md); font-size: 12px;
+  line-height: 1.45; text-align: left; white-space: normal; color: var(--color-text);
+}
+.reply-citation-preview::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 8px; }
+.reply-citation-preview-title { font-weight: var(--weight-body-strong); }
+.reply-citation-preview-subtitle { color: var(--chat-muted); }
+
+.reply-sources { font-size: 13px; color: var(--chat-muted); }
+.reply-sources summary {
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; list-style: none;
+  border: 1px solid var(--chat-hairline); border-radius: var(--chat-radius-control);
+}
+.reply-sources summary::-webkit-details-marker { display: none; }
+.reply-sources summary::after { content: "▾"; font-size: 10px; }
+.reply-sources[open] summary::after { content: "▴"; }
+.reply-sources summary:hover { border-color: var(--chat-hairline-strong); background: var(--chat-tint); }
+.reply-sources ol { margin: 8px 0 0; padding: 8px 12px 8px 30px; border: 1px solid var(--chat-hairline); border-radius: var(--chat-radius-card); background: var(--chat-paper); }
+.reply-sources li { padding: 2px 0; color: var(--color-neutral-800); }
+
+
+
+/* ---- Side panel: one reply object at a time (`ArtifactPanel.tsx`) ------------------------
+   The Claude.ai artifact panel: the chat narrows to the left and keeps working, the panel holds a
+   drafted email (wide) or a market record (narrow) under one header anatomy. Below 900px it is a
+   full-screen sheet. Chat-local tokens (--chat-*) come from reply/reply.css. */
+
+.artifact-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--chat-hairline);
+  background: var(--color-bg);
+  outline: none;
+  animation: artifact-panel-in 220ms var(--chat-ease);
+}
+
+
+.artifact-panel[data-size="wide"] {
+  width: min(46vw, 640px);
+}
+
+
+.artifact-panel[data-size="narrow"] {
+  width: 360px;
+}
+
+
+.artifact-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px 12px 20px;
+  border-bottom: 1px solid var(--chat-hairline);
+}
+
+
+.artifact-panel-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: var(--chat-paper);
+  color: var(--color-neutral-700);
+}
+
+
+.artifact-panel-heading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+
+.artifact-panel-title {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.artifact-panel-kicker {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chat-muted);
+}
+
+
+.artifact-panel-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+
+.artifact-panel-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.2;
+  color: var(--color-text);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+
+.artifact-panel-action:hover {
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
+}
+
+
+.artifact-panel-action[data-primary="true"] {
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+
+.artifact-panel-action[data-primary="true"]:hover {
+  background: var(--color-neutral-800);
+}
+
+
+.artifact-panel-close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--chat-radius-control);
+  background: transparent;
+  color: var(--color-neutral-700);
+  cursor: pointer;
+}
+
+
+.artifact-panel-close:hover {
+  background: var(--chat-tint);
+  color: var(--color-text);
+}
+
+
+.artifact-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+
+
+@keyframes artifact-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+
+/* The drafted email (`DraftPanel.tsx`): a document on paper in the reading font -- verbatim
+   (pre-wrap), never a monospace box. */
+.draft-document {
+  max-width: 68ch;
+  margin: 0 auto;
+  padding: 24px 28px 28px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-card);
+  background: var(--chat-paper);
+}
+
+
+.draft-document-subject {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--chat-hairline);
+  font-size: 15px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.4;
+}
+
+
+.draft-document-subject-label {
+  font-size: 11px;
+  font-weight: var(--weight-body);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: var(--chat-muted);
+}
+
+
+.draft-document-body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+
+
+@media (max-width: 900px) {
+  .artifact-panel,
+  .artifact-panel[data-size="wide"],
+  .artifact-panel[data-size="narrow"] {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    width: auto;
+    border-left: 0;
+    animation-name: artifact-sheet-in;
+  }
+
+  /* On a phone the object's actions move to their own row under the title and close button. */
+  .artifact-panel-header {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    padding: 12px 12px 12px 16px;
+  }
+
+  .artifact-panel-actions {
+    order: 1;
+    flex-basis: 100%;
+  }
+
+  .artifact-panel-body {
+    padding: 16px;
+  }
+
+  .draft-document {
+    padding: 18px 16px 20px;
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .artifact-panel {
+    animation: none;
+  }
+}
+
+
+/* ---- Artifact card (`ArtifactCard.tsx`) ------------------------------------- */
+
+.artifact-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0;
+  padding: 10px 14px 10px 10px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-card);
+  background: var(--chat-paper);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: border-color 140ms ease, transform 140ms var(--chat-ease), background-color 140ms ease;
+}
+
+
+button.artifact-card {
+  cursor: pointer;
+}
+
+
+button.artifact-card:hover {
+  border-color: var(--chat-hairline-strong);
+  transform: translateY(-1px);
+}
+
+
+.artifact-card[data-active="true"] {
+  border-color: var(--chat-hairline-strong);
+  background: var(--chat-tint);
+}
+
+
+.artifact-card-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--chat-hairline);
+  border-radius: var(--chat-radius-control);
+  background: var(--color-bg);
+  color: var(--color-neutral-700);
+}
+
+
+.artifact-card-text {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+
+.artifact-card-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: var(--weight-body-strong);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+
+.artifact-card-meta {
+  font-size: 12px;
+  color: var(--chat-muted);
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .reply-citation-preview,
+  .evidence-body,
+  .artifact-card,
+  .evidence-toggle-chevron {
+    animation: none;
+    transition: none;
+  }
+}
+/* — digital content in the panel: KPI tiles, bar charts, tables, documents — */
+.content-doc { display: flex; flex-direction: column; gap: 22px; padding: 4px 4px 24px; }
+.content-sub { margin: 0; font-size: 13px; color: var(--chat-muted); }
+.content-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.content-tile { padding: 14px 16px; border: 1px solid var(--chat-hairline); border-radius: var(--chat-radius-card); background: var(--chat-paper); display: flex; flex-direction: column; gap: 4px; }
+.content-tile-label { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--chat-muted); }
+.content-tile-value { font-family: var(--font-heading); font-weight: 800; font-size: 26px; line-height: 1.1; }
+.content-tile-hint { font-size: 12px; color: var(--chat-muted); text-wrap: pretty; }
+.content-tile.is-urgent .content-tile-value { color: var(--color-accent-700); }
+.v4 h4.content-h { margin: 0 0 10px; font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
+.content-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.content-bars li { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) 96px; align-items: center; gap: 10px; font-size: 13px; }
+.content-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.content-bar-track { height: 10px; background: var(--chat-tint); border-radius: 5px; overflow: hidden; }
+.content-bar-fill { display: block; height: 100%; background: var(--color-accent); border-radius: 5px; }
+.content-bar-value { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-neutral-800); }
+.content-table-wrap { overflow-x: auto; border: 1px solid var(--chat-hairline); border-radius: var(--chat-radius-card); background: var(--chat-paper); }
+.content-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.content-table th { text-align: left; font-weight: 600; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--chat-muted); padding: 10px 12px; border-bottom: 1px solid var(--chat-hairline); white-space: nowrap; }
+.content-table td { padding: 9px 12px; border-bottom: 1px solid var(--chat-hairline); }
+.content-table tr:last-child td { border-bottom: 0; }
+@media print {
+  .k6-rail, .k6-composer-wrap, .v4-nav, .artifact-panel-actions, .artifact-panel-close { display: none !important; }
+  .artifact-panel { width: 100% !important; border: 0; }
+}
