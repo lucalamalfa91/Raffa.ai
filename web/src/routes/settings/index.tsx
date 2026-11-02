@@ -13,7 +13,7 @@ import {
 import { useTenantId } from "../../routes/contracts/contracts4";
 import { useI18n } from "../../i18n/I18nProvider";
 import { notifyTodayChanged } from "../today/loadToday";
-import "./settings4.css";
+import "./settings.css";
 
 export interface SettingsRouteProps {
   apiClient: ApiClient;
@@ -167,8 +167,8 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
 
   if (!loaded) {
     return (
-      <div className="s4-page" data-screen-label="Impostazioni">
-        {error ? <div className="s4-error">{error}</div> : null}
+      <div className="st-page" data-screen-label="Impostazioni">
+        {error ? <div className="st-error">{error}</div> : null}
       </div>
     );
   }
@@ -181,26 +181,26 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
       : t("Saved by {who}", { who: rules.updatedBy ?? "—" });
 
   return (
-    <div className="s4-page" data-screen-label="Impostazioni">
-      <h6 className="s4-role">{t("Settings")}</h6>
-      <h2 className="s4-title">{t("Company rules")}</h2>
-      <div className="s4-sub">
+    <div className="st-page" data-screen-label="Impostazioni">
+      <h6 className="st-role">{t("Settings")}</h6>
+      <h2 className="st-title">{t("Company rules")}</h2>
+      <div className="st-sub">
         {t("Raffa follows these rules to decide what to tell you, and when. Write them, upload your policy, or let Raffa interview you.")}
       </div>
-      {!canEdit ? <div className="s4-note">{t("Only the Head of Procurement can change the company rules.")}</div> : null}
+      {!canEdit ? <div className="st-note">{t("Only the Head of Procurement can change the company rules.")}</div> : null}
 
-      <div className="s4-grid">
-        <section className="s4-main" aria-labelledby="s4-rules-h">
-          <h3 id="s4-rules-h" className="s4-h">
+      <div className="st-grid">
+        <section className="st-main" aria-labelledby="st-rules-h">
+          <h3 id="st-rules-h" className="st-h">
             {t("The rules")}
           </h3>
-          <div className="s4-status">{status}</div>
-          <label className="s4-label" htmlFor="s4-text">
+          <div className="st-status">{status}</div>
+          <label className="st-label" htmlFor="st-text">
             {t("Rules, in your own words")}
           </label>
           <textarea
-            id="s4-text"
-            className="input s4-text"
+            id="st-text"
+            className="input st-text"
             value={text}
             disabled={!canEdit}
             placeholder={t("For example: Start a renewal 90 days before the notice deadline. No auto-renewal above CHF 100k. The CFO approves anything above CHF 250k.")}
@@ -209,15 +209,15 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
               setSavedNote(null);
             }}
           />
-          <div className={tooLong ? "s4-count is-over" : "s4-count"}>
+          <div className={tooLong ? "st-count is-over" : "st-count"}>
             {text.length} / {MAX_RULES_LENGTH}
           </div>
 
-          <div className="s4-window field">
-            <label htmlFor="s4-window">{t("Lead time: days before a notice deadline a renewal shows on Today")}</label>
+          <div className="st-window field">
+            <label htmlFor="st-window">{t("Lead time: days before a notice deadline a renewal shows on Today")}</label>
             <input
-              id="s4-window"
-              className="input s4-window-input"
+              id="st-window"
+              className="input st-window-input"
               type="number"
               inputMode="numeric"
               min={MIN_START_WINDOW_DAYS}
@@ -230,7 +230,7 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
                 setSavedNote(null);
               }}
             />
-            <div className="s4-hint">
+            <div className="st-hint">
               {windowValid
                 ? t("Earlier than this, the renewal stays in Renewals and Raffa does not bring it up.")
                 : t("Between {min} and {max} days.", { min: MIN_START_WINDOW_DAYS, max: MAX_START_WINDOW_DAYS })}
@@ -238,7 +238,7 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
           </div>
 
           {canEdit ? (
-            <div className="s4-actions">
+            <div className="st-actions">
               <button type="button" className="btn btn-primary" disabled={!dirty || !windowValid || tooLong || saving} onClick={() => void save()}>
                 {saving ? t("Saving…") : t("Save the rules")}
               </button>
@@ -246,31 +246,31 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
                 {t("Discard changes")}
               </button>
               {savedNote ? (
-                <span className="s4-saved" role="status">
+                <span className="st-saved" role="status">
                   {savedNote}
                 </span>
               ) : null}
             </div>
           ) : null}
           {error ? (
-            <div className="s4-error" role="alert">
+            <div className="st-error" role="alert">
               {error}
             </div>
           ) : null}
         </section>
 
         {canEdit ? (
-          <aside className="s4-side">
-            <section className="s4-card" aria-labelledby="s4-policy-h">
-              <h3 id="s4-policy-h" className="s4-h">
+          <aside className="st-side">
+            <section className="st-card" aria-labelledby="st-policy-h">
+              <h3 id="st-policy-h" className="st-h">
                 {t("Start from your policy")}
               </h3>
-              <p className="s4-p">{t("Upload the procurement policy. Raffa reads it and proposes the rules; you check them before saving.")}</p>
+              <p className="st-p">{t("Upload the procurement policy. Raffa reads it and proposes the rules; you check them before saving.")}</p>
               <input
                 ref={fileInput}
                 type="file"
                 accept={POLICY_ACCEPT}
-                className="s4-file"
+                className="st-file"
                 aria-label={t("Upload a policy")}
                 disabled={reading}
                 onChange={(e) => {
@@ -281,14 +281,14 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
               <button type="button" className="btn btn-secondary" disabled={reading} onClick={() => fileInput.current?.click()}>
                 {reading ? t("Raffa is reading…") : t("Upload a policy")}
               </button>
-              <div className="s4-hint">{t("PDF, Word or text, up to 10 MB.")}</div>
+              <div className="st-hint">{t("PDF, Word or text, up to 10 MB.")}</div>
             </section>
 
-            <section className="s4-card" aria-labelledby="s4-interview-h">
-              <h3 id="s4-interview-h" className="s4-h">
+            <section className="st-card" aria-labelledby="st-interview-h">
+              <h3 id="st-interview-h" className="st-h">
                 {t("Let Raffa interview you")}
               </h3>
-              <p className="s4-p">
+              <p className="st-p">
                 {t("No policy? Answer a few questions and Raffa writes the rules with you. Already have rules? Raffa refines them.")}
               </p>
               {!interviewOn ? (
@@ -296,26 +296,26 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
                   {text.trim() ? t("Refine the rules with Raffa") : t("Start the interview")}
                 </button>
               ) : (
-                <div className="s4-chat">
-                  <ol className="s4-turns" aria-live="polite">
+                <div className="st-chat">
+                  <ol className="st-turns" aria-live="polite">
                     {turns.map((m, i) => (
-                      <li key={i} className={m.role === "raffa" ? "s4-turn is-raffa" : "s4-turn is-user"}>
-                        <span className="s4-who">{m.role === "raffa" ? "Raffa" : t("You")}</span>
+                      <li key={i} className={m.role === "raffa" ? "st-turn is-raffa" : "st-turn is-user"}>
+                        <span className="st-who">{m.role === "raffa" ? "Raffa" : t("You")}</span>
                         {m.text}
                       </li>
                     ))}
-                    {thinking ? <li className="s4-turn is-raffa s4-thinking">{t("Raffa is thinking…")}</li> : null}
+                    {thinking ? <li className="st-turn is-raffa st-thinking">{t("Raffa is thinking…")}</li> : null}
                   </ol>
                   {!proposal ? (
                     <form
-                      className="s4-reply"
+                      className="st-reply"
                       onSubmit={(e) => {
                         e.preventDefault();
                         send();
                       }}
                     >
                       <textarea
-                        className="input s4-answer"
+                        className="input st-answer"
                         value={answer}
                         aria-label={t("Your answer")}
                         disabled={thinking}
@@ -340,16 +340,16 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
       </div>
 
       {proposal ? (
-        <section className="s4-proposal" aria-labelledby="s4-proposal-h">
-          <h3 id="s4-proposal-h" className="s4-h">
+        <section className="st-proposal" aria-labelledby="st-proposal-h">
+          <h3 id="st-proposal-h" className="st-h">
             {proposal.source === "policy" ? t("What Raffa took from {file}", { file: proposal.fileName ?? "" }) : t("The rules Raffa wrote")}
           </h3>
-          <p className="s4-p">{proposal.note}</p>
-          <pre className="s4-proposal-text">{proposal.text}</pre>
+          <p className="st-p">{proposal.note}</p>
+          <pre className="st-proposal-text">{proposal.text}</pre>
           {proposal.startWindowDays ? (
-            <div className="s4-hint">{t("Lead time: {n} days before a notice deadline.", { n: proposal.startWindowDays })}</div>
+            <div className="st-hint">{t("Lead time: {n} days before a notice deadline.", { n: proposal.startWindowDays })}</div>
           ) : null}
-          <div className="s4-actions">
+          <div className="st-actions">
             <button type="button" className="btn btn-primary" onClick={keepProposal}>
               {t("Use these rules")}
             </button>
@@ -357,7 +357,7 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
               {t("Discard")}
             </button>
           </div>
-          <div className="s4-hint">{t("They go into the text above. Nothing changes until you save.")}</div>
+          <div className="st-hint">{t("They go into the text above. Nothing changes until you save.")}</div>
         </section>
       ) : null}
     </div>
