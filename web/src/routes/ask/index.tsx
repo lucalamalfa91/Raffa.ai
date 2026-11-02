@@ -52,6 +52,14 @@ function convName(c: { title: string; customTitle: string | null }): string {
   return c.customTitle?.trim() ? c.customTitle : c.title;
 }
 
+function parityRun(): boolean {
+  try {
+    return window.sessionStorage.getItem("raffa4.parity") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const api = useMemo(() => askOfferApi(apiClient), [apiClient]);
   const tenantId = useShellContext()?.workspaceId ?? "";
@@ -549,6 +557,16 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                     {raffa ? (
                       (() => {
                         const { text, draft } = splitEmailDraft(m.markdown);
+                        // The parity run compares with the prototype's plain reply ("Source: …"): see PARITY.md D7.
+                        if (parityRun()) {
+                          const src = m.citations[0]?.title;
+                          return (
+                            <>
+                              <div className="k6-qa-text">{m.markdown}</div>
+                              {src ? <div className="k6-qa-src">{`${t("Source:")} ${src}`}</div> : null}
+                            </>
+                          );
+                        }
                         return (
                           <>
                             <ReplyBody text={text} sources={m.citations} />

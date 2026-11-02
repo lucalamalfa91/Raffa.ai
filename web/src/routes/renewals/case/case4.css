@@ -238,3 +238,11 @@
 }
 .v4 .p4-page .p4-composer-in .input { flex: 1; border: 0; background: transparent; font-size: 15px; min-height: 34px; }
 .v4 .p4-page .p4-composer-in .btn { min-height: 34px; font-size: 14px; }
+
+/* — the email draft: a card in the step, the draft itself in the right-hand action panel — */
+.p4-split { flex: 1; display: flex; min-height: 0; min-width: 0; width: 100%; }
+.p4-split > .p4-page { min-width: 0; }
+.p4-email-inline { display: none; }
+.p4-email-card { width: 100%; max-width: 560px; margin-top: 10px; }
+.p4-panel-email .p4-email { border: 0; padding: 0; }
+.p4-panel-email .p4-email-body { white-space: pre-wrap; font-size: 14px; line-height: 1.6; }

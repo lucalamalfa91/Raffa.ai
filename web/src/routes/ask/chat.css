@@ -3,7 +3,8 @@
  * reply text (paragraphs, headings, lists, source chips, one collapsed Sources row) and the right-hand
  * artifact panel with its in-chat card (email drafts).
  */
-.k6-chiedi {
+.k6-chiedi,
+.p4-split {
   --chat-radius-card: 12px;
   --chat-radius-control: 8px;
   --chat-hairline: color-mix(in srgb, var(--color-text) 15%, transparent);
