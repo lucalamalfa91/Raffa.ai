@@ -22,6 +22,25 @@ export const tab = (page: Page, name: string) => page.getByRole('link', { name }
 export const demo = (page: Page, name: RegExp) =>
   page.locator('[data-no-i18n] button').filter({ hasText: name }).first().dispatchEvent('click');
 
+/**
+ * Approved deviation D5 (PARITY.md): Oggi shows a case step only inside the company's lead time
+ * (Settings → Company rules; default 120 days), the prototype shows every case. A fixture reset empties
+ * the company rules, so on the app the run sets the lead time to its maximum (365 days) after the reset:
+ * the app then lists what the prototype lists. No-op on the prototype (no APP_URL, no such API).
+ */
+export async function parityLeadTime(page: Page) {
+  if (!process.env.APP_URL) return;
+  const api = process.env.API_URL ?? 'http://localhost:5180';
+  const headers = { 'X-Raffa-Fixture-User': 'luca', 'X-Tenant-Id': '' };
+  const session = await page.request.get(`${api}/api/fixtures/session`);
+  headers['X-Tenant-Id'] = (await session.json()).tenantId;
+  const r = await page.request.put(`${api}/api/company-rules`, { headers, data: { text: 'Parity run: widest lead time.', startWindowDays: 365 } });
+  expect(r.ok(), 'lead time set for the parity run').toBeTruthy();
+  // The screen shown after the reset keeps its feed: leave it, so the next visit reads the new lead time.
+  await page.getByRole('link', { name: 'Rinnovi' }).first().click();
+  await page.waitForTimeout(500);
+}
+
 export type Step = { shot: string; run: (p: Page) => Promise<void> };
 
 /** The golden click-path = the screens in /screenshots. IT, scenario "Da zero" then "Con dati". Same order and names. */
@@ -46,7 +65,7 @@ export const FLOW_ZERO: Step[] = [
 ];
 
 export const FLOW_FULL: Step[] = [
-  { shot: '18-oggi-con-dati', run: async p => { await demo(p, /^Con dati$/); await tab(p, 'Oggi').click(); } },
+  { shot: '18-oggi-con-dati', run: async p => { await demo(p, /^Con dati$/); await p.waitForTimeout(700); await parityLeadTime(p); await tab(p, 'Oggi').click(); } },
   { shot: '19-rinnovi-con-dati', run: async p => { await tab(p, 'Rinnovi').click(); } },
   { shot: '20-rinnovo-docusign', run: async p => { await tab(p, 'Oggi').click(); await btn(p, /Fai ora/).click(); } },
   { shot: '21-rinnovo-panoramica', run: async p => { await btn(p, /Rivedi la panoramica/).click(); } },

@@ -11,6 +11,9 @@ for (const vp of VIEWPORTS) {
     await page.addInitScript(() => { localStorage.setItem('raffa4.lang', 'it'); });
     await page.goto(`${URL}/today?now=2026-09-08&fixture=zero`); // fixture mode: scenario 'Da zero', scenario clock
     await stabilise(page);
+    // Approved deviation D4 (PARITY.md): the Settings tab is not in the prototype; the run hides it so the
+    // rest of the nav still compares pixel for pixel.
+    await page.addStyleTag({ content: '[data-tab="settings"]{display:none!important}' });
     for (const s of [...FLOW_ZERO, ...FLOW_FULL]) {
       await s.run(page);
       await page.waitForTimeout(700);

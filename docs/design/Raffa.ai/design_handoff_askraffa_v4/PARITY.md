@@ -67,3 +67,5 @@ The app differs from the prototype only by these rules. `web/parity/deviations.t
 | D1 | Body text in **Inter** (`--font-body`); headings stay Archivo 800. | Archivo is hard to read at 10–13px. |
 | D2 | Every font size up to 14px is **one pixel larger** (10→11 … 14→15, root 15px). | Readability, without changing the hierarchy. |
 | D3 | No page **max-width at or above 900px** (1100/1400/900): screens use the whole window, with or without the Guida Raffa panel. Text measures (`ch`) and small blocks (<900px) are kept. | Use the screen width; the layout organises better on large windows. |
+| D4 | A sixth tab, **Impostazioni** (company rules), after Chiedi. | The company writes the rules Raffa follows. The prototype has no such screen: the parity run hides the tab and compares the rest of the nav. |
+| D5 | Oggi shows a case step only when its notice deadline is within the **company's lead time** (default 120 days, set in Impostazioni). | A renewal 522 days away is not "today". The prototype lists every case: the parity run sets the lead time to its maximum (365 days) after each fixture reset, so the app lists the same items. |
