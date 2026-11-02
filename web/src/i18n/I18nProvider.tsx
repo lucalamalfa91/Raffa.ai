@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { setActiveLang } from "./activeLang";
 import { DEFAULT_LANG, isLang, translate, type Lang, type Translate } from "./translate";
 import { useFixtureSession } from "../fixtures/FixtureSessionContext";
 
@@ -54,6 +55,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       writeStored(requested);
     }
   }, [requested]);
+
+  // The API client reads the language on screen from here: every request tells the backend which language to write in.
+  setActiveLang(lang);
+  useEffect(() => {
+    setActiveLang(lang);
+  }, [lang]);
 
   const value = useMemo<I18nValue>(
     () => ({

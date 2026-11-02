@@ -73,7 +73,8 @@ public sealed partial class RenewalCaseService(
     IDocumentsNeedingReview documentsNeedingReview,
     IAuditWriter auditWriter,
     IClock clock,
-    IContractSituationAssessor? situationAssessor = null)
+    IContractSituationAssessor? situationAssessor = null,
+    Microsoft.Extensions.Logging.ILogger<RenewalCaseService>? logger = null)
 {
     public const int SnoozeDays = 3;
 
@@ -123,6 +124,12 @@ public sealed partial class RenewalCaseService(
 
         var cf = CaseFactsMapper.ToCaseFacts(facts, Today);
         var existing = await OpenRecordAsync(tenantId, contractId, ct).ConfigureAwait(false);
+        if (existing is null && cf.Cancel == DateOnly.MinValue)
+        {
+            // A renewal runs on the notice deadline; with no dates read there is nothing to plan against.
+            return CaseResult.Bad("The dates of this contract have not been read yet: verify them before starting a renewal.");
+        }
+
         if (existing is not null)
         {
             var c0 = RenewalCaseJson.Deserialize(existing.State);

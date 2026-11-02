@@ -51,6 +51,7 @@
 // server-side; this is the client half, that it stops being *sent* at all.
 import type { paths } from "./generated/schema";
 import { createCoalescingFetch, type CoalescingFetch } from "./coalescingFetch";
+import { getActiveLang, LANG_HEADER } from "../i18n/activeLang";
 import type { CaseActionPayload, CaseCallResult, CaseEnvelope, RenewalsBoard, TodayFeed } from "./renewalCases";
 import type { CompanyRulesBody, PolicyProposal, RuleInterviewReply, RuleTurn } from "./companyRules";
 
@@ -2151,7 +2152,16 @@ export function createApiClient(
   // same instant share one network request (see ./coalescingFetch.ts -- nothing is cached after a
   // request settles, and any write drops what is in flight). One instance per client, so nothing
   // leaks between clients.
-  const apiFetch = createCoalescingFetch(options.fetch);
+  // Every request carries the language on screen (IT/EN): Raffa's answers, chats and texts follow it.
+  const baseFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
+  const withLang: typeof baseFetch = (input, init) => {
+    const lang = getActiveLang();
+    if (!lang) return baseFetch(input, init);
+    const headers = new Headers(init?.headers);
+    if (!headers.has(LANG_HEADER)) headers.set(LANG_HEADER, lang);
+    return baseFetch(input, { ...init, headers });
+  };
+  const apiFetch = createCoalescingFetch(withLang);
   const transport: AskOfferTransport = { baseUrl, getAccessToken, fetch: apiFetch };
 
   /** One portal-admin call (no tenant header): 2xx → `body` (null on 204), anything else → `error`. Never throws. */

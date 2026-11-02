@@ -77,7 +77,7 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
   // auto-join guard below been `runResolution`'s own first parameter, a manual Retry click would have
   // passed a truthy MouseEvent into it and silently skipped auto-join on every retry.
   const resolveWorkspaces = useCallback(
-    async (alreadyTriedAutoJoin: boolean): Promise<void> => {
+    async (alreadyTriedAutoJoin: boolean, forcePick = false): Promise<void> => {
       setResolution({ phase: "resolving" });
       // A prospect who signed in from a Raffa invitation link: redeem the secret that waited in this
       // tab (single-use, bound to their address; the server decides). Any outcome just continues --
@@ -120,6 +120,14 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
         return;
       }
 
+      // "Switch or create a workspace" (account menu): the picker even for a single workspace, so a
+      // signed-in user can choose another one or create a new one without signing out.
+      if (forcePick && decision.kind !== "pick") {
+        clearCurrentWorkspace();
+        setResolution({ phase: "pick", workspaces: result.workspaces });
+        return;
+      }
+
       if (decision.kind === "pick") {
         // hint ∉ list, or there never was one -- either way nothing here should keep trusting it.
         clearCurrentWorkspace();
@@ -132,6 +140,10 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
     },
     [apiClient],
   );
+
+  const switchWorkspace = useCallback(() => {
+    void resolveWorkspaces(false, true);
+  }, [resolveWorkspaces]);
 
   const runResolution = useCallback(() => {
     void resolveWorkspaces(false);
@@ -179,6 +191,7 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
         userLabel={account.username}
         apiClient={apiClient}
         onSignOut={handleSignOut}
+        onSwitchWorkspace={switchWorkspace}
       />
     );
   }

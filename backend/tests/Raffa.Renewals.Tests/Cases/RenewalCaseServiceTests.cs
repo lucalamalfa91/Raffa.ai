@@ -276,6 +276,41 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         Assert.Contains(after.Snoozed, x => x.Key == key);
     }
 
+    [Fact]
+    public async Task A_contract_with_no_dates_read_does_not_break_Today_or_Renewals()
+    {
+        _facts.IncludeUndated = true;
+        var s = await ServiceAsync();
+
+        var board = await s.BoardAsync(_tenant, LucaOid);
+        var row = board.Groups.SelectMany(g => g.Items).Single(r => r.ContractId == _facts.UndatedId);
+        Assert.Equal("—", row.Notice);
+        Assert.Equal("—", row.StartBy);
+        Assert.Equal(int.MaxValue, row.Days);
+        Assert.Equal(ContractTermStatus.Unknown, row.TermStatus);
+        // The dated contracts still come first.
+        Assert.Equal(_facts.UndatedId, board.Groups.SelectMany(g => g.Items).OrderBy(r => r.Days).Last().ContractId);
+
+        var today = await s.TodayAsync(_tenant, LucaOid);
+        Assert.DoesNotContain(today.Mine.Concat(today.Waiting), x => x.ContractId == _facts.UndatedId);
+    }
+
+    [Fact]
+    public async Task A_contract_that_cannot_be_read_is_left_out_and_never_fails_Today_or_Renewals()
+    {
+        _facts.IncludeBroken = true;
+        var s = await ServiceAsync();
+
+        var board = await s.BoardAsync(_tenant, LucaOid);
+        var ids = board.Groups.SelectMany(g => g.Items).Select(r => r.ContractId).ToList();
+        Assert.DoesNotContain(_facts.BrokenId, ids);
+        Assert.Contains(_facts.Id(4), ids);
+
+        var today = await s.TodayAsync(_tenant, LucaOid);
+        Assert.DoesNotContain(today.Mine.Concat(today.Waiting), x => x.ContractId == _facts.BrokenId);
+        Assert.Contains(today.Mine, x => x.ContractId == _facts.Id(4));
+    }
+
     private CompanyRulesService RulesService(RenewalsDbContext db) =>
         new(db, _tenantContext, new ScriptedCompanyRulesAssistant(), new Members(), new FixedClock(Now));
 
@@ -453,8 +488,35 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
             };
         }
 
+        /// <summary>A validated contract whose dates were not read (a technical answer filed as a SOW): no
+        /// start, end or notice deadline, a 60-day notice period.</summary>
+        public bool IncludeUndated { get; set; }
+
+        /// <summary>A contract whose facts cannot be mapped at all (a damaged read): the board must leave it out, not fail.</summary>
+        public bool IncludeBroken { get; set; }
+
+        public Guid BrokenId { get; } = Guid.NewGuid();
+
+        public Guid UndatedId { get; } = Guid.NewGuid();
+
+        private ContractFacts Undated() => Facts(1) with
+        {
+            ContractId = UndatedId,
+            FixtureId = null,
+            Supplier = "Risposta alle specifiche tecniche v1.3.pdf",
+            Name = "Risposta alle specifiche tecniche v1.3.pdf",
+            Spend = 0,
+            StartDate = null,
+            EndDate = null,
+            NoticeDeadline = null,
+            Start = "",
+            End = "",
+            Cancel = "",
+            Notice = 60,
+        };
+
         public Task<IReadOnlyList<ContractFacts>> ListValidatedAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<ContractFacts>>(_ids.Keys.Select(Facts).ToList());
+            Task.FromResult<IReadOnlyList<ContractFacts>>(_ids.Keys.Select(Facts).Concat(IncludeUndated ? [Undated()] : []).Concat(IncludeBroken ? [Facts(2) with { ContractId = BrokenId, Deep = null! }] : []).ToList());
 
         public Task<ContractFacts?> GetAsync(TenantId tenantId, EntityId contractId, CancellationToken cancellationToken = default) =>
             Task.FromResult(_ids.FirstOrDefault(x => x.Value == contractId.Value) is { Value: var v, Key: var k } && v != Guid.Empty ? Facts(k) : null);

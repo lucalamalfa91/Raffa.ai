@@ -288,5 +288,6 @@ public static class LanguageHint
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static bool IsItalian(string text) =>
-        !string.IsNullOrWhiteSpace(text) && ItalianMarkers.Matches(text).Count >= 2;
+        Raffa.SharedKernel.Language.ResponseLanguage.ChosenItalian
+        ?? (!string.IsNullOrWhiteSpace(text) && ItalianMarkers.Matches(text).Count >= 2);
 }

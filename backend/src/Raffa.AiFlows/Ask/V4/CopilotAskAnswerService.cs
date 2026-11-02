@@ -20,6 +20,8 @@ public sealed class CopilotAskAnswerService(
         TenantId tenantId, string userId, string question, EntityId? contractId, string lang, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
+        // The interface language (IT/EN) decides the language of the model's answer and of every fallback text.
+        using var responseLanguage = Raffa.SharedKernel.Language.ResponseLanguage.Use(lang);
         var validated = await facts.ListValidatedAsync(tenantId, cancellationToken).ConfigureAwait(false);
         var contract = contractId is { } id
             ? validated.FirstOrDefault(c => c.ContractId == id.Value)
