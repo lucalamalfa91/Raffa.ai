@@ -65,6 +65,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [q, setQ] = useState("");
   const [showArchive, setShowArchive] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** The question being answered: shown at once, with the thinking row under it, until Raffa's reply arrives. */
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const thinkingRef = useRef<HTMLDivElement>(null);
   const [uploadingOffer, setUploadingOffer] = useState(false);
   const offerInput = useRef<HTMLInputElement>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -106,10 +109,18 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     if (detail.id !== conversationId) navigate(`/ask/${detail.id}`);
   };
 
+  // Keep the question and the thinking row in view while Raffa works.
+  useEffect(() => {
+    if (pendingQuestion !== null) thinkingRef.current?.scrollIntoView?.({ block: "end" });
+  }, [pendingQuestion]);
+
   const ask = async (question: string, contractId?: string, answerOnly = false) => {
     const text = question.trim();
     if (!text || busy) return;
     setBusy(true);
+    setPendingQuestion(text);
+    setPick(null);
+    setQ("");
     const r = await api.ask(tenantId, {
       conversationId: current?.id ?? null,
       question: text,
@@ -118,6 +129,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       lang,
     });
     setBusy(false);
+    setPendingQuestion(null);
     if (!r.data) return;
     setQ("");
     setPick(r.data.needsContract ? { kind: "q", text } : null);
@@ -468,6 +480,23 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 </div>
               );
             })}
+            {pendingQuestion !== null ? (
+              <>
+                <div className="k6-qa">
+                  <span className="k6-qa-by">{t("You⟦ask⟧")}</span>
+                  <div className="k6-qa-body">
+                    <div className="k6-qa-text">{pendingQuestion}</div>
+                  </div>
+                </div>
+                <div className="k6-qa is-raffa k6-thinking" role="status" aria-live="polite" ref={thinkingRef}>
+                  <span className="k6-qa-by">Raffa.ai</span>
+                  <div className="k6-thinking-copy">
+                    <span className="k6-thinking-spinner" aria-hidden="true" />
+                    {t("Reading your contracts and checking the evidence…")}
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
         <div className="k6-composer-wrap">
