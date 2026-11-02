@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
@@ -14,17 +15,23 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
 {
     private const string Staff = "staff@raffa.example";
 
+    // One derived host per fixture, not per test: xunit builds a new test-class instance for every test,
+    // and a fresh host each time exhausted the shared Postgres test container's connections.
+    private static readonly ConditionalWeakTable<InvitationLifecycleEndpointFixture, HttpClient> Clients = new();
+
     private readonly HttpClient _client;
 
     public PlatformAdminEndpointTests(InvitationLifecycleEndpointFixture fixture)
     {
-        _client = fixture
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting("PlatformAdmin:ObjectIds:0", Staff);
-                builder.UseSetting("PlatformAdmin:RequireInvitationToCreateWorkspace", "true");
-            })
-            .CreateClient();
+        _client = Clients.GetValue(
+            fixture,
+            f => f
+                .WithWebHostBuilder(builder =>
+                {
+                    builder.UseSetting("PlatformAdmin:ObjectIds:0", Staff);
+                    builder.UseSetting("PlatformAdmin:RequireInvitationToCreateWorkspace", "true");
+                })
+                .CreateClient());
     }
 
     [Fact]
@@ -92,7 +99,7 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
 
         var first = await InviteWithIdAsync("b@prospect-three.example");
         var regenerated = await SendAsync(HttpMethod.Post, $"/api/admin/invitations/{first.Id}/regenerate", Staff);
-        Assert.Equal(HttpStatusCode.Created, regenerated.StatusCode);
+        await AssertStatusAsync(HttpStatusCode.Created, regenerated);
         await AssertStatusAsync(HttpStatusCode.Gone, await AcceptAsync(first.Token, "b@prospect-three.example"));
     }
 

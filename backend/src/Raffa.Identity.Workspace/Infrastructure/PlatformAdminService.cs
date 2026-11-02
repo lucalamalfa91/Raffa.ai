@@ -98,7 +98,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     // ----- prospect invitations -----
 
-    /// <summary>Revokes any live invitation for the address and issues a fresh one, in one statement.
+    /// <summary>Revokes any live invitation for the address and issues a fresh one, in one transaction.
     /// The plaintext token exists only in the returned value.</summary>
     public async Task<PlatformInvitationIssued> IssueInvitationAsync(
         string email, string createdBy, CancellationToken ct = default)
@@ -109,15 +109,22 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
         var now = clock.UtcNow.ToUniversalTime();
         var expiresAt = now.AddDays(ExpiryDays);
 
+        // Two statements in one transaction, in this order: revoke the live invitation for the address,
+        // then insert the new one. A single data-modifying CTE does not work here: the order of its parts
+        // is unspecified, and the INSERT can hit the one-live-invitation-per-address unique index before
+        // the UPDATE has released it.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
-            WITH revoked AS (
-                UPDATE platform_invitation SET revoked_at = {now}
-                WHERE lower(email) = {normalized} AND accepted_at IS NULL AND revoked_at IS NULL
-            )
+            UPDATE platform_invitation SET revoked_at = {now}
+            WHERE lower(email) = {normalized} AND accepted_at IS NULL AND revoked_at IS NULL
+            """, ct).ConfigureAwait(false);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
             INSERT INTO platform_invitation (id, email, token_hash, created_by, created_at, expires_at)
             VALUES ({id}, {normalized}, {Hash(secret)}, {createdBy}, {now}, {expiresAt})
             """, ct).ConfigureAwait(false);
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
 
         return new PlatformInvitationIssued(id, normalized, secret, expiresAt);
     }
