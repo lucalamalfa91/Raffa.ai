@@ -238,6 +238,17 @@ module "containerapps" {
 # gpt-5.4-nano-demo (deployment keys changed in the same run), so this
 # apply recreates them and republishes their ids to both Container Apps;
 # text-embedding-3-large-demo was accepted and is untouched.
+#
+# ADR-004 amendment 2026-11-02: extract / answer / research move to
+# gpt-6-astra 2026-09-03 (DataZoneStandard). A hand-made deployment
+# (gpt-6-astra-test, 50K TPM) was accepted by ARM on aisvc-raffa in
+# northeurope the same day, which is the revisit rule above. The GPT-5.6 and
+# gpt-6-luna/sol families are still NOT standalone-deployable here (they only
+# appear inside the model-router pool), so classify stays on gpt-5.4-nano.
+# Capacity is 100 (not 200): the subscription quota for gpt-6-astra
+# DataZoneStandard in northeurope is 100K TPM total (InsufficientQuota at 200,
+# 2026-11-02). Delete the manual gpt-6-astra-test (50K) BEFORE apply, or the
+# create needs 150 against 50 free.
 module "foundry" {
   source = "../../modules/foundry"
 
@@ -259,7 +270,7 @@ module "foundry" {
   )
 
   model_deployments = {
-    "gpt-5.4"                = { model_version = "2026-03-05", sku_name = "DataZoneStandard", capacity = 200 }
+    "gpt-6-astra"            = { model_version = "2026-09-03", sku_name = "DataZoneStandard", capacity = 100 }
     "gpt-5.4-nano"           = { model_version = "2026-03-17", sku_name = "DataZoneStandard", capacity = 200 }
     "text-embedding-3-large" = { model_version = "1", sku_name = "GlobalStandard", capacity = 100 }
   }
@@ -268,10 +279,10 @@ module "foundry" {
   # deployment demo already declares -- no new capacity.
   model_roles = {
     classify = "gpt-5.4-nano"
-    extract  = "gpt-5.4"
-    answer   = "gpt-5.4"
+    extract  = "gpt-6-astra"
+    answer   = "gpt-6-astra"
     embed    = "text-embedding-3-large"
-    research = "gpt-5.4"
+    research = "gpt-6-astra"
   }
 }
 
