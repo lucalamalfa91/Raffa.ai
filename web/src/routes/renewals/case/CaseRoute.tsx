@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import AskShortcuts from "../../../components/ask/AskShortcuts";
 import type { ApiClient } from "../../../api/client";
 import type { CaseActionPayload, CaseButton, CaseCardStep, CaseEnvelope, CaseInput, CaseRow, Tone } from "../../../api/renewalCases";
 import { useGuide, useGuideState } from "../../../components/shell/guide";
@@ -337,6 +338,14 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             {scheda ? t("Hide details ▴") : t("Details: terms, emails, team, dates ▾")}
           </button>
         </div>
+        <AskShortcuts
+          scopeContractId={env.contractId}
+          items={[
+            { label: t("Renewal strategy"), question: t("How should we approach this renewal? Give me the strategy and the negotiation points.") },
+            { label: t("Negotiation email"), question: t("Draft the negotiation email to the supplier for this renewal.") },
+            { label: t("Risks and terms to watch"), question: t("Which clauses and risks should we watch in this contract before renewing?") },
+          ]}
+        />
         <div className="p4-cells">
           <div className="p4-cell">
             <div className="p4-label">{t("Phase")}</div>

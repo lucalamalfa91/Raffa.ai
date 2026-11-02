@@ -120,4 +120,16 @@ export const IT_SETTINGS: Readonly<Record<string, string>> = {
   // Chiedi — the agentic engine's extras
   "Or write your answer below.": "Oppure scrivi la tua risposta qui sotto.",
   "Suggested questions": "Domande suggerite",
+  // One-click questions to the agentic engine
+  "Which renewals first?": "Quali rinnovi prima?",
+  "Which renewals should we start first, and why?": "Quali rinnovi dobbiamo avviare per primi, e perché?",
+  "Where can we save?": "Dove possiamo risparmiare?",
+  "Where can we save across our renewals?": "Dove possiamo risparmiare sui nostri rinnovi?",
+  "Where can we save on this contract?": "Dove possiamo risparmiare su questo contratto?",
+  "Renewal strategy": "Strategia di rinnovo",
+  "How should we approach this renewal? Give me the strategy and the negotiation points.": "Come impostiamo questo rinnovo? Dammi la strategia e i punti da negoziare.",
+  "Negotiation email": "Email di negoziazione",
+  "Draft the negotiation email to the supplier for this renewal.": "Scrivi l'email di negoziazione al fornitore per questo rinnovo.",
+  "Risks and terms to watch": "Rischi e clausole da controllare",
+  "Which clauses and risks should we watch in this contract before renewing?": "Quali clausole e rischi dobbiamo controllare in questo contratto prima di rinnovare?",
 };

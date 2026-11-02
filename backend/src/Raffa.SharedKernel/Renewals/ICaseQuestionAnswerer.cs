@@ -15,6 +15,19 @@ public interface ICaseQuestionAnswerer
         string text,
         string? lang = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>A question asked inside a renewal case by <paramref name="userId"/>: the production host answers
+    /// it with the full agentic Ask engine in a conversation tied to the case, so the case chat remembers
+    /// what was asked before. The default ignores the case and answers the question alone.</summary>
+    Task<CaseQuestionAnswer> AnswerInCaseAsync(
+        TenantId tenantId,
+        string? userId,
+        Guid caseId,
+        EntityId contractId,
+        string text,
+        string? lang = null,
+        CancellationToken cancellationToken = default) =>
+        AnswerAsync(tenantId, contractId, text, lang, cancellationToken);
 }
 
 /// <summary>The answer and what it rests on (<c>Fonte: …</c>); a refusal names its limit as the

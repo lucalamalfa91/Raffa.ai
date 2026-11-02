@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AskShortcuts from "../../components/ask/AskShortcuts";
 import type { ApiClient } from "../../api/client";
 import type { RenewalsBoard, RenewalsRow } from "../../api/renewalCases";
 import { useGuide } from "../../components/shell/guide";
@@ -97,6 +98,12 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
       <div className="r4-head">
         {board ? t("{open} open cases · {start} to start · sorted by notice deadline", { open: board.openCases, start: board.toStart }) : (error ?? "")}
       </div>
+      <AskShortcuts
+        items={[
+          { label: t("Which renewals first?"), question: t("Which renewals should we start first, and why?") },
+          { label: t("Where can we save?"), question: t("Where can we save across our renewals?") },
+        ]}
+      />
       {board && all.length === 0 ? (
         <div className="r4-empty">{t("No renewal to manage: there is no validated contract yet. Upload the first in Contracts.")}</div>
       ) : null}

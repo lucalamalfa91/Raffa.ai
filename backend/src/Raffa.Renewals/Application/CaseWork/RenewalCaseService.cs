@@ -261,7 +261,7 @@ public sealed partial class RenewalCaseService(
                 return CaseResult.NotFound("No case with this id.");
             }
 
-            answer = await answerer.AnswerAsync(tenantId, new EntityId(contractId.Value), q, lang, ct).ConfigureAwait(false);
+            answer = await answerer.AnswerInCaseAsync(tenantId, callerIdentity, caseId, new EntityId(contractId.Value), q, lang, ct).ConfigureAwait(false);
         }
 
         return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (c, ctx, _) =>
