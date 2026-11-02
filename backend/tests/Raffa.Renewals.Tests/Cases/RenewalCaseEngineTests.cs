@@ -298,6 +298,29 @@ public sealed class RenewalCaseEngineTests
     }
 
     [Fact]
+    public void A_read_supplier_reply_sets_the_counter_price_and_survives_the_next_steps()
+    {
+        var inner = FixtureCaseScriptServices.Instance;
+        var c = AtFirstEmail();
+        var reading = new CaseReplyAnalysis(
+            [new CaseReplyRow { Label = CaseText.Of("Prezzo"), Said = CaseText.Of("CHF 11.11 per 24 mesi"), Plan = CaseText.Of("-10%"), State = "proposed" }],
+            [],
+            new Dictionary<int, double> { [24] = 11.11 });
+        var read = new CaseContext(Contract(1), Marta, Today, new ReadCaseScriptServices(inner, reply: reading));
+
+        // The supplier's reply is read: the case keeps the price it offered for 24 months ...
+        c = RenewalCaseEngine.Act(c, "reply", new CaseActionPayload { Text = CaseText.Of("We offer 11.11 for 24 months.") }, read);
+        Assert.Equal(11.11, c.OfferedPrices!["24"]);
+
+        // ... and every later step (a plain context, no model any more) counters from it; the rule is the fallback only.
+        var plain = Ctx(1, Marta);
+        Assert.Equal(11.11, RenewalCaseEngine.CounterPrice(c, plain, 24));
+        Assert.Equal(inner.CounterPrice(plain, 12), RenewalCaseEngine.CounterPrice(c, plain, 12));
+        var after = RenewalCaseJson.Deserialize(RenewalCaseJson.Serialize(c));
+        Assert.Equal(11.11, after.OfferedPrices!["24"]);
+    }
+
+    [Fact]
     public void Texts_are_messages_with_the_prototype_english_ids()
     {
         var c = AtFirstEmail();
