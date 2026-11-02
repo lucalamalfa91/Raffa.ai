@@ -311,6 +311,27 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         Assert.Contains(today.Mine, x => x.ContractId == _facts.Id(4));
     }
 
+    [Fact]
+    public async Task Deleting_a_contract_removes_its_case_and_everything_attached_to_it()
+    {
+        var s = await ServiceAsync();
+        var e = await ToFirstEmailAsync(s, _tenant, await OpenAsync(s, 4));
+        var other = await OpenAsync(s, 1);
+        var luca = await s.TodayAsync(_tenant, LucaOid);
+        Assert.True(await s.SnoozeAsync(_tenant, LucaOid, luca.Mine.Concat(luca.Waiting).First(x => x.ContractId == _facts.Id(4)).Key, true));
+
+        var removed = await s.DeleteForContractsAsync(_tenant, [_facts.Id(4)]);
+        Assert.Equal(1, removed);
+
+        using var _ = _tenantContext.BeginScope(_tenant);
+        await using var db = Db();
+        Assert.Equal(other.CaseId, (await db.RenewalCases.SingleAsync()).Id.Value);
+        Assert.Empty(await db.CaseEmails.ToListAsync());
+        Assert.Empty(await db.CaseEvents.Where(x => x.CaseId == new Raffa.SharedKernel.EntityId(e.CaseId)).ToListAsync());
+        Assert.Empty(await db.TodaySnoozes.Where(x => x.ItemKey.StartsWith(_facts.Id(4).ToString())).ToListAsync());
+        Assert.Equal(0, await s.DeleteForContractsAsync(_tenant, []));
+    }
+
     private CompanyRulesService RulesService(RenewalsDbContext db) =>
         new(db, _tenantContext, new ScriptedCompanyRulesAssistant(), new Members(), new FixedClock(Now));
 

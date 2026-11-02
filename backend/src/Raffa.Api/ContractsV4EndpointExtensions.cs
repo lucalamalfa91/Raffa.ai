@@ -31,6 +31,7 @@ public static class ContractsV4EndpointExtensions
         endpoints.MapGet("/api/contracts/{id}/v4", GetContractV4Async);
         endpoints.MapGet("/api/contracts/{id}/decision-points", GetDecisionPointsAsync);
         endpoints.MapPut("/api/contracts/{id}/decision-points/{pointKey}", PutDecisionPointAsync);
+        endpoints.MapDelete("/api/contracts/{id}", DeleteContractAsync);
         return endpoints;
     }
 
@@ -46,6 +47,37 @@ public static class ContractsV4EndpointExtensions
         using var _ = caller.Scope;
         var service = request.HttpContext.RequestServices.GetRequiredService<ContractsV4QueryService>();
         return Results.Ok(await service.ListAsync(caller.TenantId, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary><c>DELETE /api/contracts/{id}</c> (Admin only): the contract, its documents, renewal case and chats.
+    /// 204 when deleted, 404 unknown, 403 for a non-Admin, 400 when a stored file could not be removed (retry).</summary>
+    private static async Task<IResult> DeleteContractAsync(
+        string id, HttpContext httpContext, ContractDeleteService deleteService, WorkspaceRoleResolver roleResolver,
+        ICallerContext callerContext, CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(httpContext.Request, cancellationToken).ConfigureAwait(false);
+        if (caller.Failure is not null)
+        {
+            return caller.Failure;
+        }
+
+        using var _ = caller.Scope;
+        if (!Guid.TryParse(id, out var contractGuid))
+        {
+            return Results.BadRequest("The contract id in the route must be a GUID.");
+        }
+
+        if (!await roleResolver.IsAdminAsync(httpContext, caller.TenantId, cancellationToken).ConfigureAwait(false))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        return await deleteService.DeleteAsync(caller.TenantId, new EntityId(contractGuid), caller.Identity!, cancellationToken).ConfigureAwait(false) switch
+        {
+            ContractDeleteOutcome.Deleted => Results.NoContent(),
+            ContractDeleteOutcome.NotFound => Results.NotFound(),
+            _ => Results.BadRequest("The contract's files could not be deleted. Try again."),
+        };
     }
 
     private static async Task<IResult> UploadSampleAsync(

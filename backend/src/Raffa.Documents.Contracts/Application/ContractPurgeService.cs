@@ -64,8 +64,18 @@ public sealed class ContractPurgeService(DocumentsContractsDbContext dbContext, 
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        // AskRaffa 4.0 keeps a contract's validated facts, its decisions on negotiable points and its renewed
+        // terms in tables of their own (no FK to Contract): a deleted contract must not linger in Oggi/Rinnovi.
+        dbContext.ContractFacts.RemoveRange(await dbContext.ContractFacts
+            .Where(f => f.TenantId == tenantId && idList.Contains(f.ContractId)).ToListAsync(cancellationToken).ConfigureAwait(false));
+        dbContext.ContractPointDecisions.RemoveRange(await dbContext.ContractPointDecisions
+            .Where(d => d.TenantId == tenantId && idList.Contains(d.ContractId)).ToListAsync(cancellationToken).ConfigureAwait(false));
+        dbContext.ContractTermVersions.RemoveRange(await dbContext.ContractTermVersions
+            .Where(v => v.TenantId == tenantId && idList.Contains(v.ContractId)).ToListAsync(cancellationToken).ConfigureAwait(false));
+
         if (contracts.Count == 0)
         {
+            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             return 0;
         }
 
