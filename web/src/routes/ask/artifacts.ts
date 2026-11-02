@@ -39,7 +39,7 @@ const WINDOWS: Array<{ id: string; max: number }> = [
   { id: "31–90 days", max: 90 },
   { id: "91–180 days", max: 180 },
   { id: "181–365 days", max: 365 },
-  { id: "Later", max: Number.POSITIVE_INFINITY },
+  { id: "Later⟦window⟧", max: Number.POSITIVE_INFINITY },
 ];
 
 /** Rows that have a notice deadline ahead (dates not read, or passed, are counted apart). */

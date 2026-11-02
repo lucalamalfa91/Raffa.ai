@@ -6,7 +6,7 @@ export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "31–90 days": "31–90 giorni",
   "91–180 days": "91–180 giorni",
   "181–365 days": "181–365 giorni",
-  "Later": "Oltre",
+  "Later⟦window⟧": "Oltre",
   "Dashboard": "Dashboard",
   "KPIs": "KPI",
   "Document": "Documento",
