@@ -1,3 +1,4 @@
+using Raffa.Market.Network;
 using Raffa.AiGateway;
 using Raffa.Benchmark.Adapters;
 using Raffa.Benchmark.Configuration;
@@ -177,6 +178,29 @@ public static class ServiceCollectionExtensions
                 return retrievalOptions;
             });
 
+            // The customer network benchmark: supplier replies recorded anonymously (invisible to the user, audited),
+            // published into this same shared base through the ingestion job.
+            services.TryAddSingleton(sp =>
+            {
+                var observationOptions = new MarketObservationOptions();
+                sp.GetService<IConfiguration>()
+                    ?.GetSection(MarketObservationOptions.SectionName)
+                    .Bind(observationOptions);
+                return observationOptions;
+            });
+            services.TryAddSingleton<MarketNetworkService>();
+            services.TryAddSingleton<IMarketNetworkSource>(sp => sp.GetRequiredService<MarketNetworkService>());
+            services.Replace(ServiceDescriptor.Scoped<IMarketObservationSink, MarketObservationRecorder>());
+            var feedDescriptor = services.LastOrDefault(d => d.ServiceType == typeof(IMarketIntelligenceProvider));
+            if (feedDescriptor is not null)
+            {
+                services.Replace(ServiceDescriptor.Singleton<IMarketIntelligenceProvider>(sp => new NetworkAugmentedMarketProvider(
+                    ResolveFeed(feedDescriptor, sp),
+                    sp.GetRequiredService<IMarketNetworkSource>(),
+                    sp.GetRequiredService<MarketObservationOptions>(),
+                    sp.GetService<Microsoft.Extensions.Logging.ILogger<NetworkAugmentedMarketProvider>>())));
+            }
+
             services.AddScoped<MarketIngestionService>();
             services.AddScoped<MarketRecordQueryService>();
             services.Replace(ServiceDescriptor.Scoped<IMarketDealLookup>(sp => sp.GetRequiredService<MarketRecordQueryService>()));
@@ -259,4 +283,9 @@ public static class ServiceCollectionExtensions
             return options;
         }));
     }
+
+    private static IMarketIntelligenceProvider ResolveFeed(ServiceDescriptor descriptor, IServiceProvider sp) =>
+        descriptor.ImplementationInstance as IMarketIntelligenceProvider
+        ?? (descriptor.ImplementationFactory?.Invoke(sp) as IMarketIntelligenceProvider)
+        ?? (IMarketIntelligenceProvider)ActivatorUtilities.CreateInstance(sp, descriptor.ImplementationType!);
 }

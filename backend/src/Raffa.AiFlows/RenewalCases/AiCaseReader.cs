@@ -17,7 +17,7 @@ namespace Raffa.AiFlows.RenewalCases;
 public static class CaseReaderAgents
 {
     public const string ReplyName = "case-reply-reader";
-    public const string ReplyVersion = "case-reply-v1";
+    public const string ReplyVersion = "case-reply-v2";
     public const string FeaturesName = "case-features-reader";
     public const string FeaturesVersion = "case-features-v1";
 
@@ -36,6 +36,11 @@ public static class CaseReaderAgents
         - state: proposed (a concrete offer), unclear (vague or conditional without numbers),
           rejected (they refuse the ask), conflict (they ask something against the plan or policy);
         - warn: a short policy or risk warning when the offer breaks the plan or a usual safeguard, else "".
+        Also benchmark: the commercial terms the supplier states in this reply, as plain numbers, from the
+        supplier's words only (0 or "" when the reply does not say): discountPct (the percentage off the current
+        price it offers), upliftCapPct (the cap on yearly price increases it accepts), noticeDays (the notice
+        period it asks), termMonths (the term its offer is for), paymentTerms (a short phrase such as
+        "quarterly in advance"; never a name or an email).
         Also prices: the unit price the supplier now offers for a 12-month term (price12) and for a
         24-month term (price24), as plain numbers in the contract currency; 0 when the reply gives none.
         Then the term updates the reply implies: key (an existing term key when the point is tracked,
@@ -66,9 +71,14 @@ public static class CaseReaderAgents
               "value": { "type": "string" } },
               "required": ["key", "label", "state", "value"], "additionalProperties": false } },
             "price12": { "type": "number" },
-            "price24": { "type": "number" }
+            "price24": { "type": "number" },
+            "benchmark": { "type": "object", "properties": {
+              "discountPct": { "type": "number" }, "upliftCapPct": { "type": "number" },
+              "noticeDays": { "type": "integer" }, "termMonths": { "type": "integer" },
+              "paymentTerms": { "type": "string" } },
+              "required": ["discountPct", "upliftCapPct", "noticeDays", "termMonths", "paymentTerms"], "additionalProperties": false }
           },
-          "required": ["rows", "terms", "price12", "price24"],
+          "required": ["rows", "terms", "price12", "price24", "benchmark"],
           "additionalProperties": false
         }
         """;
@@ -203,7 +213,9 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
 
     private sealed record Term(string? Key, string? Label, string? State, string? Value);
 
-    private sealed record ReplyAnswer(List<Row>? Rows, List<Term>? Terms, double? Price12, double? Price24);
+    private sealed record BenchmarkAnswer(double? DiscountPct, double? UpliftCapPct, int? NoticeDays, int? TermMonths, string? PaymentTerms);
+
+    private sealed record ReplyAnswer(List<Row>? Rows, List<Term>? Terms, double? Price12, double? Price24, BenchmarkAnswer? Benchmark);
 
     private sealed record DraftRowAnswer(string? Label, string? Agreed, string? Draft, string? Result, string? Source);
 
@@ -354,7 +366,17 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
             prices[24] = p24;
         }
 
-        return new CaseReplyAnalysis(rows, terms, prices.Count == 0 ? null : prices);
+        // Zero means "not stated" in the schema: only real values go on to the benchmark.
+        var b = answer.Benchmark;
+        var benchmark = b is null
+            ? null
+            : new CaseReplyBenchmark(
+                b.DiscountPct is > 0 ? b.DiscountPct : null,
+                b.UpliftCapPct is > 0 ? b.UpliftCapPct : null,
+                b.NoticeDays is > 0 ? b.NoticeDays : null,
+                string.IsNullOrWhiteSpace(b.PaymentTerms) ? null : b.PaymentTerms.Trim(),
+                b.TermMonths is > 0 ? b.TermMonths : null);
+        return new CaseReplyAnalysis(rows, terms, prices.Count == 0 ? null : prices, benchmark);
     }
 
     public async Task<CaseFeatureSet?> ReadFeaturesAsync(TenantId tenantId, CaseContractFacts contract, string lang, CancellationToken cancellationToken = default)

@@ -35,6 +35,7 @@ public static class RenewalCaseServiceCollectionExtensions
     {
         services.TryAddSingleton<ICaseScriptServices, ProductionCaseScriptServices>();
         services.TryAddScoped<ICaseAiReader, NoCaseAiReader>();
+        services.TryAddScoped<Raffa.SharedKernel.Market.IMarketObservationSink, Raffa.SharedKernel.Market.NoMarketObservationSink>();
         services.TryAddScoped<IOpenQuoteDecisions, NoOpenQuoteDecisions>();
         services.TryAddScoped<IDocumentsNeedingReview, NoDocumentsNeedingReview>();
         services.TryAddScoped<IContractSituationAssessor, RulesContractSituationAssessor>();

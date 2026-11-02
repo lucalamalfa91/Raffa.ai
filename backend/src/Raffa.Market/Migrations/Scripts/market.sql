@@ -35,6 +35,12 @@
 -- an ADR-locked identifier — only the *mechanism*, a conditional grant keyed on `pg_roles`, is
 -- fixed here; same "mechanism fixed, names council/infra-owned" posture
 -- `reports/open-questions.md` OQ-DM-005 already uses for the demo tag/environment names).
+-- 20261102221933_AddMarketObservation adds `market_observation`: anonymised supplier-reply observations
+-- from every customer (no tenant_id; a one-way workspace key only counts distinct contributors). The
+-- network refresh turns groups backed by enough different workspaces into shared market records.
+-- The API role may INSERT observations (a case records one invisibly); only the ingest role may read
+-- them all, aggregate and delete.
+
 CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
     migration_id character varying(150) NOT NULL,
     product_version character varying(32) NOT NULL,
@@ -339,6 +345,59 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102221933_AddMarketObservation') THEN
+    CREATE TABLE market_observation (
+        id uuid NOT NULL,
+        workspace_key character varying(64) NOT NULL,
+        observation_key character varying(64) NOT NULL,
+        supplier_key character varying(200) NOT NULL,
+        supplier character varying(200) NOT NULL,
+        category character varying(100),
+        geography character varying(100),
+        currency character varying(10),
+        product character varying(200),
+        sku character varying(100),
+        unit character varying(60),
+        unit_price numeric(18,4),
+        term_months integer,
+        discount_pct double precision,
+        uplift_cap_pct double precision,
+        notice_days integer,
+        payment_terms character varying(100),
+        source character varying(40) NOT NULL,
+        observed_at timestamp with time zone NOT NULL,
+        CONSTRAINT pk_market_observation PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102221933_AddMarketObservation') THEN
+    CREATE INDEX ix_market_observation_supplier_term ON market_observation (supplier_key, term_months);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102221933_AddMarketObservation') THEN
+    CREATE UNIQUE INDEX ux_market_observation_key ON market_observation (observation_key);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102221933_AddMarketObservation') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261102221933_AddMarketObservation', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
 -- Grant model (see this file's own header comment). Not part of the "20260909011226_Initial"
 -- EF migration and not gated on __EFMigrationsHistory: re-running these two blocks against an
 -- already-granted role is a harmless re-GRANT (Postgres allows granting a privilege a role
@@ -348,6 +407,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'raffa_app') THEN
         GRANT USAGE ON SCHEMA public TO raffa_app;
         GRANT SELECT ON market_record, market_embedding, market_corpus_version TO raffa_app;
+        GRANT INSERT ON market_observation TO raffa_app;
     END IF;
 END $EF$;
 
@@ -355,7 +415,7 @@ DO $EF$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'raffa_market_ingest') THEN
         GRANT USAGE ON SCHEMA public TO raffa_market_ingest;
-        GRANT SELECT, INSERT, UPDATE, DELETE ON market_record, market_embedding, market_corpus_version TO raffa_market_ingest;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON market_record, market_embedding, market_corpus_version, market_observation TO raffa_market_ingest;
     END IF;
 END $EF$;
 

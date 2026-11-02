@@ -67,6 +67,24 @@ public sealed class AiCaseReaderDocumentTests
         Assert.Equal(47, Assert.Single(reading!.Prices!).Value);
     }
 
+    [Fact]
+    public async Task The_benchmark_keeps_only_what_the_reply_states()
+    {
+        var reader = Reader("""
+            {"rows":[{"label":"Prezzo","said":"CHF 47","plan":"-10%","state":"proposed","warn":""}],"terms":[],
+             "price12":0,"price24":47,
+             "benchmark":{"discountPct":8,"upliftCapPct":0,"noticeDays":0,"termMonths":24,"paymentTerms":"  quarterly in advance "}}
+            """);
+
+        var b = (await reader.ReadReplyAsync(TenantId.New(), new RenewalCase(), Contract, "offer", 1, "it"))!.Benchmark!;
+
+        Assert.Equal(8, b.DiscountPct);
+        Assert.Null(b.UpliftCapPct);   // 0 means "not stated"
+        Assert.Null(b.NoticeDays);
+        Assert.Equal(24, b.TermMonths);
+        Assert.Equal("quarterly in advance", b.PaymentTerms);
+    }
+
     private sealed class Gateway(string payloadJson) : IAiGateway
     {
         public Task<Result<AiAnalysisResult>> AnalyzeAsync(AiAnalysisRequest request, CancellationToken cancellationToken = default) =>

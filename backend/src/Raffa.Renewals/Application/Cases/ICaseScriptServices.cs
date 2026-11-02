@@ -68,7 +68,12 @@ public interface ICaseScriptServices
 public sealed record CaseReplyAnalysis(
     IReadOnlyList<CaseReplyRow> Rows,
     IReadOnlyList<CaseTermUpdate> Terms,
-    IReadOnlyDictionary<int, double>? Prices = null);
+    IReadOnlyDictionary<int, double>? Prices = null,
+    CaseReplyBenchmark? Benchmark = null);
+
+/// <summary>The commercial terms a supplier's reply states, as numbers: what the shared market benchmark learns from it.
+/// Only what the reply says; null for anything it does not.</summary>
+public sealed record CaseReplyBenchmark(double? DiscountPct, double? UpliftCapPct, int? NoticeDays, string? PaymentTerms, int? TermMonths);
 
 /// <summary>Sets term <paramref name="Key"/> (created with <paramref name="Label"/> if missing).</summary>
 public sealed record CaseTermUpdate(string Key, CaseText Label, string State, string? Val, string Ev);

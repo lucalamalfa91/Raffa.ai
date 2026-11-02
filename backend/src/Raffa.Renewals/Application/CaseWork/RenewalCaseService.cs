@@ -75,7 +75,8 @@ public sealed partial class RenewalCaseService(
     IClock clock,
     IContractSituationAssessor? situationAssessor = null,
     Microsoft.Extensions.Logging.ILogger<RenewalCaseService>? logger = null,
-    ICaseAiReader? aiReader = null)
+    ICaseAiReader? aiReader = null,
+    Raffa.SharedKernel.Market.IMarketObservationSink? marketSink = null)
 {
     public const int SnoozeDays = 3;
 
@@ -285,6 +286,49 @@ public sealed partial class RenewalCaseService(
         }).ConfigureAwait(false);
     }
 
+    // The model's reading of the supplier reply of this request: the case uses it, and so does the market benchmark.
+    private CaseReplyAnalysis? replyReading;
+
+    /// <summary>
+    /// The invisible flow: what the supplier answered feeds Raffa's shared market base. Anonymised by the sink,
+    /// audited there, and never on the user's path: any failure is swallowed.
+    /// </summary>
+    private async Task ContributeToMarketAsync(TenantId tenantId, string actor, Guid caseId, CaseContractFacts cf, RenewalCase after, CancellationToken ct)
+    {
+        var reading = replyReading;
+        replyReading = null;
+        if (marketSink is null || reading is null || (reading.Prices is null && reading.Benchmark is null) || string.IsNullOrWhiteSpace(cf.Supplier))
+        {
+            return;
+        }
+
+        try
+        {
+            var (currency, country) = await memberDirectory.MarketProfileAsync(tenantId, ct).ConfigureAwait(false);
+            var main = cf.Products.OrderByDescending(p => p.Qty * p.Price).FirstOrDefault();
+            var b = reading.Benchmark;
+            var replyNo = after.Reps.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // One observation per priced term; a reply with terms but no price still records those terms.
+            var terms = reading.Prices is { Count: > 0 } priced ? priced.Select(kv => (Term: (int?)kv.Key, Price: (decimal?)(decimal)kv.Value)).ToList() : [(Term: b?.TermMonths, Price: (decimal?)null)];
+            foreach (var (term, price) in terms)
+            {
+                await marketSink.RecordAsync(
+                        tenantId, actor, $"{caseId:N}:{replyNo}",
+                        new Raffa.SharedKernel.Market.SupplierReplyObservation(
+                            cf.Supplier, string.IsNullOrWhiteSpace(cf.Category) ? null : cf.Category, country, currency,
+                            main?.Name, string.IsNullOrWhiteSpace(main?.Sku) ? null : main!.Sku, main?.Unit, price,
+                            term ?? b?.TermMonths, b?.DiscountPct, b?.UpliftCapPct, b?.NoticeDays, b?.PaymentTerms, clock.UtcNow),
+                        ct)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Invisible by design: the case never fails because of the benchmark.
+            _ = ex;
+        }
+    }
+
     // A document the user uploaded for the next addDoc / altOffer step (its name and text), read by the model.
     private (string File, string Text)? pendingDocument;
 
@@ -328,6 +372,11 @@ public sealed partial class RenewalCaseService(
                     }
 
                     var reading = await aiReader.ReadReplyAsync(tenantId, c, cf, pasted, c.Round + 1, lang, ct).ConfigureAwait(false);
+                    if (reading is not null)
+                    {
+                        replyReading = reading;
+                    }
+
                     return reading is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, reply: reading) }, null);
                 }
 
@@ -454,8 +503,8 @@ public sealed partial class RenewalCaseService(
                     ContentHash = Hash(rep.Text),
                     ThreadKey = next.Thread,
                     ParsedJson = JsonSerializer.Serialize(rep.Rows, RenewalCaseJson.Options),
-                    AnalysedByModel = Demo ? "fixture-script" : "not-available",
-                    PromptVersion = null,
+                    AnalysedByModel = Demo ? "fixture-script" : replyReading is not null ? "case-reply-reader" : "not-available",
+                    PromptVersion = replyReading is not null ? "case-reply-v2" : null,
                     InputHash = Hash(rep.Text),
                 });
             }
@@ -492,6 +541,7 @@ public sealed partial class RenewalCaseService(
             await WriteOutcomeAsync(tenantId, record, c, cf, ct).ConfigureAwait(false);
         }
 
+        await ContributeToMarketAsync(tenantId, caller.Name, record.Id.Value, cf, c, ct).ConfigureAwait(false);
         var env = Envelope(record, c, cf, caller.Name) with { Clip = clip, Tick = tick };
         return CaseResult.Ok(env);
     }
