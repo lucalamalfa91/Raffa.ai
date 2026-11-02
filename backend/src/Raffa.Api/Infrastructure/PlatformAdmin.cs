@@ -19,6 +19,10 @@ public sealed class PlatformAdminOptions
     /// <c>ExternalSubjectId</c> comparison in the product.</summary>
     public string[] ObjectIds { get; set; } = [];
 
+    /// <summary>The same allowlist as one comma-separated value (<c>PlatformAdmin__ObjectIdList</c>), the
+    /// shape Terraform publishes. Merged with <see cref="ObjectIds"/>.</summary>
+    public string? ObjectIdList { get; set; }
+
     /// <summary>When true, only a person holding an accepted Raffa invitation (or a platform admin) may
     /// create a company workspace: open self-service creation is switched off. Off by default so a
     /// local or test host keeps today's behaviour; turn on in dev and demo with
@@ -37,8 +41,10 @@ internal sealed class PlatformAdminGuard(ICallerIdentity callerIdentity, IOption
             return false;
         }
 
-        return options.Value.ObjectIds.Any(
-            configured => !string.IsNullOrWhiteSpace(configured)
-                && string.Equals(configured.Trim(), identity, StringComparison.Ordinal));
+        var configured = options.Value.ObjectIds
+            .Concat((options.Value.ObjectIdList ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return configured.Any(
+            entry => !string.IsNullOrWhiteSpace(entry)
+                && string.Equals(entry.Trim(), identity, StringComparison.Ordinal));
     }
 }

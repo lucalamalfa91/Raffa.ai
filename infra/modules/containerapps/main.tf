@@ -277,6 +277,20 @@ resource "azurerm_container_app" "api" {
         value = "https://${var.spa_host_name}"
       }
 
+      # Portal admin: the Super Admin allowlist as one comma-separated value
+      # (the API splits it), and -- only once at least one exists, so an empty
+      # list can never lock everybody out -- open workspace creation is
+      # switched off (a company workspace then needs a Raffa invitation).
+      env {
+        name  = "PlatformAdmin__ObjectIdList"
+        value = join(",", var.platform_admin_object_ids)
+      }
+
+      env {
+        name  = "PlatformAdmin__RequireInvitationToCreateWorkspace"
+        value = tostring(length(var.platform_admin_object_ids) > 0)
+      }
+
       env {
         name  = "Invitations__GuestProvisioning__Enabled"
         value = tostring(var.guest_provisioning_enabled)

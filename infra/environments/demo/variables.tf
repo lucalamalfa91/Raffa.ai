@@ -111,3 +111,9 @@ variable "guest_role_assignment_managed" {
   type        = bool
   default     = false
 }
+
+variable "platform_admin_object_ids" {
+  description = "Entra object ids (oid) of the Raffa Super Admins (Pietro, Luca) -- see modules/containerapps. Fill in before the next apply; while empty nobody is a Super Admin and workspace creation stays open."
+  type        = list(string)
+  default     = []
+}
