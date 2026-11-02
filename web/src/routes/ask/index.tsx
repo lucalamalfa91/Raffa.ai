@@ -41,6 +41,11 @@ const PICK_TITLE: Record<PickKind, string> = {
  * questions and sourced answers ("Fonte: …"), the contract picker only when the context is missing,
  * and the composer. Both columns share one 56px header line.
  */
+/** What a conversation is called: the name its owner gave it, else the automatic title. */
+function convName(c: { title: string; customTitle: string | null }): string {
+  return c.customTitle?.trim() ? c.customTitle : c.title;
+}
+
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const api = useMemo(() => askOfferApi(apiClient), [apiClient]);
   const tenantId = useShellContext()?.workspaceId ?? "";
@@ -60,6 +65,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [q, setQ] = useState("");
   const [showArchive, setShowArchive] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [convError, setConvError] = useState<string | null>(null);
 
   const reloadLists = useCallback(async () => {
     const [r, a] = await Promise.all([api.listConversations(tenantId, "recent"), api.listConversations(tenantId, "archived")]);
@@ -134,6 +142,37 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     void reloadLists();
   };
 
+  /** Name the open conversation (blank clears it, the automatic title shows again) -- the retired rail's "Rename". */
+  const saveRename = async () => {
+    if (!current || renaming === null) return;
+    const r = await apiClient.renameConversation(tenantId, current.id, renaming.trim() === "" ? null : renaming.trim());
+    if (r.ok) {
+      // The title shown is the server's (a custom name, else the automatic one): read it back.
+      const d = await api.getConversation(tenantId, current.id);
+      if (d.data) setCurrent(d.data);
+      setRenaming(null);
+      setConvError(null);
+      void reloadLists();
+    } else {
+      setConvError(r.error ?? t("The conversation could not be renamed."));
+    }
+  };
+
+  /** Delete the open conversation for good -- the retired rail's "Delete". */
+  const deleteCurrent = async () => {
+    if (!current) return;
+    const r = await apiClient.deleteConversation(tenantId, current.id);
+    if (r.ok) {
+      setConfirmDelete(false);
+      setConvError(null);
+      setCurrent(null);
+      navigate("/ask");
+      void reloadLists();
+    } else {
+      setConvError(r.error ?? t("The conversation could not be deleted."));
+    }
+  };
+
   const newConversation = () => {
     setPick(null);
     setQ("");
@@ -156,7 +195,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
           navigate(`/ask/${c.id}`);
         }}
       >
-        <span className="k6-conv-title">{c.title}</span>
+        <span className="k6-conv-title">{convName(c)}</span>
         <span className="k6-conv-meta">
           {`${when(c.updatedAt)} · ${countLabel(c.questionCount)}${c.archivedAt ? ` · ${t("archived")}` : ""}`}
         </span>
@@ -261,7 +300,36 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       <div className="k6-pane">
         <div className="k6-pane-head">
           <span className="k6-mark" />
-          <span className="k6-pane-title">{current ? current.title : t("New conversation")}</span>
+          {renaming !== null ? (
+            <form
+              className="k6-rename"
+              data-parity-hide
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveRename();
+              }}
+            >
+              <input
+                className="input k6-rename-input"
+                value={renaming}
+                maxLength={48}
+                autoFocus
+                aria-label={t("Conversation name")}
+                onChange={(e) => setRenaming(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setRenaming(null);
+                }}
+              />
+              <button type="submit" className="btn btn-secondary k6-pane-act">
+                {t("Save")}
+              </button>
+              <button type="button" className="btn btn-ghost k6-pane-act" onClick={() => setRenaming(null)}>
+                {t("Cancel")}
+              </button>
+            </form>
+          ) : (
+            <span className="k6-pane-title">{current ? convName(current) : t("New conversation")}</span>
+          )}
           <span className="k6-pane-meta">
             {current ? when(current.updatedAt) + (current.archivedAt ? ` · ${t("archived — write to reopen it")}` : "") : ""}
           </span>
@@ -269,6 +337,33 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
             <button type="button" className="btn btn-ghost k6-pane-archive" onClick={() => void toggleArchived()}>
               {current.archivedAt ? t("Reopen") : t("Archive")}
             </button>
+          ) : null}
+          {current && renaming === null ? (
+            confirmDelete ? (
+              <span className="k6-confirm" data-parity-hide>
+                <span>{t("Delete this conversation?")}</span>
+                <button type="button" className="btn btn-secondary k6-pane-act" onClick={() => void deleteCurrent()}>
+                  {t("Delete")}
+                </button>
+                <button type="button" className="btn btn-ghost k6-pane-act" onClick={() => setConfirmDelete(false)}>
+                  {t("Cancel")}
+                </button>
+              </span>
+            ) : (
+              <span className="k6-pane-acts" data-parity-hide>
+                <button type="button" className="btn btn-ghost k6-pane-act" onClick={() => setRenaming(convName(current))}>
+                  {t("Rename")}
+                </button>
+                <button type="button" className="btn btn-ghost k6-pane-act" onClick={() => setConfirmDelete(true)}>
+                  {t("Delete")}
+                </button>
+              </span>
+            )
+          ) : null}
+          {convError ? (
+            <span className="k6-conv-error" role="alert">
+              {convError}
+            </span>
           ) : null}
         </div>
         <div className="k6-scroll">

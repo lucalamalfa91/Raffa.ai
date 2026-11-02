@@ -237,10 +237,11 @@ public static class GroundedFallbackAnswer
     /// cue words) — the persona prompt's rule 5, "answer in the language of the question", for the
     /// copy this type writes itself. Anything else is answered in English.</summary>
     public static bool IsItalian(string question) =>
-        ItalianCue.Matches(question)
+        Raffa.SharedKernel.Language.ResponseLanguage.ChosenItalian
+        ?? (ItalianCue.Matches(question)
             .Select(match => match.Value.ToLowerInvariant())
             .Distinct(StringComparer.Ordinal)
-            .Count() >= 2;
+            .Count() >= 2);
 
     /// <summary>The lead paragraph: which contract was picked among several (NW-80: never dropped,
     /// so always first), the calculators' one verdict item, and the council's verdict on the goal —

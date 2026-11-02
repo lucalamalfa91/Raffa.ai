@@ -35,6 +35,12 @@ public static class QuestionLanguage
     /// <summary>"it" when the Italian lexicon outscores the English one, "en" otherwise.</summary>
     public static string Detect(string question)
     {
+        // The language chosen in the interface wins over the words of the question.
+        if (Raffa.SharedKernel.Language.ResponseLanguage.Current is { } chosen)
+        {
+            return chosen;
+        }
+
         if (string.IsNullOrWhiteSpace(question))
         {
             return English;

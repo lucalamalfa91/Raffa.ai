@@ -1,6 +1,21 @@
 /** Italian for Impostazioni (company rules): the interview, the policy upload and the lead time. */
 export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "Settings": "Impostazioni",
+  "Language": "Lingua",
+  "Dates to verify": "Date da verificare",
+  "Switch or create a workspace": "Cambia o crea un workspace",
+  "Rename": "Rinomina",
+  "Delete": "Elimina",
+  "Save": "Salva",
+  "Conversation name": "Nome della conversazione",
+  "Delete this conversation?": "Eliminare questa conversazione?",
+  "The conversation could not be renamed.": "Non è stato possibile rinominare la conversazione.",
+  "The conversation could not be deleted.": "Non è stato possibile eliminare la conversazione.",
+  "Account": "Account",
+  "Account: {user}": "Account: {user}",
+  "Workspace & members": "Workspace e membri",
+  "Workspace members": "Membri del workspace",
+  "Sign out": "Esci",
   "Tell Raffa how your company works.": "Spiega a Raffa come lavora la tua azienda.",
   "These rules decide what Raffa brings to Today and when, so it does not warn you about things that are far off.":
     "Queste regole decidono cosa Raffa porta in Oggi e quando, così non ti avvisa di cose ancora lontane.",

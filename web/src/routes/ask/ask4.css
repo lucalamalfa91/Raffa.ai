@@ -161,3 +161,11 @@
 .v4 .input.k6-composer-input { flex: 1; border: 0; background: transparent; font-size: 15px; min-height: 38px; }
 .v4 .btn.k6-composer-send { min-height: 38px; }
 .k6-composer-foot { font-size: 12px; color: var(--color-neutral-600); margin-top: 6px; }
+
+/* — rename / delete of the open conversation (the retired rail's actions) — */
+.k6-pane-acts, .k6-confirm, .k6-rename { display: inline-flex; align-items: center; gap: 6px; }
+.k6-rename { flex: 1; min-width: 0; }
+.v4 .k6-rename-input { max-width: 360px; min-height: 30px; font-size: 14px; }
+.v4 .btn.k6-pane-act { font-size: 13px; min-height: 28px; padding: 0 10px; white-space: nowrap; }
+.k6-confirm { font-size: 13px; color: var(--color-neutral-700); }
+.k6-conv-error { font-size: 13px; color: var(--color-accent-700); font-weight: 600; }

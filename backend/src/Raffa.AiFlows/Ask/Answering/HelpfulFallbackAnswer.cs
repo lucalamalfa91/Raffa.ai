@@ -253,5 +253,6 @@ public static class HelpfulFallbackAnswer
     /// answer's own cue list, or the planner's (which also knows the notice vocabulary — "quando",
     /// "scade", "disdetta", "preavviso").</summary>
     public static bool IsItalian(string question) =>
-        GroundedFallbackAnswer.IsItalian(question) || LanguageHint.IsItalian(question);
+        Raffa.SharedKernel.Language.ResponseLanguage.ChosenItalian
+        ?? (GroundedFallbackAnswer.IsItalian(question) || LanguageHint.IsItalian(question));
 }

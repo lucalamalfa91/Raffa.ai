@@ -65,7 +65,7 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
 
   // "Start & assign" only when there is a real colleague to assign to.
   const canAssign = !!board?.viewer.isApprover && !!board?.assignee;
-  const toContract = (x: RenewalsRow) => !x.hasCase && (x.termStatus === "expired" || x.termStatus === "needsReview");
+  const toContract = (x: RenewalsRow) => !x.hasCase && (x.termStatus === "expired" || x.termStatus === "needsReview" || x.termStatus === "unknown");
   const next = (x: RenewalsRow): string =>
     x.hasCase ? tr(x.next) : toContract(x) ? t("Open the contract") : x.days <= 120 ? (canAssign ? t("Start & assign") : t("Start the renewal")) : t("To start by {date}", { date: x.startBy });
   const cta = (x: RenewalsRow): string =>
@@ -84,6 +84,8 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
         return t("Expired on {date}", { date: x.end ?? "" });
       case "needsReview":
         return t("Renewal term to confirm");
+      case "unknown":
+        return t("Dates to verify");
       default:
         return null;
     }
@@ -116,7 +118,7 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
               <div className="r4-notice">
                 <div className="r4-label">{x.termStatus === "rolledOver" ? t("Next notice by") : x.days < 0 ? t("Notice deadline passed on") : t("Notice by")}</div>
                 <div className={x.days >= 0 && x.days <= 30 ? "r4-days is-urgent" : "r4-days"}>
-                  {x.days >= 0 ? (
+                  {x.days >= 0 && x.termStatus !== "unknown" ? (
                     <>
                       {x.notice} · {t("{n} d", { n: x.days })}
                     </>

@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { useGuideState } from "./guide";
+import AccountMenu, { type AccountMenuProps } from "./AccountMenu";
 
 /** The tabs (prototype: Oggi · Rinnovi · Contratti · Risultati · Chiedi, then Impostazioni) and what makes each active. */
 const TABS: ReadonlyArray<{ id: string; label: string; to: string; active: (path: string) => boolean }> = [
@@ -22,7 +23,7 @@ const TABS: ReadonlyArray<{ id: string; label: string; to: string; active: (path
  * 3px accent bottom border; badge on Oggi), and the Guida Raffa toggle. It is the page's
  * `<header>` (banner) landmark.
  */
-export default function TopNav() {
+export default function TopNav(account: AccountMenuProps) {
   const { t } = useI18n();
   const { pathname } = useLocation();
   const { open, toggle, badge } = useGuideState();
@@ -59,6 +60,7 @@ export default function TopNav() {
         <span className="v4-mark-sm" aria-hidden="true" />
         {t("Raffa guide")}
       </button>
+      <AccountMenu {...account} />
     </header>
   );
 }
