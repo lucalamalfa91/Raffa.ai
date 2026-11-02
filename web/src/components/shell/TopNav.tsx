@@ -17,15 +17,19 @@ const TABS: ReadonlyArray<{ id: string; label: string; to: string; active: (path
   { id: "settings", label: "Settings", to: "/settings", active: (p) => p.startsWith("/settings") },
 ];
 
+/** Raffa staff only (the portal admin profile): shown when the API says the caller is a platform admin. */
+const ADMIN_TAB = { id: "admin", label: "Admin", to: "/admin", active: (p: string) => p.startsWith("/admin") };
+
 /**
  * The AskRaffa 4.0 top nav (prototype lines 38-44): logo square + "Raffa.ai", five tabs (active =
  * 3px accent bottom border; badge on Oggi), and the Guida Raffa toggle. It is the page's
  * `<header>` (banner) landmark.
  */
-export default function TopNav() {
+export default function TopNav({ showAdmin = false }: { showAdmin?: boolean } = {}) {
   const { t } = useI18n();
   const { pathname } = useLocation();
   const { open, toggle, badge } = useGuideState();
+  const tabs = showAdmin ? [...TABS, ADMIN_TAB] : TABS;
 
   return (
     <header className="v4-nav">
@@ -34,7 +38,7 @@ export default function TopNav() {
         Raffa.ai
       </div>
       <nav className="v4-nav-tabs" aria-label={t("Primary")}>
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = tab.active(pathname);
           return (
             <Link

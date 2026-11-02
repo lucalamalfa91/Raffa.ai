@@ -123,6 +123,10 @@ builder.Services.AddScoped<Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearch
 // WorkspaceProvisioningService/WorkspaceMembershipService already are, not bound from the route.
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICallerIdentity, TokenCallerIdentity>();
+// Portal admin (Raffa staff): PlatformAdmin:ObjectIds allowlist, no database, no tenant role.
+builder.Services.Configure<Raffa.Api.Infrastructure.PlatformAdminOptions>(
+    builder.Configuration.GetSection(Raffa.Api.Infrastructure.PlatformAdminOptions.SectionName));
+builder.Services.AddScoped<Raffa.Api.Infrastructure.PlatformAdminGuard>();
 
 // Task E18/F01/US01/T01 (wave w15, NW-05; ADR-022 w15 footer clause 2; ADR-025 §I/Rule B1): the
 // request-scoped tenant selector every tenant-scoped endpoint now consumes instead of hand-parsing
@@ -502,6 +506,7 @@ app.MapHealthChecks("/health");
 // Task E01/F09/US01/T01 (r0-integration, AC-1 "create workspace -> invite"): see
 // WorkspaceEndpointExtensions for the endpoints themselves.
 app.MapWorkspaceEndpoints();
+app.MapPlatformAdminEndpoints();
 
 // Task E01/F06/US01/T01 (us-01-document-upload, AC-1) and E01/F06/US01/T02 (AC-3) first mapped
 // POST /api/documents and GET /api/documents/{id} inline here; task E02/F06/US01/T01

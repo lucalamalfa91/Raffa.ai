@@ -2591,6 +2591,9 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       createWorkspace: () => client.createWorkspace({ name: "Acme" }),
       inviteWorkspaceMember: () => client.inviteWorkspaceMember("tenant-1", { email: "buyer@acme.example", role: "Procurement" }),
       listWorkspaces: () => client.listWorkspaces(),
+      getPlatformAdminStatus: () => client.getPlatformAdminStatus!(),
+      createCustomerWorkspace: () =>
+        client.createCustomerWorkspace!({ name: "Acme", customerEmail: "cfo@acme.example" }),
       getWorkspaceMembers: () => client.getWorkspaceMembers("tenant-1"),
       getWorkspaceSettings: () => client.getWorkspaceSettings("tenant-1"),
       updateWorkspaceSettings: () => client.updateWorkspaceSettings("tenant-1", { webResearchEnabled: true }),

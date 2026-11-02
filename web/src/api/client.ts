@@ -148,6 +148,41 @@ export interface ListWorkspacesResult {
   error: string | null;
 }
 
+// Portal admin (Raffa staff): `GET /api/admin/me` and `POST /api/admin/workspaces`. Hand-written like
+// the invite types above -- the OpenAPI generator does not parse request bodies, and these two routes
+// are not in web/openapi/raffa-api.v1.json yet.
+export interface CreateCustomerWorkspaceRequest {
+  name: string;
+  /** The person who becomes the customer workspace's first Admin (invited, not granted). */
+  customerEmail: string;
+  industry?: string;
+  country?: string;
+}
+
+export interface CustomerWorkspaceInvitationBody {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+  acceptUrl: string;
+  deliveryOutcome: string;
+  identityProvisioned: boolean;
+}
+
+export interface CreateCustomerWorkspaceBody {
+  workspace: { id: string; name: string; createdAt: string };
+  /** Null when the workspace was created but the invitation could not be issued (see `invitationError`). */
+  invitation: CustomerWorkspaceInvitationBody | null;
+  invitationError: string | null;
+}
+
+export interface CreateCustomerWorkspaceResult {
+  ok: boolean;
+  statusCode: number | null;
+  result: CreateCustomerWorkspaceBody | null;
+  error: string | null;
+}
+
 // Task E14/F03/US01/T01 (wave w14, ADR-026 section D3): `getWorkspaceMembers(tenantId)`. The
 // backend handler is a same-phase sibling task's file (WorkspaceMembersEndpointExtensions.cs,
 // E14/F04/US01/T01); this client method and the OpenAPI contract it is anchored to are this task's
@@ -1482,6 +1517,16 @@ export interface ApiClient {
    */
   listWorkspaces(): Promise<ListWorkspacesResult>;
   /**
+   * Calls `GET /api/admin/me`: is the caller a Raffa platform admin (portal admin profile)? Never
+   * throws; any failure reads as `false`, so the portal simply does not show the Admin entry.
+   */
+  getPlatformAdminStatus?(): Promise<boolean>;
+  /**
+   * Calls `POST /api/admin/workspaces` (platform admin only): creates a customer's workspace and
+   * invites their first Admin. Same never-throws shape as `createWorkspace`.
+   */
+  createCustomerWorkspace?(request: CreateCustomerWorkspaceRequest): Promise<CreateCustomerWorkspaceResult>;
+  /**
    * Calls `GET /api/workspaces/{tenantId}/members` (operationId `getWorkspaceMembers`) -- the
    * roster of live members plus pending invitations (task E14/F03/US01/T01, wave w14; ADR-026
    * section D3). The tenant comes from the route; no `X-Tenant-Id` is sent
@@ -2238,6 +2283,54 @@ export function createApiClient(
       }
 
       return { ok: false, statusCode: response.status, member: null, failureReason: null, error };
+    },
+
+    async getPlatformAdminStatus() {
+      try {
+        const response = await apiFetch(new URL("/api/admin/me", baseUrl), {
+          method: "GET",
+          headers: { ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+        if (response.status !== 200) return false;
+        const body = (await response.json()) as { isPlatformAdmin?: unknown };
+        return body.isPlatformAdmin === true;
+      } catch {
+        return false;
+      }
+    },
+
+    async createCustomerWorkspace(request) {
+      let response: Response;
+      try {
+        response = await apiFetch(new URL("/api/admin/workspaces", baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...await authHeaders(getAccessToken) },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch (cause) {
+        return {
+          ok: false,
+          statusCode: null,
+          result: null,
+          error: `Unable to reach ${baseUrl}/api/admin/workspaces. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+        };
+      }
+
+      if (response.status === 201) {
+        const result = (await response.json()) as CreateCustomerWorkspaceBody;
+        return { ok: true, statusCode: 201, result, error: null };
+      }
+
+      let error: string;
+      try {
+        const errorBody: unknown = await response.json();
+        error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+      } catch {
+        error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+      }
+      return { ok: false, statusCode: response.status, result: null, error };
     },
 
     async listWorkspaces() {

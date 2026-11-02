@@ -1,0 +1,59 @@
+/* Portal admin (/admin). Uses the shared component classes (.screen-header, .field, .input, .btn, .table). */
+.admin-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px 32px;
+  max-width: 880px;
+}
+
+.admin-lede {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--color-neutral-600);
+  max-width: 640px;
+}
+
+.admin-card {
+  border: 1px solid var(--color-divider);
+  padding: 20px 24px;
+}
+
+.admin-card h2 {
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+
+.admin-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  align-items: end;
+}
+
+.admin-form .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.admin-result {
+  margin-top: 16px;
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-accent-100);
+  padding: 10px 16px;
+  font-size: 13px;
+}
+
+.admin-result .input {
+  margin: 6px 0 12px;
+}
+
+.admin-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--color-accent-700);
+}
+
+.admin-table {
+  font-size: 13px;
+}

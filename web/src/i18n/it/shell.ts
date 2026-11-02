@@ -7,6 +7,7 @@
 export const IT_SHELL: Readonly<Record<string, string>> = {
   // Top nav
   "Today": "Oggi",
+  "Admin": "Admin",
   "Renewals⟦nav⟧": "Rinnovi",
   "Contracts⟦nav⟧": "Contratti",
   "Results⟦nav⟧": "Risultati",

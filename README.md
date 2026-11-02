@@ -30,6 +30,22 @@ Renewals, and Quote check stay dim until the workspace has at least one
 **validated** contract (a linked document in `Completed`). Savings is always
 reachable.
 
+## Portal admin (Raffa staff)
+
+A platform admin is a person on the `PlatformAdmin:ObjectIds` allowlist (Entra `oid`s; in deployed
+environments `PlatformAdmin__ObjectIds__0=<oid>`, `__1`, ...). It is not a tenant role and not a table:
+it adds no RLS exception. Everyone else gets a 404 from `/api/admin/*`.
+
+Signed in as one, the top nav shows **Admin** (`/admin`): create a customer's workspace, invite their
+first Admin (the normal invitation lifecycle, role Admin), and **Open** the new workspace to try it. The
+platform admin becomes that workspace's Admin the same way any creator does, so it appears in their own
+workspace list. A new workspace is empty: the customer uploads their own contracts and builds from zero.
+
+| Route | Purpose |
+|-------|---------|
+| `GET /api/admin/me` | `{ isPlatformAdmin }` for any signed-in caller (drives the nav link) |
+| `POST /api/admin/workspaces` | `{ name, customerEmail, industry?, country? }` → workspace + Admin invitation |
+
 ## How a workspace works
 
 ```
