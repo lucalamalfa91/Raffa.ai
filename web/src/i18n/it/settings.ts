@@ -133,4 +133,7 @@ export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "Risks and terms to watch": "Rischi e clausole da controllare",
   "Which clauses and risks should we watch in this contract before renewing?": "Quali clausole e rischi dobbiamo controllare in questo contratto prima di rinnovare?",
   "Also search the public web for this question": "Cerca anche sul web pubblico per questa domanda",
+  "Negotiation points from Raffa": "Punti di negoziazione di Raffa",
+  "Done⟦point⟧": "Fatto",
+  "Mark done": "Segna come fatto",
 };

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AskShortcuts from "../../../components/ask/AskShortcuts";
+import NegotiationPoints from "../../../components/ask/NegotiationPoints";
 import type { ApiClient, ContractV4Body, DecisionPointBody, DecisionPointChoice } from "../../../api/client";
 import { useGuide } from "../../../components/shell/guide";
 import { useI18n } from "../../../i18n/I18nProvider";
@@ -216,6 +217,7 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
           { label: t("Negotiation email"), question: t("Draft the negotiation email to the supplier for this renewal.") },
         ]}
       />
+      <NegotiationPoints apiClient={apiClient} tenantId={tenantId ?? ""} contractId={contractId} />
       {actionError ? (
         <div className="c4-error" role="alert">
           <span>{t("The renewal case could not be opened.")}</span>
