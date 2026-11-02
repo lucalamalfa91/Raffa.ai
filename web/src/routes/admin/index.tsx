@@ -48,7 +48,7 @@ function useAdminData<T>(load: (() => Promise<AdminCallResult<T>>) | undefined) 
 }
 
 /**
- * Portal admin (Raffa staff; route `/admin`). Super Admin only: overview, workspace registry (metadata
+ * Pannello admin (Raffa staff; route `/admin`). Super Admin only: overview, workspace registry (metadata
  * only, with suspend/reactivate), prospect invitations and the people who accepted one. It never opens a
  * customer workspace and shows no customer content. The server answers 404 to anyone who is not a
  * platform admin, so this screen is only a view over what the API allows.
@@ -59,9 +59,9 @@ export default function AdminRoute({ apiClient }: AdminRouteProps) {
     <div className="admin-screen">
       <header className="screen-header">
         <div className="screen-kicker">Raffa staff</div>
-        <h1 className="screen-title">Admin portal</h1>
+        <h1 className="screen-title">Pannello admin</h1>
       </header>
-      <nav className="admin-tabs" aria-label="Admin sections">
+      <nav className="admin-tabs" aria-label="Sezioni del pannello admin">
         {TABS.map((t) => (
           <button
             key={t.id}

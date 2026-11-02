@@ -8,7 +8,7 @@ const client = (status: boolean): ApiClient => ({ getPlatformAdminStatus: vi.fn(
 describe("PlatformAdminLink", () => {
   it("links to the admin portal for a platform admin", async () => {
     render(<PlatformAdminLink apiClient={client(true)} />);
-    expect(await screen.findByRole("link", { name: "Admin portal" })).toHaveAttribute("href", "/admin");
+    expect(await screen.findByRole("link", { name: "Pannello admin" })).toHaveAttribute("href", "/admin");
   });
 
   it("shows nothing to anyone else, nor when the check is unavailable", async () => {
