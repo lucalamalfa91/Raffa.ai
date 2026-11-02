@@ -6,6 +6,9 @@ using Raffa.SharedKernel;
 
 namespace Raffa.Identity.Workspace.Infrastructure;
 
+/// <remarks>These row types are unmapped (<c>SqlQuery</c>); the context uses the snake_case naming convention,
+/// so every column a query returns must be aliased in snake_case (<c>created_at</c>, not <c>CreatedAt</c>).
+/// Only the scalar <c>Value</c> column of <c>SqlQuery&lt;int&gt;</c> keeps its fixed name.</remarks>
 public sealed class PlatformWorkspaceRow
 {
     public Guid TenantId { get; set; }
@@ -76,8 +79,8 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
     public Task<List<PlatformWorkspaceRow>> ListWorkspacesAsync(CancellationToken ct = default) =>
         db.Database.SqlQuery<PlatformWorkspaceRow>(
             $"""
-            SELECT tenant_id AS "TenantId", name AS "Name", admin_email AS "AdminEmail",
-                   created_at AS "CreatedAt", status AS "Status"
+            SELECT tenant_id AS "tenant_id", name AS "name", admin_email AS "admin_email",
+                   created_at AS "created_at", status AS "status"
             FROM platform_workspace ORDER BY created_at DESC
             """).ToListAsync(ct);
 
@@ -212,12 +215,12 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
         var rows = await db.Database.SqlQuery<PlatformOverview>(
             $"""
             SELECT
-              (SELECT count(*) FROM platform_workspace)::int AS "TotalWorkspaces",
-              (SELECT count(*) FROM platform_workspace WHERE status = 'active')::int AS "ActiveWorkspaces",
-              (SELECT count(*) FROM platform_workspace WHERE status = 'suspended')::int AS "SuspendedWorkspaces",
-              (SELECT count(*) FROM platform_invitation WHERE accepted_at IS NOT NULL)::int AS "RegisteredUsers",
+              (SELECT count(*) FROM platform_workspace)::int AS "total_workspaces",
+              (SELECT count(*) FROM platform_workspace WHERE status = 'active')::int AS "active_workspaces",
+              (SELECT count(*) FROM platform_workspace WHERE status = 'suspended')::int AS "suspended_workspaces",
+              (SELECT count(*) FROM platform_invitation WHERE accepted_at IS NOT NULL)::int AS "registered_users",
               (SELECT count(*) FROM platform_invitation
-                 WHERE accepted_at IS NULL AND revoked_at IS NULL AND expires_at > {now})::int AS "PendingInvitations"
+                 WHERE accepted_at IS NULL AND revoked_at IS NULL AND expires_at > {now})::int AS "pending_invitations"
             """).ToListAsync(ct).ConfigureAwait(false);
         return rows.Single();
     }
@@ -230,9 +233,9 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     private const string InvitationSelect =
         """
-        SELECT id AS "Id", email AS "Email", created_by AS "CreatedBy", created_at AS "CreatedAt",
-               expires_at AS "ExpiresAt", accepted_at AS "AcceptedAt", accepted_by_subject AS "AcceptedBySubject",
-               workspace_id AS "WorkspaceId", revoked_at AS "RevokedAt"
+        SELECT id AS "id", email AS "email", created_by AS "created_by", created_at AS "created_at",
+               expires_at AS "expires_at", accepted_at AS "accepted_at", accepted_by_subject AS "accepted_by_subject",
+               workspace_id AS "workspace_id", revoked_at AS "revoked_at"
         FROM platform_invitation
         """;
 
