@@ -245,6 +245,10 @@ module "containerapps" {
 # northeurope the same day, which is the revisit rule above. The GPT-5.6 and
 # gpt-6-luna/sol families are still NOT standalone-deployable here (they only
 # appear inside the model-router pool), so classify stays on gpt-5.4-nano.
+# Capacity is 100 (not 200): the subscription quota for gpt-6-astra
+# DataZoneStandard in northeurope is 100K TPM total (InsufficientQuota at 200,
+# 2026-11-02). Delete the manual gpt-6-astra-test (50K) BEFORE apply, or the
+# create needs 150 against 50 free.
 module "foundry" {
   source = "../../modules/foundry"
 
@@ -266,7 +270,7 @@ module "foundry" {
   )
 
   model_deployments = {
-    "gpt-6-astra"            = { model_version = "2026-09-03", sku_name = "DataZoneStandard", capacity = 200 }
+    "gpt-6-astra"            = { model_version = "2026-09-03", sku_name = "DataZoneStandard", capacity = 100 }
     "gpt-5.4-nano"           = { model_version = "2026-03-17", sku_name = "DataZoneStandard", capacity = 200 }
     "text-embedding-3-large" = { model_version = "1", sku_name = "GlobalStandard", capacity = 100 }
   }

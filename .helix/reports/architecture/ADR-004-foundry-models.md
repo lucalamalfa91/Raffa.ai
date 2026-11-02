@@ -230,7 +230,7 @@ returned `provisioningState: Succeeded` on 2026-11-02. SKU that ARM accepted:
 | Role | demo deployment (model, version, SKU) |
 | --- | --- |
 | classify | `gpt-5.4-nano-demo` (unchanged) |
-| extract, answer, research | `gpt-6-astra-demo` (gpt-6-astra 2026-09-03, DataZoneStandard, 200K TPM) |
+| extract, answer, research | `gpt-6-astra-demo` (gpt-6-astra 2026-09-03, DataZoneStandard, 100K TPM) |
 | embed | `text-embedding-3-large-demo` (unchanged) |
 
 Not used: `gpt-5.5` (also available, DataZoneStandard) is the fallback if
@@ -242,3 +242,14 @@ model version (ADR-011). `gpt-5.4-demo` is destroyed by this apply (deployment
 key change). `scripts/foundry_research_probe.py` must pass against
 `gpt-6-astra-demo` before the `research` role is trusted; delete the manual
 `gpt-6-astra-test` deployment once Terraform owns `gpt-6-astra-demo`.
+
+Quota (same day): a 200K request failed with `InsufficientQuota` -- the
+subscription quota for `OpenAI.DataZoneStandard.gpt-6-astra` in `northeurope`
+is **100K TPM total**. `demo` therefore runs astra at 100K, half the 200K the
+2026-09-09 sizing assumed for the shared extract/answer deployment (about
+8.3K TPM per in-flight document at 12 in flight). A 429 on extraction is
+absorbed by redelivery (delay, never a lost document); an interactive Ask can
+be throttled by a large batch. Remedy if it bites: request more quota for
+that SKU, or bind `extract` to `gpt-5.5` (separate quota). The manual
+`gpt-6-astra-test` (50K) must be deleted before the apply or it holds half
+the quota.
