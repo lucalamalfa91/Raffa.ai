@@ -10,7 +10,7 @@ namespace Raffa.Api.Infrastructure;
 /// <c>PlatformAdmin__ObjectIds__0=&lt;Entra oid&gt;</c>, <c>PlatformAdmin__ObjectIds__1=...</c>.
 /// Empty (the default) means nobody is a platform admin and every admin route answers 404.
 /// </summary>
-public sealed class PlatformAdminOptions
+internal sealed class PlatformAdminOptions
 {
     public const string SectionName = "PlatformAdmin";
 

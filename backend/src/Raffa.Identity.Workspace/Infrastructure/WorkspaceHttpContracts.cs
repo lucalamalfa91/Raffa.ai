@@ -33,3 +33,7 @@ public sealed record UpdateWorkspaceSettingsRequest(bool? WebResearchEnabled = n
 
 /// <summary>The settings a workspace member may read and its Admin may change (ADR-030).</summary>
 public sealed record WorkspaceSettingsResult(bool WebResearchEnabled);
+
+/// <summary>Body of `POST /api/admin/invitations` (portal admin): the prospect's address. Lives next to its
+/// service, not in the host, for the same reason as <see cref="CreateWorkspaceRequest"/>.</summary>
+public sealed record CreatePlatformInvitationRequest(string? Email);
