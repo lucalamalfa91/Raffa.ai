@@ -53,6 +53,12 @@ const REVIEW: Fallback = {
   why: "I ask you only about uncertain or conflicting fields; a high score never replaces your check.",
   next: "Once validated, the contract enters Today, Renewals and Contracts.",
 };
+const SETTINGS: Fallback = {
+  where: "Settings",
+  now: "Tell Raffa how your company works.",
+  why: "These rules decide what Raffa brings to Today and when, so it does not warn you about things that are far off.",
+  next: "Saved rules apply at once: Today and Renewals read them on the next load.",
+};
 const RESULTS: Fallback = {
   where: "Results⟦guide⟧",
   now: "Write your goal in your own words, then read what is signed and what is missing.",
@@ -81,6 +87,7 @@ export function fallbackFor(pathname: string): Fallback {
   if (path === "/contracts") return CONTRACTS;
   if (path.startsWith("/contracts/")) return CONTRACT;
   if (path.startsWith("/savings")) return RESULTS;
+  if (path.startsWith("/settings")) return SETTINGS;
   if (path.startsWith("/quotes")) return QUOTE;
   return ASK;
 }

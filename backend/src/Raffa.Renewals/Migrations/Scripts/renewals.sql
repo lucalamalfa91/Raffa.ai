@@ -513,3 +513,48 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102065220_AddCompanyRules') THEN
+    CREATE TABLE company_rules (
+        id uuid NOT NULL,
+        text text NOT NULL,
+        start_window_days integer NOT NULL,
+        source_file character varying(300),
+        updated_by character varying(200) NOT NULL,
+        updated_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_company_rules PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102065220_AddCompanyRules') THEN
+    CREATE UNIQUE INDEX ix_company_rules_tenant_id ON company_rules (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102065220_AddCompanyRules') THEN
+    ALTER TABLE "company_rules" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "company_rules" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "company_rules"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261102065220_AddCompanyRules') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261102065220_AddCompanyRules', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

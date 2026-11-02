@@ -126,3 +126,15 @@ public sealed class TodaySnoozeRecordConfiguration : IEntityTypeConfiguration<To
         builder.HasIndex(e => new { e.TenantId, e.UserId, e.ItemKey }).IsUnique();
     }
 }
+
+public sealed class CompanyRulesRecordConfiguration : IEntityTypeConfiguration<CompanyRulesRecord>
+{
+    public void Configure(EntityTypeBuilder<CompanyRulesRecord> builder)
+    {
+        CaseTableMapping.Ids(builder, "company_rules");
+        builder.Property(e => e.Text).IsRequired();
+        builder.Property(e => e.SourceFile).HasMaxLength(300);
+        builder.Property(e => e.UpdatedBy).IsRequired().HasMaxLength(200);
+        builder.HasIndex(e => e.TenantId).IsUnique();
+    }
+}

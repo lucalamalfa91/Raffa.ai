@@ -5,7 +5,7 @@ import { IT } from "../../src/i18n/it";
 import { format } from "../../src/i18n/translate";
 
 const SRC = join(__dirname, "../../src");
-const SCANNED = ["routes/renewals", "routes/today", "components/shell", "routes/ask", "routes/quotes", "routes/savings"];
+const SCANNED = ["routes/renewals", "routes/today", "components/shell", "routes/ask", "routes/quotes", "routes/savings", "routes/settings"];
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

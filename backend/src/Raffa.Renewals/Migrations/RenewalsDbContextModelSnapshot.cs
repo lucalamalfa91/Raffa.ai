@@ -305,6 +305,50 @@ namespace Raffa.Renewals.Migrations
                     b.ToTable("case_vendor_message", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.CompanyRulesRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("SourceFile")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("source_file");
+
+                    b.Property<int>("StartWindowDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("start_window_days");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_company_rules");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_company_rules_tenant_id");
+
+                    b.ToTable("company_rules", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Renewals.Domain.Cases.RenewalCaseRecord", b =>
                 {
                     b.Property<Guid>("Id")

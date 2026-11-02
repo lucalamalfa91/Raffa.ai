@@ -52,6 +52,7 @@
 import type { paths } from "./generated/schema";
 import { createCoalescingFetch, type CoalescingFetch } from "./coalescingFetch";
 import type { CaseActionPayload, CaseCallResult, CaseEnvelope, RenewalsBoard, TodayFeed } from "./renewalCases";
+import type { CompanyRulesBody, PolicyProposal, RuleInterviewReply, RuleTurn } from "./companyRules";
 
 /** See this file's own header comment ("Task E18/F01/US02/T01", NW-05). Returns a bearer access
  * token scoped to `appConfig.oidcApiScopes` (acquired via `acquireTokenSilent`, falling back to
@@ -1910,6 +1911,14 @@ export interface ApiClient {
   postRenewalCaseAction?(tenantId: string, caseId: string, type: string, payload: CaseActionPayload | null, version: number | null): Promise<CaseCallResult<CaseEnvelope>>;
   /** `POST /api/renewals/{caseId}/ask` -- the case composer (sourced answer, then back to the step). */
   askRenewalCase?(tenantId: string, caseId: string, text: string, version: number | null, lang?: string): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `GET /api/company-rules` -- the company rules and whether the caller may change them. */
+  getCompanyRules?(tenantId: string): Promise<CaseCallResult<CompanyRulesBody>>;
+  /** `PUT /api/company-rules` -- saves the rules (Admin only). */
+  saveCompanyRules?(tenantId: string, rules: { text: string; startWindowDays: number | null; sourceFile: string | null }): Promise<CaseCallResult<CompanyRulesBody>>;
+  /** `POST /api/company-rules/interview` -- one turn of Raffa's interview (stateless: the conversation goes along). */
+  interviewCompanyRules?(tenantId: string, turns: readonly RuleTurn[], currentText: string, lang: string): Promise<CaseCallResult<RuleInterviewReply>>;
+  /** `POST /api/company-rules/policy` -- Raffa reads an uploaded policy and proposes the rules (nothing is saved). */
+  uploadCompanyPolicy?(tenantId: string, file: File, lang: string): Promise<CaseCallResult<PolicyProposal>>;
 }
 
 
@@ -4232,6 +4241,25 @@ export function createApiClient(
       return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/ask`, { text, version, lang: lang ?? null });
     },
 
+    getCompanyRules(tenantId) {
+      return caseCall<CompanyRulesBody>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", "/api/company-rules");
+    },
+
+    saveCompanyRules(tenantId, rules) {
+      return caseCall<CompanyRulesBody>(apiFetch, baseUrl, getAccessToken, tenantId, "PUT", "/api/company-rules", rules);
+    },
+
+    interviewCompanyRules(tenantId, turns, currentText, lang) {
+      return caseCall<RuleInterviewReply>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", "/api/company-rules/interview", { turns, currentText, lang });
+    },
+
+    uploadCompanyPolicy(tenantId, file, lang) {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("lang", lang);
+      return caseCall<PolicyProposal>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", "/api/company-rules/policy", form);
+    },
+
   };
   askOfferTransports.set(client, transport);
   return client;
@@ -4541,20 +4569,22 @@ async function caseCall<T>(
   baseUrl: string,
   getAccessToken: GetAccessToken,
   tenantId: string,
-  method: "GET" | "POST" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<CaseCallResult<T>> {
+  // A FormData body (the policy upload) carries its own multipart Content-Type and boundary.
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   let response: Response;
   try {
     response = await apiFetch(new URL(path, baseUrl), {
       method,
       headers: {
         "X-Tenant-Id": tenantId,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(body === undefined || isForm ? {} : { "Content-Type": "application/json" }),
         ...await authHeaders(getAccessToken),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { body: isForm ? (body as FormData) : JSON.stringify(body) }),
       cache: "no-store",
     });
   } catch (cause) {

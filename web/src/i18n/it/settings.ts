@@ -1,0 +1,50 @@
+/** Italian for Impostazioni (company rules): the interview, the policy upload and the lead time. */
+export const IT_SETTINGS: Readonly<Record<string, string>> = {
+  "Settings": "Impostazioni",
+  "Tell Raffa how your company works.": "Spiega a Raffa come lavora la tua azienda.",
+  "These rules decide what Raffa brings to Today and when, so it does not warn you about things that are far off.":
+    "Queste regole decidono cosa Raffa porta in Oggi e quando, così non ti avvisa di cose ancora lontane.",
+  "Saved rules apply at once: Today and Renewals read them on the next load.":
+    "Le regole salvate valgono subito: Oggi e Rinnovi le leggono al prossimo caricamento.",
+  "Company rules": "Regole aziendali",
+  "Raffa follows these rules to decide what to tell you, and when. Write them, upload your policy, or let Raffa interview you.":
+    "Raffa segue queste regole per decidere cosa dirti e quando. Scrivile, carica la tua policy, oppure fatti intervistare da Raffa.",
+  "Only the Head of Procurement can change the company rules.": "Solo il Head of Procurement può cambiare le regole aziendali.",
+  "The rules": "Le regole",
+  "No rules saved yet. Raffa uses its defaults: a renewal shows on Today {n} days before its notice deadline.":
+    "Nessuna regola salvata. Raffa usa i valori predefiniti: un rinnovo compare in Oggi {n} giorni prima della disdetta.",
+  "From {file} · saved by {who}": "Da {file} · salvate da {who}",
+  "Saved by {who}": "Salvate da {who}",
+  "Rules, in your own words": "Le regole, con parole tue",
+  "For example: Start a renewal 90 days before the notice deadline. No auto-renewal above CHF 100k. The CFO approves anything above CHF 250k.":
+    "Per esempio: Avvia un rinnovo 90 giorni prima della disdetta. Niente rinnovo automatico oltre CHF 100k. Il CFO approva tutto ciò che supera CHF 250k.",
+  "Lead time: days before a notice deadline a renewal shows on Today": "Anticipo: giorni prima della disdetta da cui un rinnovo compare in Oggi",
+  "Earlier than this, the renewal stays in Renewals and Raffa does not bring it up.":
+    "Prima di allora il rinnovo resta in Rinnovi e Raffa non te ne parla.",
+  "Between {min} and {max} days.": "Tra {min} e {max} giorni.",
+  "Save the rules": "Salva le regole",
+  "Saving…": "Salvataggio…",
+  "Discard changes": "Annulla le modifiche",
+  "Saved. Raffa uses these rules from now on.": "Salvate. Da ora Raffa usa queste regole.",
+  "Start from your policy": "Parti dalla tua policy",
+  "Upload the procurement policy. Raffa reads it and proposes the rules; you check them before saving.":
+    "Carica la policy acquisti. Raffa la legge e propone le regole; le controlli prima di salvare.",
+  "Upload a policy": "Carica una policy",
+  "Raffa is reading…": "Raffa sta leggendo…",
+  "PDF, Word or text, up to 10 MB.": "PDF, Word o testo, fino a 10 MB.",
+  "Let Raffa interview you": "Fatti intervistare da Raffa",
+  "No policy? Answer a few questions and Raffa writes the rules with you. Already have rules? Raffa refines them.":
+    "Nessuna policy? Rispondi ad alcune domande e Raffa scrive le regole con te. Hai già delle regole? Raffa le affina.",
+  "Start the interview": "Inizia l'intervista",
+  "Refine the rules with Raffa": "Affina le regole con Raffa",
+  "You": "Tu",
+  "Raffa is thinking…": "Raffa sta pensando…",
+  "Your answer": "La tua risposta",
+  "Send": "Invia",
+  "What Raffa took from {file}": "Cosa Raffa ha preso da {file}",
+  "The rules Raffa wrote": "Le regole scritte da Raffa",
+  "Lead time: {n} days before a notice deadline.": "Anticipo: {n} giorni prima della disdetta.",
+  "Use these rules": "Usa queste regole",
+  "Discard": "Scarta",
+  "They go into the text above. Nothing changes until you save.": "Finiscono nel testo qui sopra. Non cambia nulla finché non salvi.",
+};

@@ -16660,6 +16660,241 @@
           }
         }
       }
+    },
+    "/api/company-rules": {
+      "get": {
+        "operationId": "getCompanyRules",
+        "summary": "The tenant's company rules and whether the caller may change them.",
+        "description": "Company rules (Impostazioni) - backend/src/Raffa.Api/CompanyRulesEndpointExtensions.cs. Any member reads.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rules (the defaults when none were saved).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CompanyRulesBody: {rules{text, startWindowDays, sourceFile, updatedAt, updatedBy, isDefault}, canEdit}."
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveCompanyRules",
+        "summary": "Saves the company rules (Admin only).",
+        "description": "Company rules (Impostazioni) - backend/src/Raffa.Api/CompanyRulesEndpointExtensions.cs. The lead time is clamped to 14-365 days; the text is limited to 12000 characters.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "{text, startWindowDays?, sourceFile?}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "CompanyRulesBody: {rules{text, startWindowDays, sourceFile, updatedAt, updatedBy, isDefault}, canEdit}."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The text is too long.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "{code:'too_long', error}"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only a workspace Admin (the Head of Procurement) changes the company rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "{code:'forbidden', error}"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company-rules/interview": {
+      "post": {
+        "operationId": "interviewCompanyRules",
+        "summary": "One turn of Raffa's interview to write or refine the company rules (Admin only).",
+        "description": "Company rules (Impostazioni) - backend/src/Raffa.Api/CompanyRulesEndpointExtensions.cs. Stateless: the client sends the conversation so far; the reply is the next question or, when Raffa has enough, the whole rules text.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "{turns[{role: raffa|user, text}], currentText?, lang?}"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The next question or the proposal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "RuleInterviewReply: {message, proposal, startWindowDays, done}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only a workspace Admin (the Head of Procurement) changes the company rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "{code:'forbidden', error}"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company-rules/policy": {
+      "post": {
+        "operationId": "uploadCompanyPolicy",
+        "summary": "Raffa reads an uploaded company policy and proposes the rules (Admin only). Nothing is saved.",
+        "description": "Company rules (Impostazioni) - backend/src/Raffa.Api/CompanyRulesEndpointExtensions.cs. multipart/form-data: file (PDF, Word, Excel, image, .txt or .md, up to 10 MB) and optional lang.",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "lang": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rules Raffa proposes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "PolicyProposal: {fileName, text, startWindowDays, summary}."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only a workspace Admin (the Head of Procurement) changes the company rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "{code:'forbidden', error}"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The file is too large."
+          },
+          "422": {
+            "description": "The document could not be read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "{code: unreadable|no_text, error}"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

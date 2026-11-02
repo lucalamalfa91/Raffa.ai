@@ -65,13 +65,13 @@ describe("AppShell (AskRaffa 4.0)", () => {
     expect(screen.getByRole("button", { name: "Raffa guide" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("renders the header nav first, with five tabs and the active one marked", () => {
+  it("renders the header nav first, with the six tabs and the active one marked", () => {
     renderShell("/contracts");
 
     const banner = screen.getByRole("banner");
     expect(within(banner).getByText("Raffa.ai")).toBeInTheDocument();
     const nav = within(banner).getByRole("navigation", { name: "Primary" });
-    expect(within(nav).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/today", "/renewals", "/contracts", "/savings", "/ask"]);
+    expect(within(nav).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["/today", "/renewals", "/contracts", "/savings", "/ask", "/settings"]);
     expect(within(nav).getByRole("link", { name: "Contracts" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "Today" })).not.toHaveAttribute("aria-current");
   });

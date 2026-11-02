@@ -1863,6 +1863,71 @@ export interface operations {
       };
     };
   };
+  getCompanyRules: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  saveCompanyRules: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      400: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  interviewCompanyRules: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  uploadCompanyPolicy: {
+    responses: {
+      200: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      403: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+      413: {
+        content: {
+        };
+      };
+      422: {
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -2128,5 +2193,15 @@ export interface paths {
   };
   "/api/savings/goals/active/progress": {
     get: operations["getSavingsGoalProgress"];
+  };
+  "/api/company-rules": {
+    get: operations["getCompanyRules"];
+    put: operations["saveCompanyRules"];
+  };
+  "/api/company-rules/interview": {
+    post: operations["interviewCompanyRules"];
+  };
+  "/api/company-rules/policy": {
+    post: operations["uploadCompanyPolicy"];
   };
 }
