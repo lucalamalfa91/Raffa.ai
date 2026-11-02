@@ -169,3 +169,4 @@
 .v4 .btn.k6-pane-act { font-size: 13px; min-height: 28px; padding: 0 10px; white-space: nowrap; }
 .k6-confirm { font-size: 13px; color: var(--color-neutral-700); }
 .k6-conv-error { font-size: 13px; color: var(--color-accent-700); font-weight: 600; }
+.k6-offer-file { display: none; }

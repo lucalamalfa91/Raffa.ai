@@ -82,11 +82,11 @@ describe("buildWorkspaceRowMeta", () => {
     expect(buildWorkspaceRowMeta(row({ contractCount: 7 }))).toBe("7 validated contracts");
   });
 
-  it("joins up to three segments with the count first, currency second, country name third", () => {
+  it("joins the count and the country name; the currency is not shown", () => {
     // The server stores and returns the ISO 3166-1 alpha-2 code (ADR-003 w14 footer clause 2);
     // the row shows the name the create form's select showed for it.
     expect(buildWorkspaceRowMeta(row({ contractCount: 2, currency: "CHF", country: "CH" }))).toBe(
-      "2 validated contracts · CHF · Switzerland",
+      "2 validated contracts · Switzerland",
     );
   });
 
@@ -98,7 +98,7 @@ describe("buildWorkspaceRowMeta", () => {
 
   it("drops a null country segment without leaving a gap, a dash, or a placeholder", () => {
     expect(buildWorkspaceRowMeta(row({ contractCount: 2, currency: "CHF", country: null }))).toBe(
-      "2 validated contracts · CHF",
+      "2 validated contracts",
     );
   });
 
@@ -108,7 +108,7 @@ describe("buildWorkspaceRowMeta", () => {
     expect(meta).not.toContain("eu-west");
   });
 
-  it("maps every one of the four stored codes to its name, case-insensitively, and never invents a name for a code outside them", () => {
+  it("maps every listed code to its name, case-insensitively, and never invents a name for a code outside the list", () => {
     expect(formatWorkspaceCountry("CH")).toBe("Switzerland");
     expect(formatWorkspaceCountry("IT")).toBe("Italy");
     expect(formatWorkspaceCountry("DE")).toBe("Germany");
@@ -116,7 +116,9 @@ describe("buildWorkspaceRowMeta", () => {
     expect(formatWorkspaceCountry("ch")).toBe("Switzerland");
     // The column is a free varchar(2): a code nothing writes today renders as the server holds
     // it, never dropped and never mapped to a neighbour.
-    expect(formatWorkspaceCountry("FR")).toBe("FR");
+    expect(formatWorkspaceCountry("FR")).toBe("France");
+    expect(formatWorkspaceCountry("US")).toBe("United States");
+    expect(formatWorkspaceCountry("ZZ")).toBe("ZZ");
   });
 });
 
@@ -184,8 +186,8 @@ describe("WorkspacePickerScreen states", () => {
     renderScreen({ phase: "pick", workspaces: [admin, legal] });
 
     expect(screen.getByRole("heading", { name: /choose a workspace/i })).toBeInTheDocument();
-    expect(screen.getByText("No validated contracts yet · CHF · Switzerland")).toBeInTheDocument();
-    expect(screen.getByText("1 validated contract · EUR · Italy")).toBeInTheDocument();
+    expect(screen.getByText("No validated contracts yet · Switzerland")).toBeInTheDocument();
+    expect(screen.getByText("1 validated contract · Italy")).toBeInTheDocument();
     expect(screen.getByText("Workspace Admin")).toBeInTheDocument();
     // The server's role is shown verbatim for a role this app's nav does not model -- never
     // relabelled "Procurement" (ADR-019 w14 footer clause 5).
@@ -219,7 +221,7 @@ describe("WorkspacePickerScreen states", () => {
  * for that exact defect.
  */
 describe("CreateWorkspaceForm", () => {
-  it("shows the country names, submits the ISO code, and echoes the currency derived from it", async () => {
+  it("shows the country names, submits the ISO code, and shows no currency", async () => {
     const createWorkspace = vi.fn().mockResolvedValue({
       ok: true,
       statusCode: 201,
@@ -241,11 +243,15 @@ describe("CreateWorkspaceForm", () => {
     // The default (Switzerland, the export's first option) already derives CHF before anything is typed.
     const country = screen.getByLabelText(/^country$/i);
     expect(screen.getByRole("option", { name: "Switzerland" })).toHaveValue("CH");
-    expect(screen.getByText("Amounts are shown in CHF.")).toBeInTheDocument();
+    expect(screen.queryByText(/Amounts are shown in/)).toBeNull();
+    // A wide list of countries and industries, not four.
+    expect(screen.getAllByRole("option", { name: "France" })).toHaveLength(1);
+    expect(screen.getByRole("option", { name: "United States" })).toHaveValue("US");
+    expect(screen.getByRole("option", { name: "Pharma & life sciences" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Telecommunications" })).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText(/^company$/i), "LUCA TEST SRL");
     await userEvent.selectOptions(country, "Italy");
-    expect(screen.getByText("Amounts are shown in EUR.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /create workspace/i }));
 
     // The code, never the label, is what crosses the wire.
@@ -253,7 +259,7 @@ describe("CreateWorkspaceForm", () => {
     // ...and the row handed to the shell carries the same code the server would return, plus the
     // derived currency, so the picker renders "· EUR · Italy" for it exactly as for a server row.
     expect(onEnter).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "w-new", name: "LUCA TEST SRL", role: "Admin", contractCount: 0, country: "IT", currency: "EUR" }),
+      expect.objectContaining({ id: "w-new", name: "LUCA TEST SRL", role: "Admin", contractCount: 0, country: "IT" }),
     );
   });
 });

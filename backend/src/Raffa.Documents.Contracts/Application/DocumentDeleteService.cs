@@ -119,6 +119,8 @@ public sealed class DocumentDeleteService(
         // document link" — never a cascade into the contract).
         var detachedContract = document.ContractId;
 
+        dbContext.DocumentFieldDecisions.RemoveRange(await dbContext.DocumentFieldDecisions
+            .Where(d => d.TenantId == tenantId && d.DocumentId == documentId).ToListAsync(cancellationToken).ConfigureAwait(false));
         dbContext.ExtractionJobs.RemoveRange(jobs);
         dbContext.DocumentVersions.RemoveRange(versions);
         dbContext.Documents.Remove(document);

@@ -65,6 +65,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [q, setQ] = useState("");
   const [showArchive, setShowArchive] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [uploadingOffer, setUploadingOffer] = useState(false);
+  const offerInput = useRef<HTMLInputElement>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [convError, setConvError] = useState<string | null>(null);
@@ -170,6 +172,21 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       void reloadLists();
     } else {
       setConvError(r.error ?? t("The conversation could not be deleted."));
+    }
+  };
+
+  /** Add an offer to compare (PDF, Word, Excel or a scan) -- the retired Quote check's upload. */
+  const uploadOffer = async (file: File) => {
+    setUploadingOffer(true);
+    setConvError(null);
+    const r = await apiClient.uploadQuote(tenantId, file);
+    setUploadingOffer(false);
+    if (offerInput.current) offerInput.current.value = "";
+    if (r.ok && r.quote) {
+      setPick(null);
+      navigate(`/quotes/${encodeURIComponent(r.quote.id)}`);
+    } else {
+      setConvError(r.error ?? t("The offer could not be uploaded."));
     }
   };
 
@@ -397,10 +414,34 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                       {o.label}
                     </button>
                   ))}
+                  {pick.kind === "quote" ? (
+                    <span data-parity-hide>
+                      <input
+                        ref={offerInput}
+                        type="file"
+                        accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
+                        className="k6-offer-file"
+                        aria-label={t("Upload an offer")}
+                        disabled={uploadingOffer}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void uploadOffer(f);
+                        }}
+                      />
+                      <button type="button" className="btn btn-primary k6-pick-opt" disabled={uploadingOffer} onClick={() => offerInput.current?.click()}>
+                        {uploadingOffer ? t("Raffa is reading…") : t("Upload an offer")}
+                      </button>
+                    </span>
+                  ) : null}
                   <button type="button" className="btn btn-ghost k6-pick-cancel" onClick={() => setPick(null)}>
                     {t("Cancel")}
                   </button>
                 </div>
+                {convError && !current ? (
+                  <div className="k6-conv-error" role="alert">
+                    {convError}
+                  </div>
+                ) : null}
               </div>
             ) : null}
             {(current?.messages ?? []).map((m) => {

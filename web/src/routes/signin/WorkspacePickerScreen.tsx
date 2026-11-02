@@ -98,12 +98,40 @@ export interface WorkspacePickerScreenProps {
 /** `markup.html:55`, verbatim, `Other` last -- the "not specified" case, not a separate blank
  * sentinel option (a task adding one would contradict this same anchor). */
 const INDUSTRY_OPTIONS = [
+  "Aerospace & defense",
+  "Agriculture",
+  "Automotive",
+  "Banking",
+  "Chemicals",
+  "Construction & engineering",
+  "Consumer goods",
+  "Education",
+  "Energy & utilities",
   "Food & beverage",
-  "Manufacturing",
   "Financial services",
+  "Government & public sector",
+  "Healthcare",
+  "Hospitality & tourism",
+  "Insurance",
+  "IT services",
+  "Logistics & transport",
+  "Manufacturing",
+  "Media & entertainment",
+  "Mining & metals",
+  "Non-profit",
+  "Oil & gas",
+  "Pharma & life sciences",
+  "Professional services",
+  "Real estate",
+  "Retail & e-commerce",
+  "Semiconductors & electronics",
   "Software",
+  "Telecommunications",
   "Other",
 ] as const;
+
+/** What the form preselects (the first industry the design listed). */
+const DEFAULT_INDUSTRY = "Food & beverage";
 
 /** `markup.html:56`, verbatim and in the export's own order. The **label** is the country's name;
  * the **value** the form submits is the ISO 3166-1 alpha-2 code the API validates and stores
@@ -114,31 +142,69 @@ const INDUSTRY_OPTIONS = [
  * currency and name derivations below are total over this list by construction (`Record`s keyed
  * on the same literal union), so there is no "unknown country" branch to write and none to test. */
 const COUNTRY_OPTIONS = [
-  { code: "CH", name: "Switzerland" },
-  { code: "IT", name: "Italy" },
-  { code: "DE", name: "Germany" },
+  { code: "AR", name: "Argentina" },
+  { code: "AU", name: "Australia" },
   { code: "AT", name: "Austria" },
+  { code: "BE", name: "Belgium" },
+  { code: "BR", name: "Brazil" },
+  { code: "BG", name: "Bulgaria" },
+  { code: "CA", name: "Canada" },
+  { code: "CL", name: "Chile" },
+  { code: "CN", name: "China" },
+  { code: "CO", name: "Colombia" },
+  { code: "HR", name: "Croatia" },
+  { code: "CY", name: "Cyprus" },
+  { code: "CZ", name: "Czechia" },
+  { code: "DK", name: "Denmark" },
+  { code: "EG", name: "Egypt" },
+  { code: "EE", name: "Estonia" },
+  { code: "FI", name: "Finland" },
+  { code: "FR", name: "France" },
+  { code: "DE", name: "Germany" },
+  { code: "GR", name: "Greece" },
+  { code: "HK", name: "Hong Kong" },
+  { code: "HU", name: "Hungary" },
+  { code: "IS", name: "Iceland" },
+  { code: "IN", name: "India" },
+  { code: "IE", name: "Ireland" },
+  { code: "IL", name: "Israel" },
+  { code: "IT", name: "Italy" },
+  { code: "JP", name: "Japan" },
+  { code: "KE", name: "Kenya" },
+  { code: "LV", name: "Latvia" },
+  { code: "LI", name: "Liechtenstein" },
+  { code: "LT", name: "Lithuania" },
+  { code: "LU", name: "Luxembourg" },
+  { code: "MT", name: "Malta" },
+  { code: "MX", name: "Mexico" },
+  { code: "MA", name: "Morocco" },
+  { code: "NL", name: "Netherlands" },
+  { code: "NZ", name: "New Zealand" },
+  { code: "NG", name: "Nigeria" },
+  { code: "NO", name: "Norway" },
+  { code: "PL", name: "Poland" },
+  { code: "PT", name: "Portugal" },
+  { code: "RO", name: "Romania" },
+  { code: "SA", name: "Saudi Arabia" },
+  { code: "SG", name: "Singapore" },
+  { code: "SK", name: "Slovakia" },
+  { code: "SI", name: "Slovenia" },
+  { code: "ZA", name: "South Africa" },
+  { code: "KR", name: "South Korea" },
+  { code: "ES", name: "Spain" },
+  { code: "SE", name: "Sweden" },
+  { code: "CH", name: "Switzerland" },
+  { code: "TR", name: "Türkiye" },
+  { code: "AE", name: "United Arab Emirates" },
+  { code: "GB", name: "United Kingdom" },
+  { code: "US", name: "United States" },
 ] as const;
+/** What the form preselects. */
+const DEFAULT_COUNTRY = "CH";
 type CountryCode = (typeof COUNTRY_OPTIONS)[number]["code"];
 
-/** The display echo of the derivation the server performs when it stores a workspace's currency
- * (ADR-003 w14 footer; `WorkspaceProvisioningService.CurrencyByCountry`, mirrored key for key).
- * Never sent on the wire -- the request carries `country` only; this map exists so the form can
- * show "Amounts are shown in {currency}." *before* the workspace exists. */
-const COUNTRY_CURRENCY: Record<CountryCode, string> = {
-  CH: "CHF",
-  IT: "EUR",
-  DE: "EUR",
-  AT: "EUR",
-};
-
 /** Code -> the same display name the select shows, for the pick row's third segment. */
-const COUNTRY_NAME: Record<CountryCode, string> = {
-  CH: "Switzerland",
-  IT: "Italy",
-  DE: "Germany",
-  AT: "Austria",
-};
+const COUNTRY_NAME: Record<string, string> = Object.fromEntries(COUNTRY_OPTIONS.map((o) => [o.code, o.name]));
 
 /**
  * The business country **name** for a stored code (the server stores and returns `CH`, never
@@ -147,7 +213,7 @@ const COUNTRY_NAME: Record<CountryCode, string> = {
  */
 export function formatWorkspaceCountry(country: string): string {
   const code = country.trim().toUpperCase();
-  return Object.hasOwn(COUNTRY_NAME, code) ? COUNTRY_NAME[code as CountryCode] : country;
+  return Object.hasOwn(COUNTRY_NAME, code) ? (COUNTRY_NAME[code] ?? country) : country;
 }
 
 function formatValidatedContractsSegment(count: number): string {
@@ -173,7 +239,6 @@ function isPresentSegment(value: string | null | undefined): value is string {
 export function buildWorkspaceRowMeta(workspace: WorkspaceSummaryBody): string {
   return [
     formatValidatedContractsSegment(workspace.contractCount),
-    isPresentSegment(workspace.currency) ? workspace.currency : null,
     isPresentSegment(workspace.country) ? formatWorkspaceCountry(workspace.country) : null,
   ]
     .filter(isPresentSegment)
@@ -195,12 +260,10 @@ interface CreateWorkspaceFormProps {
  */
 function CreateWorkspaceForm({ apiClient, onCreated, onCancel }: CreateWorkspaceFormProps) {
   const [name, setName] = useState("");
-  const [industry, setIndustry] = useState<string>(INDUSTRY_OPTIONS[0]);
-  const [country, setCountry] = useState<CountryCode>(COUNTRY_OPTIONS[0].code);
+  const [industry, setIndustry] = useState<string>(DEFAULT_INDUSTRY);
+  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const currency = COUNTRY_CURRENCY[country];
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -231,7 +294,8 @@ function CreateWorkspaceForm({ apiClient, onCreated, onCancel }: CreateWorkspace
         role: result.workspace.role,
         contractCount: noContractsYet,
         country,
-        currency,
+        // The server derives and stores the currency; the screens no longer show it.
+        currency: "",
       });
     });
   };
@@ -282,9 +346,6 @@ function CreateWorkspaceForm({ apiClient, onCreated, onCancel }: CreateWorkspace
             </option>
           ))}
         </select>
-        {/* A wrong guess is catchable before the workspace exists -- the *stored* value is always
-            the server's own derivation; this is a display echo of the same total, four-entry map. */}
-        <p className="micro-meta">Amounts are shown in {currency}.</p>
       </div>
       {error && <p className="signin-form-error">{error}</p>}
       <div className="workspace-form-actions">

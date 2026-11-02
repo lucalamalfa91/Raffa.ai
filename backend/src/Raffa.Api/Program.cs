@@ -387,6 +387,7 @@ builder.Services.AddScoped<Raffa.Renewals.Application.CaseWork.ICaseMemberDirect
 // (PATCH /api/contracts/{id}) is its only caller.
 builder.Services.AddScoped<RenewalAlertRecomputeService>();
 builder.Services.AddScoped<DocumentPurgeAllService>();
+builder.Services.AddScoped<ContractDeleteService>();
 
 // Task E04/F02/US02/T01 (savings-opportunity, GET/PATCH /api/savings): the Savings module's own
 // AddSavingsModule(IServiceCollection, string) (ADR-002) — this module's first DbContext

@@ -84,7 +84,7 @@ function ShellLayout({ workspaceId, workspaceName, role, userLabel, onSignOut, o
       <TopNav showAdmin={isPlatformAdmin} workspaceName={workspaceName} role={role} userLabel={userLabel} onSignOut={onSignOut} onSwitchWorkspace={onSwitchWorkspace} />
       <div className={open ? "v4-body" : "v4-body is-guide-closed"}>
         <main className="v4-main" ref={mainRef}>
-          <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
+          <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts, role }} />
         </main>
         {open ? <GuidePanel /> : null}
       </div>

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ApiClient, ContractListRowV4Body, ContractListV4Body } from "../../api/client";
 import { useGuide } from "../../components/shell/guide";
+import { useShellContext } from "../../components/shell/shellContext";
+import { notifyTodayChanged } from "../today/loadToday";
 import { useI18n } from "../../i18n/I18nProvider";
-import { chfK, CONTRACTS_CHANGED_EVENT, URGENT_NOTICE_DAYS, useTenantId } from "./contracts4";
+import { announceContractsChanged, chfK, CONTRACTS_CHANGED_EVENT, URGENT_NOTICE_DAYS, useTenantId } from "./contracts4";
 import { reviewPath, useContractUpload } from "./useContractUpload";
 import "./contracts4.css";
 
@@ -34,6 +36,9 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
   const navigate = useNavigate();
   const tenantId = useTenantId();
   const upload = useContractUpload(apiClient);
+  const canDelete = useShellContext()?.role === "admin";
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [list, setList] = useState<ContractListV4Body | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +82,21 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
   const rows = list?.rows ?? [];
   const doc = list?.document ?? null;
   const open = (row: ContractListRowV4Body) => navigate(`/contracts/${encodeURIComponent(row.contractId)}`);
+  /** Delete a contract for good (Admin): it, its documents, its renewal case and chats. */
+  const removeContract = async (contractId: string) => {
+    if (!tenantId || !apiClient.deleteContract) return;
+    setDeleteError(null);
+    const r = await apiClient.deleteContract(tenantId, contractId);
+    if (r.ok) {
+      setConfirmDelete(null);
+      void load();
+      announceContractsChanged();
+      notifyTodayChanged();
+    } else {
+      setDeleteError(r.error || t("The contract could not be deleted."));
+    }
+  };
+
   const onKey = (event: KeyboardEvent, go: () => void) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -159,6 +179,12 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
         </div>
       ) : null}
 
+      {deleteError ? (
+        <div className="c4-error" role="alert">
+          <span>{deleteError}</span>
+        </div>
+      ) : null}
+
       <div className="c4-rows">
         {list && rows.length === 0 ? (
           <div className="c4-empty">
@@ -205,6 +231,25 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
             <span className={row.status === "validated" ? "tag tag-neutral c4-tag" : "tag tag-accent c4-tag"}>
               {t(STATUS_LABEL[row.status])}
             </span>
+            {canDelete ? (
+              <span className="c4-del" data-parity-hide onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                {confirmDelete === row.contractId ? (
+                  <>
+                    <span className="c4-del-ask">{t("Delete this contract and its documents?")}</span>
+                    <button type="button" className="btn btn-secondary c4-del-btn" onClick={() => void removeContract(row.contractId)}>
+                      {t("Delete")}
+                    </button>
+                    <button type="button" className="btn btn-ghost c4-del-btn" onClick={() => setConfirmDelete(null)}>
+                      {t("Cancel")}
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className="btn btn-ghost c4-del-btn" onClick={() => setConfirmDelete(row.contractId)}>
+                    {t("Delete")}
+                  </button>
+                )}
+              </span>
+            ) : null}
           </div>
         ))}
       </div>

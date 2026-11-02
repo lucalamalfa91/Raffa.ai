@@ -2,6 +2,10 @@
 export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "Settings": "Impostazioni",
   "Language": "Lingua",
+  "Upload an offer": "Carica un'offerta",
+  "The offer could not be uploaded.": "Non è stato possibile caricare l'offerta.",
+  "Delete this contract and its documents?": "Eliminare questo contratto e i suoi documenti?",
+  "The contract could not be deleted.": "Non è stato possibile eliminare il contratto.",
   "Dates to verify": "Date da verificare",
   "Switch or create a workspace": "Cambia o crea un workspace",
   "Rename": "Rinomina",
