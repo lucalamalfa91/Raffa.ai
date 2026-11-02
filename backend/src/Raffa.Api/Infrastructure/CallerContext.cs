@@ -110,7 +110,8 @@ internal readonly struct CallerTenantResult
 }
 
 internal sealed class CallerContext(
-    ICallerIdentity callerIdentity, IdentityWorkspaceDbContext dbContext, ITenantContext tenantContext)
+    ICallerIdentity callerIdentity, IdentityWorkspaceDbContext dbContext, ITenantContext tenantContext,
+    PlatformAdminService platformAdminService)
     : ICallerContext
 {
     private const string TenantHeaderName = "X-Tenant-Id";
@@ -159,6 +160,13 @@ internal sealed class CallerContext(
             {
                 scope.Dispose();
                 return CallerTenantResult.Fail(Results.NotFound());
+            }
+
+            // A suspended workspace answers 403 to its own members on every tenant-scoped request.
+            if (await platformAdminService.IsSuspendedAsync(tenantGuid, cancellationToken).ConfigureAwait(false))
+            {
+                scope.Dispose();
+                return CallerTenantResult.Fail(Results.StatusCode(StatusCodes.Status403Forbidden));
             }
 
             return CallerTenantResult.Success(tenantId, identity, scope);

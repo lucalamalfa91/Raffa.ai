@@ -32,19 +32,31 @@ reachable.
 
 ## Portal admin (Raffa staff)
 
-A platform admin is a person on the `PlatformAdmin:ObjectIds` allowlist (Entra `oid`s; in deployed
-environments `PlatformAdmin__ObjectIds__0=<oid>`, `__1`, ...). It is not a tenant role and not a table:
-it adds no RLS exception. Everyone else gets a 404 from `/api/admin/*`.
+The Super Admin is a person on the `PlatformAdmin:ObjectIds` allowlist (Entra `oid`s; in deployed
+environments `PlatformAdmin__ObjectIds__0=<oid>`, `__1`, ...). It is not a workspace role and not a
+member of any workspace: it sees platform metadata only (never contracts, files or chats) and adds no
+RLS exception. Everyone else gets a 404 from `/api/admin/*`.
 
-Signed in as one, the top nav shows **Admin** (`/admin`): create a customer's workspace, invite their
-first Admin (the normal invitation lifecycle, role Admin), and **Open** the new workspace to try it. The
-platform admin becomes that workspace's Admin the same way any creator does, so it appears in their own
-workspace list. A new workspace is empty: the customer uploads their own contracts and builds from zero.
+Signed in as one, the top nav shows **Admin** (`/admin`): Overview, Workspaces (company, ID,
+administrator, created, status; suspend / reactivate), Invitations (create, copy, regenerate, revoke) and
+Users (people who accepted an invitation).
 
-| Route | Purpose |
-|-------|---------|
-| `GET /api/admin/me` | `{ isPlatformAdmin }` for any signed-in caller (drives the nav link) |
-| `POST /api/admin/workspaces` | `{ name, customerEmail, industry?, country? }` → workspace + Admin invitation |
+**Prospect flow.** The Super Admin creates an invitation for an email address and copies the link
+(`/prospect/accept#<secret>`). The prospect signs in with that address, accepts, and creates their own
+workspace with the normal first-run screen, becoming its Admin; their Admin then invites colleagues from
+Workspace & members as today. An invitation is bound to one address, single-use, revocable, expires in 7
+days and is stored as a hash; one accepted invitation makes one workspace.
+
+| Setting | Meaning |
+|---------|---------|
+| `PlatformAdmin__ObjectIds__N` | Super Admin identities |
+| `PlatformAdmin__RequireInvitationToCreateWorkspace=true` | Turns off open workspace creation (set it in `dev` and `demo`; off by default so local hosts behave as before) |
+
+Data: two platform tables, `platform_workspace` (a metadata registry; existing workspaces register
+themselves the first time a member lists their workspaces) and `platform_invitation`
+(migration `AddPlatformAdminTables`, raw SQL, no RLS: they hold no customer data). A suspended workspace
+is not offered to its members and answers 403 on tenant-scoped requests that go through the shared caller
+check.
 
 ## How a workspace works
 

@@ -1,90 +1,98 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ApiClient, CreateCustomerWorkspaceResult } from "../../../src/api/client";
+import type { AdminCallResult, ApiClient } from "../../../src/api/client";
 import AdminRoute from "../../../src/routes/admin";
 
-const WORKSPACE = { id: "11111111-1111-1111-1111-111111111111", name: "Staff Home", role: "Admin", contractCount: 0, createdAt: "2026-09-01T00:00:00Z" };
+const ok = <T,>(body: T): AdminCallResult<T> => ({ ok: true, statusCode: 200, body, error: null });
 
-function fakeClient(create: CreateCustomerWorkspaceResult): ApiClient {
+function fakeClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
-    listWorkspaces: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, workspaces: [WORKSPACE], pendingInvitations: [], error: null }),
-    createCustomerWorkspace: vi.fn().mockResolvedValue(create),
+    getAdminOverview: vi.fn().mockResolvedValue(
+      ok({ totalWorkspaces: 3, activeWorkspaces: 2, suspendedWorkspaces: 1, registeredUsers: 4, pendingInvitations: 2 }),
+    ),
+    listAdminWorkspaces: vi.fn().mockResolvedValue(
+      ok({
+        workspaces: [
+          { id: "w1", name: "Prada", adminEmail: "ceo@prada.example", createdAt: "2026-10-01T00:00:00Z", status: "active" },
+          { id: "w2", name: "Bulgari", adminEmail: null, createdAt: "2026-10-02T00:00:00Z", status: "suspended" },
+        ],
+      }),
+    ),
+    setAdminWorkspaceStatus: vi.fn().mockResolvedValue({ ok: true, statusCode: 204, body: null, error: null }),
+    listAdminInvitations: vi.fn().mockResolvedValue(
+      ok({
+        invitations: [
+          { id: "i1", email: "cfo@roche.example", status: "pending", createdAt: "2026-10-03T00:00:00Z", expiresAt: "2026-10-10T00:00:00Z", acceptedAt: null, workspaceId: null },
+          { id: "i2", email: "old@x.example", status: "expired", createdAt: "2026-09-01T00:00:00Z", expiresAt: "2026-09-08T00:00:00Z", acceptedAt: null, workspaceId: null },
+        ],
+      }),
+    ),
+    createAdminInvitation: vi.fn().mockResolvedValue(
+      ok({ id: "i3", email: "new@acme.example", expiresAt: "2026-11-09T00:00:00Z", acceptUrl: "https://app.example/prospect/accept#secret" }),
+    ),
+    regenerateAdminInvitation: vi.fn(),
+    revokeAdminInvitation: vi.fn().mockResolvedValue({ ok: true, statusCode: 204, body: null, error: null }),
+    listAdminUsers: vi.fn().mockResolvedValue(ok({ users: [{ email: "ceo@prada.example", joinedAt: "2026-10-01T00:00:00Z", workspaceId: "w1", hasWorkspace: true }] })),
+    ...overrides,
   } as unknown as ApiClient;
 }
 
-const created = (invitation: boolean): CreateCustomerWorkspaceResult => ({
-  ok: true,
-  statusCode: 201,
-  error: null,
-  result: {
-    workspace: { id: "22222222-2222-2222-2222-222222222222", name: "Acme Demo", createdAt: "2026-11-02T00:00:00Z" },
-    invitation: invitation
-      ? {
-          id: "33333333-3333-3333-3333-333333333333",
-          email: "cfo@acme.example",
-          role: "Admin",
-          expiresAt: "2026-11-09T00:00:00Z",
-          acceptUrl: "https://app.example/invite/accept#abc.def",
-          deliveryOutcome: "no_transport",
-          identityProvisioned: false,
-        }
-      : null,
-    invitationError: invitation ? null : "The customer's sign-in identity could not be prepared (consent_missing).",
-  },
-});
-
 describe("AdminRoute", () => {
-  it("lists the staff member's workspaces and keeps Create disabled until name and email are filled", async () => {
-    render(<AdminRoute apiClient={fakeClient(created(true))} currentWorkspaceId={WORKSPACE.id} />);
-
-    expect(await screen.findByText("Staff Home")).toBeInTheDocument();
-    expect(screen.getByText("Open now")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /create workspace and invite/i })).toBeDisabled();
+  it("shows the overview counts", async () => {
+    render(<AdminRoute apiClient={fakeClient()} />);
+    expect(await screen.findByText("Registered users")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
   });
 
-  it("creates the customer workspace, shows the invitation link and opens it on request", async () => {
-    const user = userEvent.setup();
-    const apiClient = fakeClient(created(true));
-    const openWorkspace = vi.fn();
-    render(<AdminRoute apiClient={apiClient} openWorkspace={openWorkspace} />);
-
-    await user.type(screen.getByLabelText("Workspace name"), " Acme Demo ");
-    await user.type(screen.getByLabelText("Customer admin email"), "cfo@acme.example");
-    await user.selectOptions(screen.getByLabelText(/country/i), "CH");
-    await user.click(screen.getByRole("button", { name: /create workspace and invite/i }));
-
-    await waitFor(() =>
-      expect(apiClient.createCustomerWorkspace).toHaveBeenCalledWith({ name: "Acme Demo", customerEmail: "cfo@acme.example", country: "CH" }),
-    );
-    expect(await screen.findByText(/cfo@acme.example is invited as Admin/i)).toBeInTheDocument();
-    expect(screen.getByLabelText("Invitation link")).toHaveValue("https://app.example/invite/accept#abc.def");
-
-    await user.click(screen.getByRole("button", { name: /open this workspace/i }));
-    expect(openWorkspace).toHaveBeenCalledWith({ id: "22222222-2222-2222-2222-222222222222", name: "Acme Demo" });
-    expect(screen.getByLabelText("Workspace name")).toHaveValue("");
-  });
-
-  it("says plainly when the workspace exists but the invitation was not issued", async () => {
-    const user = userEvent.setup();
-    render(<AdminRoute apiClient={fakeClient(created(false))} />);
-
-    await user.type(screen.getByLabelText("Workspace name"), "Acme Demo");
-    await user.type(screen.getByLabelText("Customer admin email"), "cfo@acme.example");
-    await user.click(screen.getByRole("button", { name: /create workspace and invite/i }));
-
-    expect(await screen.findByText(/invitation was not issued: .*consent_missing/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Invitation link")).not.toBeInTheDocument();
-  });
-
-  it("shows a refusal instead of a result when the caller is not a platform admin", async () => {
-    const user = userEvent.setup();
-    render(<AdminRoute apiClient={fakeClient({ ok: false, statusCode: 404, result: null, error: "Request failed with HTTP 404 Not Found." })} />);
-
-    await user.type(screen.getByLabelText("Workspace name"), "Acme Demo");
-    await user.type(screen.getByLabelText("Customer admin email"), "cfo@acme.example");
-    await user.click(screen.getByRole("button", { name: /create workspace and invite/i }));
-
+  it("says plainly when the caller is not a platform admin", async () => {
+    const apiClient = fakeClient({
+      getAdminOverview: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, body: null, error: "x" }),
+    });
+    render(<AdminRoute apiClient={apiClient} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("You are not a Raffa platform admin.");
+  });
+
+  it("lists workspaces as metadata and suspends or reactivates them", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const apiClient = fakeClient();
+    render(<AdminRoute apiClient={apiClient} />);
+
+    await user.click(screen.getByRole("button", { name: "Workspaces" }));
+    expect(await screen.findByText("Prada")).toBeInTheDocument();
+    expect(screen.getByText("ceo@prada.example")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Suspend" }));
+    await waitFor(() => expect(apiClient.setAdminWorkspaceStatus).toHaveBeenCalledWith("w1", "suspend"));
+    await user.click(screen.getByRole("button", { name: "Reactivate" }));
+    await waitFor(() => expect(apiClient.setAdminWorkspaceStatus).toHaveBeenCalledWith("w2", "reactivate"));
+  });
+
+  it("creates an invitation and shows its link once, with revoke only on pending ones", async () => {
+    const user = userEvent.setup();
+    const apiClient = fakeClient();
+    render(<AdminRoute apiClient={apiClient} />);
+
+    await user.click(screen.getByRole("button", { name: "Invitations" }));
+    expect(await screen.findByText("cfo@roche.example")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+
+    await user.type(screen.getByLabelText("Prospect email"), "new@acme.example");
+    await user.click(screen.getByRole("button", { name: "Create invitation" }));
+
+    await waitFor(() => expect(apiClient.createAdminInvitation).toHaveBeenCalledWith("new@acme.example"));
+    expect(await screen.findByLabelText("Invitation link")).toHaveValue("https://app.example/prospect/accept#secret");
+
+    await user.click(screen.getAllByRole("button", { name: "Revoke" })[0]!);
+    await waitFor(() => expect(apiClient.revokeAdminInvitation).toHaveBeenCalledWith("i1"));
+  });
+
+  it("lists the people who accepted an invitation", async () => {
+    const user = userEvent.setup();
+    render(<AdminRoute apiClient={fakeClient()} />);
+    await user.click(screen.getByRole("button", { name: "Users" }));
+    expect(await screen.findByText("ceo@prada.example")).toBeInTheDocument();
+    expect(screen.getByText("Created")).toBeInTheDocument();
   });
 });

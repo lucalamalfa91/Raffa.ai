@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Hosting;
 namespace Raffa.Api.Tests;
 
 /// <summary>
-/// The portal admin surface (<c>/api/admin/*</c>): only identities on the <c>PlatformAdmin:ObjectIds</c>
-/// allowlist may onboard a customer; everyone else gets a 404 that reveals nothing. Reuses the real
-/// Postgres host of <see cref="InvitationLifecycleEndpointFixture"/> with the allowlist switched on.
+/// The portal admin (Raffa staff): prospect invitations, the workspace registry and suspension, on the
+/// real Postgres host of <see cref="InvitationLifecycleEndpointFixture"/> with the allowlist on and open
+/// workspace creation switched off. Staff are never members of a customer workspace.
 /// </summary>
 public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecycleEndpointFixture>
 {
@@ -19,84 +19,163 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
     public PlatformAdminEndpointTests(InvitationLifecycleEndpointFixture fixture)
     {
         _client = fixture
-            .WithWebHostBuilder(builder => builder.UseSetting("PlatformAdmin:ObjectIds:0", Staff))
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("PlatformAdmin:ObjectIds:0", Staff);
+                builder.UseSetting("PlatformAdmin:RequireInvitationToCreateWorkspace", "true");
+            })
             .CreateClient();
     }
 
     [Fact]
-    public async Task Status_is_401_when_anonymous_and_reports_the_allowlist_for_signed_in_callers()
+    public async Task Only_a_platform_admin_reaches_the_admin_surface()
     {
         Assert.Equal(HttpStatusCode.Unauthorized, (await _client.GetAsync("/api/admin/me")).StatusCode);
-
         Assert.True(await IsPlatformAdminAsync(Staff));
         Assert.False(await IsPlatformAdminAsync("someone@customer.example"));
+
+        foreach (var path in new[] { "/api/admin/overview", "/api/admin/workspaces", "/api/admin/invitations", "/api/admin/users" })
+        {
+            Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(HttpMethod.Get, path, "someone@customer.example")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await SendAsync(HttpMethod.Get, path, Staff)).StatusCode);
+        }
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsync(HttpMethod.Post, "/api/admin/invitations", "someone@customer.example", new { email = "x@y.example" })).StatusCode);
     }
 
     [Fact]
-    public async Task A_non_platform_admin_gets_404_and_no_workspace_is_created()
+    public async Task A_prospect_cannot_create_a_workspace_until_they_accept_an_invitation_and_it_is_spent_once()
     {
-        var response = await CreateCustomerWorkspaceAsync("someone@customer.example", "Sneaky Co", "boss@sneaky.example");
+        const string prospect = "ceo@prospect-one.example";
+        Assert.Equal(HttpStatusCode.Forbidden, (await CreateWorkspaceAsync(prospect, "Prospect One")).StatusCode);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var token = await InviteAsync(prospect);
+        Assert.Equal(HttpStatusCode.OK, (await AcceptAsync(token, prospect)).StatusCode);
+        // Accepting again as the same person is a harmless no-op.
+        Assert.Equal(HttpStatusCode.OK, (await AcceptAsync(token, prospect)).StatusCode);
 
-        using var list = await ListWorkspacesAsync("someone@customer.example");
-        Assert.Empty(list.RootElement.GetProperty("workspaces").EnumerateArray());
+        var created = await CreateWorkspaceAsync(prospect, "Prospect One");
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+
+        // One invitation makes one workspace.
+        Assert.Equal(HttpStatusCode.Forbidden, (await CreateWorkspaceAsync(prospect, "Prospect One Bis")).StatusCode);
+
+        // The registry now lists it (metadata only) and the overview counts it.
+        using var workspaces = await GetJsonAsync("/api/admin/workspaces", Staff);
+        Assert.Contains(
+            workspaces.RootElement.GetProperty("workspaces").EnumerateArray(),
+            w => w.GetProperty("name").GetString() == "Prospect One" && w.GetProperty("adminEmail").GetString() == prospect);
+        using var overview = await GetJsonAsync("/api/admin/overview", Staff);
+        Assert.True(overview.RootElement.GetProperty("totalWorkspaces").GetInt32() >= 1);
     }
 
     [Fact]
-    public async Task A_platform_admin_creates_the_customer_workspace_and_invites_its_first_admin()
+    public async Task An_invitation_is_bound_to_its_address_and_single_use()
     {
-        var response = await CreateCustomerWorkspaceAsync(Staff, "Acme Demo", "cfo@acme.example");
+        var token = await InviteAsync("owner@prospect-two.example");
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var workspaceId = body.RootElement.GetProperty("workspace").GetProperty("id").GetGuid();
-        var invitation = body.RootElement.GetProperty("invitation");
-        Assert.Equal("cfo@acme.example", invitation.GetProperty("email").GetString());
-        Assert.Equal("Admin", invitation.GetProperty("role").GetString());
-        Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("invitationError").ValueKind);
+        Assert.Equal(HttpStatusCode.Forbidden, (await AcceptAsync(token, "intruder@elsewhere.example")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await AcceptAsync("not-a-real-token", "owner@prospect-two.example")).StatusCode);
 
-        // The staff member is Admin of the new workspace, so it is in their list and can be entered.
-        using var list = await ListWorkspacesAsync(Staff);
-        var entry = list.RootElement.GetProperty("workspaces").EnumerateArray()
-            .Single(w => w.GetProperty("id").GetGuid() == workspaceId);
-        Assert.Equal("Admin", entry.GetProperty("role").GetString());
-        Assert.Equal("Acme Demo", entry.GetProperty("name").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await AcceptAsync(token, "owner@prospect-two.example")).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await AcceptAsync(token, "intruder@elsewhere.example")).StatusCode);
     }
 
     [Fact]
-    public async Task A_missing_customer_email_or_workspace_name_is_a_400()
+    public async Task A_revoked_or_regenerated_invitation_cannot_be_used()
     {
-        Assert.Equal(HttpStatusCode.BadRequest, (await CreateCustomerWorkspaceAsync(Staff, "No Owner Co", "  ")).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await CreateCustomerWorkspaceAsync(Staff, " ", "cfo@nameless.example")).StatusCode);
+        var revoked = await InviteWithIdAsync("a@prospect-three.example");
+        Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(HttpMethod.Delete, $"/api/admin/invitations/{revoked.Id}", Staff)).StatusCode);
+        Assert.Equal(HttpStatusCode.Gone, (await AcceptAsync(revoked.Token, "a@prospect-three.example")).StatusCode);
+
+        var first = await InviteWithIdAsync("b@prospect-three.example");
+        var regenerated = await SendAsync(HttpMethod.Post, $"/api/admin/invitations/{first.Id}/regenerate", Staff);
+        Assert.Equal(HttpStatusCode.Created, regenerated.StatusCode);
+        Assert.Equal(HttpStatusCode.Gone, (await AcceptAsync(first.Token, "b@prospect-three.example")).StatusCode);
     }
+
+    [Fact]
+    public async Task A_suspended_workspace_is_not_offered_to_its_members_until_reactivated()
+    {
+        const string owner = "owner@prospect-four.example";
+        Assert.Equal(HttpStatusCode.OK, (await AcceptAsync(await InviteAsync(owner), owner)).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await CreateWorkspaceAsync(owner, "Prospect Four")).StatusCode);
+
+        var id = await WorkspaceIdAsync(owner, "Prospect Four");
+
+        Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(HttpMethod.Post, $"/api/admin/workspaces/{id}/suspend", Staff)).StatusCode);
+        Assert.Null(await FindWorkspaceAsync(owner, "Prospect Four"));
+
+        Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(HttpMethod.Post, $"/api/admin/workspaces/{id}/reactivate", Staff)).StatusCode);
+        Assert.NotNull(await FindWorkspaceAsync(owner, "Prospect Four"));
+    }
+
+    // ----- helpers -----
 
     private async Task<bool> IsPlatformAdminAsync(string userId)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/admin/me");
-        request.Headers.Add("X-User-Id", userId);
-        var response = await _client.SendAsync(request);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var body = await GetJsonAsync("/api/admin/me", userId);
         return body.RootElement.GetProperty("isPlatformAdmin").GetBoolean();
     }
 
-    private async Task<HttpResponseMessage> CreateCustomerWorkspaceAsync(string userId, string name, string customerEmail)
+    private async Task<string> InviteAsync(string email) => (await InviteWithIdAsync(email)).Token;
+
+    private async Task<(Guid Id, string Token)> InviteWithIdAsync(string email)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/admin/workspaces")
-        {
-            Content = JsonContent.Create(new { name, customerEmail }),
-        };
-        request.Headers.Add("X-User-Id", userId);
-        return await _client.SendAsync(request);
+        var response = await SendAsync(HttpMethod.Post, "/api/admin/invitations", Staff, new { email });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var url = body.RootElement.GetProperty("acceptUrl").GetString()!;
+        Assert.Contains("/prospect/accept#", url, StringComparison.Ordinal);
+        return (body.RootElement.GetProperty("id").GetGuid(), url[(url.IndexOf('#') + 1)..]);
     }
 
-    private async Task<JsonDocument> ListWorkspacesAsync(string userId)
+    private Task<HttpResponseMessage> AcceptAsync(string token, string userId)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/workspaces");
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/platform/invitations/accept");
         request.Headers.Add("X-User-Id", userId);
-        var response = await _client.SendAsync(request);
+        request.Headers.Add("X-Platform-Invitation-Token", token);
+        return _client.SendAsync(request);
+    }
+
+    private Task<HttpResponseMessage> CreateWorkspaceAsync(string userId, string name) =>
+        SendAsync(HttpMethod.Post, "/api/workspaces", userId, new { name });
+
+    private async Task<Guid?> FindWorkspaceAsync(string userId, string name)
+    {
+        using var body = await GetJsonAsync("/api/workspaces", userId);
+        foreach (var w in body.RootElement.GetProperty("workspaces").EnumerateArray())
+        {
+            if (w.GetProperty("name").GetString() == name)
+            {
+                return w.GetProperty("id").GetGuid();
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<Guid> WorkspaceIdAsync(string userId, string name) =>
+        await FindWorkspaceAsync(userId, name) ?? throw new InvalidOperationException($"No workspace '{name}' for {userId}.");
+
+    private async Task<JsonDocument> GetJsonAsync(string path, string userId)
+    {
+        var response = await SendAsync(HttpMethod.Get, path, userId);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+    }
+
+    private Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string userId, object? body = null)
+    {
+        var request = new HttpRequestMessage(method, path);
+        if (body is not null)
+        {
+            request.Content = JsonContent.Create(body);
+        }
+
+        request.Headers.Add("X-User-Id", userId);
+        return _client.SendAsync(request);
     }
 }

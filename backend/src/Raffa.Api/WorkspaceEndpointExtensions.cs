@@ -64,6 +64,7 @@ public static class WorkspaceEndpointExtensions
         WorkspaceDirectoryService directoryService,
         PortfolioQueryService portfolioQueryService,
         MarketRepriceScheduler marketRepriceScheduler,
+        PlatformAdminService platformAdminService,
         CancellationToken cancellationToken)
     {
         // ADR-025 §B: absence of identity is an authentication failure (401), the same posture
@@ -88,6 +89,20 @@ public static class WorkspaceEndpointExtensions
         var rows = new List<object>(directoryResult.Workspaces.Count);
         foreach (var workspace in directoryResult.Workspaces)
         {
+            // Portal admin registry: workspaces created before it existed register themselves the
+            // first time a member lists them (idempotent, metadata only); a suspended workspace is
+            // not offered, so it cannot be entered.
+            await platformAdminService
+                .RegisterWorkspaceAsync(
+                    workspace.TenantId.Value, workspace.Name,
+                    workspace.Role == Raffa.Identity.Workspace.Domain.WorkspaceRoleName.Admin ? callerIdentity.ResolveEmail() : null,
+                    workspace.CreatedAt, cancellationToken)
+                .ConfigureAwait(false);
+            if (await platformAdminService.IsSuspendedAsync(workspace.TenantId.Value, cancellationToken).ConfigureAwait(false))
+            {
+                continue;
+            }
+
             // ADR-026 §D2: composition happens here, in the host — Raffa.Identity.Workspace may
             // reference only Raffa.SharedKernel (DependencyDirectionTests.cs:62, enforced), so it
             // cannot see Documents.Contracts. One scoped count query per workspace — N+1 by
@@ -137,6 +152,9 @@ public static class WorkspaceEndpointExtensions
         CreateWorkspaceRequest request,
         ICallerIdentity callerIdentity,
         WorkspaceProvisioningService provisioningService,
+        PlatformAdminService platformAdminService,
+        PlatformAdminGuard platformAdminGuard,
+        Microsoft.Extensions.Options.IOptions<PlatformAdminOptions> platformAdminOptions,
         CancellationToken cancellationToken)
     {
         // ADR-025 Rule D.2a: absent identity is an authentication failure (401), not a body
@@ -156,6 +174,18 @@ public static class WorkspaceEndpointExtensions
         // infra/modules/identity), never from `preferred_username`/`upn`, which is the mangled
         // #EXT# value for a B2B guest. The `oid` still goes down as the creator's
         // ExternalSubjectId, which is what every later membership lookup matches on.
+        // Open creation is off when configured: a company workspace needs an accepted Raffa invitation
+        // (or a platform admin). The invitation is spent below, so one invitation makes one workspace.
+        var requiresInvitation = platformAdminOptions.Value.RequireInvitationToCreateWorkspace
+            && !platformAdminGuard.IsPlatformAdmin();
+        if (requiresInvitation
+            && !await platformAdminService.HasUnspentInvitationAsync(identity, cancellationToken).ConfigureAwait(false))
+        {
+            return Results.Json(
+                new { error = "Creating a workspace requires an invitation from Raffa." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var email = callerIdentity.ResolveEmail();
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -175,6 +205,14 @@ public static class WorkspaceEndpointExtensions
         }
 
         var workspace = result.Value;
+        await platformAdminService
+            .RegisterWorkspaceAsync(workspace.TenantId.Value, workspace.Name, email, workspace.CreatedAt, cancellationToken)
+            .ConfigureAwait(false);
+        if (requiresInvitation)
+        {
+            await platformAdminService.SpendInvitationAsync(identity, workspace.TenantId.Value, cancellationToken).ConfigureAwait(false);
+        }
+
         // ADR-025 Rule D.2b: the creator is Admin of the tenant they just created, unconditionally
         // — CreateWorkspaceRequest carries no `role` property at all, so nothing in the body could
         // ever be honoured as a self-assigned role (AC-3). ADR-026 §D5: the 201 carries the role so

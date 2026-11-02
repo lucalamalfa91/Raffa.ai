@@ -18,6 +18,12 @@ public sealed class PlatformAdminOptions
     /// <see cref="ICallerIdentity.Resolve"/> returns). Matched ordinally, like every other
     /// <c>ExternalSubjectId</c> comparison in the product.</summary>
     public string[] ObjectIds { get; set; } = [];
+
+    /// <summary>When true, only a person holding an accepted Raffa invitation (or a platform admin) may
+    /// create a company workspace: open self-service creation is switched off. Off by default so a
+    /// local or test host keeps today's behaviour; turn on in dev and demo with
+    /// <c>PlatformAdmin__RequireInvitationToCreateWorkspace=true</c>.</summary>
+    public bool RequireInvitationToCreateWorkspace { get; set; }
 }
 
 /// <summary>"Is the caller a Raffa platform admin?" — one allowlist lookup, no database.</summary>
