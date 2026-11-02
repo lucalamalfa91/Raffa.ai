@@ -178,6 +178,3 @@ public static class PlatformAdminEndpointExtensions
     private static bool LooksLikeEmail(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= 320 && value.Contains('@') && !value.Contains(' ');
 }
-
-/// <summary>Body of `POST /api/admin/invitations`.</summary>
-public sealed record CreatePlatformInvitationRequest(string? Email);

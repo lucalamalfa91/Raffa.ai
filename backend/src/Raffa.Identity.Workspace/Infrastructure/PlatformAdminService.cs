@@ -6,6 +6,9 @@ using Raffa.SharedKernel;
 
 namespace Raffa.Identity.Workspace.Infrastructure;
 
+/// <remarks>These row types are unmapped (<c>SqlQuery</c>); the context uses the snake_case naming convention,
+/// so every column a query returns must be aliased in snake_case (<c>created_at</c>, not <c>CreatedAt</c>).
+/// Only the scalar <c>Value</c> column of <c>SqlQuery&lt;int&gt;</c> keeps its fixed name.</remarks>
 public sealed class PlatformWorkspaceRow
 {
     public Guid TenantId { get; set; }
@@ -53,21 +56,20 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 {
     public const int ExpiryDays = 7;
 
+    /// <summary>True only on the Npgsql provider. Not <c>Database.IsRelational()</c>: the in-memory test
+    /// hosts swap the provider but keep the Npgsql options extension, so that check answers true there and
+    /// the raw SQL below would throw. The provider name is what the context actually runs on.</summary>
+    private bool IsPostgres => db.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
+
     public const string Active = "active";
     public const string Suspended = "suspended";
 
     // ----- workspace registry -----
 
-    /// <summary>True only on a real relational store. <c>IsRelational()</c> alone is not enough: a host that
-    /// swaps the provider for InMemory (the API tests) keeps the relational options extension, and every raw
-    /// SQL call would then throw on each request.</summary>
-    private bool IsRelationalStore =>
-        db.Database.IsRelational() && db.Database.ProviderName != "Microsoft.EntityFrameworkCore.InMemory";
-
     /// <summary>Idempotent: a workspace already registered is left exactly as it is.</summary>
     public Task<int> RegisterWorkspaceAsync(
         Guid tenantId, string name, string? adminEmail, DateTimeOffset createdAt, CancellationToken ct = default) =>
-        !IsRelationalStore ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
+        !IsPostgres ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO platform_workspace (tenant_id, name, admin_email, created_at, status)
             VALUES ({tenantId}, {name}, {adminEmail}, {createdAt.ToUniversalTime()}, 'active')
@@ -77,14 +79,14 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
     public Task<List<PlatformWorkspaceRow>> ListWorkspacesAsync(CancellationToken ct = default) =>
         db.Database.SqlQuery<PlatformWorkspaceRow>(
             $"""
-            SELECT tenant_id AS "TenantId", name AS "Name", admin_email AS "AdminEmail",
-                   created_at AS "CreatedAt", status AS "Status"
+            SELECT tenant_id AS "tenant_id", name AS "name", admin_email AS "admin_email",
+                   created_at AS "created_at", status AS "status"
             FROM platform_workspace ORDER BY created_at DESC
             """).ToListAsync(ct);
 
     /// <summary>True when the workspace is registered and suspended. Unregistered = not suspended.</summary>
     public async Task<bool> IsSuspendedAsync(Guid tenantId, CancellationToken ct = default) =>
-        IsRelationalStore && (await db.Database.SqlQuery<int>(
+        IsPostgres && (await db.Database.SqlQuery<int>(
             $"SELECT 1 AS \"Value\" FROM platform_workspace WHERE tenant_id = {tenantId} AND status = 'suspended'")
             .ToListAsync(ct).ConfigureAwait(false)).Count > 0;
 
@@ -96,7 +98,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     // ----- prospect invitations -----
 
-    /// <summary>Revokes any live invitation for the address and issues a fresh one, in one statement.
+    /// <summary>Revokes any live invitation for the address and issues a fresh one, in one transaction.
     /// The plaintext token exists only in the returned value.</summary>
     public async Task<PlatformInvitationIssued> IssueInvitationAsync(
         string email, string createdBy, CancellationToken ct = default)
@@ -107,15 +109,22 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
         var now = clock.UtcNow.ToUniversalTime();
         var expiresAt = now.AddDays(ExpiryDays);
 
+        // Two statements in one transaction, in this order: revoke the live invitation for the address,
+        // then insert the new one. A single data-modifying CTE does not work here: the order of its parts
+        // is unspecified, and the INSERT can hit the one-live-invitation-per-address unique index before
+        // the UPDATE has released it.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"""
-            WITH revoked AS (
-                UPDATE platform_invitation SET revoked_at = {now}
-                WHERE lower(email) = {normalized} AND accepted_at IS NULL AND revoked_at IS NULL
-            )
+            UPDATE platform_invitation SET revoked_at = {now}
+            WHERE lower(email) = {normalized} AND accepted_at IS NULL AND revoked_at IS NULL
+            """, ct).ConfigureAwait(false);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
             INSERT INTO platform_invitation (id, email, token_hash, created_by, created_at, expires_at)
             VALUES ({id}, {normalized}, {Hash(secret)}, {createdBy}, {now}, {expiresAt})
             """, ct).ConfigureAwait(false);
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
 
         return new PlatformInvitationIssued(id, normalized, secret, expiresAt);
     }
@@ -187,7 +196,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     /// <summary>True when this person accepted an invitation that has not yet been spent on a workspace.</summary>
     public async Task<bool> HasUnspentInvitationAsync(string subject, CancellationToken ct = default) =>
-        IsRelationalStore && (await db.Database.SqlQuery<int>(
+        IsPostgres && (await db.Database.SqlQuery<int>(
             $"""
             SELECT 1 AS "Value" FROM platform_invitation
             WHERE accepted_by_subject = {subject} AND accepted_at IS NOT NULL AND workspace_id IS NULL
@@ -196,7 +205,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     /// <summary>Spends one accepted invitation on the workspace just created. Atomic and idempotent.</summary>
     public Task<int> SpendInvitationAsync(string subject, Guid tenantId, CancellationToken ct = default) =>
-        !IsRelationalStore ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
+        !IsPostgres ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             UPDATE platform_invitation SET workspace_id = {tenantId}
             WHERE id = (
@@ -213,12 +222,12 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
         var rows = await db.Database.SqlQuery<PlatformOverview>(
             $"""
             SELECT
-              (SELECT count(*) FROM platform_workspace)::int AS "TotalWorkspaces",
-              (SELECT count(*) FROM platform_workspace WHERE status = 'active')::int AS "ActiveWorkspaces",
-              (SELECT count(*) FROM platform_workspace WHERE status = 'suspended')::int AS "SuspendedWorkspaces",
-              (SELECT count(*) FROM platform_invitation WHERE accepted_at IS NOT NULL)::int AS "RegisteredUsers",
+              (SELECT count(*) FROM platform_workspace)::int AS "total_workspaces",
+              (SELECT count(*) FROM platform_workspace WHERE status = 'active')::int AS "active_workspaces",
+              (SELECT count(*) FROM platform_workspace WHERE status = 'suspended')::int AS "suspended_workspaces",
+              (SELECT count(*) FROM platform_invitation WHERE accepted_at IS NOT NULL)::int AS "registered_users",
               (SELECT count(*) FROM platform_invitation
-                 WHERE accepted_at IS NULL AND revoked_at IS NULL AND expires_at > {now})::int AS "PendingInvitations"
+                 WHERE accepted_at IS NULL AND revoked_at IS NULL AND expires_at > {now})::int AS "pending_invitations"
             """).ToListAsync(ct).ConfigureAwait(false);
         return rows.Single();
     }
@@ -231,9 +240,9 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     private const string InvitationSelect =
         """
-        SELECT id AS "Id", email AS "Email", created_by AS "CreatedBy", created_at AS "CreatedAt",
-               expires_at AS "ExpiresAt", accepted_at AS "AcceptedAt", accepted_by_subject AS "AcceptedBySubject",
-               workspace_id AS "WorkspaceId", revoked_at AS "RevokedAt"
+        SELECT id AS "id", email AS "email", created_by AS "created_by", created_at AS "created_at",
+               expires_at AS "expires_at", accepted_at AS "accepted_at", accepted_by_subject AS "accepted_by_subject",
+               workspace_id AS "workspace_id", revoked_at AS "revoked_at"
         FROM platform_invitation
         """;
 

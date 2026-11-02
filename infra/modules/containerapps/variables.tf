@@ -270,3 +270,12 @@ variable "feedback_github_repository" {
   type        = string
   default     = "lucalamalfa91/Raffa.ai"
 }
+
+# Portal admin (Raffa staff). The Super Admin identities are Entra object ids
+# (the token's `oid`), not secrets. The API reads them from
+# PlatformAdmin__ObjectIdList (comma-separated); nobody is a Super Admin while the list is empty.
+variable "platform_admin_object_ids" {
+  description = "Entra object ids (oid) of the Raffa Super Admins, published as PlatformAdmin__ObjectIdList on the API app. Empty = no Super Admin."
+  type        = list(string)
+  default     = []
+}

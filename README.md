@@ -30,7 +30,7 @@ Renewals, and Quote check stay dim until the workspace has at least one
 **validated** contract (a linked document in `Completed`). Savings is always
 reachable.
 
-## Portal admin (Raffa staff)
+## Pannello admin (Raffa staff)
 
 The Super Admin is a person on the `PlatformAdmin:ObjectIds` allowlist (Entra `oid`s; in deployed
 environments `PlatformAdmin__ObjectIds__0=<oid>`, `__1`, ...). It is not a workspace role and not a
