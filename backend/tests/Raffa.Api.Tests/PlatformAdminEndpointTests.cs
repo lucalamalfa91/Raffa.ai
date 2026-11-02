@@ -41,7 +41,7 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
         Assert.True(await IsPlatformAdminAsync(Staff));
         Assert.False(await IsPlatformAdminAsync("someone@customer.example"));
 
-        foreach (var path in new[] { "/api/admin/overview", "/api/admin/workspaces", "/api/admin/invitations", "/api/admin/users" })
+        foreach (var path in new[] { "/api/admin/overview", "/api/admin/workspaces", "/api/admin/invitations", "/api/admin/users", "/api/admin/market-network" })
         {
             await AssertStatusAsync(HttpStatusCode.NotFound, await SendAsync(HttpMethod.Get, path, "someone@customer.example"));
             await AssertStatusAsync(HttpStatusCode.OK, await SendAsync(HttpMethod.Get, path, Staff));
@@ -50,6 +50,14 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await SendAsync(HttpMethod.Post, "/api/admin/invitations", "someone@customer.example", new { email = "x@y.example" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task The_market_network_monitor_says_so_when_the_host_has_no_market_store()
+    {
+        using var json = await GetJsonAsync("/api/admin/market-network", Staff);
+
+        Assert.False(json.RootElement.GetProperty("available").GetBoolean());
     }
 
     [Fact]

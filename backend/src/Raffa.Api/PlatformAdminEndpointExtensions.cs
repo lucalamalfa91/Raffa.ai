@@ -37,6 +37,8 @@ public static class PlatformAdminEndpointExtensions
                 ? Results.NoContent()
                 : Results.NotFound()));
         endpoints.MapGet("/api/admin/users", Guarded((svc, _, ct) => ListUsersAsync(svc, ct)));
+        endpoints.MapGet("/api/admin/market-network", (ICallerIdentity id, PlatformAdminGuard guard, IServiceProvider services, CancellationToken ct) =>
+            RunAsync(id, guard, () => MarketNetworkAsync(services, ct)));
         endpoints.MapPost("/api/platform/invitations/accept", AcceptAsync);
         return endpoints;
     }
@@ -60,6 +62,49 @@ public static class PlatformAdminEndpointExtensions
     private static Func<ICallerIdentity, PlatformAdminGuard, PlatformAdminService, CancellationToken, Task<IResult>> Guarded(
         Func<PlatformAdminService, ICallerIdentity, CancellationToken, Task<IResult>> action) =>
         (id, guard, svc, ct) => RunAsync(id, guard, () => action(svc, id, ct));
+
+    /// <summary>
+    /// Monitors the invisible market-network flow without ever showing a customer's data: how many anonymised
+    /// observations and workspaces the network holds, the aggregated deals it publishes into the shared market
+    /// base (P25/P50/P75 only), and the latest refresh runs from the system audit trail. The contributing
+    /// workspace sees its own "market.observation.recorded" rows in its audit as usual.
+    /// </summary>
+    private static async Task<IResult> MarketNetworkAsync(IServiceProvider services, CancellationToken ct)
+    {
+        var network = services.GetService<Raffa.Market.Network.MarketNetworkService>();
+        var options = services.GetService<Raffa.Market.Network.MarketObservationOptions>();
+        if (network is null || options is null)
+        {
+            return Results.Ok(new { available = false });
+        }
+
+        var snapshot = await network.BuildAsync(ct).ConfigureAwait(false);
+        var audit = services.GetService<Raffa.Audit.Infrastructure.IAuditQueryService>();
+        var refreshes = audit is null
+            ? []
+            : (await audit.GetEventsAsync(Raffa.Market.Ingestion.MarketIngestionService.SystemTenantId, ct).ConfigureAwait(false))
+                .Where(e => e.Action == "market.network.refreshed")
+                .Take(10)
+                .Select(e => new { at = e.OccurredAt, detail = e.Detail })
+                .ToList<object>();
+        return Results.Ok(new
+        {
+            available = true,
+            enabled = options.Enabled,
+            minWorkspaces = options.MinWorkspaces,
+            refreshHours = options.RefreshHours,
+            observations = snapshot.Observations,
+            workspaces = snapshot.Workspaces,
+            suppliersPriced = snapshot.SuppliersPriced,
+            deals = snapshot.Deals.Select(d => new
+            {
+                supplier = d.Supplier, product = d.Product, termMonths = d.TermMonths, currency = d.Currency, workspaces = d.SampleSize,
+                p25 = d.UnitPriceP25, p50 = d.UnitPriceP50, p75 = d.UnitPriceP75,
+                discountPct = d.DiscountAchievedPct, upliftCapPct = d.UpliftCapPct, noticeDays = d.NoticeDays, paymentTerms = d.PaymentTerms,
+            }),
+            refreshes,
+        });
+    }
 
     private static async Task<IResult> OverviewAsync(PlatformAdminService svc, CancellationToken ct) =>
         Results.Ok(await svc.GetOverviewAsync(ct).ConfigureAwait(false));
