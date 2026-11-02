@@ -285,45 +285,97 @@ public sealed partial class RenewalCaseService(
         }).ConfigureAwait(false);
     }
 
-    private async Task<CaseContext> ReadBeforeStepAsync(
+    // A document the user uploaded for the next addDoc / altOffer step (its name and text), read by the model.
+    private (string File, string Text)? pendingDocument;
+
+    /// <summary>
+    /// <c>POST /api/renewals/{caseId}/documents</c>: a contract draft, the signed contract or an alternative
+    /// supplier's offer, uploaded as a file. The model reads its text (draft vs agreed, signed vs last draft,
+    /// offer vs requirements) before the engine records it; without a reading the deterministic one stands.
+    /// </summary>
+    public Task<CaseResult> ActWithDocumentAsync(
+        TenantId tenantId, string? callerIdentity, Guid caseId, string type, string fileName, string text, string? vendor, int? version, CancellationToken ct = default)
+    {
+        if (type is not ("addDoc" or "altOffer"))
+        {
+            return Task.FromResult(CaseResult.Bad("Only a contract document or an offer can be uploaded to a case."));
+        }
+
+        pendingDocument = string.IsNullOrWhiteSpace(text) ? null : (fileName, text);
+        var payload = new CaseActionPayload { File = fileName, Vendor = type == "altOffer" ? vendor : null };
+        return ActAsync(tenantId, callerIdentity, caseId, type, payload, version, ct);
+    }
+
+    private async Task<(CaseContext Ctx, Action<RenewalCase>? After)> ReadBeforeStepAsync(
         TenantId tenantId, RenewalCase c, CaseContractFacts cf, string type, CaseActionPayload p, CaseContext ctx, CancellationToken ct)
     {
         if (aiReader is null || scriptServices is not ProductionCaseScriptServices)
         {
-            return ctx;
+            return (ctx, null);
         }
 
         var lang = Raffa.SharedKernel.Language.ResponseLanguage.Current == "en" ? "en" : "it";
         try
         {
-            if (type == "reply")
+            switch (type)
             {
-                var pasted = (p.Text?.Render() is { Length: > 0 } pt ? pt : c.Ui.ReplyText ?? string.Empty).Trim();
-                if (pasted.Length == 0)
+                case "reply":
                 {
-                    return ctx;
+                    var pasted = (p.Text?.Render() is { Length: > 0 } pt ? pt : c.Ui.ReplyText ?? string.Empty).Trim();
+                    if (pasted.Length == 0)
+                    {
+                        break;
+                    }
+
+                    var reading = await aiReader.ReadReplyAsync(tenantId, c, cf, pasted, c.Round + 1, lang, ct).ConfigureAwait(false);
+                    return reading is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, reply: reading) }, null);
                 }
 
-                var reading = await aiReader.ReadReplyAsync(tenantId, c, cf, pasted, c.Round + 1, lang, ct).ConfigureAwait(false);
-                return reading is null ? ctx : ctx with { Services = new ReadCaseScriptServices(scriptServices, reading, null) };
-            }
+                case "startAlt" when c.Alt is null:
+                {
+                    var features = await aiReader.ReadFeaturesAsync(tenantId, cf, lang, ct).ConfigureAwait(false);
+                    return features is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, features: features) }, null);
+                }
 
-            if (type == "startAlt" && c.Alt is null)
-            {
-                var features = await aiReader.ReadFeaturesAsync(tenantId, cf, lang, ct).ConfigureAwait(false);
-                return features is null ? ctx : ctx with { Services = new ReadCaseScriptServices(scriptServices, null, features) };
+                case "addDoc" when pendingDocument is { } doc && c.Agreed is not null:
+                {
+                    if (c.Phase is CasePhases.SignWait or CasePhases.SignConfirm or CasePhases.SignDeclared)
+                    {
+                        var signed = await aiReader.ReadSignedAsync(tenantId, c, cf, doc.File, doc.Text, lang, ct).ConfigureAwait(false);
+                        return signed is null
+                            ? (ctx, null)
+                            : (ctx, next =>
+                            {
+                                if (next.Signed is { } s)
+                                {
+                                    s.CheckedPoints = signed.Points;
+                                    s.Differences = signed.Differences;
+                                }
+                            });
+                    }
+
+                    var rows = await aiReader.ReadDraftAsync(tenantId, c, cf, doc.File, doc.Text, lang, ct).ConfigureAwait(false);
+                    return rows is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, draftRows: rows) }, null);
+                }
+
+                case "altOffer" when pendingDocument is { } doc && !string.IsNullOrWhiteSpace(p.Vendor):
+                {
+                    var by = c.Owner;
+                    var offer = await aiReader.ReadOfferAsync(tenantId, c, cf, p.Vendor!, doc.Text, by, lang, ct).ConfigureAwait(false);
+                    return offer is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, offer: offer) }, null);
+                }
             }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException && logger is null)
-        {
-            _ = ex;
         }
         catch (Exception ex) when (ex is not OperationCanceledException && logger is not null)
         {
             Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Case reading failed for action {Type}; the deterministic reading stands.", type);
         }
+        catch (Exception ex) when (ex is not OperationCanceledException && logger is null)
+        {
+            _ = ex;
+        }
 
-        return ctx;
+        return (ctx, null);
     }
 
     private async Task<CaseResult> RunAsync(
@@ -381,8 +433,9 @@ public sealed partial class RenewalCaseService(
 
             // Production: the model reads the supplier reply (and the functions an alternative must cover)
             // before the pure engine runs; any failure leaves the deterministic reading in place.
-            var stepCtx = await ReadBeforeStepAsync(tenantId, c, cf, type, p, ctx, ct).ConfigureAwait(false);
+            var (stepCtx, afterStep) = await ReadBeforeStepAsync(tenantId, c, cf, type, p, ctx, ct).ConfigureAwait(false);
             var next = RenewalCaseEngine.Act(c, type, p, stepCtx);
+            afterStep?.Invoke(next);
             if (RenewalCaseEngine.IsPermissionDenial(next))
             {
                 return new CaseResult(CaseResultKind.Forbidden, Envelope(record, next, cf, caller.Name), next.Ui.Warn?.Render());

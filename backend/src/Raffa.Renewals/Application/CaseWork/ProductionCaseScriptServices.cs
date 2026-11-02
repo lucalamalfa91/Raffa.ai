@@ -45,7 +45,8 @@ public sealed class ProductionCaseScriptServices : ICaseScriptServices
         ];
     }
 
-    public CaseSignedCheck CheckSigned(RenewalCase c, CaseContext ctx) => new(0, 0);
+    // The model's reading of the signed file, stored on the case when it was uploaded; nothing read = 0 / 0.
+    public CaseSignedCheck CheckSigned(RenewalCase c, CaseContext ctx) => new(c.Signed?.CheckedPoints ?? 0, c.Signed?.Differences ?? 0);
 
     public CasePipe StartExtraction(RenewalCase c, CaseContext ctx) => new() { Stage = 0, Weak = [] };
 

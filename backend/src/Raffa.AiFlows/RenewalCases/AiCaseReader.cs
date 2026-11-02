@@ -36,6 +36,8 @@ public static class CaseReaderAgents
         - state: proposed (a concrete offer), unclear (vague or conditional without numbers),
           rejected (they refuse the ask), conflict (they ask something against the plan or policy);
         - warn: a short policy or risk warning when the offer breaks the plan or a usual safeguard, else "".
+        Also prices: the unit price the supplier now offers for a 12-month term (price12) and for a
+        24-month term (price24), as plain numbers in the contract currency; 0 when the reply gives none.
         Then the term updates the reply implies: key (an existing term key when the point is tracked,
         else a short lowercase key such as price, term, uplift, payment, liab), label, state
         (proposed | unclear | rejected), value (what the supplier now offers, or "" ).
@@ -62,9 +64,95 @@ public static class CaseReaderAgents
               "key": { "type": "string" }, "label": { "type": "string" },
               "state": { "type": "string", "enum": ["proposed", "unclear", "rejected"] },
               "value": { "type": "string" } },
-              "required": ["key", "label", "state", "value"], "additionalProperties": false } }
+              "required": ["key", "label", "state", "value"], "additionalProperties": false } },
+            "price12": { "type": "number" },
+            "price24": { "type": "number" }
           },
-          "required": ["rows", "terms"],
+          "required": ["rows", "terms", "price12", "price24"],
+          "additionalProperties": false
+        }
+        """;
+
+    public const string DraftName = "case-draft-checker";
+    public const string DraftVersion = "case-draft-v1";
+    public const string SignedName = "case-signed-checker";
+    public const string SignedVersion = "case-signed-v1";
+    public const string OfferName = "case-offer-reader";
+    public const string OfferVersion = "case-offer-v1";
+
+    public const string DraftPrompt =
+        """
+        You are Raffa, the contract assistant of a procurement team. The supplier sent a contract draft
+        (document) after the renewal terms were agreed (agreed: unit price, term in months, uplift cap in %,
+        liability cap in months of fees, payment terms when known; terms: what the negotiation settled).
+        Compare the draft with every agreed point and write one row per point:
+        - label: the point, in the user's language;
+        - agreed: the agreed value;
+        - draft: what the draft says, quoted with its numbers ("" when you cannot find it);
+        - result: ok (the draft matches), diff (it differs), unread (the point is not in the readable text);
+        - source: where you read it (page or section heading), "" when unknown.
+        Laws: use only the document, agreed and terms; never guess a value you did not read (use unread);
+        write in the user's language (language); respond with strict JSON matching the schema only.
+        """;
+
+    public const string DraftSchema =
+        """
+        {
+          "type": "object",
+          "properties": {
+            "rows": { "type": "array", "items": { "type": "object", "properties": {
+              "label": { "type": "string" }, "agreed": { "type": "string" }, "draft": { "type": "string" },
+              "result": { "type": "string", "enum": ["ok", "diff", "unread"] }, "source": { "type": "string" } },
+              "required": ["label", "agreed", "draft", "result", "source"], "additionalProperties": false } }
+          },
+          "required": ["rows"],
+          "additionalProperties": false
+        }
+        """;
+
+    public const string SignedPrompt =
+        """
+        You are Raffa, the contract assistant of a procurement team. This is the signed contract (document).
+        Check it against the agreed position (agreed) and the rows of the last verified draft (lastDraft):
+        count the points you could check (points) and how many differ from what was agreed (differences).
+        Laws: use only the document, agreed and lastDraft; a point you cannot read is not counted as checked;
+        respond with strict JSON matching the schema only.
+        """;
+
+    public const string SignedSchema =
+        """
+        {
+          "type": "object",
+          "properties": { "points": { "type": "integer" }, "differences": { "type": "integer" } },
+          "required": ["points", "differences"],
+          "additionalProperties": false
+        }
+        """;
+
+    public const string OfferPrompt =
+        """
+        You are Raffa, the contract assistant of a procurement team comparing an alternative supplier (vendor)
+        with the current contract. Read the offer (document) against the functions the team needs
+        (requirements) and the current sizing (contract.products). Give:
+        - price: the unit price per unit and month comparable with the current contract, 0 if not stated;
+        - total: the yearly total of the offer, 0 if not stated;
+        - term: the term in months, 0 if not stated;
+        - cover: how the offer covers the requirements, one short sentence ("not stated" when silent);
+        - migration: the migration plan and its cost, one short sentence ("not stated" when silent);
+        - gap: the most important requirement not covered or unclear, one short sentence ("" when none).
+        Laws: use only the offer, requirements and contract; never invent a price or a promise; write in the
+        user's language (language); respond with strict JSON matching the schema only.
+        """;
+
+    public const string OfferSchema =
+        """
+        {
+          "type": "object",
+          "properties": {
+            "price": { "type": "number" }, "total": { "type": "number" }, "term": { "type": "integer" },
+            "cover": { "type": "string" }, "migration": { "type": "string" }, "gap": { "type": "string" }
+          },
+          "required": ["price", "total", "term", "cover", "migration", "gap"],
           "additionalProperties": false
         }
         """;
@@ -115,7 +203,92 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
 
     private sealed record Term(string? Key, string? Label, string? State, string? Value);
 
-    private sealed record ReplyAnswer(List<Row>? Rows, List<Term>? Terms);
+    private sealed record ReplyAnswer(List<Row>? Rows, List<Term>? Terms, double? Price12, double? Price24);
+
+    private sealed record DraftRowAnswer(string? Label, string? Agreed, string? Draft, string? Result, string? Source);
+
+    private sealed record DraftAnswer(List<DraftRowAnswer>? Rows);
+
+    private sealed record SignedAnswer(int? Points, int? Differences);
+
+    private sealed record OfferAnswer(double? Price, double? Total, int? Term, string? Cover, string? Migration, string? Gap);
+
+    private const int MaxDocumentChars = 60_000;
+
+    private static string Clip(string text) => text.Length > MaxDocumentChars ? text[..MaxDocumentChars] : text;
+
+    private static object Agreed(RenewalCase c) => new
+    {
+        unitPrice = c.Agreed?.Price,
+        termMonths = c.Agreed?.Term,
+        upliftCapPercent = c.Agreed?.Cap,
+        liabilityCapMonths = c.Agreed?.Liab,
+    };
+
+    private static object Terms(RenewalCase c) =>
+        c.Terms.Select(kv => new { key = kv.Key, label = kv.Value.Label.Render(), state = kv.Value.State, value = kv.Value.Val });
+
+    public async Task<IReadOnlyList<CaseDraftRow>?> ReadDraftAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string fileName, string documentText, string lang, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        var input = JsonSerializer.Serialize(new { language = lang, fileName, agreed = Agreed(c), terms = Terms(c), document = Clip(documentText) }, Json);
+        var answer = Parse<DraftAnswer>(await CallAsync(tenantId, CaseReaderAgents.DraftName, CaseReaderAgents.DraftPrompt, input,
+            CaseReaderAgents.DraftSchema, CaseReaderAgents.DraftVersion, cancellationToken).ConfigureAwait(false));
+        var rows = (answer?.Rows ?? [])
+            .Where(r => !string.IsNullOrWhiteSpace(r.Label) && r.Result is "ok" or "diff" or "unread")
+            .Take(12)
+            .Select(r => new CaseDraftRow
+            {
+                Label = CaseText.Of(r.Label!.Trim()),
+                Agreed = CaseText.Of((r.Agreed ?? string.Empty).Trim()),
+                // A point not found is never shown as a value: the engine's "unread" path handles it.
+                Draft = CaseText.Of(r.Result == "unread" || string.IsNullOrWhiteSpace(r.Draft) ? "—" : r.Draft.Trim()),
+                Res = r.Result!,
+                Src = (r.Source ?? string.Empty).Trim(),
+            })
+            .ToList();
+        return rows.Count == 0 ? null : rows;
+    }
+
+    public async Task<CaseSignedCheck?> ReadSignedAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string fileName, string documentText, string lang, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        var lastDraft = c.Docs.LastOrDefault()?.Rows.Select(r => new { label = r.Label.Render(), agreed = r.Agreed.Render(), draft = r.Draft.Render(), result = r.Res });
+        var input = JsonSerializer.Serialize(new { language = lang, fileName, agreed = Agreed(c), lastDraft, document = Clip(documentText) }, Json);
+        var answer = Parse<SignedAnswer>(await CallAsync(tenantId, CaseReaderAgents.SignedName, CaseReaderAgents.SignedPrompt, input,
+            CaseReaderAgents.SignedSchema, CaseReaderAgents.SignedVersion, cancellationToken).ConfigureAwait(false));
+        return answer is { Points: > 0 and var points } && answer.Differences is >= 0 and var diff && diff <= points
+            ? new CaseSignedCheck(points, diff)
+            : null;
+    }
+
+    public async Task<CaseAltOffer?> ReadOfferAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string vendor, string documentText, string by, string lang, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        ArgumentNullException.ThrowIfNull(contract);
+        var requirements = (c.Alt?.Reqs ?? []).Where(r => r.On).Select(r => r.Text.Render());
+        var input = JsonSerializer.Serialize(new { language = lang, vendor, requirements, contract = Describe(contract), document = Clip(documentText) }, Json);
+        var answer = Parse<OfferAnswer>(await CallAsync(tenantId, CaseReaderAgents.OfferName, CaseReaderAgents.OfferPrompt, input,
+            CaseReaderAgents.OfferSchema, CaseReaderAgents.OfferVersion, cancellationToken).ConfigureAwait(false));
+        if (answer is null || (answer.Price is not > 0 && answer.Total is not > 0 && string.IsNullOrWhiteSpace(answer.Cover)))
+        {
+            return null;
+        }
+
+        return new CaseAltOffer
+        {
+            Price = answer.Price is > 0 ? answer.Price.Value : 0,
+            Total = answer.Total is > 0 ? answer.Total.Value : 0,
+            Term = answer.Term is > 0 ? answer.Term.Value : 0,
+            Cover = string.IsNullOrWhiteSpace(answer.Cover) ? "not stated" : answer.Cover.Trim(),
+            Mig = string.IsNullOrWhiteSpace(answer.Migration) ? "not stated" : answer.Migration.Trim(),
+            Gap = (answer.Gap ?? string.Empty).Trim(),
+            By = by,
+        };
+    }
 
     private sealed record FeaturesAnswer(string? CategoryEn, List<string>? Functions);
 
@@ -170,7 +343,18 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
                 string.IsNullOrWhiteSpace(t.Value) ? null : t.Value.Trim(),
                 ev))
             .ToList();
-        return new CaseReplyAnalysis(rows, terms);
+        var prices = new Dictionary<int, double>();
+        if (answer.Price12 is > 0 and var p12)
+        {
+            prices[12] = p12;
+        }
+
+        if (answer.Price24 is > 0 and var p24)
+        {
+            prices[24] = p24;
+        }
+
+        return new CaseReplyAnalysis(rows, terms, prices.Count == 0 ? null : prices);
     }
 
     public async Task<CaseFeatureSet?> ReadFeaturesAsync(TenantId tenantId, CaseContractFacts contract, string lang, CancellationToken cancellationToken = default)

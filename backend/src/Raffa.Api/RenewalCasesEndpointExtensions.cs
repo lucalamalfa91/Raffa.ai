@@ -47,6 +47,7 @@ public static class RenewalCasesEndpointExtensions
         endpoints.MapGet("/api/renewals/{caseId:guid}", GetAsync);
         endpoints.MapPost("/api/renewals/{caseId:guid}/actions", ActAsync);
         endpoints.MapPost("/api/renewals/{caseId:guid}/ask", AskAsync);
+        endpoints.MapPost("/api/renewals/{caseId:guid}/documents", DocumentAsync);
         endpoints.MapGet("/api/renewals/{caseId:guid}/timeline", TimelineAsync);
         endpoints.MapPatch("/api/renewals/{caseId:guid}/emails/{eid:int}", PatchEmailAsync);
         endpoints.MapPost("/api/renewals/{caseId:guid}/emails/{eid:int}/submit", (Guid caseId, int eid, CaseVersionRequest body, HttpRequest r, RenewalCaseService s, ICallerContext cc, CancellationToken ct) =>
@@ -136,6 +137,59 @@ public static class RenewalCasesEndpointExtensions
 
     private static Task<IResult> AskAsync(Guid caseId, CaseAskRequest body, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>
         WithCaller(request, callerContext, ct, async caller => Map(await service.AskAsync(caller.TenantId, caller.Identity, caseId, body.Text, body.Version, body.Lang, ct).ConfigureAwait(false)));
+
+    private const long MaxCaseDocumentBytes = 20L * 1024 * 1024;
+
+    /// <summary>A file added to the case (multipart: <c>file</c>, <c>type</c> = addDoc | altOffer, optional
+    /// <c>vendor</c>, <c>version</c>, <c>lang</c>): a contract draft, the signed contract or an alternative
+    /// supplier's offer. Raffa reads its text; the case records the reading.</summary>
+    private static Task<IResult> DocumentAsync(
+        Guid caseId, HttpRequest request, RenewalCaseService service, Raffa.AiFlows.Shared.Parsing.HybridDocumentParsingService parser,
+        Raffa.Documents.Contracts.Application.Admission.DocumentAdmissionOptions options, ICallerContext callerContext, CancellationToken ct) =>
+        WithCaller(request, callerContext, ct, async caller =>
+        {
+            var (form, file, refusal) = await DocumentsEndpointExtensions.ReadUploadFormAsync(request, options, ct).ConfigureAwait(false);
+            if (refusal is not null)
+            {
+                return refusal;
+            }
+
+            if (file!.Length > MaxCaseDocumentBytes)
+            {
+                return Results.Json(new CaseErrorBody("too_large", "Raffa reads documents up to 20 MB.", null, null), statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
+
+            var type = form!["type"].ToString();
+            if (type is not ("addDoc" or "altOffer"))
+            {
+                return Results.BadRequest(new CaseErrorBody("bad_request", "type must be addDoc or altOffer.", null, null));
+            }
+
+            var fileName = Path.GetFileName(file.FileName);
+            var text = string.Empty;
+            var (bytes, format, bytesRefusal) = await DocumentsEndpointExtensions.ReadUploadBytesAsync(file, options, ct).ConfigureAwait(false);
+            if (bytesRefusal is null)
+            {
+                var parsed = await parser.ParseAsync(fileName, format!.MimeType, bytes!, ct).ConfigureAwait(false);
+                if (parsed.IsSuccess)
+                {
+                    text = string.Join("\n\n", parsed.Value.Select(p => p.Text));
+                }
+            }
+            else if (Path.GetExtension(fileName).ToLowerInvariant() is ".txt" or ".md")
+            {
+                await using var stream = file.OpenReadStream();
+                using var reader = new StreamReader(stream);
+                text = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+            }
+
+            // An unreadable file is still recorded (by name); Raffa then says it did not read it, never guesses.
+            int? version = int.TryParse(form["version"].ToString(), out var v) ? v : null;
+            using var language = Raffa.SharedKernel.Language.ResponseLanguage.Use(form["lang"].ToString() == "en" ? "en" : "it");
+            return Map(await service.ActWithDocumentAsync(
+                    caller.TenantId, caller.Identity, caseId, type, fileName, text, form["vendor"].ToString() is { Length: > 0 } vendor ? vendor : null, version, ct)
+                .ConfigureAwait(false));
+        });
 
     private static Task<IResult> TimelineAsync(Guid caseId, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>
         WithCaller(request, callerContext, ct, async caller =>

@@ -284,6 +284,20 @@ public sealed class RenewalCaseEngineTests
     }
 
     [Fact]
+    public void The_counter_price_is_the_one_the_supplier_offered_else_the_rule()
+    {
+        var ctx = new CaseContext(Contract(1), Luca, Today, FixtureCaseScriptServices.Instance);
+        var c = RenewalCaseEngine.Create(1, ctx);
+        var byRule = RenewalCaseEngine.CounterPrice(c, ctx, 24);
+
+        c.OfferedPrices = new Dictionary<string, double> { ["24"] = 12.34 };
+
+        Assert.Equal(12.34, RenewalCaseEngine.CounterPrice(c, ctx, 24));
+        Assert.Equal(RenewalCaseEngine.CounterPrice(new RenewalCase(), ctx, 12), RenewalCaseEngine.CounterPrice(c, ctx, 12));
+        Assert.NotEqual(12.34, byRule);
+    }
+
+    [Fact]
     public void Texts_are_messages_with_the_prototype_english_ids()
     {
         var c = AtFirstEmail();

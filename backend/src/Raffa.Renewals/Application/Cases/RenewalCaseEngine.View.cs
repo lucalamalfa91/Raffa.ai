@@ -436,7 +436,7 @@ public static partial class RenewalCaseEngine
                     d.Title = B("The discount is tied to 24 months. What is your limit?", "Lo sconto è legato a 24 mesi. Qual è il tuo limite?");
                     if (q.State == "open")
                     {
-                        var p24 = CaseRules.Ps(f, ctx.Services.CounterPrice(ctx, 24));
+                        var p24 = CaseRules.Ps(f, CounterPrice(c, ctx, 24));
                         d.Lines = [B("Your plan asked for {term}. A longer commitment means less flexibility at the next renewal; a shorter one means no discount was offered. My only comparison is your current price ({price}) — no external benchmark.", "Il tuo piano chiedeva {term}. Un impegno più lungo riduce la flessibilità al prossimo rinnovo; uno più breve significa nessuno sconto. Il mio unico confronto è il tuo prezzo attuale ({price}) — nessun benchmark esterno.", ("term", AnsLabel(c, ctx, 1)), ("price", CaseRules.Ps(f, f.P0)))];
                         d.Chips =
                         [

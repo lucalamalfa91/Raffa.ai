@@ -1980,6 +1980,12 @@ export interface ApiClient {
   postRenewalCaseAction?(tenantId: string, caseId: string, type: string, payload: CaseActionPayload | null, version: number | null): Promise<CaseCallResult<CaseEnvelope>>;
   /** `POST /api/renewals/{caseId}/ask` -- the case composer (sourced answer, then back to the step). */
   askRenewalCase?(tenantId: string, caseId: string, text: string, version: number | null, lang?: string): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `POST /api/renewals/{caseId}/documents` -- a contract draft / the signed contract (`addDoc`) or an alternative supplier's offer (`altOffer`); Raffa reads the file. */
+  uploadRenewalCaseDocument?(
+    tenantId: string,
+    caseId: string,
+    input: { type: "addDoc" | "altOffer"; file: File; vendor?: string | null; version: number | null; lang: string },
+  ): Promise<CaseCallResult<CaseEnvelope>>;
   /** `DELETE /api/contracts/{id}` (Admin) -- the contract with its documents, renewal case and chats. */
   deleteContract?(tenantId: string, contractId: string): Promise<CaseCallResult<unknown>>;
   /** `GET /api/company-rules` -- the company rules and whether the caller may change them. */
@@ -4388,6 +4394,16 @@ export function createApiClient(
 
     askRenewalCase(tenantId, caseId, text, version, lang) {
       return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/ask`, { text, version, lang: lang ?? null });
+    },
+
+    uploadRenewalCaseDocument(tenantId, caseId, input) {
+      const form = new FormData();
+      form.append("file", input.file);
+      form.append("type", input.type);
+      form.append("lang", input.lang);
+      if (input.vendor) form.append("vendor", input.vendor);
+      if (input.version !== null) form.append("version", String(input.version));
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/documents`, form);
     },
 
     deleteContract(tenantId, contractId) {

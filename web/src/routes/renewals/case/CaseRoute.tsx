@@ -46,6 +46,9 @@ const demoLabel = (b: CaseButton): boolean => {
   return /^Demo: |\(demo\)$/.test(id);
 };
 
+/** A button that adds a document to the case (the contract draft, the signed contract): in a real workspace it takes a file. */
+const isDocButton = (b: CaseButton): boolean => b.act === "addDoc";
+
 const isEmpty = (x: Text | null | undefined): boolean => x == null || (typeof x === "string" && x.length === 0);
 
 /**
@@ -162,7 +165,29 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
       navigate(b.p.to === "c360" && env ? `/contracts/${env.contractId}` : "/renewals");
       return;
     }
+    if (isDocButton(b) && env && !env.demo && apiClient.uploadRenewalCaseDocument) {
+      docInput.current?.click();
+      return;
+    }
     void act(b.act, b.p);
+  };
+
+  const docInput = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const uploadDoc = async (file: File) => {
+    const cur = envRef.current;
+    if (!tenantId || !cur || !apiClient.uploadRenewalCaseDocument) return;
+    setUploading(true);
+    setLocalWarn(null);
+    const r = await apiClient.uploadRenewalCaseDocument(tenantId, caseId, { type: "addDoc", file, version: cur.version, lang });
+    setUploading(false);
+    const next = r.ok ? r.body : r.current;
+    if (next) {
+      envRef.current = next;
+      setEnv(next);
+      notifyTodayChanged();
+    }
+    if (!r.ok) setLocalWarn(t("Raffa could not add this file. Try a PDF or a text file."));
   };
 
   const ask = async () => {
@@ -591,11 +616,22 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             ) : null}
             {cd.inputs.length > 0 ? <div className="p4-inputs">{cd.inputs.map(input)}</div> : null}
             <div className="p4-buttons">
-              {cd.buttons.filter((b) => env.demo || !demoLabel(b)).map((b, i) => (
+              {cd.buttons.filter((b) => env.demo || !demoLabel(b) || isDocButton(b)).map((b, i) => (
                 <button key={i} type="button" className={`btn ${b.primary ? "btn-primary" : "btn-secondary"} p4-btn`} style={{ opacity: b.off ? 0.5 : 1 }} onClick={() => press(b)}>
-                  {tr(b.label)}
+                  {isDocButton(b) && !env.demo ? (uploading ? t("Raffa is reading…") : t("Add the file")) : tr(b.label)}
                 </button>
               ))}
+              <input
+                ref={docInput}
+                type="file"
+                hidden
+                accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void uploadDoc(f);
+                }}
+              />
               {cd.more.length > 0 ? (
                 <button type="button" className="btn btn-ghost p4-more-toggle" onClick={() => setMore((m) => !m)} aria-expanded={more}>
                   {more ? t("Less ▴") : t("More ▾")}
@@ -605,7 +641,7 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             {more ? (
               <div className="p4-more">
                 {cd.more
-                  .filter((b) => env.demo || !demoLabel(b))
+                  .filter((b) => env.demo || !demoLabel(b) || isDocButton(b))
                   .map((b, i) => (
                     <button key={i} type="button" className="btn btn-ghost" style={{ opacity: b.off ? 0.5 : 1 }} onClick={() => press(b)}>
                       {tr(b.label)}

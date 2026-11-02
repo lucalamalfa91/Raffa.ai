@@ -16,6 +16,18 @@ public interface ICaseAiReader
 
     Task<CaseFeatureSet?> ReadFeaturesAsync(
         TenantId tenantId, CaseContractFacts contract, string lang, CancellationToken cancellationToken = default);
+
+    /// <summary>A received contract draft (its text) against the agreed position: one row per agreed point.</summary>
+    Task<IReadOnlyList<CaseDraftRow>?> ReadDraftAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string fileName, string documentText, string lang, CancellationToken cancellationToken = default);
+
+    /// <summary>The signed contract (its text) against the agreed position and the last verified draft.</summary>
+    Task<CaseSignedCheck?> ReadSignedAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string fileName, string documentText, string lang, CancellationToken cancellationToken = default);
+
+    /// <summary>An alternative supplier's offer (its text) against the functions and sizing the case asks for.</summary>
+    Task<CaseAltOffer?> ReadOfferAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string vendor, string documentText, string by, string lang, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The default: no model readings.</summary>
@@ -27,16 +39,33 @@ public sealed class NoCaseAiReader : ICaseAiReader
 
     public Task<CaseFeatureSet?> ReadFeaturesAsync(TenantId tenantId, CaseContractFacts contract, string lang, CancellationToken cancellationToken = default) =>
         Task.FromResult<CaseFeatureSet?>(null);
+
+    public Task<IReadOnlyList<CaseDraftRow>?> ReadDraftAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string fileName, string documentText, string lang, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<CaseDraftRow>?>(null);
+
+    public Task<CaseSignedCheck?> ReadSignedAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string fileName, string documentText, string lang, CancellationToken cancellationToken = default) =>
+        Task.FromResult<CaseSignedCheck?>(null);
+
+    public Task<CaseAltOffer?> ReadOfferAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, string vendor, string documentText, string by, string lang, CancellationToken cancellationToken = default) =>
+        Task.FromResult<CaseAltOffer?>(null);
 }
 
 /// <summary>The script services of one engine step with the model readings taken before it.</summary>
-public sealed class ReadCaseScriptServices(ICaseScriptServices inner, CaseReplyAnalysis? reply, CaseFeatureSet? features) : ICaseScriptServices
+public sealed class ReadCaseScriptServices(
+    ICaseScriptServices inner,
+    CaseReplyAnalysis? reply = null,
+    CaseFeatureSet? features = null,
+    IReadOnlyList<CaseDraftRow>? draftRows = null,
+    CaseAltOffer? offer = null) : ICaseScriptServices
 {
     public string SampleReply(RenewalCase c, CaseContext ctx, int round) => inner.SampleReply(c, ctx, round);
 
     public CaseReplyAnalysis AnalyzeReply(RenewalCase c, CaseContext ctx, int rid) => reply ?? inner.AnalyzeReply(c, ctx, rid);
 
-    public IReadOnlyList<CaseDraftRow> VerifyDraft(RenewalCase c, CaseContext ctx, int version) => inner.VerifyDraft(c, ctx, version);
+    public IReadOnlyList<CaseDraftRow> VerifyDraft(RenewalCase c, CaseContext ctx, int version) => draftRows ?? inner.VerifyDraft(c, ctx, version);
 
     public CaseSignedCheck CheckSigned(RenewalCase c, CaseContext ctx) => inner.CheckSigned(c, ctx);
 
@@ -44,7 +73,7 @@ public sealed class ReadCaseScriptServices(ICaseScriptServices inner, CaseReplyA
 
     public IReadOnlyList<string> ExampleVendors() => inner.ExampleVendors();
 
-    public CaseAltOffer VendorOffer(RenewalCase c, CaseContext ctx, string vendor, string by) => inner.VendorOffer(c, ctx, vendor, by);
+    public CaseAltOffer VendorOffer(RenewalCase c, CaseContext ctx, string vendor, string by) => offer ?? inner.VendorOffer(c, ctx, vendor, by);
 
     public string? ExampleAddress(CaseEmail email, CaseContext ctx) => inner.ExampleAddress(email, ctx);
 

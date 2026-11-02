@@ -136,4 +136,6 @@ export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "Negotiation points from Raffa": "Punti di negoziazione di Raffa",
   "Done⟦point⟧": "Fatto",
   "Mark done": "Segna come fatto",
+  "Add the file": "Aggiungi il file",
+  "Raffa could not add this file. Try a PDF or a text file.": "Raffa non è riuscita ad aggiungere questo file. Prova con un PDF o un file di testo.",
 };
