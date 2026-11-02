@@ -19,7 +19,7 @@ const TABS: ReadonlyArray<{ id: string; label: string; to: string; active: (path
 ];
 
 /** Raffa staff only (the portal admin profile): shown when the API says the caller is a platform admin. */
-const ADMIN_TAB = { id: "admin", label: "Admin", to: "/admin", active: (p: string) => p.startsWith("/admin") };
+const ADMIN_TAB = { id: "admin", label: "Pannello admin", to: "/admin", active: (p: string) => p.startsWith("/admin") };
 
 /**
  * The AskRaffa 4.0 top nav (prototype lines 38-44): logo square + "Raffa.ai", five tabs (active =

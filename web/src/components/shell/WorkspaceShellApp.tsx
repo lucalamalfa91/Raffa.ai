@@ -15,7 +15,6 @@ import AskRoute from "../../routes/ask";
 import SavingsRoute from "../../routes/savings";
 import SettingsRoute from "../../routes/settings";
 import MembersRoute from "../../routes/workspace/members";
-import AdminRoute from "../../routes/admin";
 
 export interface WorkspaceShellAppProps {
   /**
@@ -94,8 +93,6 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
         <Route path="ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
         <Route path="savings" element={<SavingsRoute apiClient={apiClient} />} />
         <Route path="settings" element={<SettingsRoute apiClient={apiClient} />} />
-        {/* Portal admin (Raffa staff). The API answers 404 to anyone else; the top nav only links it for platform admins. */}
-        <Route path="admin" element={<AdminRoute apiClient={apiClient} />} />
         <Route path="contracts" element={<ContractsRoute apiClient={apiClient} />} />
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} userLabel={userLabel} />} />
         {/* AskRaffa 4.0 Revisione is by document (IMPLEMENTATION-PLAN.md §1); the old by-contract
