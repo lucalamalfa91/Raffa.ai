@@ -62,7 +62,10 @@ public static class AskConversationsEndpointExtensions
         // Production: the full agentic Ask engine (the conversation's own history, scope, interviews,
         // capability check, drafts, actions, follow-ups, portfolio-wide questions) — the same flow as
         // POST /api/conversations/{id}/messages. The fixture/parity host keeps the scripted 4.0 path.
-        if (answerService is Raffa.AiFlows.Ask.V4.CopilotAskAnswerService && !answerOnly)
+        var noBenchmark = services.GetService<AskAnswerOptions>()?.NoBenchmark == true;
+        // (A market / benchmark question with askraffa4.noBenchmark on keeps the 4.0 declared-limit refusal.)
+        if (answerService is Raffa.AiFlows.Ask.V4.CopilotAskAnswerService && !answerOnly
+            && !(noBenchmark && AskRules.IsMarketQuestion(body.Question)))
         {
             using var language = Raffa.SharedKernel.Language.ResponseLanguage.Use(body.Lang == "en" ? "en" : "it");
             return await AskAgenticAsync(

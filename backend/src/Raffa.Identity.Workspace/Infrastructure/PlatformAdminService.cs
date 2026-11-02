@@ -58,10 +58,16 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     // ----- workspace registry -----
 
+    /// <summary>True only on a real relational store. <c>IsRelational()</c> alone is not enough: a host that
+    /// swaps the provider for InMemory (the API tests) keeps the relational options extension, and every raw
+    /// SQL call would then throw on each request.</summary>
+    private bool IsRelationalStore =>
+        db.Database.IsRelational() && db.Database.ProviderName != "Microsoft.EntityFrameworkCore.InMemory";
+
     /// <summary>Idempotent: a workspace already registered is left exactly as it is.</summary>
     public Task<int> RegisterWorkspaceAsync(
         Guid tenantId, string name, string? adminEmail, DateTimeOffset createdAt, CancellationToken ct = default) =>
-        !db.Database.IsRelational() ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
+        !IsRelationalStore ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO platform_workspace (tenant_id, name, admin_email, created_at, status)
             VALUES ({tenantId}, {name}, {adminEmail}, {createdAt.ToUniversalTime()}, 'active')
@@ -78,7 +84,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     /// <summary>True when the workspace is registered and suspended. Unregistered = not suspended.</summary>
     public async Task<bool> IsSuspendedAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.Database.IsRelational() && (await db.Database.SqlQuery<int>(
+        IsRelationalStore && (await db.Database.SqlQuery<int>(
             $"SELECT 1 AS \"Value\" FROM platform_workspace WHERE tenant_id = {tenantId} AND status = 'suspended'")
             .ToListAsync(ct).ConfigureAwait(false)).Count > 0;
 
@@ -181,7 +187,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     /// <summary>True when this person accepted an invitation that has not yet been spent on a workspace.</summary>
     public async Task<bool> HasUnspentInvitationAsync(string subject, CancellationToken ct = default) =>
-        db.Database.IsRelational() && (await db.Database.SqlQuery<int>(
+        IsRelationalStore && (await db.Database.SqlQuery<int>(
             $"""
             SELECT 1 AS "Value" FROM platform_invitation
             WHERE accepted_by_subject = {subject} AND accepted_at IS NOT NULL AND workspace_id IS NULL
@@ -190,7 +196,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     /// <summary>Spends one accepted invitation on the workspace just created. Atomic and idempotent.</summary>
     public Task<int> SpendInvitationAsync(string subject, Guid tenantId, CancellationToken ct = default) =>
-        !db.Database.IsRelational() ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
+        !IsRelationalStore ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             UPDATE platform_invitation SET workspace_id = {tenantId}
             WHERE id = (
