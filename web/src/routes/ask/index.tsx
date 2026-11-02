@@ -19,6 +19,7 @@ import "./ask4.css";
 import "./chat.css";
 import ReplyBody from "./ReplyBody";
 import AgentExtras from "./AgentExtras";
+import FeedbackCard from "./FeedbackCard";
 import DraftPanel, { ArtifactCard } from "./DraftPanel";
 import { splitEmailDraft, type EmailDraft } from "./draft";
 import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
@@ -85,6 +86,19 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [q, setQ] = useState("");
   const [showArchive, setShowArchive] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Public web research for the next question: offered only when the workspace opted in.
+  const [webAvailable, setWebAvailable] = useState(false);
+  const [webOn, setWebOn] = useState(false);
+  useEffect(() => {
+    if (!tenantId) return;
+    let alive = true;
+    void apiClient.getWorkspaceSettings(tenantId).then((r) => {
+      if (alive) setWebAvailable(!!r.settings?.webResearchEnabled && r.settings?.webResearchAvailable !== false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [apiClient, tenantId]);
   /** The question being answered: shown at once, with the thinking row under it, until Raffa's reply arrives. */
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const thinkingRef = useRef<HTMLDivElement>(null);
@@ -200,7 +214,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       answerOnly,
       lang,
       interviewAnswer: interviewAnswer ?? null,
+      webResearch: webOn,
     });
+    setWebOn(false);
     setBusy(false);
     setPendingQuestion(null);
     if (!r.data) return;
@@ -212,6 +228,19 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     const drafted = fresh ? (fresh.payload?.draft ?? splitEmailDraft(fresh.markdown).draft) : null;
     if (fresh && drafted) setPanel({ id: fresh.id, draft: drafted });
     void reloadLists();
+    // The capability check may still be looking: its follow-up turn lands in the conversation shortly.
+    if (r.data.capabilityCheck === "pending") {
+      const id = r.data.conversation.id;
+      const known = r.data.conversation.messages.length;
+      for (let i = 0; i < 6; i++) {
+        await new Promise((done) => window.setTimeout(done, 2500));
+        const d = await api.getConversation(tenantId, id);
+        if (d.data && d.data.messages.length > known) {
+          show(d.data);
+          break;
+        }
+      }
+    }
   };
 
   const openCase = async (contractId: string) => {
@@ -583,6 +612,23 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                             {draft ? (
                               <ArtifactCard draft={draft} active={panel?.id === m.id} onOpen={() => setPanel(panel?.id === m.id ? null : { id: m.id, draft })} />
                             ) : null}
+                            {m.payload?.feedbackOffer &&
+                            current &&
+                            !all.some((x) => x.payload?.feedbackResult?.forMessageId === m.id) ? (
+                              <span data-parity-hide>
+                                <FeedbackCard
+                                  offer={m.payload.feedbackOffer}
+                                  onSubmit={async (answers) => {
+                                    const res = await apiClient.postConversationFeedback(tenantId, current.id, { messageId: m.id, answers });
+                                    if (res.ok) {
+                                      const d = await api.getConversation(tenantId, current.id);
+                                      if (d.data) show(d.data);
+                                    }
+                                    return { ok: res.ok };
+                                  }}
+                                />
+                              </span>
+                            ) : null}
                             <AgentExtras
                               message={m}
                               latest={m.id === lastRaffaId}
@@ -660,7 +706,15 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
               {t("Ask⟦button⟧")}
             </button>
           </div>
-          <div className="k6-composer-foot">{t("Procurement only · cites its source or says it cannot")}</div>
+          <div className="k6-composer-foot">
+            {t("Procurement only · cites its source or says it cannot")}
+            {webAvailable ? (
+              <label className="k6-web-toggle" data-parity-hide>
+                <input type="checkbox" checked={webOn} onChange={(e) => setWebOn(e.target.checked)} />{" "}
+                {t("Also search the public web for this question")}
+              </label>
+            ) : null}
+          </div>
         </div>
       </div>
       {panel?.draft ? <DraftPanel draft={panel.draft} onClose={() => setPanel(null)} /> : null}

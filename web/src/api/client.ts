@@ -4470,7 +4470,14 @@ export interface ConversationMessage4 {
   actions: Array<{ kind?: string; contractId?: string | null; label?: string; href?: string }>;
   createdAt: string;
   /** The agentic engine's structured half: a drafted email, suggested next questions. */
-  payload?: { draft?: { subject: string; body: string } | null; followUps?: string[] | null } | null;
+  payload?: {
+    draft?: { subject: string; body: string } | null;
+    followUps?: string[] | null;
+    /** A capability gap: Raffa offers to report it to the team (the in-chat feedback card). */
+    feedbackOffer?: import("../routes/ask/FeedbackCard").FeedbackOffer | null;
+    /** On the confirmation turn: which offer was answered. */
+    feedbackResult?: { forMessageId: string } | null;
+  } | null;
   /** Raffa asks before acting: questions with clickable options. */
   interview?: {
     prompt: string;
@@ -4499,12 +4506,16 @@ export interface AskTurnRequest {
   lang?: "it" | "en";
   /** An option picked in Raffa's interview (the agentic engine resumes the flow it asked for). */
   interviewAnswer?: { messageId: string; questionKey: string; optionKey?: string | null; freeText?: boolean } | null;
+  /** This question may also search the public web (the workspace opted in; the engine still checks the budget). */
+  webResearch?: boolean;
 }
 
 export interface AskTurnResult {
   conversationId: string;
   needsContract: boolean;
   conversation: ConversationDetail4;
+  /** "pending": the capability check is still looking; a follow-up turn may land in the conversation. */
+  capabilityCheck?: string | null;
 }
 
 export interface AskContract {

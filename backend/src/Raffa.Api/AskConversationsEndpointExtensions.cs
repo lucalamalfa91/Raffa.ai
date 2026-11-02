@@ -143,7 +143,7 @@ public static class AskConversationsEndpointExtensions
             youInterviewJson = resolution.YouInterviewJson;
         }
 
-        await ConversationsEndpointExtensions.AskAndAppendAsync(
+        var turn = await ConversationsEndpointExtensions.AskAndAppendAsync(
                 services.GetRequiredService<Raffa.AiFlows.Ask.Orchestration.AskCopilotService>(),
                 conversations,
                 services.GetRequiredService<CapabilityFollowUpAppender>(),
@@ -154,7 +154,15 @@ public static class AskConversationsEndpointExtensions
         var detail = await conversations.GetAsync(tenantId, userId, conversation.ConversationId, cancellationToken).ConfigureAwait(false);
         return detail is null
             ? Results.NotFound()
-            : Results.Ok(new { conversationId = detail.ConversationId.Value, needsContract = false, conversation = ToDetail(detail) });
+            : Results.Ok(new
+            {
+                conversationId = detail.ConversationId.Value,
+                needsContract = false,
+                conversation = ToDetail(detail),
+                // "pending": the capability check is still looking; its follow-up turn lands in the conversation.
+                capabilityCheck = System.Text.Json.JsonSerializer.SerializeToElement(turn).TryGetProperty("capabilityCheck", out var check)
+                    && check.ValueKind == System.Text.Json.JsonValueKind.String ? check.GetString() : null,
+            });
     }
 
     private static async Task<IResult> SetArchivedAsync(

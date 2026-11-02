@@ -40,6 +40,7 @@ public sealed class RenewalsFixtureSeeder(
         }
 
         var members = await memberDirectory.ListAsync(context.TenantId, cancellationToken).ConfigureAwait(false);
+        var company = await memberDirectory.CompanyNameAsync(context.TenantId, cancellationToken).ConfigureAwait(false) ?? string.Empty;
         string Name(string key) => context.User(key).DisplayName;
 
         foreach (var node in seed["cases"]!.AsArray())
@@ -49,7 +50,7 @@ public sealed class RenewalsFixtureSeeder(
             var contractId = FixtureIds.Contract(context.TenantId, fixtureId);
             var facts = await factsReader.GetAsync(context.TenantId, contractId, cancellationToken).ConfigureAwait(false)
                         ?? throw new InvalidOperationException($"Fixture contract {fixtureId} has no facts; the contracts seeder must run first.");
-            var cf = CaseFactsMapper.ToCaseFacts(facts);
+            var cf = CaseFactsMapper.ToCaseFacts(facts) with { Company = company };
             CaseContext Ctx(string who) => new(cf, Name(who), context.Today, FixtureCaseScriptServices.Instance);
 
             var approver = RenewalCaseService.Approver(members) ?? Name("luca");
