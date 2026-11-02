@@ -494,6 +494,14 @@ app.UseDatabaseSaturationHandling();
 // Fixture mode only: CORS for the parity web origin (Fixtures:CorsOrigins).
 app.UseFixtureMode(fixtureOptions);
 
+// The language chosen in the interface (X-Raffa-Lang: it | en) decides the language of everything Raffa
+// writes in reply during this request: model answers, chats and the deterministic fallback texts.
+app.Use(async (context, next) =>
+{
+    using var responseLanguage = Raffa.SharedKernel.Language.ResponseLanguage.Use(context.Request.Headers["X-Raffa-Lang"].ToString());
+    await next().ConfigureAwait(false);
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 

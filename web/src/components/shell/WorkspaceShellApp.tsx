@@ -29,6 +29,8 @@ export interface WorkspaceShellAppProps {
   role: WorkspaceRole;
   userLabel: string;
   onSignOut: () => void;
+  /** Back to the workspace picker (choose another workspace, or create a new one). */
+  onSwitchWorkspace?: () => void;
   /**
    * Task E06/F05/US01/T01 (document-upload): threaded through from
    * App.tsx so the `documents` route below can call the real
@@ -67,7 +69,7 @@ export interface WorkspaceShellAppProps {
  * named variable spread into one), so this task's own build stays green before that merge and the
  * two extra props start being consumed, unchanged, the moment it lands.
  */
-export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSignOut, apiClient }: WorkspaceShellAppProps) {
+export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSignOut, onSwitchWorkspace, apiClient }: WorkspaceShellAppProps) {
   const membersRouteProps = { apiClient, userLabel, workspaceId, role };
 
   return (
@@ -80,6 +82,7 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
             role={role}
             userLabel={userLabel}
             onSignOut={onSignOut}
+            onSwitchWorkspace={onSwitchWorkspace}
             apiClient={apiClient}
           />
         }

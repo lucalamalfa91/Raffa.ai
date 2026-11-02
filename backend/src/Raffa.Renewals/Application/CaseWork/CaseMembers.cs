@@ -44,7 +44,8 @@ public static class CaseFactsMapper
     {
         ArgumentNullException.ThrowIfNull(f);
         var end = f.EndDate ?? Parse(f.End) ?? DateOnly.MinValue;
-        var cancel = f.NoticeDeadline ?? Parse(f.Cancel) ?? end.AddDays(-f.Notice);
+        // No end date read: there is no notice deadline either (and MinValue.AddDays(-n) would throw).
+        var cancel = f.NoticeDeadline ?? Parse(f.Cancel) ?? (end == DateOnly.MinValue ? DateOnly.MinValue : end.AddDays(-f.Notice));
         var start = f.StartDate ?? Parse(f.Start) ?? DateOnly.MinValue;
         if (today is { } d && ContractTermCalculator.Compute(f, d) is { RolledOver: true } term)
         {

@@ -194,6 +194,12 @@ public sealed class AnswerComposer(
     private Task<Result<AiAnswerResult>> CallGatewayAsync(
         string question, string packJson, string systemPrompt, CancellationToken cancellationToken)
     {
+        // The language chosen in the interface decides the language of the answer, not the question's words.
+        if (Raffa.SharedKernel.Language.ResponseLanguage.Directive is { } directive)
+        {
+            systemPrompt = systemPrompt + "\n\n" + directive;
+        }
+
         if (stepRunner is not null && settings.AnswerOnRunner)
         {
             return CallOnRunnerAsync(stepRunner, question, packJson, systemPrompt, cancellationToken);

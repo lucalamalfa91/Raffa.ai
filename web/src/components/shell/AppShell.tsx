@@ -25,6 +25,7 @@ export interface AppShellProps {
   role: WorkspaceRole;
   userLabel: string;
   onSignOut: () => void;
+  onSwitchWorkspace?: () => void;
   /** The client every routed screen shares; the shell reads `kbReady` / document counts with it. */
   apiClient: ApiClient;
 }
@@ -50,7 +51,7 @@ export default function AppShell(props: AppShellProps) {
   );
 }
 
-function ShellLayout({ workspaceId, apiClient }: AppShellProps) {
+function ShellLayout({ workspaceId, workspaceName, role, userLabel, onSignOut, onSwitchWorkspace, apiClient }: AppShellProps) {
   const location = useLocation();
   const fixture = useFixtureSession();
   const { open } = useGuideState();
@@ -78,7 +79,7 @@ function ShellLayout({ workspaceId, apiClient }: AppShellProps) {
   return (
     <div className="v4">
       {fixture ? <DemoBar /> : null}
-      <TopNav />
+      <TopNav workspaceName={workspaceName} role={role} userLabel={userLabel} onSignOut={onSignOut} onSwitchWorkspace={onSwitchWorkspace} />
       <div className={open ? "v4-body" : "v4-body is-guide-closed"}>
         <main className="v4-main" ref={mainRef}>
           <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts }} />
