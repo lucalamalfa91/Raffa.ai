@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
+import { InteractionStatus } from "@azure/msal-browser";
 import type { ApiClient } from "../../api/client";
 import { clearCurrentWorkspace } from "../signin/workspaceStore";
 import AdminRoute from ".";
@@ -12,8 +13,14 @@ import "./admin.css";
  * who is not a platform admin.
  */
 export default function AdminPage({ apiClient }: { apiClient: ApiClient }) {
-  const { instance, accounts } = useMsal();
-  if (!accounts[0]) return <Navigate to="/" replace />;
+  const { instance, accounts, inProgress } = useMsal();
+  // After a full page load MSAL is still starting up (`inProgress` is not `None`) and `accounts` can be
+  // empty for a moment: redirecting then sent a signed-in admin straight back to the workspace picker.
+  // Only conclude "signed out" once MSAL is idle, and read the cache directly as a second source.
+  const account = accounts[0] ?? instance.getAllAccounts()[0];
+  if (!account) {
+    return inProgress === InteractionStatus.None ? <Navigate to="/" replace /> : <main className="app-resolving" aria-busy="true" />;
+  }
 
   return (
     <div className="admin-page">
@@ -21,7 +28,7 @@ export default function AdminPage({ apiClient }: { apiClient: ApiClient }) {
         <a href="/" className="admin-page-back">
           ← Back to workspaces
         </a>
-        <span className="admin-page-user">{accounts[0].username}</span>
+        <span className="admin-page-user">{account.username}</span>
         <button
           type="button"
           className="btn btn-ghost"
