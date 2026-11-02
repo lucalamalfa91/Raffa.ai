@@ -420,3 +420,52 @@ button.artifact-card:hover {
   .k6-rail, .k6-composer-wrap, .v4-nav, .artifact-panel-actions, .artifact-panel-close { display: none !important; }
   .artifact-panel { width: 100% !important; border: 0; }
 }
+
+/* The agentic engine's extras under a reply: interview options, actions, suggested next questions. */
+.agent-extras { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.agent-interview-q { font-weight: 600; margin-bottom: 6px; }
+.agent-interview-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-option {
+  font: inherit; font-size: 14px; padding: 7px 12px; border: 1px solid var(--color-border, #d6d6d6);
+  border-radius: 999px; background: var(--color-surface, #fff); color: var(--color-text); cursor: pointer;
+}
+.agent-option:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent); }
+.agent-interview-hint { font-size: 12px; color: var(--color-neutral-600); margin-top: 6px; }
+.agent-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.reply-citation-preview-snippet { display: block; margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--color-neutral-700, #444); font-style: italic; }
+.reply-followups {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.reply-followup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  margin-left: -8px;
+  border: 0;
+  border-radius: var(--chat-radius-control);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--color-neutral-700);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.reply-followup:hover {
+  background: var(--chat-tint);
+  color: var(--color-text);
+}
+
+.reply-followup-arrow {
+  flex: none;
+  font-size: 12px;
+  color: var(--chat-muted);
+}

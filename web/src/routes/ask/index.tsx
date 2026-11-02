@@ -18,6 +18,7 @@ import { conversationDay, isSameDay, todayIso } from "./askDates";
 import "./ask4.css";
 import "./chat.css";
 import ReplyBody from "./ReplyBody";
+import AgentExtras from "./AgentExtras";
 import DraftPanel, { ArtifactCard } from "./DraftPanel";
 import { splitEmailDraft, type EmailDraft } from "./draft";
 import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
@@ -173,7 +174,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setPanel({ id: made.id, artifact: made });
   };
 
-  const ask = async (question: string, contractId?: string, answerOnly = false) => {
+  const ask = async (
+    question: string,
+    contractId?: string,
+    answerOnly = false,
+    interviewAnswer?: { messageId: string; questionKey: string; optionKey?: string | null },
+  ) => {
     const text = question.trim();
     if (!text || busy) return;
     // "Create a dashboard / KPIs / a brief": built from the contracts, shown in the panel.
@@ -193,6 +199,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       contractId: contractId ?? current?.scopeContractId ?? scopeId ?? null,
       answerOnly,
       lang,
+      interviewAnswer: interviewAnswer ?? null,
     });
     setBusy(false);
     setPendingQuestion(null);
@@ -202,7 +209,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     show(r.data.conversation);
     // An email Raffa just drafted opens in the side panel by itself (the user can close it).
     const fresh = [...r.data.conversation.messages].reverse().find((m) => m.role === "raffa");
-    const drafted = fresh ? splitEmailDraft(fresh.markdown).draft : null;
+    const drafted = fresh ? (fresh.payload?.draft ?? splitEmailDraft(fresh.markdown).draft) : null;
     if (fresh && drafted) setPanel({ id: fresh.id, draft: drafted });
     void reloadLists();
   };
@@ -547,7 +554,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 ) : null}
               </div>
             ) : null}
-            {(current?.messages ?? []).map((m) => {
+            {(current?.messages ?? []).map((m, _i, all) => {
+              const lastRaffaId = [...all].reverse().find((x) => x.role === "raffa")?.id;
               const raffa = m.role === "raffa";
               const cta = raffa ? ctaOf(m) : null;
               return (
@@ -556,7 +564,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                   <div className="k6-qa-body">
                     {raffa ? (
                       (() => {
-                        const { text, draft } = splitEmailDraft(m.markdown);
+                        const split = splitEmailDraft(m.markdown);
+                        const text = split.text;
+                        const draft = m.payload?.draft ?? split.draft;
                         // The parity run compares with the prototype's plain reply ("Source: …"): see PARITY.md D7.
                         if (parityRun()) {
                           const src = m.citations[0]?.title;
@@ -573,6 +583,14 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                             {draft ? (
                               <ArtifactCard draft={draft} active={panel?.id === m.id} onOpen={() => setPanel(panel?.id === m.id ? null : { id: m.id, draft })} />
                             ) : null}
+                            <AgentExtras
+                              message={m}
+                              latest={m.id === lastRaffaId}
+                              busy={busy}
+                              onAsk={(q) => void ask(q)}
+                              onInterview={(messageId, questionKey, option) => void ask(option.label, undefined, false, { messageId, questionKey, optionKey: option.key })}
+                              onNavigate={(href) => (/^https?:/.test(href) ? window.open(href, "_blank", "noopener") : navigate(href))}
+                            />
                           </>
                         );
                       })()

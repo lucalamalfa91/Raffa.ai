@@ -13,6 +13,8 @@ namespace Raffa.Chat.Application.Ask4;
 /// </summary>
 public sealed class AskConversationService(ConversationService conversations, IAskAnswerService answers)
 {
+    private const int RecentTurnsLimit = 8;
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <param name="AnswerOnly">The picker's second half: the question is already in the
@@ -31,20 +33,38 @@ public sealed class AskConversationService(ConversationService conversations, IA
     {
         ArgumentNullException.ThrowIfNull(request);
         var question = request.Question.Trim();
-        var answer = await answers
-            .AnswerAsync(tenantId, userId, question, request.ContractId, request.Lang, cancellationToken)
-            .ConfigureAwait(false);
-
         var conversationId = request.ConversationId;
+        ConversationDetailResult? existingConversation = null;
         if (conversationId is { } existing)
         {
-            var current = await conversations.GetAsync(tenantId, userId, existing, cancellationToken).ConfigureAwait(false);
-            if (current is null)
+            existingConversation = await conversations.GetAsync(tenantId, userId, existing, cancellationToken).ConfigureAwait(false);
+            if (existingConversation is null)
             {
                 return new AskResult(false, false, null);
             }
         }
-        else
+
+        // The chat remembers: a follow-up is read against the turns so far, and in the contract the
+        // conversation is already about (so "e la penale?" never asks "which contract?" again).
+        var contractId = request.ContractId ?? existingConversation?.ScopeContractId;
+        var history = existingConversation is null
+            ? null
+            : existingConversation.Messages
+                .Where(m => !string.IsNullOrWhiteSpace(m.Markdown))
+                .TakeLast(RecentTurnsLimit)
+                .Select(m => (Role: m.Role == ConversationRole.You ? "you" : "raffa", m.Markdown))
+                .ToList();
+        // The picker's second half: the question is already the last turn — do not hand it over twice.
+        if (request.AnswerOnly && history is { Count: > 0 } && history[^1].Role == "you" && history[^1].Markdown.Trim() == question)
+        {
+            history.RemoveAt(history.Count - 1);
+        }
+
+        var answer = await answers
+            .AnswerAsync(tenantId, userId, question, contractId, request.Lang, history, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (conversationId is null)
         {
             var created = await conversations
                 .CreateTitledAsync(tenantId, userId, AskRules.Title(question, answer.Supplier), answer.ContractId, null, cancellationToken)

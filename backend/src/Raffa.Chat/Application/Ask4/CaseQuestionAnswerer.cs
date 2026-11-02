@@ -14,7 +14,7 @@ public sealed class CaseQuestionAnswerer(IAskAnswerService answers) : ICaseQuest
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
         var answer = await answers
-            .AnswerAsync(tenantId, Actor, text, contractId, lang == "en" ? "en" : "it", cancellationToken)
+            .AnswerAsync(tenantId, Actor, text, contractId, lang == "en" ? "en" : "it", cancellationToken: cancellationToken)
             .ConfigureAwait(false);
         return answer.NeedsContract || answer.Text is null
             ? new CaseQuestionAnswer(

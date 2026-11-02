@@ -678,7 +678,7 @@ public static class ConversationsEndpointExtensions
         message,
     };
 
-    private static async Task<InterviewAnswerResolution> ResolveInterviewAnswerAsync(
+    internal static async Task<InterviewAnswerResolution> ResolveInterviewAnswerAsync(
         ConversationService conversationService,
         TenantId tenantId,
         string userId,
@@ -774,7 +774,7 @@ public static class ConversationsEndpointExtensions
             InterviewJsonCodec.SerializeAnswer(messageId, question.Key, null, freeText: true));
     }
 
-    private sealed record InterviewAnswerResolution(
+    internal sealed record InterviewAnswerResolution(
         IResult? Failure, AskTurnHints Hints, string EffectiveQuestion, string? YouInterviewJson)
     {
         public static InterviewAnswerResolution Fail(IResult failure) => new(failure, AskTurnHints.None, string.Empty, null);
@@ -907,7 +907,7 @@ public static class ConversationsEndpointExtensions
         messages = detail.Messages.Select((message, index) => ToMessageResponse(message, index < detail.Messages.Count - 1)),
     };
 
-    private static object ToMessageResponse(ConversationMessageResult message, bool hasLaterTurn) => new
+    internal static object ToMessageResponse(ConversationMessageResult message, bool hasLaterTurn) => new
     {
         id = message.MessageId.Value,
         role = ToWireRole(message.Role),

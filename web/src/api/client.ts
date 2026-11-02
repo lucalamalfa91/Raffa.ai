@@ -4465,9 +4465,18 @@ export interface ConversationMessage4 {
   role: "you" | "raffa";
   kind: string;
   markdown: string;
-  citations: Array<{ title?: string; page?: number | null; section?: string | null }>;
-  actions: Array<{ kind?: string; contractId?: string | null }>;
+  citations: Array<{ title?: string; page?: number | null; section?: string | null; snippet?: string | null; href?: string | null }>;
+  /** 4.0 scripted CTAs carry `kind` + `contractId`; the agentic engine's actions carry `label` + `href`. */
+  actions: Array<{ kind?: string; contractId?: string | null; label?: string; href?: string }>;
   createdAt: string;
+  /** The agentic engine's structured half: a drafted email, suggested next questions. */
+  payload?: { draft?: { subject: string; body: string } | null; followUps?: string[] | null } | null;
+  /** Raffa asks before acting: questions with clickable options. */
+  interview?: {
+    prompt: string;
+    answered: boolean;
+    questions: Array<{ key: string; prompt: string; allowFreeText: boolean; options: Array<{ key: string; label: string; hint: string | null }> }>;
+  } | null;
 }
 
 export interface ConversationDetail4 {
@@ -4488,6 +4497,8 @@ export interface AskTurnRequest {
   contractId?: string | null;
   answerOnly?: boolean;
   lang?: "it" | "en";
+  /** An option picked in Raffa's interview (the agentic engine resumes the flow it asked for). */
+  interviewAnswer?: { messageId: string; questionKey: string; optionKey?: string | null; freeText?: boolean } | null;
 }
 
 export interface AskTurnResult {

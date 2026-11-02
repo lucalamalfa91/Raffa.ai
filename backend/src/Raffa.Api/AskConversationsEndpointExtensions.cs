@@ -23,12 +23,16 @@ public static class AskConversationsEndpointExtensions
         return endpoints;
     }
 
-    public sealed record AskRequestBody(string? ConversationId, string? Question, string? ContractId, bool? AnswerOnly, string? Lang);
+    public sealed record AskRequestBody(string? ConversationId, string? Question, string? ContractId, bool? AnswerOnly, string? Lang, bool? WebResearch = null,
+        ConversationsEndpointExtensions.InterviewAnswerRequest? InterviewAnswer = null);
 
     private static async Task<IResult> AskAsync(
         AskRequestBody? body,
         HttpRequest request,
         AskConversationService askService,
+        IAskAnswerService answerService,
+        ConversationService conversationService,
+        IServiceProvider services,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -55,6 +59,18 @@ public static class AskConversationsEndpointExtensions
             return Results.BadRequest("'answerOnly' needs both 'conversationId' and 'contractId'.");
         }
 
+        // Production: the full agentic Ask engine (the conversation's own history, scope, interviews,
+        // capability check, drafts, actions, follow-ups, portfolio-wide questions) — the same flow as
+        // POST /api/conversations/{id}/messages. The fixture/parity host keeps the scripted 4.0 path.
+        if (answerService is Raffa.AiFlows.Ask.V4.CopilotAskAnswerService && !answerOnly)
+        {
+            using var language = Raffa.SharedKernel.Language.ResponseLanguage.Use(body.Lang == "en" ? "en" : "it");
+            return await AskAgenticAsync(
+                    caller.TenantId, caller.Identity!, conversationId, contractId, body.Question.Trim(), body.WebResearch == true, body.InterviewAnswer,
+                    conversationService, services, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         var result = await askService.AskAsync(
                 caller.TenantId,
                 caller.Identity!,
@@ -73,6 +89,69 @@ public static class AskConversationsEndpointExtensions
             needsContract = result.NeedsContract,
             conversation = ToDetail(detail),
         });
+    }
+
+    private static async Task<IResult> AskAgenticAsync(
+        TenantId tenantId,
+        string userId,
+        EntityId? conversationId,
+        EntityId? contractId,
+        string question,
+        bool webResearch,
+        ConversationsEndpointExtensions.InterviewAnswerRequest? interviewAnswer,
+        ConversationService conversations,
+        IServiceProvider services,
+        CancellationToken cancellationToken)
+    {
+        ConversationDetailResult? conversation;
+        if (conversationId is { } existing)
+        {
+            conversation = await conversations.GetAsync(tenantId, userId, existing, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var created = await conversations
+                .CreateTitledAsync(tenantId, userId, AskRules.Title(question, null), contractId, null, cancellationToken)
+                .ConfigureAwait(false);
+            conversation = await conversations.GetAsync(tenantId, userId, created.ConversationId, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (conversation is null)
+        {
+            return Results.NotFound();
+        }
+
+        var hints = webResearch ? Raffa.AiFlows.Ask.Interview.AskTurnHints.None with { WebMode = true } : Raffa.AiFlows.Ask.Interview.AskTurnHints.None;
+        var effectiveQuestion = question;
+        string? youInterviewJson = null;
+        if (interviewAnswer is not null && conversationId is not null)
+        {
+            // An option picked in Raffa's interview: the engine resumes the flow it asked for.
+            var resolution = await ConversationsEndpointExtensions
+                .ResolveInterviewAnswerAsync(conversations, tenantId, userId, conversation.ConversationId, interviewAnswer, question, cancellationToken)
+                .ConfigureAwait(false);
+            if (resolution.Failure is not null)
+            {
+                return resolution.Failure;
+            }
+
+            hints = resolution.Hints;
+            effectiveQuestion = resolution.EffectiveQuestion;
+            youInterviewJson = resolution.YouInterviewJson;
+        }
+
+        await ConversationsEndpointExtensions.AskAndAppendAsync(
+                services.GetRequiredService<Raffa.AiFlows.Ask.Orchestration.AskCopilotService>(),
+                conversations,
+                services.GetRequiredService<CapabilityFollowUpAppender>(),
+                tenantId, userId, conversation.ConversationId, conversation,
+                question, effectiveQuestion, hints, youInterviewJson, cancellationToken)
+            .ConfigureAwait(false);
+
+        var detail = await conversations.GetAsync(tenantId, userId, conversation.ConversationId, cancellationToken).ConfigureAwait(false);
+        return detail is null
+            ? Results.NotFound()
+            : Results.Ok(new { conversationId = detail.ConversationId.Value, needsContract = false, conversation = ToDetail(detail) });
     }
 
     private static async Task<IResult> SetArchivedAsync(
@@ -145,16 +224,8 @@ public static class AskConversationsEndpointExtensions
         updatedAt = d.UpdatedAt,
         archivedAt = d.ArchivedAt,
         caseId = d.CaseId?.Value,
-        messages = d.Messages.Select(m => new
-        {
-            id = m.MessageId.Value,
-            role = m.Role == Chat.Domain.Conversations.ConversationRole.You ? "you" : "raffa",
-            kind = m.Kind.ToString().ToLowerInvariant(),
-            markdown = m.Markdown,
-            citations = ConversationsEndpointExtensions.ParseJsonArrayPublic(m.CitationsJson),
-            actions = ConversationsEndpointExtensions.ParseJsonArrayPublic(m.ActionsJson),
-            createdAt = m.CreatedAt,
-        }),
+        // The full message shape (kind, citations, actions, payload, interview), as GET /api/conversations/{id}.
+        messages = d.Messages.Select((m, i) => ConversationsEndpointExtensions.ToMessageResponse(m, hasLaterTurn: i < d.Messages.Count - 1)),
     };
 
     private static bool TryParseOptionalId(string? text, out EntityId? id)

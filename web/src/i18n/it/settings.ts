@@ -117,4 +117,7 @@ export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "Use these rules": "Usa queste regole",
   "Discard": "Scarta",
   "They go into the text above. Nothing changes until you save.": "Finiscono nel testo qui sopra. Non cambia nulla finché non salvi.",
+  // Chiedi — the agentic engine's extras
+  "Or write your answer below.": "Oppure scrivi la tua risposta qui sotto.",
+  "Suggested questions": "Domande suggerite",
 };

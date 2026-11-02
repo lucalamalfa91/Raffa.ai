@@ -6,6 +6,8 @@ export interface ReplySource {
   title?: string;
   page?: number | null;
   section?: string | null;
+  /** The passage the answer rests on, when the engine sent it (shown in the chip's preview). */
+  snippet?: string | null;
 }
 
 const INLINE_TOKEN = /\*\*(.+?)\*\*|\[(\d+)\]/g;
@@ -87,6 +89,7 @@ function Chip({ n, source }: { n: number; source: ReplySource }) {
         <span className="reply-citation-preview" role="tooltip" id={id}>
           <span className="reply-citation-preview-title">{source.title}</span>
           <span className="reply-citation-preview-subtitle">{[source.page ? `p. ${source.page}` : null, source.section].filter(Boolean).join(" · ")}</span>
+          {source.snippet ? <span className="reply-citation-preview-snippet">{`“${source.snippet.trim()}”`}</span> : null}
         </span>
       ) : null}
     </span>
