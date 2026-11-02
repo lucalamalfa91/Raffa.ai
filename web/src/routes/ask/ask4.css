@@ -3,12 +3,13 @@
 .k6-chiedi {
   flex: 1;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: var(--k6-rail-w, 260px) minmax(0, 1fr);
   min-height: 0;
 }
 
 /* — left: conversations — */
 .k6-rail {
+  position: relative; min-width: 0;
   border-right: 2px solid var(--color-divider);
   overflow: auto;
   padding: 0 0 24px;
@@ -184,3 +185,8 @@
 /* — the contract a question is about (so Raffa does not ask which) — */
 .k6-scope { display: flex; align-items: center; gap: 8px; padding: 6px 40px 0; font-size: 13px; color: var(--color-neutral-700); }
 .v4 .btn.k6-scope-x { min-height: 22px; padding: 0 6px; font-size: 16px; line-height: 1; }
+
+/* — resizable conversations rail — */
+.k6-rail-grip { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 5; touch-action: none; }
+.k6-rail-grip:hover, .k6-rail-grip.is-drag { background: var(--color-accent); opacity: .35; }
+.k6-conv-title, .k6-conv-meta { overflow-wrap: anywhere; }

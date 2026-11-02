@@ -71,6 +71,25 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const navigate = useNavigate();
   const { conversationId } = useParams();
 
+  const [railW, setRailW] = useState<number>(() => {
+    try { return Math.min(520, Math.max(200, Number(localStorage.getItem("raffa.railW")) || 260)); } catch { return 260; }
+  });
+  const [dragging, setDragging] = useState(false);
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = railW;
+    let w = w0;
+    setDragging(true);
+    const move = (ev: PointerEvent) => { w = Math.min(520, Math.max(200, w0 + ev.clientX - x0)); setRailW(w); };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      try { localStorage.setItem("raffa.railW", String(w)); } catch { /* ignore */ }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const [recent, setRecent] = useState<ConversationSummary4[]>([]);
   const [archived, setArchived] = useState<ConversationSummary4[]>([]);
   const [cases, setCases] = useState<OpenCase4[]>([]);
@@ -421,8 +440,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   };
 
   return (
-    <div data-screen-label="Chiedi" className={panel ? "k6-chiedi has-panel" : "k6-chiedi"}>
+    <div data-screen-label="Chiedi" className={panel ? "k6-chiedi has-panel" : "k6-chiedi"} style={{ ["--k6-rail-w" as string]: `${railW}px` }}>
       <aside data-screen-label="Conversazioni" className="k6-rail">
+        <div className={dragging ? "k6-rail-grip is-drag" : "k6-rail-grip"} onPointerDown={startResize} role="separator" aria-orientation="vertical" />
         <div className="k6-rail-head">
           <span className="k6-rail-title">{t("Conversations")}</span>
           <button type="button" className="btn btn-primary k6-new" onClick={newConversation}>

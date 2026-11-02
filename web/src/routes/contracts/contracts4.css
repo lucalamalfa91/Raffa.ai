@@ -30,18 +30,23 @@
 .c4-rows { margin-top: 18px; border-top: 2px solid var(--color-text); }
 .c4-empty { padding: 24px 0; font-size: 15px; color: var(--color-neutral-700); max-width: 60ch; text-wrap: pretty; }
 .c4-row {
-  display: flex; gap: 12px 24px; flex-wrap: wrap; align-items: center;
-  padding: 14px 8px 14px 0; border-bottom: 1px solid var(--color-divider);
+  display: grid; gap: 12px 24px; align-items: center;
+  grid-template-columns: minmax(0, 1fr) 250px 150px 90px 130px;
+  min-height: 70px; box-sizing: border-box;
+  padding: 22px 8px 14px 0; border-bottom: 1px solid var(--color-divider);
 }
-.c4-row-main { flex: 1 1 240px; min-width: 0; }
+@media (max-width: 900px) { .c4-row { grid-template-columns: minmax(0, 1fr) 1fr; } }
+.c4-row-main { min-width: 0; }
+.c4-row-name { overflow-wrap: anywhere; }
+.c4-row > .tag { justify-self: end; white-space: nowrap; }
 .c4-row-supplier { font-family: var(--font-heading); font-weight: 800; font-size: 18px; line-height: 1.1; }
 .c4-row-name { font-size: 13px; color: var(--color-neutral-600); margin-top: 2px; }
-.c4-row-notice { flex: 0 0 150px; }
+.c4-row-notice { min-width: 0; }
 .c4-row-notice-value { font-size: 14px; font-weight: 700; }
 .c4-row-renewed { font-size: 12px; color: var(--color-neutral-600); margin-top: 2px; }
-.c4-row-end { flex: 0 0 130px; }
+.c4-row-end { min-width: 0; }
 .c4-row-end-value { font-size: 14px; }
-.c4-row-spend { flex: 0 0 110px; text-align: right; font-weight: 600; }
+.c4-row-spend { text-align: right; font-weight: 600; white-space: nowrap; }
 .v4 .tag.c4-tag { padding: 2px 8px; font-size: 11px; }
 
 /* — Contratto — */
