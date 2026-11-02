@@ -37,6 +37,8 @@ public static class RenewalCaseServiceCollectionExtensions
         services.TryAddScoped<IOpenQuoteDecisions, NoOpenQuoteDecisions>();
         services.TryAddScoped<IDocumentsNeedingReview, NoDocumentsNeedingReview>();
         services.TryAddScoped<IContractSituationAssessor, RulesContractSituationAssessor>();
+        services.TryAddSingleton<ICompanyRulesAssistant, ScriptedCompanyRulesAssistant>();
+        services.AddScoped<CompanyRulesService>();
         services.AddScoped<RenewalCaseService>();
         services.Replace(ServiceDescriptor.Scoped<IContractCaseStatusReader>(sp => sp.GetRequiredService<RenewalCaseService>()));
         services.Replace(ServiceDescriptor.Scoped<ICaseEmailDraftSink>(sp => sp.GetRequiredService<RenewalCaseService>()));

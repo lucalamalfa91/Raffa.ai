@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { useGuideState } from "./guide";
 
-/** The five tabs (prototype: Oggi · Rinnovi · Contratti · Risultati · Chiedi) and what makes each active. */
+/** The tabs (prototype: Oggi · Rinnovi · Contratti · Risultati · Chiedi, then Impostazioni) and what makes each active. */
 const TABS: ReadonlyArray<{ id: string; label: string; to: string; active: (path: string) => boolean }> = [
   { id: "today", label: "Today", to: "/today", active: (p) => p === "/" || p.startsWith("/today") },
   { id: "renewals", label: "Renewals⟦nav⟧", to: "/renewals", active: (p) => p.startsWith("/renewals") },
@@ -14,6 +14,7 @@ const TABS: ReadonlyArray<{ id: string; label: string; to: string; active: (path
   },
   { id: "results", label: "Results⟦nav⟧", to: "/savings", active: (p) => p.startsWith("/savings") },
   { id: "ask", label: "Ask⟦nav⟧", to: "/ask", active: (p) => p.startsWith("/ask") || p.startsWith("/quotes") },
+  { id: "settings", label: "Settings", to: "/settings", active: (p) => p.startsWith("/settings") },
 ];
 
 /**

@@ -548,6 +548,7 @@ app.MapRenewalsEndpoints();
 
 // AskRaffa 4.0 (slices 2+3): renewal case, Today feed, reminders.
 app.MapRenewalCaseEndpoints();
+app.MapCompanyRulesEndpoints();
 
 // Task E04/F02/US02/T01 (savings-opportunity, AC-1): GET /api/savings (list) and PATCH
 // /api/savings/{id} (update status/owner), tenant-scoped (ADR-009). Same interim X-Tenant-Id

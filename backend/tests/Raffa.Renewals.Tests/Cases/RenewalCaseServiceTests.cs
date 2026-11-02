@@ -276,6 +276,57 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         Assert.Contains(after.Snoozed, x => x.Key == key);
     }
 
+    private CompanyRulesService RulesService(RenewalsDbContext db) =>
+        new(db, _tenantContext, new ScriptedCompanyRulesAssistant(), new Members(), new FixedClock(Now));
+
+    [Fact]
+    public async Task A_case_deadline_beyond_the_companys_lead_time_stays_off_Today_but_on_Rinnovi()
+    {
+        var s = await ServiceAsync();
+        var e = await OpenAsync(s, 4);
+
+        // Default lead time (120 days): DocuSign's notice deadline is 24 days away, so it shows.
+        Assert.Contains((await s.TodayAsync(_tenant, MartaOid)).Mine.Concat((await s.TodayAsync(_tenant, MartaOid)).Waiting), x => x.CaseId == e.CaseId);
+
+        await using (var db = Db())
+        {
+            var saved = await RulesService(db).SaveAsync(_tenant, LucaOid, "Start late.", 14, null);
+            Assert.Equal(14, saved!.StartWindowDays);
+        }
+
+        var luca = await s.TodayAsync(_tenant, LucaOid);
+        var marta = await s.TodayAsync(_tenant, MartaOid);
+        Assert.DoesNotContain(luca.Mine.Concat(luca.Waiting).Concat(marta.Mine).Concat(marta.Waiting), x => x.CaseId == e.CaseId);
+        Assert.Contains((await s.BoardAsync(_tenant, LucaOid)).Cases, r => r.CaseId == e.CaseId);
+    }
+
+    [Fact]
+    public async Task Company_rules_round_trip_clamp_and_are_written_by_an_admin_only()
+    {
+        await using var db = Db();
+        await db.Database.MigrateAsync();
+        var rules = RulesService(db);
+
+        var none = await rules.GetAsync(_tenant);
+        Assert.True(none.IsDefault);
+        Assert.Equal(CompanyRulesDefaults.StartWindowDays, none.StartWindowDays);
+
+        Assert.True(await rules.CanEditAsync(_tenant, LucaOid));
+        Assert.False(await rules.CanEditAsync(_tenant, MartaOid));
+
+        var saved = await rules.SaveAsync(_tenant, LucaOid, "  No auto-renewal.  ", 5, "policy.pdf");
+        Assert.Equal("No auto-renewal.", saved!.Text);
+        Assert.Equal(CompanyRulesDefaults.MinStartWindowDays, saved.StartWindowDays);
+        Assert.Equal("policy.pdf", saved.SourceFile);
+
+        // Saving again updates the one row and keeps the file name and window it was not given.
+        var again = await rules.SaveAsync(_tenant, LucaOid, "No auto-renewal, Net 60.", null, null);
+        Assert.Equal(CompanyRulesDefaults.MinStartWindowDays, again!.StartWindowDays);
+        Assert.Equal("policy.pdf", again.SourceFile);
+        Assert.Equal(1, await db.CompanyRules.CountAsync());
+        Assert.Null(await rules.SaveAsync(_tenant, LucaOid, new string('x', CompanyRulesDefaults.MaxTextLength + 1), null, null));
+    }
+
     [Fact]
     public async Task Today_never_lists_a_passed_notice_deadline_as_without_an_owner()
     {

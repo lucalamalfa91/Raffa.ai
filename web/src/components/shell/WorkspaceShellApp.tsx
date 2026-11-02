@@ -13,6 +13,7 @@ import TodayRoute from "../../routes/today";
 import QuoteCheckRoute from "../../routes/quotes";
 import AskRoute from "../../routes/ask";
 import SavingsRoute from "../../routes/savings";
+import SettingsRoute from "../../routes/settings";
 import MembersRoute from "../../routes/workspace/members";
 
 export interface WorkspaceShellAppProps {
@@ -88,6 +89,7 @@ export function ShellRoutes({ workspaceId, workspaceName, role, userLabel, onSig
         <Route path="ask" element={<AskRoute apiClient={apiClient} />} />
         <Route path="ask/:conversationId" element={<AskRoute apiClient={apiClient} />} />
         <Route path="savings" element={<SavingsRoute apiClient={apiClient} />} />
+        <Route path="settings" element={<SettingsRoute apiClient={apiClient} />} />
         <Route path="contracts" element={<ContractsRoute apiClient={apiClient} />} />
         <Route path="contracts/:contractId" element={<Contract360Route apiClient={apiClient} userLabel={userLabel} />} />
         {/* AskRaffa 4.0 Revisione is by document (IMPLEMENTATION-PLAN.md §1); the old by-contract

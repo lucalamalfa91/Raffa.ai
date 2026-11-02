@@ -188,3 +188,20 @@ public sealed class TodaySnoozeRecord : TenantScopedEntity
 
     public required DateTimeOffset CreatedAt { get; set; }
 }
+
+/// <summary><c>company_rules</c>: a tenant's company rules (one row per tenant) — the text Raffa reads
+/// and the alerting parameters taken from it.</summary>
+public sealed class CompanyRulesRecord : TenantScopedEntity
+{
+    public required string Text { get; set; }
+
+    /// <summary>Days before a notice deadline from which a renewal shows on Oggi.</summary>
+    public required int StartWindowDays { get; set; }
+
+    /// <summary>The policy document the rules were taken from, when one was uploaded.</summary>
+    public string? SourceFile { get; set; }
+
+    public required string UpdatedBy { get; set; }
+
+    public required DateTimeOffset UpdatedAt { get; set; }
+}

@@ -111,6 +111,9 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
         List<(ContractFacts Facts, CaseContractFacts Cf, RenewalCaseRecord? Record, RenewalCase? Case)> Contracts)
     {
         public Dictionary<Guid, EffectiveContractTerm> Terms { get; init; } = [];
+
+        /// <summary>The company's own lead time (days before a notice deadline), from its rules.</summary>
+        public int StartWindowDays { get; init; } = CompanyRulesDefaults.StartWindowDays;
     }
 
     private async Task<Portfolio> LoadAsync(TenantId tenantId, string? callerIdentity, CancellationToken ct)
@@ -119,9 +122,12 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
         var caller = CaseCaller.From(members, callerIdentity);
         var facts = await factsReader.ListValidatedAsync(tenantId, ct).ConfigureAwait(false);
         List<RenewalCaseRecord> records;
+        int window;
         using (tenantContext.BeginScope(tenantId))
         {
             records = await db.RenewalCases.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
+            window = await db.CompanyRules.AsNoTracking().Select(r => (int?)r.StartWindowDays).FirstOrDefaultAsync(ct).ConfigureAwait(false)
+                ?? CompanyRulesDefaults.StartWindowDays;
         }
 
         var list = facts.Select(f =>
@@ -134,6 +140,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
         return new Portfolio(members, caller, Approver(members), list)
         {
             Terms = facts.GroupBy(f => f.ContractId).ToDictionary(g => g.Key, g => ContractTermCalculator.Compute(g.First(), today)),
+            StartWindowDays = window,
         };
     }
 
@@ -171,6 +178,13 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
 
                 foreach (var x in RenewalCaseEngine.Todo(c, Ctx(cf, p.Caller.Name)))
                 {
+                    // Too early to matter: the company's own lead time has not started. The case stays
+                    // on Rinnovi; Oggi brings it back when its deadline comes within the window.
+                    if (x.DueDays > p.StartWindowDays)
+                    {
+                        continue;
+                    }
+
                     items.Add(new TodayItem(
                         f.ContractId + ":" + x.Kind, x.Kind, rec.Id.Value, f.ContractId, null, null, cf.Supplier, shortName,
                         x.Title, x.Why, x.Due, x.DueDays, null, x.Stage, x.StageLabel, x.Who, x.Stalled));
@@ -190,7 +204,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                 case ContractTermStatus.Active:
                 {
                     var days = cf.Cancel.DayNumber - Today.DayNumber;
-                    if (days <= ContractSituationCopy.StartWindowDays)
+                    if (days <= p.StartWindowDays)
                     {
                         var date = CaseFormat.Date(cf.Cancel);
                         items.Add(Unassigned(f, cf, shortName, p.Approver, CaseText.Message("Notice deadline without an owner"), ActiveWhy(cf, term, date), date, days, null, null));
@@ -202,10 +216,10 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                 case ContractTermStatus.RolledOver:
                 {
                     var days = term.NoticeDays ?? int.MaxValue;
-                    var assessment = days <= ContractSituationCopy.StartWindowDays || term.DaysSinceRenewal is <= RenewedInfoDays
+                    var assessment = days <= p.StartWindowDays || term.DaysSinceRenewal is <= RenewedInfoDays
                         ? await AssessAsync(tenantId, f, ct).ConfigureAwait(false)
                         : null;
-                    if (days <= ContractSituationCopy.StartWindowDays)
+                    if (days <= p.StartWindowDays)
                     {
                         var date = CaseFormat.Date(term.NoticeDeadline!.Value);
                         items.Add(Unassigned(f, cf, shortName, p.Approver, CaseText.Message("Next notice deadline without an owner"),
@@ -229,7 +243,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                 case ContractTermStatus.Ending:
                 {
                     var days = term.EndDays ?? int.MaxValue;
-                    if (days <= ContractSituationCopy.StartWindowDays)
+                    if (days <= p.StartWindowDays)
                     {
                         var assessment = await AssessAsync(tenantId, f, ct).ConfigureAwait(false);
                         items.Add(Unassigned(f, cf, shortName, p.Approver,

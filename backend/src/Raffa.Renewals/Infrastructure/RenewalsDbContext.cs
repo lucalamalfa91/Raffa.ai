@@ -47,6 +47,8 @@ public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> option
 
     public DbSet<TodaySnoozeRecord> TodaySnoozes => Set<TodaySnoozeRecord>();
 
+    public DbSet<CompanyRulesRecord> CompanyRules => Set<CompanyRulesRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new RenewalActionConfiguration());
@@ -59,6 +61,7 @@ public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> option
         modelBuilder.ApplyConfiguration(new CaseVendorMessageRecordConfiguration());
         modelBuilder.ApplyConfiguration(new UserReminderRecordConfiguration());
         modelBuilder.ApplyConfiguration(new TodaySnoozeRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new CompanyRulesRecordConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }
