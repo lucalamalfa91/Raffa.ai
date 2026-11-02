@@ -67,10 +67,15 @@ public sealed class ProductionCaseScriptServices : ICaseScriptServices
     /// <summary>No supplier position has been read automatically: the current contract price stands.</summary>
     public double CounterPrice(CaseContext ctx, int termMonths) => CaseRules.Price(ctx).P0;
 
-    public CaseFeatureSet Features(CaseContext ctx) => new(null,
-    [
-        B("Core functions equal to your current contract"),
-        B("Integration with your ERP"),
-        B("EU data residency"),
-    ]);
+    // Only what the contract itself supports (its scope and quantities): never a function nobody read.
+    public CaseFeatureSet Features(CaseContext ctx)
+    {
+        var items = new List<CaseText> { B("Core functions equal to your current contract") };
+        if (ctx.Contract.Products.Count > 0)
+        {
+            items.Add(CaseText.Message("Same scope and quantities as today ({n} line items)", ("n", ctx.Contract.Products.Count)));
+        }
+
+        return new(null, items);
+    }
 }

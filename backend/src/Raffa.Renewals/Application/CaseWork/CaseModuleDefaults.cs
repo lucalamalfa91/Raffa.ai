@@ -34,6 +34,7 @@ public static class RenewalCaseServiceCollectionExtensions
     public static IServiceCollection AddRenewalCases(this IServiceCollection services)
     {
         services.TryAddSingleton<ICaseScriptServices, ProductionCaseScriptServices>();
+        services.TryAddScoped<ICaseAiReader, NoCaseAiReader>();
         services.TryAddScoped<IOpenQuoteDecisions, NoOpenQuoteDecisions>();
         services.TryAddScoped<IDocumentsNeedingReview, NoDocumentsNeedingReview>();
         services.TryAddScoped<IContractSituationAssessor, RulesContractSituationAssessor>();

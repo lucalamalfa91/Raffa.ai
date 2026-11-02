@@ -40,4 +40,16 @@ internal sealed class WorkspaceCaseMemberDirectory(IdentityWorkspaceDbContext db
             .OrderBy(m => m.Name, StringComparer.Ordinal)
             .ToList();
     }
+
+    public async Task<string?> CompanyNameAsync(TenantId tenantId, CancellationToken cancellationToken = default)
+    {
+        using var scope = tenantContext.BeginScope(tenantId);
+        var name = await dbContext.Workspaces
+            .Where(w => w.TenantId == tenantId)
+            .Select(w => w.Name)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+    }
+
 }

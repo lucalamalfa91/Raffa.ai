@@ -74,7 +74,8 @@ public sealed partial class RenewalCaseService(
     IAuditWriter auditWriter,
     IClock clock,
     IContractSituationAssessor? situationAssessor = null,
-    Microsoft.Extensions.Logging.ILogger<RenewalCaseService>? logger = null)
+    Microsoft.Extensions.Logging.ILogger<RenewalCaseService>? logger = null,
+    ICaseAiReader? aiReader = null)
 {
     public const int SnoozeDays = 3;
 
@@ -115,6 +116,7 @@ public sealed partial class RenewalCaseService(
     {
         using var scope = tenantContext.BeginScope(tenantId);
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         var facts = await factsReader.GetAsync(tenantId, new EntityId(contractId), ct).ConfigureAwait(false);
         if (facts is null)
@@ -170,6 +172,7 @@ public sealed partial class RenewalCaseService(
         }
 
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         var cf = await FactsAsync(tenantId, record, ct).ConfigureAwait(false);
         if (cf is null)
@@ -282,6 +285,47 @@ public sealed partial class RenewalCaseService(
         }).ConfigureAwait(false);
     }
 
+    private async Task<CaseContext> ReadBeforeStepAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts cf, string type, CaseActionPayload p, CaseContext ctx, CancellationToken ct)
+    {
+        if (aiReader is null || scriptServices is not ProductionCaseScriptServices)
+        {
+            return ctx;
+        }
+
+        var lang = Raffa.SharedKernel.Language.ResponseLanguage.Current == "en" ? "en" : "it";
+        try
+        {
+            if (type == "reply")
+            {
+                var pasted = (p.Text?.Render() is { Length: > 0 } pt ? pt : c.Ui.ReplyText ?? string.Empty).Trim();
+                if (pasted.Length == 0)
+                {
+                    return ctx;
+                }
+
+                var reading = await aiReader.ReadReplyAsync(tenantId, c, cf, pasted, c.Round + 1, lang, ct).ConfigureAwait(false);
+                return reading is null ? ctx : ctx with { Services = new ReadCaseScriptServices(scriptServices, reading, null) };
+            }
+
+            if (type == "startAlt" && c.Alt is null)
+            {
+                var features = await aiReader.ReadFeaturesAsync(tenantId, cf, lang, ct).ConfigureAwait(false);
+                return features is null ? ctx : ctx with { Services = new ReadCaseScriptServices(scriptServices, null, features) };
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException && logger is null)
+        {
+            _ = ex;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException && logger is not null)
+        {
+            Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Case reading failed for action {Type}; the deterministic reading stands.", type);
+        }
+
+        return ctx;
+    }
+
     private async Task<CaseResult> RunAsync(
         TenantId tenantId,
         string? callerIdentity,
@@ -298,6 +342,7 @@ public sealed partial class RenewalCaseService(
         }
 
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         var cf = await FactsAsync(tenantId, record, ct).ConfigureAwait(false);
         if (cf is null)
@@ -334,7 +379,10 @@ public sealed partial class RenewalCaseService(
                 }
             }
 
-            var next = RenewalCaseEngine.Act(c, type, p, ctx);
+            // Production: the model reads the supplier reply (and the functions an alternative must cover)
+            // before the pure engine runs; any failure leaves the deterministic reading in place.
+            var stepCtx = await ReadBeforeStepAsync(tenantId, c, cf, type, p, ctx, ct).ConfigureAwait(false);
+            var next = RenewalCaseEngine.Act(c, type, p, stepCtx);
             if (RenewalCaseEngine.IsPermissionDenial(next))
             {
                 return new CaseResult(CaseResultKind.Forbidden, Envelope(record, next, cf, caller.Name), next.Ui.Warn?.Render());
@@ -397,7 +445,11 @@ public sealed partial class RenewalCaseService(
 
     /* ---------------- persistence helpers ---------------- */
 
-    private CaseContext Ctx(CaseContractFacts cf, string viewer) => new(cf, viewer, Today, scriptServices);
+    // The workspace's company name for this request (loaded beside the members), signing the case emails.
+    private string? company;
+
+    private CaseContext Ctx(CaseContractFacts cf, string viewer) =>
+        new(string.IsNullOrEmpty(cf.Company) && !string.IsNullOrWhiteSpace(company) ? cf with { Company = company! } : cf, viewer, Today, scriptServices);
 
     internal static string? Approver(IReadOnlyList<CaseMember> members) =>
         members.Where(m => m.IsAdmin).OrderBy(m => m.Name, StringComparer.Ordinal).Select(m => m.Name).FirstOrDefault();

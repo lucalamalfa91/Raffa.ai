@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Raffa.AiFlows.Ask;
 using Raffa.AiFlows.CapabilityGaps;
 using Raffa.AiFlows.CompanyRules;
+using Raffa.AiFlows.RenewalCases;
 using Raffa.AiFlows.ContractSituation;
 using Raffa.AiFlows.DocumentExtraction;
 using Raffa.AiFlows.MarketKnowledge;
@@ -38,6 +39,7 @@ public static class AiFlowsServiceCollectionExtensions
         services.AddSavingsGoalFlow();
         services.AddContractSituationFlow();
         services.AddCompanyRulesFlow();
+        services.AddCaseReaderFlow();
 
         return services;
     }

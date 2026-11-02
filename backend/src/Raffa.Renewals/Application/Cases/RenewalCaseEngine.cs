@@ -273,14 +273,17 @@ public static partial class RenewalCaseEngine
         };
         var to = o.ToGiven ? o.To ?? string.Empty : c.Emails.LastOrDefault(e => !string.IsNullOrEmpty(e.To))?.To ?? string.Empty;
         const string sign = "\n\nKind regards,\n";
-        var signature = sign + owner + "\nProcurement, Helvetia Foods AG";
+        // The buyer signs as the workspace's company; never a name Raffa made up.
+        var company = cn.Company.Trim();
+        var tag = company.Length == 0 ? string.Empty : " — " + company;
+        var signature = sign + owner + "\nProcurement" + (company.Length == 0 ? string.Empty : ", " + company);
         string subject;
         string body;
         switch (kind)
         {
             case "first":
             {
-                subject = cn.Name + " — renewal discussion — Helvetia Foods AG";
+                subject = cn.Name + " — renewal discussion" + tag;
                 var lines = new List<string>
                 {
                     "• Products and quantities: " + prodTxt,
@@ -336,19 +339,19 @@ public static partial class RenewalCaseEngine
                        "%.\n• Payment: the draft states annual in advance; we agreed quarterly in advance.\nPlease also send the Annex (SLA schedule) in a readable version." + signature;
                 break;
             case "notice":
-                subject = "Notice of non-renewal — " + cn.Name + " — Helvetia Foods AG";
-                body = "Dear " + sup + " team,\n\nIn accordance with the renewal clause of our agreement, Helvetia Foods AG gives written notice that it does not intend to renew " +
+                subject = "Notice of non-renewal — " + cn.Name + tag;
+                body = "Dear " + sup + " team,\n\nIn accordance with the renewal clause of our agreement, " + (company.Length == 0 ? "we give" : company + " gives") + " written notice that " + (company.Length == 0 ? "we do" : "it does") + " not intend to renew " +
                        cn.Name + " beyond the current term ending " + D(cn.End) + ".\n\nThis notice is sent on " + today + ", ahead of the " + D(cn.Cancel) +
                        " deadline. Please confirm receipt in writing and share the offboarding and data-return steps set out in the agreement." + signature;
                 break;
             default:
             {
                 var fe = ctx.Services.Features(ctx);
-                subject = "Request for proposal — " + (fe.CategoryEn is { } cat ? cat + " solution" : "replacement solution") + " — Helvetia Foods AG";
+                subject = "Request for proposal — " + (fe.CategoryEn is { } cat ? cat + " solution" : "replacement solution") + tag;
                 attach = [];
                 var what = fe.CategoryEn is { } cat2 ? (VowelStart().IsMatch(cat2) ? "an " : "a ") + cat2 + " solution" : "a replacement solution";
                 var reqs = (c.Alt?.Reqs ?? []).Select(r => "• " + r.Text.Render());
-                body = "Dear " + o.Vendor + " team,\n\nHelvetia Foods AG is looking for " + what + " from " + D(cn.End.AddDays(1)) +
+                body = "Dear " + o.Vendor + " team,\n\n" + (company.Length == 0 ? "We are" : company + " is") + " looking for " + what + " from " + D(cn.End.AddDays(1)) +
                        ". We ask you to answer on functions, not on product names.\n\nFunctions we need:\n" + string.Join("\n", reqs) +
                        "\n\nSizing: " + SizeText(f) + ".\n\nFor each function please tell us how your product covers it, and send your offer with pricing, term, migration plan and support model by " +
                        D(ctx.Today.AddDays(14)) + "." + signature;

@@ -126,6 +126,8 @@ internal static class CaseFixtures
             {
                 Id = o["id"]!.GetValue<int>(),
                 Supplier = o["supplier"]!.GetValue<string>(),
+                // The prototype's workspace (the fixture company signing the case emails).
+                Company = "Helvetia Foods AG",
                 Name = o["name"]!.GetValue<string>(),
                 Type = o["type"]!.GetValue<string>(),
                 File = o["file"]!.GetValue<string>(),

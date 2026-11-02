@@ -13,6 +13,9 @@ namespace Raffa.Renewals.Application.CaseWork;
 public interface ICaseMemberDirectory
 {
     Task<IReadOnlyList<CaseMember>> ListAsync(TenantId tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>The workspace's company name, which signs the case emails; null when unknown.</summary>
+    Task<string?> CompanyNameAsync(TenantId tenantId, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 }
 
 /// <param name="UserId">Workspace user id.</param>
