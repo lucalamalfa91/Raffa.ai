@@ -202,7 +202,7 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
         <button
           type="button"
           className="btn btn-ghost c4-next-ask"
-          onClick={() => navigate(`/ask?q=${encodeURIComponent(t("Summarize the contract {supplier}", { supplier: contract.supplier }))}`)}
+          onClick={() => navigate(`/ask?scope=${encodeURIComponent(contractId)}&q=${encodeURIComponent(t("Summarize the contract {supplier}", { supplier: contract.supplier }))}`)}
         >
           {t("Ask Raffa")}
         </button>

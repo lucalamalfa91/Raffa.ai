@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   askOfferApi,
   type ApiClient,
@@ -59,6 +59,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [archived, setArchived] = useState<ConversationSummary4[]>([]);
   const [cases, setCases] = useState<OpenCase4[]>([]);
   const [contracts, setContracts] = useState<AskContract[]>([]);
+  // A question that starts from a contract (`/ask?scope=<contractId>&q=…`) is about that contract: Raffa
+  // never asks which one. The scope sticks to the new conversation until the user starts another.
+  const [searchParams] = useSearchParams();
+  const scopeParam = searchParams.get("scope");
+  const [scopeId, setScopeId] = useState<string | null>(scopeParam && scopeParam.trim() ? scopeParam.trim() : null);
   const [quotes, setQuotes] = useState<QuoteListItem4[]>([]);
   const [current, setCurrent] = useState<ConversationDetail4 | null>(null);
   const [pick, setPick] = useState<Pick | null>(null);
@@ -124,7 +129,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     const r = await api.ask(tenantId, {
       conversationId: current?.id ?? null,
       question: text,
-      contractId: contractId ?? null,
+      contractId: contractId ?? current?.scopeContractId ?? scopeId ?? null,
       answerOnly,
       lang,
     });
@@ -206,6 +211,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setPick(null);
     setQ("");
     setCurrent(null);
+    setScopeId(null);
     navigate("/ask");
   };
 
@@ -293,10 +299,13 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
   const launched = useRef<string | null>(null);
   useEffect(() => {
-    const query = (location.state as { query?: unknown } | null)?.query;
+    const fromState = (location.state as { query?: unknown } | null)?.query;
+    const query = typeof fromState === "string" && fromState.trim() ? fromState : searchParams.get("q");
+    const scope = scopeParam && scopeParam.trim() ? scopeParam.trim() : null;
+    if (scope && scope !== scopeId) setScopeId(scope);
     if (typeof query !== "string" || !query.trim() || launched.current === location.key || !tenantId) return;
     launched.current = location.key;
-    void ask(query);
+    void ask(query, scope ?? undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key, tenantId]);
 
@@ -409,7 +418,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 </div>
                 <div className="k6-intents">
                   {intents.map((n) => (
-                    <button key={n.kind} type="button" className="k6-intent" onClick={() => setPick({ kind: n.kind })}>
+                    <button key={n.kind} type="button" className="k6-intent" onClick={() => {
+                      // Started from a contract: the task is about that contract, no need to pick one.
+                      const about = contracts.find((c) => c.contractId === scopeId);
+                      if (about && n.kind !== "quote") choose(n.kind, about);
+                      else setPick({ kind: n.kind });
+                    }}>
                       <div className="k6-intent-label">{n.label}</div>
                       <div className="k6-intent-hint">{n.hint}</div>
                     </button>
@@ -499,6 +513,20 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
             ) : null}
           </div>
         </div>
+        {(() => {
+          const aboutId = current?.scopeContractId ?? scopeId;
+          const about = aboutId ? contracts.find((c) => c.contractId === aboutId) : undefined;
+          return about ? (
+            <div className="k6-scope" data-parity-hide>
+              <span>{t("About {supplier}", { supplier: about.supplier })}</span>
+              {!current ? (
+                <button type="button" className="btn btn-ghost k6-scope-x" aria-label={t("Ask about all contracts")} onClick={() => setScopeId(null)}>
+                  ×
+                </button>
+              ) : null}
+            </div>
+          ) : null;
+        })()}
         <div className="k6-composer-wrap">
           <div className="k6-composer">
             <input

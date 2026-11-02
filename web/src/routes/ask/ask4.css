@@ -180,3 +180,7 @@
 }
 @media (prefers-reduced-motion: reduce) { .k6-thinking-spinner { animation: none; } }
 @keyframes k6-thinking-spin { to { transform: rotate(360deg); } }
+
+/* — the contract a question is about (so Raffa does not ask which) — */
+.k6-scope { display: flex; align-items: center; gap: 8px; padding: 6px 40px 0; font-size: 13px; color: var(--color-neutral-700); }
+.v4 .btn.k6-scope-x { min-height: 22px; padding: 0 6px; font-size: 16px; line-height: 1; }

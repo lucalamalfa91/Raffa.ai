@@ -2,6 +2,8 @@
 export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "Settings": "Impostazioni",
   "Language": "Lingua",
+  "About {supplier}": "Su {supplier}",
+  "Ask about all contracts": "Chiedi su tutti i contratti",
   "Reading your contracts and checking the evidence…": "Leggo i tuoi contratti e verifico le evidenze…",
   "Upload an offer": "Carica un'offerta",
   "The offer could not be uploaded.": "Non è stato possibile caricare l'offerta.",
