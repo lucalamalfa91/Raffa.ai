@@ -38,4 +38,16 @@ public interface IInvitationMailer
         string acceptUrl,
         DateTimeOffset expiresAt,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The invitation a Raffa platform admin sends to a prospect: no workspace yet, no role, just "you are
+    /// invited to Raffa.ai" and the link. Same contract as <see cref="TrySendAsync"/> (<c>true</c> iff the
+    /// mail was accepted for delivery; never throws, never logs the address or the link). A default
+    /// implementation that sends nothing keeps every existing implementation valid.
+    /// </summary>
+    Task<bool> TrySendProspectAsync(
+        string email,
+        string acceptUrl,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken = default) => Task.FromResult(false);
 }

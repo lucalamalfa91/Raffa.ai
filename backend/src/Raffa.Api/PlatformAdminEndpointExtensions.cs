@@ -28,10 +28,10 @@ public static class PlatformAdminEndpointExtensions
         endpoints.MapPost("/api/admin/workspaces/{tenantId:guid}/reactivate", (Guid tenantId, HttpContext http, ICallerIdentity id, PlatformAdminGuard guard, PlatformAdminService svc, CancellationToken ct) =>
             RunAsync(id, guard, () => SetStatusAsync(svc, tenantId, PlatformAdminService.Active, ct)));
         endpoints.MapGet("/api/admin/invitations", Guarded((svc, _, ct) => ListInvitationsAsync(svc, ct)));
-        endpoints.MapPost("/api/admin/invitations", (CreatePlatformInvitationRequest body, ICallerIdentity id, PlatformAdminGuard guard, PlatformAdminService svc, InvitationOptions invitationOptions, CancellationToken ct) =>
-            RunAsync(id, guard, () => CreateInvitationAsync(svc, invitationOptions, body.Email, id.Resolve()!, ct)));
-        endpoints.MapPost("/api/admin/invitations/{invitationId:guid}/regenerate", (Guid invitationId, ICallerIdentity id, PlatformAdminGuard guard, PlatformAdminService svc, InvitationOptions invitationOptions, CancellationToken ct) =>
-            RunAsync(id, guard, () => RegenerateAsync(svc, invitationOptions, invitationId, id.Resolve()!, ct)));
+        endpoints.MapPost("/api/admin/invitations", (CreatePlatformInvitationRequest body, ICallerIdentity id, PlatformAdminGuard guard, PlatformAdminService svc, CancellationToken ct) =>
+            RunAsync(id, guard, () => CreateInvitationAsync(svc, body.Email, id.Resolve()!, ct)));
+        endpoints.MapPost("/api/admin/invitations/{invitationId:guid}/regenerate", (Guid invitationId, ICallerIdentity id, PlatformAdminGuard guard, PlatformAdminService svc, CancellationToken ct) =>
+            RunAsync(id, guard, () => RegenerateAsync(svc, invitationId, id.Resolve()!, ct)));
         endpoints.MapDelete("/api/admin/invitations/{invitationId:guid}", (Guid invitationId, ICallerIdentity id, PlatformAdminGuard guard, PlatformAdminService svc, CancellationToken ct) =>
             RunAsync(id, guard, async () => await svc.RevokeInvitationAsync(invitationId, ct).ConfigureAwait(false)
                 ? Results.NoContent()
@@ -108,18 +108,18 @@ public static class PlatformAdminEndpointExtensions
     }
 
     private static async Task<IResult> CreateInvitationAsync(
-        PlatformAdminService svc, InvitationOptions invitationOptions, string? email, string createdBy, CancellationToken ct)
+        PlatformAdminService svc, string? email, string createdBy, CancellationToken ct)
     {
         if (!LooksLikeEmail(email))
         {
             return Results.BadRequest("A valid 'email' is required.");
         }
 
-        return Issued(await svc.IssueInvitationAsync(email!, createdBy, ct).ConfigureAwait(false), invitationOptions);
+        return Issued(await svc.IssueInvitationAsync(email!, createdBy, ct).ConfigureAwait(false));
     }
 
     private static async Task<IResult> RegenerateAsync(
-        PlatformAdminService svc, InvitationOptions invitationOptions, Guid invitationId, string createdBy, CancellationToken ct)
+        PlatformAdminService svc, Guid invitationId, string createdBy, CancellationToken ct)
     {
         var existing = await svc.GetInvitationAsync(invitationId, ct).ConfigureAwait(false);
         if (existing is null)
@@ -132,20 +132,24 @@ public static class PlatformAdminEndpointExtensions
             return Results.Conflict("This invitation was already accepted.");
         }
 
-        return Issued(await svc.IssueInvitationAsync(existing.Email, createdBy, ct).ConfigureAwait(false), invitationOptions);
+        return Issued(await svc.IssueInvitationAsync(existing.Email, createdBy, ct).ConfigureAwait(false));
     }
 
-    private static IResult Issued(PlatformInvitationIssued issued, InvitationOptions invitationOptions)
-    {
-        // Same absolute-base convention as workspace invitations; the secret rides in the fragment,
-        // never a path or query string, so it is not sent to any server or written to an access log.
-        var baseUrl = (invitationOptions.AcceptUrlBase ?? string.Empty).TrimEnd('/');
-        return Results.Created($"/api/admin/invitations/{issued.Id}", new
-        {
-            id = issued.Id, email = issued.Email, expiresAt = issued.ExpiresAt,
-            acceptUrl = $"{baseUrl}/prospect/accept#{issued.Token}",
-        });
-    }
+    private static IResult Issued(PlatformInvitationIssueResult result) =>
+        result.Issued is { } issued
+            ? Results.Created($"/api/admin/invitations/{issued.Id}", new
+            {
+                id = issued.Id,
+                email = issued.Email,
+                expiresAt = issued.ExpiresAt,
+                acceptUrl = issued.AcceptUrl,
+                deliveryOutcome = issued.DeliveryOutcome,
+                identityProvisioned = issued.IdentityProvisioned,
+            })
+            // The directory would not prepare the prospect's sign-in identity: nothing was created.
+            : Results.Json(
+                new { failureReason = result.FailureReason!.Value.ToWireValue() },
+                statusCode: StatusCodes.Status502BadGateway);
 
     /// <summary>`POST /api/platform/invitations/accept` with the secret in <see cref="InvitationTokenHeader"/>.
     /// 200 accepted; 404 unknown; 410 expired or revoked; 409 already used by someone else; 403 wrong account.</summary>

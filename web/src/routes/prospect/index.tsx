@@ -3,8 +3,9 @@ import { useMsal } from "@azure/msal-react";
 import type { ApiClient } from "../../api/client";
 import type { AppConfig } from "../../config/appConfig";
 import { buildLoginRequest } from "../../auth/msalConfig";
+import { MicrosoftMark, SignInStatementPanel } from "../signin/SignInScreen";
 import { rememberProspectToken, takeProspectToken } from "./prospectToken";
-import "../invite/accept/accept.css";
+import "../signin/signin.css";
 
 export interface ProspectAcceptRouteProps {
   apiClient: ApiClient;
@@ -30,11 +31,11 @@ function readFragmentToken(): string | null {
 }
 
 /**
- * `/prospect/accept#<secret>` -- the page a prospect lands on from a Raffa invitation link. Public:
- * reachable signed out. Signed out, it welcomes them and sends them to sign in (the secret waits in this
- * tab for the redirect); signed in, it redeems the invitation, after which the normal first-run screen
- * lets them create their company workspace. An invitation is bound to one address, single-use and
- * expires, and the server decides all of it.
+ * `/prospect/accept#<secret>` -- the page a prospect lands on from a Raffa invitation. Public: reachable
+ * signed out, and drawn on the same canvas as the sign-in screen. Signed out, it welcomes them and sends
+ * them to sign in (the secret waits in this tab for the redirect); signed in, it redeems the invitation,
+ * after which the normal first-run screen lets them create their company workspace. An invitation is
+ * bound to one address, single-use and expires, and the server decides all of it.
  */
 export default function ProspectAcceptRoute({ apiClient, appConfig }: ProspectAcceptRouteProps) {
   const { instance, accounts } = useMsal();
@@ -67,27 +68,47 @@ export default function ProspectAcceptRoute({ apiClient, appConfig }: ProspectAc
     }
   };
 
+  const busy = phase === "accepting";
+
   return (
-    <main className="invite-accept-screen">
-      <div className="invite-accept-card">
-      <h1 className="screen-title">Welcome to Raffa</h1>
-      <p>Your AI-powered procurement assistant.</p>
-      {phase === "welcome" || phase === "accepting" ? (
-        account ? (
-          <button type="button" className="btn btn-primary" disabled={phase === "accepting"} onClick={() => void accept()}>
-            {phase === "accepting" ? "Accepting…" : "Accept invitation"}
-          </button>
+    <main className="signin-screen">
+      <SignInStatementPanel />
+      <section className="signin-action" aria-labelledby="prospect-heading">
+        <h2 id="prospect-heading" className="screen-title">
+          Welcome to Raffa
+        </h2>
+        <p className="signin-subtitle">Your AI-powered procurement assistant.</p>
+        {phase === "welcome" || busy ? (
+          account ? (
+            <button type="button" className="btn btn-primary btn-block" disabled={busy} onClick={() => void accept()}>
+              {busy ? <span className="signin-spinner" aria-hidden="true" /> : <MicrosoftMark />}
+              {busy ? "Accepting your invitation …" : "Accept invitation"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              onClick={() => void instance.loginRedirect(buildLoginRequest(appConfig))}
+            >
+              <MicrosoftMark />
+              Sign in to accept
+            </button>
+          )
+        ) : phase === "accepted" ? (
+          <p role="status" className="micro-meta">
+            Invitation accepted. Taking you to Raffa…
+          </p>
         ) : (
-          <button type="button" className="btn btn-primary" onClick={() => void instance.loginRedirect(buildLoginRequest(appConfig))}>
-            Sign in to accept
-          </button>
-        )
-      ) : phase === "accepted" ? (
-        <p role="status">Invitation accepted. Taking you to Raffa…</p>
-      ) : (
-        <p role="alert">{MESSAGE[phase]}</p>
-      )}
-      </div>
+          <p role="alert" className="micro-meta">
+            {MESSAGE[phase]}
+          </p>
+        )}
+        <hr />
+        <p className="micro-meta">
+          You will sign in with the email address this invitation was sent to. Microsoft sends you a one-time code; Raffa.ai
+          never stores a password.
+        </p>
+      </section>
     </main>
   );
 }

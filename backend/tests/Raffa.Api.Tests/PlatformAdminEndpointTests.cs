@@ -147,6 +147,8 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var url = body.RootElement.GetProperty("acceptUrl").GetString()!;
         Assert.Contains("/prospect/accept#", url, StringComparison.Ordinal);
+        // No mail transport in this host: the response says so and carries the link to share.
+        Assert.Equal("no_transport", body.RootElement.GetProperty("deliveryOutcome").GetString());
         return (body.RootElement.GetProperty("id").GetGuid(), url[(url.IndexOf('#') + 1)..]);
     }
 
