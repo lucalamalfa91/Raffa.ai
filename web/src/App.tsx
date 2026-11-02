@@ -10,6 +10,8 @@ import { resolveWorkspaceSelection, type WorkspacePickerState } from "./routes/s
 import WorkspaceShellApp from "./components/shell/WorkspaceShellApp";
 import { parseWorkspaceRole } from "./components/shell/workspaceRole";
 import AcceptInvitationRoute from "./routes/invite/accept";
+import ProspectAcceptRoute from "./routes/prospect";
+import { takeProspectToken } from "./routes/prospect/prospectToken";
 
 interface AppProps {
   appConfig: AppConfig;
@@ -77,6 +79,13 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
   const resolveWorkspaces = useCallback(
     async (alreadyTriedAutoJoin: boolean, forcePick = false): Promise<void> => {
       setResolution({ phase: "resolving" });
+      // A prospect who signed in from a Raffa invitation link: redeem the secret that waited in this
+      // tab (single-use, bound to their address; the server decides). Any outcome just continues --
+      // without a valid invitation the create-workspace step refuses them.
+      const prospectToken = takeProspectToken();
+      if (prospectToken && apiClient.acceptProspectInvitation) {
+        await apiClient.acceptProspectInvitation(prospectToken);
+      }
       const result = await apiClient.listWorkspaces();
       setHasResolvedOnce(true);
 
@@ -269,6 +278,8 @@ export default function App({ appConfig, apiClient }: AppProps) {
             rendered outside AppShell. Token in the URL fragment (ADR-025 Rule C9) -- never a query
             string, never a path parameter. */}
         <Route path="/invite/accept" element={<AcceptInvitationRoute apiClient={apiClient} appConfig={appConfig} />} />
+        {/* Prospect invitation from Raffa staff: also public, secret in the fragment. */}
+        <Route path="/prospect/accept" element={<ProspectAcceptRoute apiClient={apiClient} appConfig={appConfig} />} />
         <Route
           path="/*"
           element={

@@ -149,6 +149,58 @@ export interface ListWorkspacesResult {
   error: string | null;
 }
 
+// Portal admin (Raffa staff). Hand-written like the invite types above: these routes are not in
+// web/openapi/raffa-api.v1.json. They carry platform metadata only, never customer content.
+export interface AdminCallResult<T> {
+  ok: boolean;
+  statusCode: number | null;
+  body: T | null;
+  error: string | null;
+}
+
+export interface AdminOverviewBody {
+  totalWorkspaces: number;
+  activeWorkspaces: number;
+  suspendedWorkspaces: number;
+  registeredUsers: number;
+  pendingInvitations: number;
+}
+
+export interface AdminWorkspaceBody {
+  id: string;
+  name: string;
+  adminEmail: string | null;
+  createdAt: string;
+  status: "active" | "suspended";
+}
+
+export type AdminInvitationStatus = "pending" | "accepted" | "revoked" | "expired";
+
+export interface AdminInvitationBody {
+  id: string;
+  email: string;
+  status: AdminInvitationStatus;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  workspaceId: string | null;
+}
+
+export interface AdminIssuedInvitationBody {
+  id: string;
+  email: string;
+  expiresAt: string;
+  /** The only time the link exists in plaintext; copy it now. */
+  acceptUrl: string;
+}
+
+export interface AdminUserBody {
+  email: string;
+  joinedAt: string;
+  workspaceId: string | null;
+  hasWorkspace: boolean;
+}
+
 // Task E14/F03/US01/T01 (wave w14, ADR-026 section D3): `getWorkspaceMembers(tenantId)`. The
 // backend handler is a same-phase sibling task's file (WorkspaceMembersEndpointExtensions.cs,
 // E14/F04/US01/T01); this client method and the OpenAPI contract it is anchored to are this task's
@@ -1483,6 +1535,22 @@ export interface ApiClient {
    */
   listWorkspaces(): Promise<ListWorkspacesResult>;
   /**
+   * Calls `GET /api/admin/me`: is the caller a Raffa platform admin? Never throws; any failure reads
+   * as `false`, so the portal simply does not show the Admin entry. The other `/api/admin/*` calls
+   * below answer 404 to anyone else, and never throw (same shape as `createWorkspace`).
+   */
+  getPlatformAdminStatus?(): Promise<boolean>;
+  getAdminOverview?(): Promise<AdminCallResult<AdminOverviewBody>>;
+  listAdminWorkspaces?(): Promise<AdminCallResult<{ workspaces: AdminWorkspaceBody[] }>>;
+  setAdminWorkspaceStatus?(tenantId: string, action: "suspend" | "reactivate"): Promise<AdminCallResult<null>>;
+  listAdminInvitations?(): Promise<AdminCallResult<{ invitations: AdminInvitationBody[] }>>;
+  createAdminInvitation?(email: string): Promise<AdminCallResult<AdminIssuedInvitationBody>>;
+  regenerateAdminInvitation?(id: string): Promise<AdminCallResult<AdminIssuedInvitationBody>>;
+  revokeAdminInvitation?(id: string): Promise<AdminCallResult<null>>;
+  listAdminUsers?(): Promise<AdminCallResult<{ users: AdminUserBody[] }>>;
+  /** `POST /api/platform/invitations/accept`: a signed-in prospect redeems the secret from their link. */
+  acceptProspectInvitation?(token: string): Promise<AdminCallResult<null>>;
+  /**
    * Calls `GET /api/workspaces/{tenantId}/members` (operationId `getWorkspaceMembers`) -- the
    * roster of live members plus pending invitations (task E14/F03/US01/T01, wave w14; ADR-026
    * section D3). The tenant comes from the route; no `X-Tenant-Id` is sent
@@ -2096,6 +2164,47 @@ export function createApiClient(
   const apiFetch = createCoalescingFetch(withLang);
   const transport: AskOfferTransport = { baseUrl, getAccessToken, fetch: apiFetch };
 
+  /** One portal-admin call (no tenant header): 2xx → `body` (null on 204), anything else → `error`. Never throws. */
+  async function adminCall<T>(
+    method: "GET" | "POST" | "DELETE",
+    path: string,
+    body?: unknown,
+    extraHeaders: Record<string, string> = {},
+  ): Promise<AdminCallResult<T>> {
+    let response: Response;
+    try {
+      response = await apiFetch(new URL(path, baseUrl), {
+        method,
+        headers: {
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...extraHeaders,
+          ...await authHeaders(getAccessToken),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        cache: "no-store",
+      });
+    } catch (cause) {
+      return {
+        ok: false,
+        statusCode: null,
+        body: null,
+        error: `Unable to reach ${baseUrl}${path}. Cause: ${cause instanceof Error ? cause.message : String(cause)}`,
+      };
+    }
+    if (response.ok) {
+      const parsed = response.status === 204 ? null : ((await response.json().catch(() => null)) as T | null);
+      return { ok: true, statusCode: response.status, body: parsed, error: null };
+    }
+    let error: string;
+    try {
+      const errorBody: unknown = await response.json();
+      error = typeof errorBody === "string" ? errorBody : JSON.stringify(errorBody);
+    } catch {
+      error = `Request failed with HTTP ${response.status} ${response.statusText}.`;
+    }
+    return { ok: false, statusCode: response.status, body: null, error };
+  }
+
   /** One JSON call of the Risultati wrappers: 2xx with a body → `data`, 204 → `data: null`. */
   async function callJson<T>(
     url: URL,
@@ -2249,6 +2358,34 @@ export function createApiClient(
 
       return { ok: false, statusCode: response.status, member: null, failureReason: null, error };
     },
+
+    async getPlatformAdminStatus() {
+      try {
+        const response = await apiFetch(new URL("/api/admin/me", baseUrl), {
+          method: "GET",
+          headers: { ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+        if (response.status !== 200) return false;
+        const body = (await response.json()) as { isPlatformAdmin?: unknown };
+        return body.isPlatformAdmin === true;
+      } catch {
+        return false;
+      }
+    },
+
+    getAdminOverview: () => adminCall<AdminOverviewBody>("GET", "/api/admin/overview"),
+    listAdminWorkspaces: () => adminCall<{ workspaces: AdminWorkspaceBody[] }>("GET", "/api/admin/workspaces"),
+    setAdminWorkspaceStatus: (tenantId, action) =>
+      adminCall<null>("POST", `/api/admin/workspaces/${encodeURIComponent(tenantId)}/${action}`),
+    listAdminInvitations: () => adminCall<{ invitations: AdminInvitationBody[] }>("GET", "/api/admin/invitations"),
+    createAdminInvitation: (email) => adminCall<AdminIssuedInvitationBody>("POST", "/api/admin/invitations", { email }),
+    regenerateAdminInvitation: (id) =>
+      adminCall<AdminIssuedInvitationBody>("POST", `/api/admin/invitations/${encodeURIComponent(id)}/regenerate`),
+    revokeAdminInvitation: (id) => adminCall<null>("DELETE", `/api/admin/invitations/${encodeURIComponent(id)}`),
+    listAdminUsers: () => adminCall<{ users: AdminUserBody[] }>("GET", "/api/admin/users"),
+    acceptProspectInvitation: (token) =>
+      adminCall<null>("POST", "/api/platform/invitations/accept", undefined, { "X-Platform-Invitation-Token": token }),
 
     async listWorkspaces() {
       let response: Response;
