@@ -433,7 +433,7 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         var client = _fixture.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/workspaces")
         {
-            Content = JsonContent.Create(new { name = "Bad Country Co", country = "US" }),
+            Content = JsonContent.Create(new { name = "Bad Country Co", country = "ZZ" }),
         };
         request.Headers.Add("X-User-Id", "badcountry@acme.example");
 
@@ -443,7 +443,7 @@ public sealed class WorkspaceDirectoryEndpointTests : IClassFixture<WorkspaceDir
         // unhandled Postgres check-constraint/length exception.
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errorBody = await response.Content.ReadAsStringAsync();
-        Assert.Contains("US", errorBody, StringComparison.Ordinal);
+        Assert.Contains("ZZ", errorBody, StringComparison.Ordinal);
     }
 
     [Fact]

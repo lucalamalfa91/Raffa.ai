@@ -39,8 +39,9 @@ public sealed class WorkspaceProvisioningService(
     IdentityWorkspaceDbContext db, ITenantContext tenantContext, IClock clock)
 {
     /// <summary>
-    /// The total map NW-24 fixes (ADR-003 w14 footer clause 1; design export's country list,
-    /// <c>markup.html:56</c>): ISO 3166-1 alpha-2 country to ISO 4217 alpha-3 currency. Total over
+    /// The total map NW-24 fixed (ADR-003 w14 footer clause 1), widened from the design export's four
+    /// countries (<c>markup.html:56</c>) to the markets first testers come from; the web's list in
+    /// <c>WorkspacePickerScreen.tsx</c> holds the same codes: ISO 3166-1 alpha-2 country to ISO 4217 alpha-3 currency. Total over
     /// the closed list it covers — there is no "valid country, unknown currency" state and
     /// therefore no fallback branch; a <paramref name="country"/> outside this set is simply
     /// invalid (see <see cref="CreateWorkspaceAsync"/>'s own validation).
@@ -48,10 +49,62 @@ public sealed class WorkspaceProvisioningService(
     private static readonly IReadOnlyDictionary<string, string> CurrencyByCountry =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CH"] = "CHF",
-            ["IT"] = "EUR",
-            ["DE"] = "EUR",
+            ["AR"] = "ARS",
+            ["AU"] = "AUD",
             ["AT"] = "EUR",
+            ["BE"] = "EUR",
+            ["BR"] = "BRL",
+            ["BG"] = "EUR",
+            ["CA"] = "CAD",
+            ["CL"] = "CLP",
+            ["CN"] = "CNY",
+            ["CO"] = "COP",
+            ["HR"] = "EUR",
+            ["CY"] = "EUR",
+            ["CZ"] = "CZK",
+            ["DK"] = "DKK",
+            ["EG"] = "EGP",
+            ["EE"] = "EUR",
+            ["FI"] = "EUR",
+            ["FR"] = "EUR",
+            ["DE"] = "EUR",
+            ["GR"] = "EUR",
+            ["HK"] = "HKD",
+            ["HU"] = "HUF",
+            ["IS"] = "ISK",
+            ["IN"] = "INR",
+            ["IE"] = "EUR",
+            ["IL"] = "ILS",
+            ["IT"] = "EUR",
+            ["JP"] = "JPY",
+            ["KE"] = "KES",
+            ["LV"] = "EUR",
+            ["LI"] = "CHF",
+            ["LT"] = "EUR",
+            ["LU"] = "EUR",
+            ["MT"] = "EUR",
+            ["MX"] = "MXN",
+            ["MA"] = "MAD",
+            ["NL"] = "EUR",
+            ["NZ"] = "NZD",
+            ["NG"] = "NGN",
+            ["NO"] = "NOK",
+            ["PL"] = "PLN",
+            ["PT"] = "EUR",
+            ["RO"] = "RON",
+            ["SA"] = "SAR",
+            ["SG"] = "SGD",
+            ["SK"] = "EUR",
+            ["SI"] = "EUR",
+            ["ZA"] = "ZAR",
+            ["KR"] = "KRW",
+            ["ES"] = "EUR",
+            ["SE"] = "SEK",
+            ["CH"] = "CHF",
+            ["TR"] = "TRY",
+            ["AE"] = "AED",
+            ["GB"] = "GBP",
+            ["US"] = "USD",
         };
 
     /// <summary>Mirrors <see cref="WorkspaceTenant.Industry"/>'s own <c>HasMaxLength(120)</c>
