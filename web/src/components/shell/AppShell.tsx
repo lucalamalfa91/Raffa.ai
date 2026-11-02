@@ -3,7 +3,6 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useValidatedContractCount } from "./useValidatedContractCount";
 import { useDocumentCounts } from "./useDocumentCounts";
 import { usePollBudget } from "./usePollBudget";
-import { usePlatformAdmin } from "./usePlatformAdmin";
 import type { WorkspaceRole } from "./navItems";
 import type { ApiClient } from "../../api/client";
 import { DocumentViewerProvider } from "../../routes/documents/viewer/DocumentViewerOverlay";
@@ -56,7 +55,6 @@ function ShellLayout({ workspaceId, workspaceName, role, userLabel, onSignOut, o
   const location = useLocation();
   const fixture = useFixtureSession();
   const { open } = useGuideState();
-  const isPlatformAdmin = usePlatformAdmin(apiClient);
   const [pollTick, setPollTick] = useState(0);
   const refreshKey = `${location.pathname}:${pollTick}`;
   const documentCounts = useDocumentCounts(apiClient, refreshKey);
@@ -81,7 +79,7 @@ function ShellLayout({ workspaceId, workspaceName, role, userLabel, onSignOut, o
   return (
     <div className="v4">
       {fixture ? <DemoBar /> : null}
-      <TopNav showAdmin={isPlatformAdmin} workspaceName={workspaceName} role={role} userLabel={userLabel} onSignOut={onSignOut} onSwitchWorkspace={onSwitchWorkspace} />
+      <TopNav workspaceName={workspaceName} role={role} userLabel={userLabel} onSignOut={onSignOut} onSwitchWorkspace={onSwitchWorkspace} />
       <div className={open ? "v4-body" : "v4-body is-guide-closed"}>
         <main className="v4-main" ref={mainRef}>
           <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts, role }} />

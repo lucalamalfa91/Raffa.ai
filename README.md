@@ -37,7 +37,7 @@ environments `PlatformAdmin__ObjectIds__0=<oid>`, `__1`, ...). It is not a works
 member of any workspace: it sees platform metadata only (never contracts, files or chats) and adds no
 RLS exception. Everyone else gets a 404 from `/api/admin/*`.
 
-Signed in as one, the top nav shows **Admin** (`/admin`): Overview, Workspaces (company, ID,
+Signed in as one, the workspace picker ("Choose a workspace") shows **Pannello admin** (`/admin`), never inside a workspace: Overview, Workspaces (company, ID,
 administrator, created, status; suspend / reactivate), Invitations (create, copy, regenerate, revoke) and
 Users (people who accepted an invitation).
 
