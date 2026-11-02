@@ -11,6 +11,7 @@ import WorkspaceShellApp from "./components/shell/WorkspaceShellApp";
 import { parseWorkspaceRole } from "./components/shell/workspaceRole";
 import AcceptInvitationRoute from "./routes/invite/accept";
 import ProspectAcceptRoute from "./routes/prospect";
+import AdminPage from "./routes/admin/AdminPage";
 import { takeProspectToken } from "./routes/prospect/prospectToken";
 
 interface AppProps {
@@ -280,6 +281,8 @@ export default function App({ appConfig, apiClient }: AppProps) {
         <Route path="/invite/accept" element={<AcceptInvitationRoute apiClient={apiClient} appConfig={appConfig} />} />
         {/* Prospect invitation from Raffa staff: also public, secret in the fragment. */}
         <Route path="/prospect/accept" element={<ProspectAcceptRoute apiClient={apiClient} appConfig={appConfig} />} />
+        {/* Super Admin portal, outside any workspace (opened from the workspace picker). */}
+        <Route path="/admin" element={<AdminPage apiClient={apiClient} />} />
         <Route
           path="/*"
           element={

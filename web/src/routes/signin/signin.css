@@ -295,3 +295,5 @@
   font-size: 12px;
   color: var(--color-accent-700);
 }
+
+.workspace-admin-link { display: inline-block; margin-top: 16px; text-decoration: none; }

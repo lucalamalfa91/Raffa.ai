@@ -1,3 +1,4 @@
+import PlatformAdminLink from "./PlatformAdminLink";
 import { useState, type FormEvent } from "react";
 import type { ApiClient, CreateWorkspaceRequest, WorkspaceSummaryBody } from "../../api/client";
 import { workspaceRoleLabel } from "../../components/shell/workspaceRole";
@@ -470,6 +471,8 @@ export default function WorkspacePickerScreen({
             )}
           </>
         )}
+
+        <PlatformAdminLink apiClient={apiClient} />
 
         <button type="button" className="btn btn-ghost workspace-signout" onClick={handleSignOut}>
           Sign out
