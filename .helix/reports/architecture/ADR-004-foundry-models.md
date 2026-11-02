@@ -211,3 +211,34 @@ Revisit rule: a GPT-5.6 (or any newer) deployment is put back into
 deployment create`) and the SKU that ARM accepted is recorded here -- the
 model catalogue's regional table proved wrong twice for this account and is
 not evidence on its own.
+
+## Amendment (2026-11-02): demo extract / answer / research move to gpt-6-astra
+
+The 2026-09-22 revisit rule is met for one model. `gpt-6-astra` 2026-09-03
+(GA) lists `DataZoneStandard` only in `az cognitiveservices model list
+--location northeurope`, and a hand-made deployment
+
+```
+az cognitiveservices account deployment create -g rg-raffa-ai -n aisvc-raffa \
+  --deployment-name gpt-6-astra-test --model-name gpt-6-astra --model-format OpenAI \
+  --model-version 2026-09-03 --sku-name DataZoneStandard --sku-capacity 50
+```
+
+returned `provisioningState: Succeeded` on 2026-11-02. SKU that ARM accepted:
+**DataZoneStandard** (EU data zone preserved).
+
+| Role | demo deployment (model, version, SKU) |
+| --- | --- |
+| classify | `gpt-5.4-nano-demo` (unchanged) |
+| extract, answer, research | `gpt-6-astra-demo` (gpt-6-astra 2026-09-03, DataZoneStandard, 200K TPM) |
+| embed | `text-embedding-3-large-demo` (unchanged) |
+
+Not used: `gpt-5.5` (also available, DataZoneStandard) is the fallback if
+astra misbehaves; `gpt-5.6-*`, `gpt-6-luna`, `gpt-6-sol` and the Anthropic /
+xAI / DeepSeek models appear only inside the `model-router` pool and are not
+standalone-deployable on this account; `model-router` itself is rejected
+because it picks the model per request and breaks the reproducible logged
+model version (ADR-011). `gpt-5.4-demo` is destroyed by this apply (deployment
+key change). `scripts/foundry_research_probe.py` must pass against
+`gpt-6-astra-demo` before the `research` role is trusted; delete the manual
+`gpt-6-astra-test` deployment once Terraform owns `gpt-6-astra-demo`.
