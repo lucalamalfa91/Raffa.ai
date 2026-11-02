@@ -53,6 +53,11 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 {
     public const int ExpiryDays = 7;
 
+    /// <summary>True only on the Npgsql provider. Not <c>Database.IsRelational()</c>: the in-memory test
+    /// hosts swap the provider but keep the Npgsql options extension, so that check answers true there and
+    /// the raw SQL below would throw. The provider name is what the context actually runs on.</summary>
+    private bool IsPostgres => db.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
+
     public const string Active = "active";
     public const string Suspended = "suspended";
 
@@ -61,7 +66,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
     /// <summary>Idempotent: a workspace already registered is left exactly as it is.</summary>
     public Task<int> RegisterWorkspaceAsync(
         Guid tenantId, string name, string? adminEmail, DateTimeOffset createdAt, CancellationToken ct = default) =>
-        !db.Database.IsRelational() ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
+        !IsPostgres ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             INSERT INTO platform_workspace (tenant_id, name, admin_email, created_at, status)
             VALUES ({tenantId}, {name}, {adminEmail}, {createdAt.ToUniversalTime()}, 'active')
@@ -78,7 +83,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     /// <summary>True when the workspace is registered and suspended. Unregistered = not suspended.</summary>
     public async Task<bool> IsSuspendedAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.Database.IsRelational() && (await db.Database.SqlQuery<int>(
+        IsPostgres && (await db.Database.SqlQuery<int>(
             $"SELECT 1 AS \"Value\" FROM platform_workspace WHERE tenant_id = {tenantId} AND status = 'suspended'")
             .ToListAsync(ct).ConfigureAwait(false)).Count > 0;
 
@@ -181,7 +186,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     /// <summary>True when this person accepted an invitation that has not yet been spent on a workspace.</summary>
     public async Task<bool> HasUnspentInvitationAsync(string subject, CancellationToken ct = default) =>
-        db.Database.IsRelational() && (await db.Database.SqlQuery<int>(
+        IsPostgres && (await db.Database.SqlQuery<int>(
             $"""
             SELECT 1 AS "Value" FROM platform_invitation
             WHERE accepted_by_subject = {subject} AND accepted_at IS NOT NULL AND workspace_id IS NULL
@@ -190,7 +195,7 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     /// <summary>Spends one accepted invitation on the workspace just created. Atomic and idempotent.</summary>
     public Task<int> SpendInvitationAsync(string subject, Guid tenantId, CancellationToken ct = default) =>
-        !db.Database.IsRelational() ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
+        !IsPostgres ? Task.FromResult(0) : db.Database.ExecuteSqlInterpolatedAsync(
             $"""
             UPDATE platform_invitation SET workspace_id = {tenantId}
             WHERE id = (

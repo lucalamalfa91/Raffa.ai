@@ -189,6 +189,7 @@ module "containerapps" {
   azuread_client_id          = module.identity.api_client_id
   azuread_audience           = module.identity.api_identifier_uri
   guest_provisioning_enabled = var.guest_provisioning_enabled
+  platform_admin_object_ids  = var.platform_admin_object_ids
 }
 
 # ADR-008 amendment 2026-09-09: this root OWNS the single shared Azure AI
