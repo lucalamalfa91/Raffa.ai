@@ -2685,6 +2685,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       saveCompanyRules: () => client.saveCompanyRules!("tenant-1", { text: "t", startWindowDays: 90, sourceFile: null }),
       interviewCompanyRules: () => client.interviewCompanyRules!("tenant-1", [], "", "en"),
       uploadCompanyPolicy: () => client.uploadCompanyPolicy!("tenant-1", new File(["x"], "p.txt"), "en"),
+      uploadRenewalCaseDocument: () => client.uploadRenewalCaseDocument!("tenant-1", "case-1", { type: "addDoc", file: new File(["x"], "d.pdf"), version: 1, lang: "en" }),
       getDocumentReading: () => client.getDocumentReading("tenant-1", "doc-1"),
       decideReadingField: () => client.decideReadingField("tenant-1", "doc-1", "sf_uplift", { decision: "accept" }),
       listContractsV4: () => client.listContractsV4("tenant-1"),

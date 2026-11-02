@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import AskShortcuts from "../../components/ask/AskShortcuts";
 import type {
   ApiClient,
   SavingsGoalBody,
@@ -154,6 +155,12 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
       <h2>{t("Results⟦page⟧")}</h2>
       <div className="s4-subtitle">{t("Verifiable figures only. Raffa never estimates a saving. The goal is yours, in your own words.")}</div>
 
+      <AskShortcuts
+        items={[
+          { label: t("Where can we save?"), question: t("Where can we save across our renewals?") },
+          { label: t("Which renewals first?"), question: t("Which renewals should we start first, and why?") },
+        ]}
+      />
       <div data-screen-label="Obiettivo" className="s4-goal">
         <div className="s4-goal-head">
           <span className="s4-goal-mark" />

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   askOfferApi,
   type ApiClient,
@@ -10,12 +10,20 @@ import {
   type OpenCase4,
   type QuoteListItem4,
 } from "../../api/client";
-import { useGuide } from "../../components/shell/guide";
+import { useGuide, useGuideState } from "../../components/shell/guide";
 import { useShellContext } from "../../components/shell/shellContext";
 import { useFixtureSession } from "../../fixtures/FixtureSessionContext";
 import { useI18n } from "../../i18n/I18nProvider";
 import { conversationDay, isSameDay, todayIso } from "./askDates";
 import "./ask4.css";
+import "./chat.css";
+import ReplyBody from "./ReplyBody";
+import AgentExtras from "./AgentExtras";
+import FeedbackCard from "./FeedbackCard";
+import DraftPanel, { ArtifactCard } from "./DraftPanel";
+import { splitEmailDraft, type EmailDraft } from "./draft";
+import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
+import { artifactRequest, buildArtifact, type Artifact, type ArtifactKind } from "./artifacts";
 
 export interface AskRouteProps {
   apiClient: ApiClient;
@@ -46,6 +54,14 @@ function convName(c: { title: string; customTitle: string | null }): string {
   return c.customTitle?.trim() ? c.customTitle : c.title;
 }
 
+function parityRun(): boolean {
+  try {
+    return window.sessionStorage.getItem("raffa4.parity") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function AskRoute({ apiClient }: AskRouteProps) {
   const api = useMemo(() => askOfferApi(apiClient), [apiClient]);
   const tenantId = useShellContext()?.workspaceId ?? "";
@@ -59,12 +75,38 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [archived, setArchived] = useState<ConversationSummary4[]>([]);
   const [cases, setCases] = useState<OpenCase4[]>([]);
   const [contracts, setContracts] = useState<AskContract[]>([]);
+  // A question that starts from a contract (`/ask?scope=<contractId>&q=…`) is about that contract: Raffa
+  // never asks which one. The scope sticks to the new conversation until the user starts another.
+  const [searchParams] = useSearchParams();
+  const scopeParam = searchParams.get("scope");
+  const [scopeId, setScopeId] = useState<string | null>(scopeParam && scopeParam.trim() ? scopeParam.trim() : null);
   const [quotes, setQuotes] = useState<QuoteListItem4[]>([]);
   const [current, setCurrent] = useState<ConversationDetail4 | null>(null);
   const [pick, setPick] = useState<Pick | null>(null);
   const [q, setQ] = useState("");
   const [showArchive, setShowArchive] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Public web research for the next question: offered only when the workspace opted in.
+  const [webAvailable, setWebAvailable] = useState(false);
+  const [webOn, setWebOn] = useState(false);
+  useEffect(() => {
+    if (!tenantId) return;
+    let alive = true;
+    void apiClient.getWorkspaceSettings(tenantId).then((r) => {
+      if (alive) setWebAvailable(!!r.settings?.webResearchEnabled && r.settings?.webResearchAvailable !== false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [apiClient, tenantId]);
+  /** The question being answered: shown at once, with the thinking row under it, until Raffa's reply arrives. */
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const thinkingRef = useRef<HTMLDivElement>(null);
+  /** The email draft open in the right-hand panel (the artifact beside the conversation). */
+  const [panel, setPanel] = useState<{ id: string; draft?: EmailDraft; artifact?: Artifact } | null>(null);
+  /** Dashboards, KPIs and documents Raffa built in this conversation (kept on the page; the panel shows one). */
+  const [contents, setContents] = useState<Artifact[]>([]);
+  const [building, setBuilding] = useState(false);
   const [uploadingOffer, setUploadingOffer] = useState(false);
   const offerInput = useRef<HTMLInputElement>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -106,23 +148,99 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     if (detail.id !== conversationId) navigate(`/ask/${detail.id}`);
   };
 
-  const ask = async (question: string, contractId?: string, answerOnly = false) => {
+  // The side panel needs the room: Guida Raffa steps aside while it is open and comes back when it closes.
+  const guide = useGuideState();
+  const guideYielded = useRef(false);
+  useEffect(() => {
+    if (panel && guide.open) {
+      guideYielded.current = true;
+      guide.toggle();
+    } else if (!panel && guideYielded.current) {
+      guideYielded.current = false;
+      if (!guide.open) guide.toggle();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel]);
+
+  // Switching to another conversation closes the panel.
+  useEffect(() => {
+    setPanel((p) => (p && (p.artifact || current?.messages.some((m) => m.id === p.id)) ? p : null));
+  }, [current]);
+
+  // Keep the question and the thinking row in view while Raffa works.
+  useEffect(() => {
+    if (pendingQuestion !== null) thinkingRef.current?.scrollIntoView?.({ block: "end" });
+  }, [pendingQuestion]);
+
+  /** Builds a dashboard, KPIs or a document from the validated contracts and opens it in the side panel. */
+  const createContent = async (kind: ArtifactKind) => {
+    if (!tenantId || building) return;
+    setBuilding(true);
+    setConvError(null);
+    const r = await apiClient.listContractsV4(tenantId);
+    setBuilding(false);
+    if (!r.ok || !r.data) {
+      setConvError(t("The contracts could not be loaded."));
+      return;
+    }
+    const made = buildArtifact(kind, r.data.rows, t, today);
+    setContents((list) => [...list, made]);
+    setPanel({ id: made.id, artifact: made });
+  };
+
+  const ask = async (
+    question: string,
+    contractId?: string,
+    answerOnly = false,
+    interviewAnswer?: { messageId: string; questionKey: string; optionKey?: string | null },
+  ) => {
     const text = question.trim();
     if (!text || busy) return;
+    // "Create a dashboard / KPIs / a brief": built from the contracts, shown in the panel.
+    const requested = artifactRequest(text);
+    if (requested) {
+      setQ("");
+      void createContent(requested);
+      return;
+    }
     setBusy(true);
+    setPendingQuestion(text);
+    setPick(null);
+    setQ("");
     const r = await api.ask(tenantId, {
       conversationId: current?.id ?? null,
       question: text,
-      contractId: contractId ?? null,
+      contractId: contractId ?? current?.scopeContractId ?? scopeId ?? null,
       answerOnly,
       lang,
+      interviewAnswer: interviewAnswer ?? null,
+      webResearch: webOn,
     });
+    setWebOn(false);
     setBusy(false);
+    setPendingQuestion(null);
     if (!r.data) return;
     setQ("");
     setPick(r.data.needsContract ? { kind: "q", text } : null);
     show(r.data.conversation);
+    // An email Raffa just drafted opens in the side panel by itself (the user can close it).
+    const fresh = [...r.data.conversation.messages].reverse().find((m) => m.role === "raffa");
+    const drafted = fresh ? (fresh.payload?.draft ?? splitEmailDraft(fresh.markdown).draft) : null;
+    if (fresh && drafted) setPanel({ id: fresh.id, draft: drafted });
     void reloadLists();
+    // The capability check may still be looking: its follow-up turn lands in the conversation shortly.
+    if (r.data.capabilityCheck === "pending") {
+      const id = r.data.conversation.id;
+      const known = r.data.conversation.messages.length;
+      for (let i = 0; i < 6; i++) {
+        await new Promise((done) => window.setTimeout(done, 2500));
+        const d = await api.getConversation(tenantId, id);
+        if (d.data && d.data.messages.length > known) {
+          show(d.data);
+          break;
+        }
+      }
+    }
   };
 
   const openCase = async (contractId: string) => {
@@ -194,6 +312,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setPick(null);
     setQ("");
     setCurrent(null);
+    setScopeId(null);
     navigate("/ask");
   };
 
@@ -239,6 +358,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       : []),
   ];
 
+  const creations: Array<{ label: string; hint: string; kind: ArtifactKind }> = [
+    { label: t("Build a dashboard"), hint: t("Value by supplier and notice deadlines, from your contracts."), kind: "dashboard" },
+    { label: t("Show the KPIs"), hint: t("Contracts, yearly value and what falls due soon."), kind: "kpi" },
+    { label: t("Write a brief"), hint: t("A one-page portfolio summary you can copy or download."), kind: "document" },
+  ];
+
   const intents: Array<{ label: string; hint: string; kind: PickKind }> = [
     { label: t("Prepare a renewal"), hint: t("Opens or resumes the case — never a second one."), kind: "renew" },
     { label: t("Summarize a contract"), hint: t("Terms, dates and what to watch, with the source."), kind: "summary" },
@@ -281,10 +406,13 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const location = useLocation();
   const launched = useRef<string | null>(null);
   useEffect(() => {
-    const query = (location.state as { query?: unknown } | null)?.query;
+    const fromState = (location.state as { query?: unknown } | null)?.query;
+    const query = typeof fromState === "string" && fromState.trim() ? fromState : searchParams.get("q");
+    const scope = scopeParam && scopeParam.trim() ? scopeParam.trim() : null;
+    if (scope && scope !== scopeId) setScopeId(scope);
     if (typeof query !== "string" || !query.trim() || launched.current === location.key || !tenantId) return;
     launched.current = location.key;
-    void ask(query);
+    void ask(query, scope ?? undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key, tenantId]);
 
@@ -293,7 +421,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   };
 
   return (
-    <div data-screen-label="Chiedi" className="k6-chiedi">
+    <div data-screen-label="Chiedi" className={panel ? "k6-chiedi has-panel" : "k6-chiedi"}>
       <aside data-screen-label="Conversazioni" className="k6-rail">
         <div className="k6-rail-head">
           <span className="k6-rail-title">{t("Conversations")}</span>
@@ -397,7 +525,18 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 </div>
                 <div className="k6-intents">
                   {intents.map((n) => (
-                    <button key={n.kind} type="button" className="k6-intent" onClick={() => setPick({ kind: n.kind })}>
+                    <button key={n.kind} type="button" className="k6-intent" onClick={() => {
+                      // Started from a contract: the task is about that contract, no need to pick one.
+                      const about = contracts.find((c) => c.contractId === scopeId);
+                      if (about && n.kind !== "quote") choose(n.kind, about);
+                      else setPick({ kind: n.kind });
+                    }}>
+                      <div className="k6-intent-label">{n.label}</div>
+                      <div className="k6-intent-hint">{n.hint}</div>
+                    </button>
+                  ))}
+                  {creations.map((n) => (
+                    <button key={n.kind} type="button" className="k6-intent" data-parity-hide disabled={building} onClick={() => void createContent(n.kind)}>
                       <div className="k6-intent-label">{n.label}</div>
                       <div className="k6-intent-hint">{n.hint}</div>
                     </button>
@@ -444,21 +583,66 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 ) : null}
               </div>
             ) : null}
-            {(current?.messages ?? []).map((m) => {
+            {(current?.messages ?? []).map((m, _i, all) => {
+              const lastRaffaId = [...all].reverse().find((x) => x.role === "raffa")?.id;
               const raffa = m.role === "raffa";
-              const src = m.citations[0]?.title;
               const cta = raffa ? ctaOf(m) : null;
               return (
                 <div key={m.id} className={raffa ? "k6-qa is-raffa" : "k6-qa"}>
                   <span className="k6-qa-by">{raffa ? "Raffa.ai" : t("You⟦ask⟧")}</span>
                   <div className="k6-qa-body">
-                    <div className="k6-qa-text">{m.markdown}</div>
-                    {raffa && src ? (
-                      <div className="k6-qa-src">
-                        {`${t("Source:")} `}
-                        {src}
-                      </div>
-                    ) : null}
+                    {raffa ? (
+                      (() => {
+                        const split = splitEmailDraft(m.markdown);
+                        const text = split.text;
+                        const draft = m.payload?.draft ?? split.draft;
+                        // The parity run compares with the prototype's plain reply ("Source: …"): see PARITY.md D7.
+                        if (parityRun()) {
+                          const src = m.citations[0]?.title;
+                          return (
+                            <>
+                              <div className="k6-qa-text">{m.markdown}</div>
+                              {src ? <div className="k6-qa-src">{`${t("Source:")} ${src}`}</div> : null}
+                            </>
+                          );
+                        }
+                        return (
+                          <>
+                            <ReplyBody text={text} sources={m.citations} />
+                            {draft ? (
+                              <ArtifactCard draft={draft} active={panel?.id === m.id} onOpen={() => setPanel(panel?.id === m.id ? null : { id: m.id, draft })} />
+                            ) : null}
+                            {m.payload?.feedbackOffer &&
+                            current &&
+                            !all.some((x) => x.payload?.feedbackResult?.forMessageId === m.id) ? (
+                              <span data-parity-hide>
+                                <FeedbackCard
+                                  offer={m.payload.feedbackOffer}
+                                  onSubmit={async (answers) => {
+                                    const res = await apiClient.postConversationFeedback(tenantId, current.id, { messageId: m.id, answers });
+                                    if (res.ok) {
+                                      const d = await api.getConversation(tenantId, current.id);
+                                      if (d.data) show(d.data);
+                                    }
+                                    return { ok: res.ok };
+                                  }}
+                                />
+                              </span>
+                            ) : null}
+                            <AgentExtras
+                              message={m}
+                              latest={m.id === lastRaffaId}
+                              busy={busy}
+                              onAsk={(q) => void ask(q)}
+                              onInterview={(messageId, questionKey, option) => void ask(option.label, undefined, false, { messageId, questionKey, optionKey: option.key })}
+                              onNavigate={(href) => (/^https?:/.test(href) ? window.open(href, "_blank", "noopener") : navigate(href))}
+                            />
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <div className="k6-qa-text">{m.markdown}</div>
+                    )}
                     {cta ? (
                       <button type="button" className="btn btn-secondary k6-qa-cta" onClick={cta.go}>
                         {cta.label}
@@ -468,8 +652,47 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 </div>
               );
             })}
+            {contents.map((c) => (
+              <div key={c.id} className="k6-qa is-raffa">
+                <span className="k6-qa-by">Raffa.ai</span>
+                <div className="k6-qa-body">
+                  <ContentCard artifact={c} active={panel?.id === c.id} onOpen={() => setPanel(panel?.id === c.id ? null : { id: c.id, artifact: c })} />
+                </div>
+              </div>
+            ))}
+            {pendingQuestion !== null ? (
+              <>
+                <div className="k6-qa">
+                  <span className="k6-qa-by">{t("You⟦ask⟧")}</span>
+                  <div className="k6-qa-body">
+                    <div className="k6-qa-text">{pendingQuestion}</div>
+                  </div>
+                </div>
+                <div className="k6-qa is-raffa k6-thinking" role="status" aria-live="polite" ref={thinkingRef}>
+                  <span className="k6-qa-by">Raffa.ai</span>
+                  <div className="k6-thinking-copy">
+                    <span className="k6-thinking-spinner" aria-hidden="true" />
+                    {t("Reading your contracts and checking the evidence…")}
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
+        {(() => {
+          const aboutId = current?.scopeContractId ?? scopeId;
+          const about = aboutId ? contracts.find((c) => c.contractId === aboutId) : undefined;
+          return about ? (
+            <div className="k6-scope" data-parity-hide>
+              <span>{t("About {supplier}", { supplier: about.supplier })}</span>
+              {!current ? (
+                <button type="button" className="btn btn-ghost k6-scope-x" aria-label={t("Ask about all contracts")} onClick={() => setScopeId(null)}>
+                  ×
+                </button>
+              ) : null}
+            </div>
+          ) : null;
+        })()}
         <div className="k6-composer-wrap">
           <div className="k6-composer">
             <input
@@ -483,9 +706,19 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
               {t("Ask⟦button⟧")}
             </button>
           </div>
-          <div className="k6-composer-foot">{t("Procurement only · cites its source or says it cannot")}</div>
+          <div className="k6-composer-foot">
+            {t("Procurement only · cites its source or says it cannot")}
+            {webAvailable ? (
+              <label className="k6-web-toggle" data-parity-hide>
+                <input type="checkbox" checked={webOn} onChange={(e) => setWebOn(e.target.checked)} />{" "}
+                {t("Also search the public web for this question")}
+              </label>
+            ) : null}
+          </div>
         </div>
       </div>
+      {panel?.draft ? <DraftPanel draft={panel.draft} onClose={() => setPanel(null)} /> : null}
+      {panel?.artifact ? <ArtifactViewPanel artifact={panel.artifact} onClose={() => setPanel(null)} /> : null}
     </div>
   );
 }

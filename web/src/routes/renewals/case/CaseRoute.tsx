@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import AskShortcuts from "../../../components/ask/AskShortcuts";
 import type { ApiClient } from "../../../api/client";
 import type { CaseActionPayload, CaseButton, CaseCardStep, CaseEnvelope, CaseInput, CaseRow, Tone } from "../../../api/renewalCases";
-import { useGuide } from "../../../components/shell/guide";
+import { useGuide, useGuideState } from "../../../components/shell/guide";
+import ArtifactPanel from "../../ask/ArtifactPanel";
+import { MailIcon } from "../../ask/DraftPanel";
+import "../../ask/chat.css";
 import { useTenantId } from "../../../routes/contracts/contracts4";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../../i18n/translate";
@@ -42,6 +46,9 @@ const demoLabel = (b: CaseButton): boolean => {
   return /^Demo: |\(demo\)$/.test(id);
 };
 
+/** A button that adds a document to the case (the contract draft, the signed contract): in a real workspace it takes a file. */
+const isDocButton = (b: CaseButton): boolean => b.act === "addDoc";
+
 const isEmpty = (x: Text | null | undefined): boolean => x == null || (typeof x === "string" && x.length === 0);
 
 /**
@@ -51,6 +58,14 @@ const isEmpty = (x: Text | null | undefined): boolean => x == null || (typeof x 
  * `POST /api/renewals/{caseId}/actions` with the version it was taken on; a 409/403 answer carries the
  * current case, which is rendered as is (typed text the user has not sent stays in the inputs).
  */
+function parityRun(): boolean {
+  try {
+    return window.sessionStorage.getItem("raffa4.parity") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function CaseRoute({ apiClient }: CaseRouteProps) {
   const { caseId = "" } = useParams();
   const tenantId = useTenantId() ?? undefined;
@@ -150,7 +165,29 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
       navigate(b.p.to === "c360" && env ? `/contracts/${env.contractId}` : "/renewals");
       return;
     }
+    if (isDocButton(b) && env && !env.demo && apiClient.uploadRenewalCaseDocument) {
+      docInput.current?.click();
+      return;
+    }
     void act(b.act, b.p);
+  };
+
+  const docInput = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const uploadDoc = async (file: File) => {
+    const cur = envRef.current;
+    if (!tenantId || !cur || !apiClient.uploadRenewalCaseDocument) return;
+    setUploading(true);
+    setLocalWarn(null);
+    const r = await apiClient.uploadRenewalCaseDocument(tenantId, caseId, { type: "addDoc", file, version: cur.version, lang });
+    setUploading(false);
+    const next = r.ok ? r.body : r.current;
+    if (next) {
+      envRef.current = next;
+      setEnv(next);
+      notifyTodayChanged();
+    }
+    if (!r.ok) setLocalWarn(t("Raffa could not add this file. Try a PDF or a text file."));
   };
 
   const ask = async () => {
@@ -195,6 +232,35 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
       : null,
   );
 
+  // The drafted email lives in the right-hand action panel (as in Ask), not in the middle of the step: it
+  // opens by itself when a draft appears and Guida Raffa steps aside while it is open.
+  const hasEmail = !!cd?.email;
+  const [emailPanel, setEmailPanel] = useState(false);
+  const hadEmail = useRef(false);
+  const guide = useGuideState();
+  const guideYielded = useRef(false);
+  useEffect(() => {
+    // (The parity run compares the page with the prototype, which shows the draft inline: no panel then.)
+    if (hasEmail && !hadEmail.current && !parityRun()) setEmailPanel(true);
+    if (!hasEmail) setEmailPanel(false);
+    hadEmail.current = hasEmail;
+  }, [hasEmail]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (emailPanel && guide.open) {
+      guideYielded.current = true;
+      guide.toggle();
+    } else if (!emailPanel && guideYielded.current) {
+      guideYielded.current = false;
+      if (!guide.open) guide.toggle();
+    }
+  }, [emailPanel]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [copiedMail, setCopiedMail] = useState(false);
+  useEffect(() => {
+    if (!copiedMail) return undefined;
+    const timer = window.setTimeout(() => setCopiedMail(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copiedMail]);
+
   if (!env || !page || !cd) {
     return (
       <div className="p4-page" data-screen-label="Pratica">
@@ -233,6 +299,44 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
     );
   };
 
+  const emailBlock = em ? (
+        <div className="p4-email">
+          <div className="p4-email-state">{tr(em.state)}</div>
+          <div className="p4-email-meta">
+            <span className="p4-muted">{t("To")}</span>
+            <div>
+              {em.toMissing ? (
+                <input
+                  className="input p4-email-to"
+                  placeholder={t("Recipient — not in the contract")}
+                  value={draft<string>(em.toKey, em.to)}
+                  onChange={(e) => setDraft(em.toKey, e.target.value)}
+                  onBlur={() => {
+                    if (em.toKey in pending.current) void act("ui", { k: em.toKey, v: pending.current[em.toKey] });
+                  }}
+                />
+              ) : (
+                <span>{em.to}</span>
+              )}
+            </div>
+            <span className="p4-muted">{t("Subject")}</span>
+            <span className="p4-strong">{tr(cd.title)}</span>
+          </div>
+          {em.editing ? (
+            <div className="p4-email-edit">
+              <textarea className="input" value={draft<string>("editBody", em.editBody)} onChange={(e) => setDraft("editBody", e.target.value)} />
+            </div>
+          ) : (
+            <div className="p4-email-body">{em.body}</div>
+          )}
+          {!isEmpty(em.attachNote) || !isEmpty(em.sentNote) ? (
+            <div className="p4-email-note">
+              {tr(em.attachNote)} {tr(em.sentNote)}
+            </div>
+          ) : null}
+        </div>
+  ) : null;
+
   const rows = (list: CaseRow[], cls: string) =>
     list.map((r, i) => (
       <div key={i} className={cls}>
@@ -243,7 +347,11 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
       </div>
     ));
 
+  const subject = tr(cd.title);
+  const mailto = em ? `mailto:${em.toMissing ? "" : em.to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(em.body)}` : "";
+
   return (
+    <div className="p4-split">
     <div className="p4-page" data-screen-label="Pratica">
       <div className="p4-head">
         <div className="p4-top">
@@ -255,6 +363,14 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             {scheda ? t("Hide details ▴") : t("Details: terms, emails, team, dates ▾")}
           </button>
         </div>
+        <AskShortcuts
+          scopeContractId={env.contractId}
+          items={[
+            { label: t("Renewal strategy"), question: t("How should we approach this renewal? Give me the strategy and the negotiation points.") },
+            { label: t("Negotiation email"), question: t("Draft the negotiation email to the supplier for this renewal.") },
+            { label: t("Risks and terms to watch"), question: t("Which clauses and risks should we watch in this contract before renewing?") },
+          ]}
+        />
         <div className="p4-cells">
           <div className="p4-cell">
             <div className="p4-label">{t("Phase")}</div>
@@ -440,41 +556,23 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
               </div>
             ) : null}
             {em ? (
-              <div className="p4-email">
-                <div className="p4-email-state">{tr(em.state)}</div>
-                <div className="p4-email-meta">
-                  <span className="p4-muted">{t("To")}</span>
-                  <div>
-                    {em.toMissing ? (
-                      <input
-                        className="input p4-email-to"
-                        placeholder={t("Recipient — not in the contract")}
-                        value={draft<string>(em.toKey, em.to)}
-                        onChange={(e) => setDraft(em.toKey, e.target.value)}
-                        onBlur={() => {
-                          if (em.toKey in pending.current) void act("ui", { k: em.toKey, v: pending.current[em.toKey] });
-                        }}
-                      />
-                    ) : (
-                      <span>{em.to}</span>
-                    )}
-                  </div>
-                  <span className="p4-muted">{t("Subject")}</span>
-                  <span className="p4-strong">{tr(cd.title)}</span>
-                </div>
-                {em.editing ? (
-                  <div className="p4-email-edit">
-                    <textarea className="input" value={draft<string>("editBody", em.editBody)} onChange={(e) => setDraft("editBody", e.target.value)} />
-                  </div>
-                ) : (
-                  <div className="p4-email-body">{em.body}</div>
-                )}
-                {!isEmpty(em.attachNote) || !isEmpty(em.sentNote) ? (
-                  <div className="p4-email-note">
-                    {tr(em.attachNote)} {tr(em.sentNote)}
-                  </div>
-                ) : null}
-              </div>
+              <>
+                {/* The prototype shows the draft inline: the parity run shows this copy; everyone else gets the card and the panel. */}
+                <div className="p4-email-inline">{emailBlock}</div>
+                <button type="button" className="artifact-card p4-email-card" aria-pressed={emailPanel} onClick={() => setEmailPanel((o) => !o)}>
+                  <span className="artifact-card-icon" aria-hidden="true">
+                    <MailIcon />
+                  </span>
+                  <span className="artifact-card-text">
+                    <span className="artifact-card-title">{tr(cd.title)}</span>
+                    <span className="artifact-card-meta">
+                      {tr(em.state)}
+                      <span aria-hidden="true"> · </span>
+                      {emailPanel ? t("Open⟦panel⟧") : t("Click to open")}
+                    </span>
+                  </span>
+                </button>
+              </>
             ) : null}
             {cd.pre ? <div className="p4-pre">{cd.pre}</div> : null}
             {cd.fields.length > 0 ? (
@@ -518,11 +616,22 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             ) : null}
             {cd.inputs.length > 0 ? <div className="p4-inputs">{cd.inputs.map(input)}</div> : null}
             <div className="p4-buttons">
-              {cd.buttons.filter((b) => env.demo || !demoLabel(b)).map((b, i) => (
+              {cd.buttons.filter((b) => env.demo || !demoLabel(b) || isDocButton(b)).map((b, i) => (
                 <button key={i} type="button" className={`btn ${b.primary ? "btn-primary" : "btn-secondary"} p4-btn`} style={{ opacity: b.off ? 0.5 : 1 }} onClick={() => press(b)}>
-                  {tr(b.label)}
+                  {isDocButton(b) && !env.demo ? (uploading ? t("Raffa is reading…") : t("Add the file")) : tr(b.label)}
                 </button>
               ))}
+              <input
+                ref={docInput}
+                type="file"
+                hidden
+                accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void uploadDoc(f);
+                }}
+              />
               {cd.more.length > 0 ? (
                 <button type="button" className="btn btn-ghost p4-more-toggle" onClick={() => setMore((m) => !m)} aria-expanded={more}>
                   {more ? t("Less ▴") : t("More ▾")}
@@ -532,7 +641,7 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             {more ? (
               <div className="p4-more">
                 {cd.more
-                  .filter((b) => env.demo || !demoLabel(b))
+                  .filter((b) => env.demo || !demoLabel(b) || isDocButton(b))
                   .map((b, i) => (
                     <button key={i} type="button" className="btn btn-ghost" style={{ opacity: b.off ? 0.5 : 1 }} onClick={() => press(b)}>
                       {tr(b.label)}
@@ -595,6 +704,38 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
           </button>
         </div>
       </div>
+    </div>
+    {em && emailPanel ? (
+      <ArtifactPanel
+        label={t("Email draft")}
+        kicker={tr(em.state)}
+        title={subject}
+        icon={<MailIcon />}
+        size="wide"
+        onClose={() => setEmailPanel(false)}
+        actions={
+          <>
+            <a className="artifact-panel-action" href={mailto}>
+              {t("Open in mail")}
+            </a>
+            <button
+              type="button"
+              className="artifact-panel-action"
+              data-primary="true"
+              onClick={() => {
+                const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+                if (clipboard) void clipboard.writeText(`${subject}\n\n${em.body}`).then(() => setCopiedMail(true));
+              }}
+              aria-live="polite"
+            >
+              {copiedMail ? t("Copied") : t("Copy email")}
+            </button>
+          </>
+        }
+      >
+        <div className="p4-panel-email">{emailBlock}</div>
+      </ArtifactPanel>
+    ) : null}
     </div>
   );
 }

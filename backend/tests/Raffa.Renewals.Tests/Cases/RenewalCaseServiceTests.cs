@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Raffa.Renewals.Application.CaseWork;
 using Raffa.Renewals.Application.Cases;
+using Raffa.SharedKernel.Text;
 using Raffa.Renewals.Infrastructure;
 using Raffa.Renewals.Tests.TestSupport;
 using Raffa.SharedKernel;
@@ -10,6 +11,7 @@ using Raffa.SharedKernel.Contracts;
 using Raffa.SharedKernel.Renewals;
 using Raffa.SharedKernel.Savings;
 using Raffa.SharedKernel.Tenancy;
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace Raffa.Renewals.Tests.Cases;
@@ -25,32 +27,70 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
     private static readonly Guid LucaId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid MartaId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
+    // RAFFA_TEST_POSTGRES_ADMIN: an existing server (a database is created per run) instead of a container, where Docker is not available.
+    private readonly PostgreSqlContainer? _postgres =
+        string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RAFFA_TEST_POSTGRES_ADMIN")) ? new PostgreSqlBuilder("postgres:16-alpine").Build() : null;
+    private string _connection = string.Empty;
+    private string? _database;
     private readonly TenantId _tenant = TenantId.New();
     private readonly TenantContext _tenantContext = new();
     private readonly FakeFacts _facts = new();
     private readonly RecordingTermWriter _terms = new();
     private readonly RecordingAuditWriter _audit = new();
 
-    public Task InitializeAsync() => _postgres.StartAsync();
+    public async Task InitializeAsync()
+    {
+        if (_postgres is not null)
+        {
+            await _postgres.StartAsync();
+            _connection = _postgres.GetConnectionString();
+            return;
+        }
 
-    public Task DisposeAsync() => _postgres.DisposeAsync().AsTask();
+        var server = Environment.GetEnvironmentVariable("RAFFA_TEST_POSTGRES_ADMIN")!;
+        _database = "renewals_test_" + Guid.NewGuid().ToString("N");
+        await using (var admin = new NpgsqlConnection(server))
+        {
+            await admin.OpenAsync();
+            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{_database}\" TEMPLATE template0", admin);
+            await create.ExecuteNonQueryAsync();
+        }
+
+        _connection = new NpgsqlConnectionStringBuilder(server) { Database = _database }.ConnectionString;
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_postgres is not null)
+        {
+            await _postgres.DisposeAsync();
+        }
+        else if (_database is not null)
+        {
+            NpgsqlConnection.ClearAllPools();
+            await using var admin = new NpgsqlConnection(Environment.GetEnvironmentVariable("RAFFA_TEST_POSTGRES_ADMIN"));
+            await admin.OpenAsync();
+            await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{_database}\" WITH (FORCE)", admin);
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
 
     private RenewalsDbContext Db()
     {
         var b = new DbContextOptionsBuilder<RenewalsDbContext>();
-        RenewalsDbContextOptions.Configure(b, _postgres.GetConnectionString(), _tenantContext);
+        RenewalsDbContextOptions.Configure(b, _connection, _tenantContext);
         return new RenewalsDbContext(b.Options);
     }
 
-    private async Task<RenewalCaseService> ServiceAsync(ICaseScriptServices? script = null, DateTimeOffset? now = null)
+    private async Task<RenewalCaseService> ServiceAsync(ICaseScriptServices? script = null, DateTimeOffset? now = null, ICaseAiReader? aiReader = null, Raffa.SharedKernel.Market.IMarketObservationSink? marketSink = null)
     {
         var db = Db();
         await db.Database.MigrateAsync();
         return new RenewalCaseService(
             db, _tenantContext, _facts, new Members(), script ?? FixtureCaseScriptServices.Instance,
             new NoAnswerer(), _terms, new NoSavings(), new NoObjectives(),
-            new NoOpenQuoteDecisions(), new NoDocumentsNeedingReview(), _audit, new FixedClock(now ?? Now));
+            new NoOpenQuoteDecisions(), new NoDocumentsNeedingReview(), _audit, new FixedClock(now ?? Now),
+            aiReader: aiReader, marketSink: marketSink);
     }
 
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 14, 0, 0, TimeSpan.Zero);
@@ -435,6 +475,65 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
             Task.FromResult<IReadOnlyList<CaseMember>>([new CaseMember(LucaId, LucaOid, CaseFixtures.Luca, "Head of Procurement", true)]);
     }
 
+    [Fact]
+    public async Task A_read_supplier_reply_feeds_the_market_benchmark_invisibly_and_a_failing_sink_never_breaks_the_case()
+    {
+        var sink = new RecordingMarketSink();
+        var s = await ServiceAsync(new ProductionCaseScriptServices(), aiReader: new FixedReplyReader(), marketSink: sink);
+        var e = await ToFirstEmailAsync(s, _tenant, await OpenAsync(s, 4));
+
+        var reply = await s.ActAsync(_tenant, MartaOid, e.CaseId, "reply", new CaseActionPayload { Text = CaseText.Of("We can do CHF 11.11 per seat for 24 months, 10% off.") }, e.Version);
+
+        Assert.Equal(CaseResultKind.Ok, reply.Kind);
+        var o = Assert.Single(sink.Recorded);
+        Assert.Equal(24, o.TermMonths);
+        Assert.Equal(11.11m, o.UnitPrice);
+        Assert.Equal(10, o.DiscountPct);
+        Assert.Equal("CHF", o.Currency);
+        Assert.False(string.IsNullOrWhiteSpace(o.Supplier));
+
+        // A sink that throws is invisible to the user: the next reply still lands.
+        var s2 = await ServiceAsync(new ProductionCaseScriptServices(), aiReader: new FixedReplyReader(), marketSink: new ThrowingMarketSink());
+        var e2 = await ToFirstEmailAsync(s2, _tenant, await OpenAsync(s2, 3));
+        var ok = await s2.ActAsync(_tenant, MartaOid, e2.CaseId, "reply", new CaseActionPayload { Text = CaseText.Of("Offer: CHF 9 for 24 months.") }, e2.Version);
+        Assert.Equal(CaseResultKind.Ok, ok.Kind);
+    }
+
+    private sealed class FixedReplyReader : ICaseAiReader
+    {
+        public Task<CaseReplyAnalysis?> ReadReplyAsync(TenantId tenantId, RenewalCase c, CaseContractFacts contract, string replyText, int round, string lang, CancellationToken cancellationToken = default) =>
+            Task.FromResult<CaseReplyAnalysis?>(new CaseReplyAnalysis(
+                [new CaseReplyRow { Label = CaseText.Of("Price"), Said = CaseText.Of("CHF 11.11"), Plan = CaseText.Of("-10%"), State = "proposed" }],
+                [],
+                new Dictionary<int, double> { [24] = 11.11 },
+                new CaseReplyBenchmark(10, null, null, null, 24)));
+
+        public Task<CaseFeatureSet?> ReadFeaturesAsync(TenantId tenantId, CaseContractFacts contract, string lang, CancellationToken cancellationToken = default) => Task.FromResult<CaseFeatureSet?>(null);
+
+        public Task<IReadOnlyList<CaseDraftRow>?> ReadDraftAsync(TenantId tenantId, RenewalCase c, CaseContractFacts contract, string fileName, string documentText, string lang, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<CaseDraftRow>?>(null);
+
+        public Task<CaseSignedCheck?> ReadSignedAsync(TenantId tenantId, RenewalCase c, CaseContractFacts contract, string fileName, string documentText, string lang, CancellationToken cancellationToken = default) => Task.FromResult<CaseSignedCheck?>(null);
+
+        public Task<CaseAltOffer?> ReadOfferAsync(TenantId tenantId, RenewalCase c, CaseContractFacts contract, string vendor, string documentText, string by, string lang, CancellationToken cancellationToken = default) => Task.FromResult<CaseAltOffer?>(null);
+    }
+
+    private sealed class RecordingMarketSink : Raffa.SharedKernel.Market.IMarketObservationSink
+    {
+        public List<Raffa.SharedKernel.Market.SupplierReplyObservation> Recorded { get; } = [];
+
+        public Task RecordAsync(TenantId tenantId, string actor, string correlationId, Raffa.SharedKernel.Market.SupplierReplyObservation observation, CancellationToken cancellationToken = default)
+        {
+            Recorded.Add(observation);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingMarketSink : Raffa.SharedKernel.Market.IMarketObservationSink
+    {
+        public Task RecordAsync(TenantId tenantId, string actor, string correlationId, Raffa.SharedKernel.Market.SupplierReplyObservation observation, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("The market store is down.");
+    }
+
     private sealed class Members : ICaseMemberDirectory
     {
         public Task<IReadOnlyList<CaseMember>> ListAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
@@ -443,6 +542,9 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
                 new CaseMember(LucaId, LucaOid, CaseFixtures.Luca, "Head of Procurement", true),
                 new CaseMember(MartaId, MartaOid, CaseFixtures.Marta, "Buyer", false),
             ]);
+
+        public Task<(string? Currency, string? Country)> MarketProfileAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<(string?, string?)>(("CHF", "CH"));
     }
 
     private sealed class RecordingTermWriter : IContractTermWriter

@@ -166,6 +166,7 @@ export const IT_CASE4: Readonly<Record<string, string>> = {
   "Copy email": "Copia email",
   "Copy, send from your mailbox, confirm": "Copia, invia dalla tua casella, conferma",
   "Core functions equal to your current contract": "Funzioni di base pari al tuo contratto attuale",
+  "Same scope and quantities as today ({n} line items)": "Stesso perimetro e stesse quantità di oggi ({n} righe)",
   "Corrected": "Corretto",
   "Correction email": "Email correttiva",
   "Costs are what each vendor declared for the lines they quoted; where data is missing I say so.": "I costi sono quelli dichiarati da ciascun fornitore per le righe quotate; dove mancano dati lo dico.",

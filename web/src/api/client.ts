@@ -1980,6 +1980,12 @@ export interface ApiClient {
   postRenewalCaseAction?(tenantId: string, caseId: string, type: string, payload: CaseActionPayload | null, version: number | null): Promise<CaseCallResult<CaseEnvelope>>;
   /** `POST /api/renewals/{caseId}/ask` -- the case composer (sourced answer, then back to the step). */
   askRenewalCase?(tenantId: string, caseId: string, text: string, version: number | null, lang?: string): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `POST /api/renewals/{caseId}/documents` -- a contract draft / the signed contract (`addDoc`) or an alternative supplier's offer (`altOffer`); Raffa reads the file. */
+  uploadRenewalCaseDocument?(
+    tenantId: string,
+    caseId: string,
+    input: { type: "addDoc" | "altOffer"; file: File; vendor?: string | null; version: number | null; lang: string },
+  ): Promise<CaseCallResult<CaseEnvelope>>;
   /** `DELETE /api/contracts/{id}` (Admin) -- the contract with its documents, renewal case and chats. */
   deleteContract?(tenantId: string, contractId: string): Promise<CaseCallResult<unknown>>;
   /** `GET /api/company-rules` -- the company rules and whether the caller may change them. */
@@ -4390,6 +4396,16 @@ export function createApiClient(
       return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/ask`, { text, version, lang: lang ?? null });
     },
 
+    uploadRenewalCaseDocument(tenantId, caseId, input) {
+      const form = new FormData();
+      form.append("file", input.file);
+      form.append("type", input.type);
+      form.append("lang", input.lang);
+      if (input.vendor) form.append("vendor", input.vendor);
+      if (input.version !== null) form.append("version", String(input.version));
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/documents`, form);
+    },
+
     deleteContract(tenantId, contractId) {
       return caseCall<unknown>(apiFetch, baseUrl, getAccessToken, tenantId, "DELETE", `/api/contracts/${encodeURIComponent(contractId)}`);
     },
@@ -4465,9 +4481,25 @@ export interface ConversationMessage4 {
   role: "you" | "raffa";
   kind: string;
   markdown: string;
-  citations: Array<{ title?: string; page?: number | null; section?: string | null }>;
-  actions: Array<{ kind?: string; contractId?: string | null }>;
+  citations: Array<{ title?: string; page?: number | null; section?: string | null; snippet?: string | null; href?: string | null }>;
+  /** 4.0 scripted CTAs carry `kind` + `contractId`; the agentic engine's actions carry `label` + `href`. */
+  actions: Array<{ kind?: string; contractId?: string | null; label?: string; href?: string }>;
   createdAt: string;
+  /** The agentic engine's structured half: a drafted email, suggested next questions. */
+  payload?: {
+    draft?: { subject: string; body: string } | null;
+    followUps?: string[] | null;
+    /** A capability gap: Raffa offers to report it to the team (the in-chat feedback card). */
+    feedbackOffer?: import("../routes/ask/FeedbackCard").FeedbackOffer | null;
+    /** On the confirmation turn: which offer was answered. */
+    feedbackResult?: { forMessageId: string } | null;
+  } | null;
+  /** Raffa asks before acting: questions with clickable options. */
+  interview?: {
+    prompt: string;
+    answered: boolean;
+    questions: Array<{ key: string; prompt: string; allowFreeText: boolean; options: Array<{ key: string; label: string; hint: string | null }> }>;
+  } | null;
 }
 
 export interface ConversationDetail4 {
@@ -4488,12 +4520,18 @@ export interface AskTurnRequest {
   contractId?: string | null;
   answerOnly?: boolean;
   lang?: "it" | "en";
+  /** An option picked in Raffa's interview (the agentic engine resumes the flow it asked for). */
+  interviewAnswer?: { messageId: string; questionKey: string; optionKey?: string | null; freeText?: boolean } | null;
+  /** This question may also search the public web (the workspace opted in; the engine still checks the budget). */
+  webResearch?: boolean;
 }
 
 export interface AskTurnResult {
   conversationId: string;
   needsContract: boolean;
   conversation: ConversationDetail4;
+  /** "pending": the capability check is still looking; a follow-up turn may land in the conversation. */
+  capabilityCheck?: string | null;
 }
 
 export interface AskContract {

@@ -17,7 +17,8 @@ public sealed class CopilotAskAnswerService(
     AskCopilotService copilot, IContractFactsReader facts, AskAnswerOptions options) : IAskAnswerService
 {
     public async Task<AskAnswer> AnswerAsync(
-        TenantId tenantId, string userId, string question, EntityId? contractId, string lang, CancellationToken cancellationToken = default)
+        TenantId tenantId, string userId, string question, EntityId? contractId, string lang,
+        IReadOnlyList<(string Role, string Markdown)>? recentTurns = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(question);
         // The interface language (IT/EN) decides the language of the model's answer and of every fallback text.
@@ -37,7 +38,7 @@ public sealed class CopilotAskAnswerService(
         }
 
         var reply = await copilot
-            .AskAsync(tenantId, question, [], userId, new EntityId(contract.ContractId), cancellationToken: cancellationToken)
+            .AskAsync(tenantId, question, recentTurns ?? [], userId, new EntityId(contract.ContractId), cancellationToken: cancellationToken)
             .ConfigureAwait(false);
         var citation = reply.Citations.FirstOrDefault();
         if (citation is null || string.IsNullOrWhiteSpace(reply.AnswerMarkdown))

@@ -120,6 +120,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
     private async Task<Portfolio> LoadAsync(TenantId tenantId, string? callerIdentity, CancellationToken ct)
     {
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         var facts = await factsReader.ListValidatedAsync(tenantId, ct).ConfigureAwait(false);
         List<RenewalCaseRecord> records;
@@ -441,6 +442,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
     public async Task<bool> SnoozeAsync(TenantId tenantId, string? callerIdentity, string key, bool on, CancellationToken ct = default)
     {
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         if (caller.UserId is not { } uid || string.IsNullOrWhiteSpace(key) || key.Length > 200)
         {
@@ -473,6 +475,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
     public async Task<IReadOnlyList<ReminderView>> RemindersAsync(TenantId tenantId, string? callerIdentity, CancellationToken ct = default)
     {
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         using var scope = tenantContext.BeginScope(tenantId);
         var rows = await db.UserReminders.AsNoTracking()
@@ -485,6 +488,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
     public async Task<ReminderView?> AddReminderAsync(TenantId tenantId, string? callerIdentity, Guid? caseId, DateOnly due, CancellationToken ct = default)
     {
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         if (caller.UserId is null)
         {
@@ -507,6 +511,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
         }
 
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         using var scope = tenantContext.BeginScope(tenantId);
         var row = await db.UserReminders.FirstOrDefaultAsync(x => x.Id == new EntityId(id) && (x.UserId == caller.UserId || x.UserName == caller.Name), ct).ConfigureAwait(false);

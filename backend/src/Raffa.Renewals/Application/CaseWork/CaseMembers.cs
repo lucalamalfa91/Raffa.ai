@@ -13,6 +13,13 @@ namespace Raffa.Renewals.Application.CaseWork;
 public interface ICaseMemberDirectory
 {
     Task<IReadOnlyList<CaseMember>> ListAsync(TenantId tenantId, CancellationToken cancellationToken = default);
+
+    /// <summary>The workspace's company name, which signs the case emails; null when unknown.</summary>
+    Task<string?> CompanyNameAsync(TenantId tenantId, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+
+    /// <summary>The workspace's currency (ISO code) and country, for the anonymised market benchmark; nulls when unknown.</summary>
+    Task<(string? Currency, string? Country)> MarketProfileAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<(string?, string?)>((null, null));
 }
 
 /// <param name="UserId">Workspace user id.</param>
@@ -58,6 +65,7 @@ public static class CaseFactsMapper
         {
             Id = f.FixtureId ?? 0,
             Supplier = f.Supplier,
+            Category = f.Category ?? string.Empty,
             Name = f.Name,
             Type = f.Type,
             File = f.File,

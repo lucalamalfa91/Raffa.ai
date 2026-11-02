@@ -12,7 +12,8 @@ namespace Raffa.Chat.Infrastructure.Fixtures;
 public sealed class FixtureAskAnswerService(IContractFactsReader facts, IClock clock) : IAskAnswerService
 {
     public async Task<AskAnswer> AnswerAsync(
-        TenantId tenantId, string userId, string question, EntityId? contractId, string lang, CancellationToken cancellationToken = default)
+        TenantId tenantId, string userId, string question, EntityId? contractId, string lang,
+        IReadOnlyList<(string Role, string Markdown)>? recentTurns = null, CancellationToken cancellationToken = default)
     {
         var validated = await facts.ListValidatedAsync(tenantId, cancellationToken).ConfigureAwait(false);
         var contract = contractId is { } id

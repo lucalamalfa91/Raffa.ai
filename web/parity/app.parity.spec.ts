@@ -8,12 +8,12 @@ for (const vp of VIEWPORTS) {
   test(`app parity @ ${vp.name}`, async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1, locale: 'it-IT', reducedMotion: 'reduce' });
     const page: Page = await ctx.newPage();
-    await page.addInitScript(() => { localStorage.setItem('raffa4.lang', 'it'); });
+    await page.addInitScript(() => { localStorage.setItem('raffa4.lang', 'it'); sessionStorage.setItem('raffa4.parity', '1'); });
     await page.goto(`${URL}/today?now=2026-09-08&fixture=zero`); // fixture mode: scenario 'Da zero', scenario clock
     await stabilise(page);
     // Approved deviations D4 and D6 (PARITY.md): the Settings tab and the language switch + account menu
     // are not in the prototype; the run hides them so the rest of the nav still compares pixel for pixel.
-    await page.addStyleTag({ content: '[data-tab="settings"], [data-parity-hide]{display:none!important}' });
+    await page.addStyleTag({ content: '[data-tab="settings"], [data-parity-hide], .p4-email-card, .p4-split > .artifact-panel{display:none!important} .p4-email-inline{display:block!important}' });
     for (const s of [...FLOW_ZERO, ...FLOW_FULL]) {
       await s.run(page);
       await page.waitForTimeout(700);

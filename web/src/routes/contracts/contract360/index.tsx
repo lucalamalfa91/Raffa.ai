@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import AskShortcuts from "../../../components/ask/AskShortcuts";
+import NegotiationPoints from "../../../components/ask/NegotiationPoints";
 import type { ApiClient, ContractV4Body, DecisionPointBody, DecisionPointChoice } from "../../../api/client";
 import { useGuide } from "../../../components/shell/guide";
 import { useI18n } from "../../../i18n/I18nProvider";
@@ -202,11 +204,20 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
         <button
           type="button"
           className="btn btn-ghost c4-next-ask"
-          onClick={() => navigate(`/ask?q=${encodeURIComponent(t("Summarize the contract {supplier}", { supplier: contract.supplier }))}`)}
+          onClick={() => navigate(`/ask?scope=${encodeURIComponent(contractId)}&q=${encodeURIComponent(t("Summarize the contract {supplier}", { supplier: contract.supplier }))}`)}
         >
           {t("Ask Raffa")}
         </button>
       </div>
+      <AskShortcuts
+        scopeContractId={contractId}
+        items={[
+          { label: t("Renewal strategy"), question: t("How should we approach this renewal? Give me the strategy and the negotiation points.") },
+          { label: t("Where can we save?"), question: t("Where can we save on this contract?") },
+          { label: t("Negotiation email"), question: t("Draft the negotiation email to the supplier for this renewal.") },
+        ]}
+      />
+      <NegotiationPoints apiClient={apiClient} tenantId={tenantId ?? ""} contractId={contractId} />
       {actionError ? (
         <div className="c4-error" role="alert">
           <span>{t("The renewal case could not be opened.")}</span>

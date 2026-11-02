@@ -21,6 +21,12 @@ public sealed record CaseContractFacts
 
     public string Supplier { get; init; } = string.Empty;
 
+    /// <summary>The buyer: the workspace's company name, which signs the emails ("" = unknown).</summary>
+    public string Company { get; init; } = string.Empty;
+
+    /// <summary>The contract's category, when read ("electronic signature"); empty = unknown.</summary>
+    public string Category { get; init; } = string.Empty;
+
     /// <summary>"Sales Cloud Enterprise — MSA + Order Form".</summary>
     public string Name { get; init; } = string.Empty;
 

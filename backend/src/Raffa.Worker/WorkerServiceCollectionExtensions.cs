@@ -112,6 +112,7 @@ public static class WorkerServiceCollectionExtensions
             return options;
         });
         services.AddHostedService<RenewalThresholdSchedulerHostedService>();
+        services.AddHostedService<MarketNetworkRefreshHostedService>();
 
         return services;
     }

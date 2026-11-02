@@ -84,6 +84,10 @@ public sealed class RenewalCase
 
     public CaseAgreed? Agreed { get; set; }
 
+    /// <summary>Unit prices the supplier offered in its replies, by term in months ("12" / "24"), as the
+    /// model read them; when present they replace the rule-of-thumb counter price.</summary>
+    public Dictionary<string, double>? OfferedPrices { get; set; }
+
     public bool PipeNew { get; set; }
 
     /// <summary>Transient: text the client should put on the clipboard after <c>copy</c> (never means sent).</summary>
@@ -373,6 +377,11 @@ public sealed class CaseSigned
     public DateOnly At { get; set; }
 
     public string? ConfirmedBy { get; set; }
+
+    /// <summary>Signed-vs-last-draft comparison read from the signed file (points checked, differences found); null = not read.</summary>
+    public int? CheckedPoints { get; set; }
+
+    public int? Differences { get; set; }
 }
 
 public sealed class CasePipe

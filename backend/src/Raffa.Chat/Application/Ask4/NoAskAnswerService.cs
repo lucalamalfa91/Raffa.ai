@@ -15,6 +15,7 @@ public sealed class NoAskAnswerService : IAskAnswerService
         string question,
         EntityId? contractId,
         string lang,
+        IReadOnlyList<(string Role, string Markdown)>? recentTurns = null,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new AskAnswer(
             false,

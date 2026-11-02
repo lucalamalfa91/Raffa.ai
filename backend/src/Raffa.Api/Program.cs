@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.Messaging;
 // Raffa API Host — thin composition root (ADR-002).
 // Wires all modules via DI; contains no business logic.
@@ -439,6 +440,11 @@ builder.Services.AddScoped<NegotiationOutcomePropagationService>();
 // QuoteLineExtractionService), which needs AddQuotesModule above to have run, and the MarketKnowledge
 // flow (IMarketPriceEstimator and the market researcher's IMarketRagSearch).
 builder.Services.AddAiFlows();
+
+// The renewal case composer on the agentic Ask engine, in a case-linked conversation (memory); the scripted
+// answerer stays its fallback and the whole answer in fixture/parity hosts.
+builder.Services.AddScoped<Raffa.Chat.Application.Ask4.CaseQuestionAnswerer>();
+builder.Services.Replace(ServiceDescriptor.Scoped<Raffa.SharedKernel.Renewals.ICaseQuestionAnswerer, AgenticCaseQuestionAnswerer>());
 
 // Queues a market pre-warm job for a workspace when someone enters it (Market:Pricing, see
 // MarketRepriceScheduler); it is inert unless the job transport is the durable Service Bus one.

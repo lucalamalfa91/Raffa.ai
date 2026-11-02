@@ -273,14 +273,17 @@ public static partial class RenewalCaseEngine
         };
         var to = o.ToGiven ? o.To ?? string.Empty : c.Emails.LastOrDefault(e => !string.IsNullOrEmpty(e.To))?.To ?? string.Empty;
         const string sign = "\n\nKind regards,\n";
-        var signature = sign + owner + "\nProcurement, Helvetia Foods AG";
+        // The buyer signs as the workspace's company; never a name Raffa made up.
+        var company = cn.Company.Trim();
+        var tag = company.Length == 0 ? string.Empty : " — " + company;
+        var signature = sign + owner + "\nProcurement" + (company.Length == 0 ? string.Empty : ", " + company);
         string subject;
         string body;
         switch (kind)
         {
             case "first":
             {
-                subject = cn.Name + " — renewal discussion — Helvetia Foods AG";
+                subject = cn.Name + " — renewal discussion" + tag;
                 var lines = new List<string>
                 {
                     "• Products and quantities: " + prodTxt,
@@ -303,7 +306,7 @@ public static partial class RenewalCaseEngine
             case "counter":
             {
                 var l = c.Limits ?? new CaseLimits();
-                var p2 = ctx.Services.CounterPrice(ctx, l.Term == 12 ? 12 : 24);
+                var p2 = CounterPrice(c, ctx, l.Term == 12 ? 12 : 24);
                 subject = "Re: " + cn.Name + " — counter-proposal";
                 var lines = new[]
                 {
@@ -336,19 +339,19 @@ public static partial class RenewalCaseEngine
                        "%.\n• Payment: the draft states annual in advance; we agreed quarterly in advance.\nPlease also send the Annex (SLA schedule) in a readable version." + signature;
                 break;
             case "notice":
-                subject = "Notice of non-renewal — " + cn.Name + " — Helvetia Foods AG";
-                body = "Dear " + sup + " team,\n\nIn accordance with the renewal clause of our agreement, Helvetia Foods AG gives written notice that it does not intend to renew " +
+                subject = "Notice of non-renewal — " + cn.Name + tag;
+                body = "Dear " + sup + " team,\n\nIn accordance with the renewal clause of our agreement, " + (company.Length == 0 ? "we give" : company + " gives") + " written notice that " + (company.Length == 0 ? "we do" : "it does") + " not intend to renew " +
                        cn.Name + " beyond the current term ending " + D(cn.End) + ".\n\nThis notice is sent on " + today + ", ahead of the " + D(cn.Cancel) +
                        " deadline. Please confirm receipt in writing and share the offboarding and data-return steps set out in the agreement." + signature;
                 break;
             default:
             {
                 var fe = ctx.Services.Features(ctx);
-                subject = "Request for proposal — " + (fe.CategoryEn is { } cat ? cat + " solution" : "replacement solution") + " — Helvetia Foods AG";
+                subject = "Request for proposal — " + (fe.CategoryEn is { } cat ? cat + " solution" : "replacement solution") + tag;
                 attach = [];
                 var what = fe.CategoryEn is { } cat2 ? (VowelStart().IsMatch(cat2) ? "an " : "a ") + cat2 + " solution" : "a replacement solution";
                 var reqs = (c.Alt?.Reqs ?? []).Select(r => "• " + r.Text.Render());
-                body = "Dear " + o.Vendor + " team,\n\nHelvetia Foods AG is looking for " + what + " from " + D(cn.End.AddDays(1)) +
+                body = "Dear " + o.Vendor + " team,\n\n" + (company.Length == 0 ? "We are" : company + " is") + " looking for " + what + " from " + D(cn.End.AddDays(1)) +
                        ". We ask you to answer on functions, not on product names.\n\nFunctions we need:\n" + string.Join("\n", reqs) +
                        "\n\nSizing: " + SizeText(f) + ".\n\nFor each function please tell us how your product covers it, and send your offer with pricing, term, migration plan and support model by " +
                        D(ctx.Today.AddDays(14)) + "." + signature;
@@ -818,7 +821,7 @@ public static partial class RenewalCaseEngine
                     break;
                 }
 
-                var p2b = ctx.Services.CounterPrice(ctx, 24);
+                var p2b = CounterPrice(c, ctx, 24);
                 (int Term, double? PriceMax, int? Exit, CaseText Label)? o = p.Opt switch
                 {
                     "a" => (24, p2b, null, B("Accept up to 24 months if the unit price is ≤ {price}", "Accetto fino a 24 mesi se il prezzo unitario è ≤ {price}", ("price", CaseRules.Ps(f, p2b)))),
@@ -875,7 +878,7 @@ public static partial class RenewalCaseEngine
                 }
 
                 var t = c.Limits is { Term: > 0 } lim ? lim.Term : 24;
-                c.Agreed = new CaseAgreed { Price = ctx.Services.CounterPrice(ctx, t), Term = t, Cap = CaseRules.HasUplift(ctx) ? 3 : 0, Liab = 18 };
+                c.Agreed = new CaseAgreed { Price = CounterPrice(c, ctx, t), Term = t, Cap = CaseRules.HasUplift(ctx) ? 3 : 0, Liab = 18 };
                 var auth = c.Ui.Auth;
                 if (!string.IsNullOrEmpty(auth))
                 {
@@ -1415,6 +1418,14 @@ public static partial class RenewalCaseEngine
         }
 
         c.Reps[rid].Rows = analysis.Rows.ToList();
+        if (analysis.Prices is { Count: > 0 } offered)
+        {
+            c.OfferedPrices ??= new Dictionary<string, double>(StringComparer.Ordinal);
+            foreach (var (months, price) in offered)
+            {
+                c.OfferedPrices[months.ToString(System.Globalization.CultureInfo.InvariantCulture)] = price;
+            }
+        }
         Push(c, ctx, new CaseFeedItem { K = "ana", Rid = rid });
         c.Phase = CasePhases.Review;
         if (c.Round == 1)
@@ -1426,7 +1437,7 @@ public static partial class RenewalCaseEngine
             }
             else
             {
-                c.Limits = new CaseLimits { Term = 24, PriceMax = ctx.Services.CounterPrice(ctx, 24) };
+                c.Limits = new CaseLimits { Term = 24, PriceMax = CounterPrice(c, ctx, 24) };
                 Say(c, ctx, B("Your plan already asks for 24 months, so no trade-off to decide. I drafted the counter-proposal.", "Il tuo piano chiede già 24 mesi, quindi nessun compromesso da decidere. Ho preparato la controproposta."));
                 MakeEmail(c, ctx, "counter");
                 c.Phase = CasePhases.Email;
@@ -1439,6 +1450,13 @@ public static partial class RenewalCaseEngine
             c.Phase = CasePhases.Agree;
         }
     }
+
+    /// <summary>The unit price the supplier would settle on for a term: what it offered in a reply when
+    /// that was read, else the script services' rule.</summary>
+    public static double CounterPrice(RenewalCase c, CaseContext ctx, int termMonths) =>
+        c.OfferedPrices is { } offered && offered.TryGetValue(termMonths.ToString(System.Globalization.CultureInfo.InvariantCulture), out var price) && price > 0
+            ? price
+            : ctx.Services.CounterPrice(ctx, termMonths);
 
     private static void AddDoc(RenewalCase c, CaseContext ctx, CaseActionPayload p, string v)
     {

@@ -12,6 +12,8 @@ public interface IAskAnswerService
 {
     /// <param name="contractId">The contract the user picked; null = resolve it from the text
     /// (a validated contract's supplier named in the question).</param>
+    /// <param name="recentTurns">The conversation so far (role <c>you</c>/<c>raffa</c>, oldest first), so a follow-up
+    /// is read in context and the chat does not start over at every message.</param>
     /// <param name="lang"><c>it</c> | <c>en</c>.</param>
     Task<AskAnswer> AnswerAsync(
         TenantId tenantId,
@@ -19,6 +21,7 @@ public interface IAskAnswerService
         string question,
         EntityId? contractId,
         string lang,
+        IReadOnlyList<(string Role, string Markdown)>? recentTurns = null,
         CancellationToken cancellationToken = default);
 }
 

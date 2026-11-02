@@ -40,4 +40,27 @@ internal sealed class WorkspaceCaseMemberDirectory(IdentityWorkspaceDbContext db
             .OrderBy(m => m.Name, StringComparer.Ordinal)
             .ToList();
     }
+
+    public async Task<(string? Currency, string? Country)> MarketProfileAsync(TenantId tenantId, CancellationToken cancellationToken = default)
+    {
+        using var scope = tenantContext.BeginScope(tenantId);
+        var row = await dbContext.Workspaces
+            .Where(w => w.TenantId == tenantId)
+            .Select(w => new { w.Currency, w.Country })
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return (row?.Currency, row?.Country);
+    }
+
+    public async Task<string?> CompanyNameAsync(TenantId tenantId, CancellationToken cancellationToken = default)
+    {
+        using var scope = tenantContext.BeginScope(tenantId);
+        var name = await dbContext.Workspaces
+            .Where(w => w.TenantId == tenantId)
+            .Select(w => w.Name)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+    }
+
 }

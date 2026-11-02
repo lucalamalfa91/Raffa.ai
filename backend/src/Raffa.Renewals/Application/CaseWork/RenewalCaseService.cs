@@ -74,7 +74,9 @@ public sealed partial class RenewalCaseService(
     IAuditWriter auditWriter,
     IClock clock,
     IContractSituationAssessor? situationAssessor = null,
-    Microsoft.Extensions.Logging.ILogger<RenewalCaseService>? logger = null)
+    Microsoft.Extensions.Logging.ILogger<RenewalCaseService>? logger = null,
+    ICaseAiReader? aiReader = null,
+    Raffa.SharedKernel.Market.IMarketObservationSink? marketSink = null)
 {
     public const int SnoozeDays = 3;
 
@@ -115,6 +117,7 @@ public sealed partial class RenewalCaseService(
     {
         using var scope = tenantContext.BeginScope(tenantId);
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         var facts = await factsReader.GetAsync(tenantId, new EntityId(contractId), ct).ConfigureAwait(false);
         if (facts is null)
@@ -170,6 +173,7 @@ public sealed partial class RenewalCaseService(
         }
 
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         var cf = await FactsAsync(tenantId, record, ct).ConfigureAwait(false);
         if (cf is null)
@@ -261,7 +265,7 @@ public sealed partial class RenewalCaseService(
                 return CaseResult.NotFound("No case with this id.");
             }
 
-            answer = await answerer.AnswerAsync(tenantId, new EntityId(contractId.Value), q, lang, ct).ConfigureAwait(false);
+            answer = await answerer.AnswerInCaseAsync(tenantId, callerIdentity, caseId, new EntityId(contractId.Value), q, lang, ct).ConfigureAwait(false);
         }
 
         return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (c, ctx, _) =>
@@ -282,6 +286,147 @@ public sealed partial class RenewalCaseService(
         }).ConfigureAwait(false);
     }
 
+    // The model's reading of the supplier reply of this request: the case uses it, and so does the market benchmark.
+    private CaseReplyAnalysis? replyReading;
+
+    /// <summary>
+    /// The invisible flow: what the supplier answered feeds Raffa's shared market base. Anonymised by the sink,
+    /// audited there, and never on the user's path: any failure is swallowed.
+    /// </summary>
+    private async Task ContributeToMarketAsync(TenantId tenantId, string actor, Guid caseId, CaseContractFacts cf, RenewalCase after, CancellationToken ct)
+    {
+        var reading = replyReading;
+        replyReading = null;
+        if (marketSink is null || reading is null || (reading.Prices is null && reading.Benchmark is null) || string.IsNullOrWhiteSpace(cf.Supplier))
+        {
+            return;
+        }
+
+        try
+        {
+            var (currency, country) = await memberDirectory.MarketProfileAsync(tenantId, ct).ConfigureAwait(false);
+            var main = cf.Products.OrderByDescending(p => p.Qty * p.Price).FirstOrDefault();
+            var b = reading.Benchmark;
+            var replyNo = after.Reps.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            // One observation per priced term; a reply with terms but no price still records those terms.
+            var terms = reading.Prices is { Count: > 0 } priced ? priced.Select(kv => (Term: (int?)kv.Key, Price: (decimal?)(decimal)kv.Value)).ToList() : [(Term: b?.TermMonths, Price: (decimal?)null)];
+            foreach (var (term, price) in terms)
+            {
+                await marketSink.RecordAsync(
+                        tenantId, actor, $"{caseId:N}:{replyNo}",
+                        new Raffa.SharedKernel.Market.SupplierReplyObservation(
+                            cf.Supplier, string.IsNullOrWhiteSpace(cf.Category) ? null : cf.Category, country, currency,
+                            main?.Name, string.IsNullOrWhiteSpace(main?.Sku) ? null : main!.Sku, main?.Unit, price,
+                            term ?? b?.TermMonths, b?.DiscountPct, b?.UpliftCapPct, b?.NoticeDays, b?.PaymentTerms, clock.UtcNow),
+                        ct)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Invisible by design: the case never fails because of the benchmark.
+            _ = ex;
+        }
+    }
+
+    // A document the user uploaded for the next addDoc / altOffer step (its name and text), read by the model.
+    private (string File, string Text)? pendingDocument;
+
+    /// <summary>
+    /// <c>POST /api/renewals/{caseId}/documents</c>: a contract draft, the signed contract or an alternative
+    /// supplier's offer, uploaded as a file. The model reads its text (draft vs agreed, signed vs last draft,
+    /// offer vs requirements) before the engine records it; without a reading the deterministic one stands.
+    /// </summary>
+    public Task<CaseResult> ActWithDocumentAsync(
+        TenantId tenantId, string? callerIdentity, Guid caseId, string type, string fileName, string text, string? vendor, int? version, CancellationToken ct = default)
+    {
+        if (type is not ("addDoc" or "altOffer"))
+        {
+            return Task.FromResult(CaseResult.Bad("Only a contract document or an offer can be uploaded to a case."));
+        }
+
+        pendingDocument = string.IsNullOrWhiteSpace(text) ? null : (fileName, text);
+        var payload = new CaseActionPayload { File = fileName, Vendor = type == "altOffer" ? vendor : null };
+        return ActAsync(tenantId, callerIdentity, caseId, type, payload, version, ct);
+    }
+
+    private async Task<(CaseContext Ctx, Action<RenewalCase>? After)> ReadBeforeStepAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts cf, string type, CaseActionPayload p, CaseContext ctx, CancellationToken ct)
+    {
+        if (aiReader is null || scriptServices is not ProductionCaseScriptServices)
+        {
+            return (ctx, null);
+        }
+
+        var lang = Raffa.SharedKernel.Language.ResponseLanguage.Current == "en" ? "en" : "it";
+        try
+        {
+            switch (type)
+            {
+                case "reply":
+                {
+                    var pasted = (p.Text?.Render() is { Length: > 0 } pt ? pt : c.Ui.ReplyText ?? string.Empty).Trim();
+                    if (pasted.Length == 0)
+                    {
+                        break;
+                    }
+
+                    var reading = await aiReader.ReadReplyAsync(tenantId, c, cf, pasted, c.Round + 1, lang, ct).ConfigureAwait(false);
+                    if (reading is not null)
+                    {
+                        replyReading = reading;
+                    }
+
+                    return reading is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, reply: reading) }, null);
+                }
+
+                case "startAlt" when c.Alt is null:
+                {
+                    var features = await aiReader.ReadFeaturesAsync(tenantId, cf, lang, ct).ConfigureAwait(false);
+                    return features is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, features: features) }, null);
+                }
+
+                case "addDoc" when pendingDocument is { } doc && c.Agreed is not null:
+                {
+                    if (c.Phase is CasePhases.SignWait or CasePhases.SignConfirm or CasePhases.SignDeclared)
+                    {
+                        var signed = await aiReader.ReadSignedAsync(tenantId, c, cf, doc.File, doc.Text, lang, ct).ConfigureAwait(false);
+                        return signed is null
+                            ? (ctx, null)
+                            : (ctx, next =>
+                            {
+                                if (next.Signed is { } s)
+                                {
+                                    s.CheckedPoints = signed.Points;
+                                    s.Differences = signed.Differences;
+                                }
+                            });
+                    }
+
+                    var rows = await aiReader.ReadDraftAsync(tenantId, c, cf, doc.File, doc.Text, lang, ct).ConfigureAwait(false);
+                    return rows is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, draftRows: rows) }, null);
+                }
+
+                case "altOffer" when pendingDocument is { } doc && !string.IsNullOrWhiteSpace(p.Vendor):
+                {
+                    var by = c.Owner;
+                    var offer = await aiReader.ReadOfferAsync(tenantId, c, cf, p.Vendor!, doc.Text, by, lang, ct).ConfigureAwait(false);
+                    return offer is null ? (ctx, null) : (ctx with { Services = new ReadCaseScriptServices(scriptServices, offer: offer) }, null);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException && logger is not null)
+        {
+            Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Case reading failed for action {Type}; the deterministic reading stands.", type);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException && logger is null)
+        {
+            _ = ex;
+        }
+
+        return (ctx, null);
+    }
+
     private async Task<CaseResult> RunAsync(
         TenantId tenantId,
         string? callerIdentity,
@@ -298,6 +443,7 @@ public sealed partial class RenewalCaseService(
         }
 
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        company ??= await memberDirectory.CompanyNameAsync(tenantId, ct).ConfigureAwait(false);
         var caller = CaseCaller.From(members, callerIdentity);
         var cf = await FactsAsync(tenantId, record, ct).ConfigureAwait(false);
         if (cf is null)
@@ -334,7 +480,11 @@ public sealed partial class RenewalCaseService(
                 }
             }
 
-            var next = RenewalCaseEngine.Act(c, type, p, ctx);
+            // Production: the model reads the supplier reply (and the functions an alternative must cover)
+            // before the pure engine runs; any failure leaves the deterministic reading in place.
+            var (stepCtx, afterStep) = await ReadBeforeStepAsync(tenantId, c, cf, type, p, ctx, ct).ConfigureAwait(false);
+            var next = RenewalCaseEngine.Act(c, type, p, stepCtx);
+            afterStep?.Invoke(next);
             if (RenewalCaseEngine.IsPermissionDenial(next))
             {
                 return new CaseResult(CaseResultKind.Forbidden, Envelope(record, next, cf, caller.Name), next.Ui.Warn?.Render());
@@ -353,8 +503,8 @@ public sealed partial class RenewalCaseService(
                     ContentHash = Hash(rep.Text),
                     ThreadKey = next.Thread,
                     ParsedJson = JsonSerializer.Serialize(rep.Rows, RenewalCaseJson.Options),
-                    AnalysedByModel = Demo ? "fixture-script" : "not-available",
-                    PromptVersion = null,
+                    AnalysedByModel = Demo ? "fixture-script" : replyReading is not null ? "case-reply-reader" : "not-available",
+                    PromptVersion = replyReading is not null ? "case-reply-v2" : null,
                     InputHash = Hash(rep.Text),
                 });
             }
@@ -391,13 +541,18 @@ public sealed partial class RenewalCaseService(
             await WriteOutcomeAsync(tenantId, record, c, cf, ct).ConfigureAwait(false);
         }
 
+        await ContributeToMarketAsync(tenantId, caller.Name, record.Id.Value, cf, c, ct).ConfigureAwait(false);
         var env = Envelope(record, c, cf, caller.Name) with { Clip = clip, Tick = tick };
         return CaseResult.Ok(env);
     }
 
     /* ---------------- persistence helpers ---------------- */
 
-    private CaseContext Ctx(CaseContractFacts cf, string viewer) => new(cf, viewer, Today, scriptServices);
+    // The workspace's company name for this request (loaded beside the members), signing the case emails.
+    private string? company;
+
+    private CaseContext Ctx(CaseContractFacts cf, string viewer) =>
+        new(string.IsNullOrEmpty(cf.Company) && !string.IsNullOrWhiteSpace(company) ? cf with { Company = company! } : cf, viewer, Today, scriptServices);
 
     internal static string? Approver(IReadOnlyList<CaseMember> members) =>
         members.Where(m => m.IsAdmin).OrderBy(m => m.Name, StringComparer.Ordinal).Select(m => m.Name).FirstOrDefault();

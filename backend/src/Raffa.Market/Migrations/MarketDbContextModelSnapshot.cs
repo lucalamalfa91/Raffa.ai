@@ -138,6 +138,115 @@ namespace Raffa.Market.Migrations
                     b.ToTable("market_embedding", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Market.Infrastructure.Entities.MarketObservationEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("currency");
+
+                    b.Property<double?>("DiscountPct")
+                        .HasColumnType("double precision")
+                        .HasColumnName("discount_pct");
+
+                    b.Property<string>("Geography")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("geography");
+
+                    b.Property<int?>("NoticeDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("notice_days");
+
+                    b.Property<string>("ObservationKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("observation_key");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("observed_at");
+
+                    b.Property<string>("PaymentTerms")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("payment_terms");
+
+                    b.Property<string>("Product")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("product");
+
+                    b.Property<string>("Sku")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("sku");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Supplier")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("supplier");
+
+                    b.Property<string>("SupplierKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("supplier_key");
+
+                    b.Property<int?>("TermMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("term_months");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("unit");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("unit_price");
+
+                    b.Property<double?>("UpliftCapPct")
+                        .HasColumnType("double precision")
+                        .HasColumnName("uplift_cap_pct");
+
+                    b.Property<string>("WorkspaceKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("workspace_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_market_observation");
+
+                    b.HasIndex("ObservationKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_market_observation_key");
+
+                    b.HasIndex("SupplierKey", "TermMonths")
+                        .HasDatabaseName("ix_market_observation_supplier_term");
+
+                    b.ToTable("market_observation", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Market.Infrastructure.Entities.MarketRecordEntity", b =>
                 {
                     b.Property<string>("RecordId")

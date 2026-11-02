@@ -65,7 +65,15 @@ public interface ICaseScriptServices
 }
 
 /// <summary>Rows of the analysis card and the term updates the reading implies.</summary>
-public sealed record CaseReplyAnalysis(IReadOnlyList<CaseReplyRow> Rows, IReadOnlyList<CaseTermUpdate> Terms);
+public sealed record CaseReplyAnalysis(
+    IReadOnlyList<CaseReplyRow> Rows,
+    IReadOnlyList<CaseTermUpdate> Terms,
+    IReadOnlyDictionary<int, double>? Prices = null,
+    CaseReplyBenchmark? Benchmark = null);
+
+/// <summary>The commercial terms a supplier's reply states, as numbers: what the shared market benchmark learns from it.
+/// Only what the reply says; null for anything it does not.</summary>
+public sealed record CaseReplyBenchmark(double? DiscountPct, double? UpliftCapPct, int? NoticeDays, string? PaymentTerms, int? TermMonths);
 
 /// <summary>Sets term <paramref name="Key"/> (created with <paramref name="Label"/> if missing).</summary>
 public sealed record CaseTermUpdate(string Key, CaseText Label, string State, string? Val, string Ev);
