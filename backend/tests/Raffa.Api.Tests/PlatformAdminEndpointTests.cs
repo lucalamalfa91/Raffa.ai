@@ -104,19 +104,25 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
     }
 
     [Fact]
-    public async Task A_suspended_workspace_is_not_offered_to_its_members_until_reactivated()
+    public async Task A_workspace_can_be_suspended_and_reactivated_from_the_registry()
     {
         const string owner = "owner@prospect-four.example";
         await AssertStatusAsync(HttpStatusCode.OK, await AcceptAsync(await InviteAsync(owner), owner));
         await AssertStatusAsync(HttpStatusCode.Created, await CreateWorkspaceAsync(owner, "Prospect Four"));
 
-        var id = await WorkspaceIdAsync(owner, "Prospect Four");
+        var id = await RegistryIdAsync("Prospect Four");
+        Assert.Equal("active", await RegistryStatusAsync(id));
 
         await AssertStatusAsync(HttpStatusCode.NoContent, await SendAsync(HttpMethod.Post, $"/api/admin/workspaces/{id}/suspend", Staff));
-        Assert.Null(await FindWorkspaceAsync(owner, "Prospect Four"));
+        Assert.Equal("suspended", await RegistryStatusAsync(id));
+        await AssertStatusAsync(HttpStatusCode.NotFound, await SendAsync(HttpMethod.Post, $"/api/admin/workspaces/{Guid.NewGuid()}/suspend", Staff));
+
+        // Nobody but a platform admin may suspend or reactivate.
+        await AssertStatusAsync(HttpStatusCode.NotFound, await SendAsync(HttpMethod.Post, $"/api/admin/workspaces/{id}/reactivate", owner));
+        Assert.Equal("suspended", await RegistryStatusAsync(id));
 
         await AssertStatusAsync(HttpStatusCode.NoContent, await SendAsync(HttpMethod.Post, $"/api/admin/workspaces/{id}/reactivate", Staff));
-        Assert.NotNull(await FindWorkspaceAsync(owner, "Prospect Four"));
+        Assert.Equal("active", await RegistryStatusAsync(id));
     }
 
     // ----- helpers -----
@@ -155,22 +161,19 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
     private Task<HttpResponseMessage> CreateWorkspaceAsync(string userId, string name) =>
         SendAsync(HttpMethod.Post, "/api/workspaces", userId, new { name });
 
-    private async Task<Guid?> FindWorkspaceAsync(string userId, string name)
+    private async Task<Guid> RegistryIdAsync(string name)
     {
-        using var body = await GetJsonAsync("/api/workspaces", userId);
-        foreach (var w in body.RootElement.GetProperty("workspaces").EnumerateArray())
-        {
-            if (w.GetProperty("name").GetString() == name)
-            {
-                return w.GetProperty("id").GetGuid();
-            }
-        }
-
-        return null;
+        using var body = await GetJsonAsync("/api/admin/workspaces", Staff);
+        return body.RootElement.GetProperty("workspaces").EnumerateArray()
+            .Single(w => w.GetProperty("name").GetString() == name).GetProperty("id").GetGuid();
     }
 
-    private async Task<Guid> WorkspaceIdAsync(string userId, string name) =>
-        await FindWorkspaceAsync(userId, name) ?? throw new InvalidOperationException($"No workspace '{name}' for {userId}.");
+    private async Task<string?> RegistryStatusAsync(Guid id)
+    {
+        using var body = await GetJsonAsync("/api/admin/workspaces", Staff);
+        return body.RootElement.GetProperty("workspaces").EnumerateArray()
+            .Single(w => w.GetProperty("id").GetGuid() == id).GetProperty("status").GetString();
+    }
 
     private async Task<JsonDocument> GetJsonAsync(string path, string userId)
     {
