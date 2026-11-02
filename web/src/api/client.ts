@@ -192,6 +192,10 @@ export interface AdminIssuedInvitationBody {
   expiresAt: string;
   /** The only time the link exists in plaintext; copy it now. */
   acceptUrl: string;
+  /** `sent` (email accepted for delivery), `mail_failed`, or `no_transport` (this environment sends no mail). */
+  deliveryOutcome: "sent" | "mail_failed" | "no_transport";
+  /** True when the prospect's sign-in identity exists in the directory, so any address can sign in. */
+  identityProvisioned: boolean;
 }
 
 export interface AdminUserBody {

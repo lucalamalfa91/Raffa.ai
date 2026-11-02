@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Raffa.Identity.Workspace.Application;
 using Raffa.SharedKernel;
 
 namespace Raffa.Identity.Workspace.Infrastructure;
@@ -42,7 +43,15 @@ public sealed class PlatformOverview
 
 public enum PlatformInvitationAcceptStatus { Accepted, NotFound, Expired, Revoked, WrongAccount, AlreadyUsed }
 
-public sealed record PlatformInvitationIssued(Guid Id, string Email, string Token, DateTimeOffset ExpiresAt);
+public sealed record PlatformInvitationIssued(
+    Guid Id, string Email, string AcceptUrl, DateTimeOffset ExpiresAt, bool IdentityProvisioned, string DeliveryOutcome);
+
+/// <summary>Either the issued invitation, or the reason the directory would not prepare the prospect's
+/// sign-in identity (in which case nothing was written).</summary>
+public sealed record PlatformInvitationIssueResult(PlatformInvitationIssued? Issued, GuestProvisioningFailureReason? FailureReason)
+{
+    public bool IsSuccess => Issued is not null;
+}
 
 /// <summary>
 /// Platform-level data for the portal admin (Raffa staff): the workspace metadata registry and the
@@ -52,7 +61,8 @@ public sealed record PlatformInvitationIssued(Guid Id, string Email, string Toke
 /// non-relational provider (the in-memory test host), where these tables do not exist. A prospect invitation is single-use, revocable, bound to one
 /// address and expires after <see cref="ExpiryDays"/> days; only the SHA-256 of the secret is stored.
 /// </summary>
-public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock clock)
+public sealed class PlatformAdminService(
+    IdentityWorkspaceDbContext db, IClock clock, IGuestProvisioner guestProvisioner, IInvitationMailer mailer, InvitationOptions invitationOptions)
 {
     public const int ExpiryDays = 7;
 
@@ -98,12 +108,24 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
 
     // ----- prospect invitations -----
 
-    /// <summary>Revokes any live invitation for the address and issues a fresh one, in one transaction.
-    /// The plaintext token exists only in the returned value.</summary>
-    public async Task<PlatformInvitationIssued> IssueInvitationAsync(
+    /// <summary>
+    /// Issues a prospect invitation the way a workspace invitation is issued: the guest identity is
+    /// prepared in the directory <b>first</b> (so any address, including a personal one, can sign in; a
+    /// failure writes nothing), then the live invitation for the address is replaced by a fresh one in one
+    /// transaction, then the mail is attempted. The plaintext secret exists only inside the returned link.
+    /// </summary>
+    public async Task<PlatformInvitationIssueResult> IssueInvitationAsync(
         string email, string createdBy, CancellationToken ct = default)
     {
         var normalized = email.Trim().ToLowerInvariant();
+
+        var provisioning = await guestProvisioner.EnsureGuestAsync(normalized, "Raffa.ai", ct).ConfigureAwait(false);
+        if (provisioning.Status == GuestProvisioningStatus.Failed)
+        {
+            return new PlatformInvitationIssueResult(
+                null, provisioning.FailureReason ?? GuestProvisioningFailureReason.ProvisioningFailed);
+        }
+
         var id = Guid.NewGuid();
         var secret = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
         var now = clock.UtcNow.ToUniversalTime();
@@ -113,21 +135,42 @@ public sealed class PlatformAdminService(IdentityWorkspaceDbContext db, IClock c
         // then insert the new one. A single data-modifying CTE does not work here: the order of its parts
         // is unspecified, and the INSERT can hit the one-live-invitation-per-address unique index before
         // the UPDATE has released it.
-        await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
-        await db.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            UPDATE platform_invitation SET revoked_at = {now}
-            WHERE lower(email) = {normalized} AND accepted_at IS NULL AND revoked_at IS NULL
-            """, ct).ConfigureAwait(false);
-        await db.Database.ExecuteSqlInterpolatedAsync(
-            $"""
-            INSERT INTO platform_invitation (id, email, token_hash, created_by, created_at, expires_at)
-            VALUES ({id}, {normalized}, {Hash(secret)}, {createdBy}, {now}, {expiresAt})
-            """, ct).ConfigureAwait(false);
-        await transaction.CommitAsync(ct).ConfigureAwait(false);
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false))
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE platform_invitation SET revoked_at = {now}
+                WHERE lower(email) = {normalized} AND accepted_at IS NULL AND revoked_at IS NULL
+                """, ct).ConfigureAwait(false);
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                INSERT INTO platform_invitation (id, email, token_hash, created_by, created_at, expires_at)
+                VALUES ({id}, {normalized}, {Hash(secret)}, {createdBy}, {now}, {expiresAt})
+                """, ct).ConfigureAwait(false);
+            await transaction.CommitAsync(ct).ConfigureAwait(false);
+        }
 
-        return new PlatformInvitationIssued(id, normalized, secret, expiresAt);
+        var acceptUrl = ComposeProspectUrl(secret);
+        var deliveryOutcome = "no_transport";
+        if (mailer.IsConfigured)
+        {
+            deliveryOutcome = await mailer.TrySendProspectAsync(normalized, acceptUrl, expiresAt, ct).ConfigureAwait(false)
+                ? "sent"
+                : "mail_failed";
+        }
+
+        return new PlatformInvitationIssueResult(
+            new PlatformInvitationIssued(id, normalized, acceptUrl, expiresAt, provisioning.IdentityProvisioned, deliveryOutcome),
+            null);
     }
+
+    /// <summary><c>{base}/prospect/accept#{secret}</c>: the secret rides in the fragment, never a path or
+    /// query string, so it is not sent to any server or written to an access log. Site-relative when no
+    /// usable base is configured.</summary>
+    private string ComposeProspectUrl(string secret) =>
+        (InvitationOptions.IsUsableBase(invitationOptions.AcceptUrlBase)
+            ? invitationOptions.AcceptUrlBase!.TrimEnd('/')
+            : string.Empty) + "/prospect/accept#" + secret;
 
     public Task<List<PlatformInvitationRow>> ListInvitationsAsync(CancellationToken ct = default) =>
         db.Database.SqlQueryRaw<PlatformInvitationRow>(InvitationSelect + " ORDER BY created_at DESC").ToListAsync(ct);

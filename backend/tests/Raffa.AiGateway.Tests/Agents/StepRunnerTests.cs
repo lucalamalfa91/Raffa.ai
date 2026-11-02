@@ -527,11 +527,13 @@ public sealed class StepRunnerTests
     {
         var gateway = new ScriptedGateway(analyze: async (r, token) =>
         {
-            await Task.Delay(60, token);
+            await Task.Delay(120, token);
             return Result<AiAnalysisResult>.Success(new AiAnalysisResult(AgentTestKit.Payload(), AgentTestKit.Meta(r.PromptVersion)));
         });
-        // Five steps one at a time, each 60 ms with a 300 ms deadline: the last waits ~240 ms for its slot.
-        var step = AgentTestKit.Step(AgentTestKit.Definition(deadline: TimeSpan.FromMilliseconds(300)));
+        // Five steps one at a time, each 120 ms with a 500 ms deadline: the last waits ~480 ms for its slot,
+        // more than the whole deadline, so it only succeeds if the wait is not counted. (300 ms deadline with
+        // 60 ms steps left only ~60 ms of headroom per step and overran on a loaded runner.)
+        var step = AgentTestKit.Step(AgentTestKit.Definition(deadline: TimeSpan.FromMilliseconds(500)));
         var inputs = Enumerable.Range(0, 5).Select(i => new EchoInput($"q{i}", [])).ToList();
 
         var results = await new StepRunner(gateway, new AgentRunnerOptions { MaxParallelism = 1 }).FanOutAsync(step, inputs);

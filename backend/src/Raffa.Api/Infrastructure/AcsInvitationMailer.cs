@@ -97,6 +97,56 @@ internal sealed class AcsInvitationMailer(
     }
 
     /// <summary>ADR-020 w15 §4: the subject carries the product's own name, "Raffa.ai".</summary>
+    public async Task<bool> TrySendProspectAsync(
+        string email,
+        string acceptUrl,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Uri.TryCreate(acceptUrl, UriKind.Absolute, out var acceptUri)
+            || !string.Equals(acceptUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(options.Mail.SenderAddress))
+        {
+            logger.LogWarning("Prospect invitation mail not sent: the accept link is not an absolute https URL or no sender address is configured");
+            return false;
+        }
+
+        var content = new EmailContent(ComposeProspectSubject()) { PlainText = ComposeProspectBody(acceptUrl, expiresAt) };
+        try
+        {
+            var operation = await client
+                .SendAsync(WaitUntil.Started, new EmailMessage(options.Mail.SenderAddress, email, content), cancellationToken)
+                .ConfigureAwait(false);
+            logger.LogInformation("Prospect invitation mail accepted for delivery (ACS operation {OperationId})", operation.Id);
+            return true;
+        }
+        catch (RequestFailedException exception)
+        {
+            logger.LogWarning("Prospect invitation mail refused by ACS: status {Status}, error code {ErrorCode}", exception.Status, exception.ErrorCode ?? "-");
+            return false;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Prospect invitation mail could not be sent");
+            return false;
+        }
+    }
+
+    public static string ComposeProspectSubject() => "You've been invited to Raffa.ai";
+
+    public static string ComposeProspectBody(string acceptUrl, DateTimeOffset expiresAt)
+    {
+        var expiry = expiresAt.UtcDateTime.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+        return string.Join(
+            "\r\n\r\n",
+            "Welcome to Raffa.ai",
+            "Your AI-powered procurement assistant. You have been invited to create your company workspace.",
+            $"Accept your invitation: {acceptUrl}",
+            "Signing in uses your email address — Microsoft will send you a one-time code.",
+            $"This link expires {expiry} and can be used once.",
+            "If you were not expecting this, you can ignore this message.");
+    }
+
     public static string ComposeSubject(string workspaceName) => $"You've been invited to {workspaceName} on Raffa.ai";
 
     /// <summary>ADR-020 w15 §4, in order and nothing else: the heading, the role line (screen 11 state 2

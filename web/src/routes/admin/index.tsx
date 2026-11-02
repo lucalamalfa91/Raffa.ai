@@ -22,6 +22,26 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: "users", label: "Users" },
 ];
 
+const DELIVERY_COPY: Record<AdminIssuedInvitationBody["deliveryOutcome"], string> = {
+  sent: "An email with the invitation link was sent.",
+  mail_failed: "The email could not be sent. Copy the link below and send it yourself.",
+  no_transport: "This environment sends no email. Copy the link below and send it yourself.",
+};
+
+/** The API's 502 body is `{"failureReason": ...}`: the directory would not prepare the prospect's sign-in. */
+function invitationFailureCopy(error: string | null): string {
+  if (error?.includes("consent_missing")) {
+    return "The directory has not been allowed to create sign-in accounts for new people (admin consent is missing), so the invitation was not created.";
+  }
+  if (error?.includes("directory_unavailable")) {
+    return "The directory is not reachable right now, so the invitation was not created. Try again in a moment.";
+  }
+  if (error?.includes("provisioning_failed")) {
+    return "The directory refused to create a sign-in account for this address, so the invitation was not created.";
+  }
+  return error ?? "The change was not applied.";
+}
+
 const formatDate = (iso: string | null): string => (iso ? new Date(iso).toLocaleDateString() : "—");
 
 /** Loads one admin list; `reload` re-runs it. A 404 means the caller is not a platform admin. */
@@ -179,7 +199,7 @@ function InvitationsPanel({ apiClient }: AdminRouteProps) {
 
   const finish = async (result: AdminCallResult<AdminIssuedInvitationBody> | AdminCallResult<null> | undefined) => {
     if (!result?.ok) {
-      setActionError(result?.error ?? "The change was not applied.");
+      setActionError(invitationFailureCopy(result?.error ?? null));
       return;
     }
     setActionError(null);
@@ -226,9 +246,9 @@ function InvitationsPanel({ apiClient }: AdminRouteProps) {
       {issued ? (
         <div role="status" className="admin-result">
           <p>
-            Invitation for <strong>{issued.email}</strong>, valid until {formatDate(issued.expiresAt)}. Copy the link now; it is not shown again.
+            Invitation for <strong>{issued.email}</strong>, valid until {formatDate(issued.expiresAt)}. {DELIVERY_COPY[issued.deliveryOutcome]}
           </p>
-          <label htmlFor="admin-invite-link">Invitation link</label>
+          <label htmlFor="admin-invite-link">Invitation link (shown only now)</label>
           <input id="admin-invite-link" className="input" readOnly value={issued.acceptUrl} onFocus={(e) => e.currentTarget.select()} />
           <button type="button" className="btn" onClick={() => void navigator.clipboard?.writeText(issued.acceptUrl)}>
             Copy link

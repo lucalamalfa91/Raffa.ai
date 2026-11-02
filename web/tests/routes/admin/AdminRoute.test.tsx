@@ -29,7 +29,7 @@ function fakeClient(overrides: Partial<ApiClient> = {}): ApiClient {
       }),
     ),
     createAdminInvitation: vi.fn().mockResolvedValue(
-      ok({ id: "i3", email: "new@acme.example", expiresAt: "2026-11-09T00:00:00Z", acceptUrl: "https://app.example/prospect/accept#secret" }),
+      ok({ id: "i3", email: "new@acme.example", expiresAt: "2026-11-09T00:00:00Z", acceptUrl: "https://app.example/prospect/accept#secret", deliveryOutcome: "sent", identityProvisioned: true }),
     ),
     regenerateAdminInvitation: vi.fn(),
     revokeAdminInvitation: vi.fn().mockResolvedValue({ ok: true, statusCode: 204, body: null, error: null }),
@@ -82,7 +82,8 @@ describe("AdminRoute", () => {
     await user.click(screen.getByRole("button", { name: "Create invitation" }));
 
     await waitFor(() => expect(apiClient.createAdminInvitation).toHaveBeenCalledWith("new@acme.example"));
-    expect(await screen.findByLabelText("Invitation link")).toHaveValue("https://app.example/prospect/accept#secret");
+    expect(await screen.findByLabelText(/Invitation link/)).toHaveValue("https://app.example/prospect/accept#secret");
+    expect(screen.getByText(/An email with the invitation link was sent/)).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "Revoke" })[0]!);
     await waitFor(() => expect(apiClient.revokeAdminInvitation).toHaveBeenCalledWith("i1"));
@@ -94,5 +95,20 @@ describe("AdminRoute", () => {
     await user.click(screen.getByRole("button", { name: "Users" }));
     expect(await screen.findByText("ceo@prada.example")).toBeInTheDocument();
     expect(screen.getByText("Created")).toBeInTheDocument();
+  });
+
+  it("explains when the directory would not prepare the prospect's sign-in, and creates nothing", async () => {
+    const user = userEvent.setup();
+    const apiClient = fakeClient({
+      createAdminInvitation: vi.fn().mockResolvedValue({ ok: false, statusCode: 502, body: null, error: '{"failureReason":"consent_missing"}' }),
+    });
+    render(<AdminRoute apiClient={apiClient} />);
+
+    await user.click(screen.getByRole("button", { name: "Invitations" }));
+    await user.type(await screen.findByLabelText("Prospect email"), "anyone@hotmail.it");
+    await user.click(screen.getByRole("button", { name: "Create invitation" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/admin consent is missing/i);
+    expect(screen.queryByLabelText(/Invitation link/)).not.toBeInTheDocument();
   });
 });
