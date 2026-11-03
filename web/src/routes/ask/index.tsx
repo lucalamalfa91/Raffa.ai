@@ -442,7 +442,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   return (
     <div data-screen-label="Chiedi" className={panel ? "k6-chiedi has-panel" : "k6-chiedi"} style={{ ["--k6-rail-w" as string]: `${railW}px` }}>
       <aside data-screen-label="Conversazioni" className="k6-rail">
-        <div className={dragging ? "k6-rail-grip is-drag" : "k6-rail-grip"} onPointerDown={startResize} role="separator" aria-orientation="vertical" />
         <div className="k6-rail-head">
           <span className="k6-rail-title">{t("Conversations")}</span>
           <button type="button" className="btn btn-primary k6-new" onClick={newConversation}>
@@ -461,6 +460,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         <button type="button" className="btn btn-ghost k6-archive-toggle" onClick={() => setShowArchive(!showArchive)}>
           {showArchive ? t("Hide archived ▴") : t("Archived · {n} ▾", { n: archived.length })}
         </button>
+        {/* Last child (absolutely positioned): the rail header stays the first child (parity geometry). */}
+        <div className={dragging ? "k6-rail-grip is-drag" : "k6-rail-grip"} onPointerDown={startResize} role="separator" aria-orientation="vertical" />
       </aside>
       <div className="k6-pane">
         <div className="k6-pane-head">
