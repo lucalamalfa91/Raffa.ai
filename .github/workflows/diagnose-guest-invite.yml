@@ -96,3 +96,21 @@ jobs:
               -o table 2>&1 | head -40 || true
             echo '```'
           } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: API console log (read from the container, not from Log Analytics)
+        continue-on-error: true
+        run: |
+          RG="rg-raffa-${ENV_NAME}"; APP="ca-raffa-${ENV_NAME}-api"
+          {
+            echo "## ${ENV_NAME}: console log of ${APP} (last 400 lines)"
+            echo
+            echo "Lines about guest provisioning, Graph, invitations or the platform admin:"
+            echo '```'
+            az containerapp logs show -g "$RG" -n "$APP" --type console --tail 400 --format text 2>&1 \
+              | grep -iE "guest provisioning|graph|invitation|platform|warn|fail" | tail -25 | cut -c1-400 || true
+            echo '```'
+            echo "Last 5 lines of any kind (proves the log is readable):"
+            echo '```'
+            az containerapp logs show -g "$RG" -n "$APP" --type console --tail 5 --format text 2>&1 | cut -c1-300 || true
+            echo '```'
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
