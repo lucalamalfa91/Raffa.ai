@@ -7,6 +7,7 @@ name: diagnose-guest-invite
 #   2. whether that identity holds the Microsoft Graph User.Invite.All application role (needs Graph read; the
 #      CI identity may not have it, which the step then says plainly);
 #   3. the API's own log lines for guest provisioning, which carry the directory's HTTP status and error code.
+# The same text goes to the job log too (so it can be read without opening the run page).
 # Manual only. The `demo` run waits for the demo environment's reviewers like any other demo job.
 
 on:
@@ -61,7 +62,7 @@ jobs:
             echo '```'
             az containerapp show -g "$RG" -n "$APP" --query "identity.userAssignedIdentities | keys(@)" -o json 2>&1 || true
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Graph app roles of the workload identity
         continue-on-error: true
@@ -78,7 +79,7 @@ jobs:
               || echo "(the CI identity cannot read Graph app role assignments)"
             echo '```'
             echo "User.Invite.All is appRoleId 09850681-111b-4a89-9bed-3f2cae46d706."
-          } >> "$GITHUB_STEP_SUMMARY"
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: API log lines about guest provisioning
         continue-on-error: true
@@ -94,4 +95,4 @@ jobs:
               "ContainerAppConsoleLogs_CL | where ContainerAppName_s == '${APP}' | where Log_s has 'Guest provisioning' | top 10 by TimeGenerated desc | project TimeGenerated, Log_s" \
               -o table 2>&1 | head -40 || true
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
