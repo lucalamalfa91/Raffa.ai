@@ -86,7 +86,8 @@ public sealed record GuestProvisioningResult(
     GuestProvisioningStatus Status,
     string? GuestObjectId,
     GuestProvisioningFailureReason? FailureReason,
-    string? CorrelationId)
+    string? CorrelationId,
+    string? Detail = null)
 {
     /// <summary>The 201's <c>identityProvisioned</c> (ADR-026 w15 footer §1): true for both
     /// <see cref="GuestProvisioningStatus.Provisioned"/> and <see cref="GuestProvisioningStatus.AlreadyPresent"/>,
@@ -102,6 +103,10 @@ public sealed record GuestProvisioningResult(
     public static GuestProvisioningResult NotConfigured() =>
         new(GuestProvisioningStatus.NotConfigured, null, null, null);
 
-    public static GuestProvisioningResult Failed(GuestProvisioningFailureReason reason, string? correlationId = null) =>
-        new(GuestProvisioningStatus.Failed, null, reason, correlationId);
+    /// <summary><paramref name="detail"/> is a short, non-sensitive diagnostic for the platform admin (the
+    /// directory's HTTP status and error code, or the kind of local failure) -- never a response body, a
+    /// token, or an address.</summary>
+    public static GuestProvisioningResult Failed(
+        GuestProvisioningFailureReason reason, string? correlationId = null, string? detail = null) =>
+        new(GuestProvisioningStatus.Failed, null, reason, correlationId, detail);
 }

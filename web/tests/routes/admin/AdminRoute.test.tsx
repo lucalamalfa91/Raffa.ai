@@ -100,7 +100,7 @@ describe("AdminRoute", () => {
   it("explains when the directory would not prepare the prospect's sign-in, and creates nothing", async () => {
     const user = userEvent.setup();
     const apiClient = fakeClient({
-      createAdminInvitation: vi.fn().mockResolvedValue({ ok: false, statusCode: 502, body: null, error: '{"failureReason":"consent_missing"}' }),
+      createAdminInvitation: vi.fn().mockResolvedValue({ ok: false, statusCode: 502, body: null, error: '{"failureReason":"consent_missing","detail":"Graph 403 Authorization_RequestDenied, request-id abc-123"}' }),
     });
     render(<AdminRoute apiClient={apiClient} />);
 
@@ -108,7 +108,7 @@ describe("AdminRoute", () => {
     await user.type(await screen.findByLabelText("Prospect email"), "anyone@hotmail.it");
     await user.click(screen.getByRole("button", { name: "Create invitation" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/admin consent is missing/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/refused to create a sign-in account.*Graph 403 Authorization_RequestDenied, request-id abc-123/i);
     expect(screen.queryByLabelText(/Invitation link/)).not.toBeInTheDocument();
   });
 });

@@ -193,7 +193,7 @@ public static class PlatformAdminEndpointExtensions
             })
             // The directory would not prepare the prospect's sign-in identity: nothing was created.
             : Results.Json(
-                new { failureReason = result.FailureReason!.Value.ToWireValue() },
+                new { failureReason = result.FailureReason!.Value.ToWireValue(), detail = result.Detail },
                 statusCode: StatusCodes.Status502BadGateway);
 
     /// <summary>`POST /api/platform/invitations/accept` with the secret in <see cref="InvitationTokenHeader"/>.

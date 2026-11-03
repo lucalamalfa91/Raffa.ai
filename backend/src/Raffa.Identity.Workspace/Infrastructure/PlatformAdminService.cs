@@ -48,7 +48,8 @@ public sealed record PlatformInvitationIssued(
 
 /// <summary>Either the issued invitation, or the reason the directory would not prepare the prospect's
 /// sign-in identity (in which case nothing was written).</summary>
-public sealed record PlatformInvitationIssueResult(PlatformInvitationIssued? Issued, GuestProvisioningFailureReason? FailureReason)
+public sealed record PlatformInvitationIssueResult(
+    PlatformInvitationIssued? Issued, GuestProvisioningFailureReason? FailureReason, string? Detail = null)
 {
     public bool IsSuccess => Issued is not null;
 }
@@ -122,8 +123,16 @@ public sealed class PlatformAdminService(
         var provisioning = await guestProvisioner.EnsureGuestAsync(normalized, "Raffa.ai", ct).ConfigureAwait(false);
         if (provisioning.Status == GuestProvisioningStatus.Failed)
         {
+            // Status and error code of the directory's answer, plus its opaque request id: what the platform
+            // admin (and Microsoft support) need to see why, with no body, token or address in it.
+            var detail = string.Join(
+                ", ",
+                new[] { provisioning.Detail, provisioning.CorrelationId is { } requestId ? $"request-id {requestId}" : null }
+                    .Where(part => !string.IsNullOrWhiteSpace(part)));
             return new PlatformInvitationIssueResult(
-                null, provisioning.FailureReason ?? GuestProvisioningFailureReason.ProvisioningFailed);
+                null,
+                provisioning.FailureReason ?? GuestProvisioningFailureReason.ProvisioningFailed,
+                detail.Length == 0 ? null : detail);
         }
 
         var id = Guid.NewGuid();
