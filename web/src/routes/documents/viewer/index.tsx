@@ -23,6 +23,7 @@ import {
   resolveViewerSurface,
   type CitationResolution,
 } from "./documentViewerViewModel";
+import { useI18n } from "../../../i18n/I18nProvider";
 import "./documentViewer.css";
 
 export interface DocumentViewerRouteProps {
@@ -67,6 +68,7 @@ export function DocumentViewer({
   clauseParam,
   onPageChange,
 }: DocumentViewerProps) {
+  const { t } = useI18n();
   const workspace = loadCurrentWorkspace();
 
   const [documentLoad, setDocumentLoad] = useState<DocumentLoad>({ phase: "loading" });
@@ -98,8 +100,8 @@ export function DocumentViewer({
           statusCode: result.statusCode,
           message:
             result.statusCode === 503 || result.statusCode === null
-              ? `${PREVIEW_SERVICE_NAME} is temporarily unavailable. Try again in a moment.`
-              : (result.error ?? "The document could not be loaded."),
+              ? t("{service} is temporarily unavailable. Try again in a moment.", { service: t(PREVIEW_SERVICE_NAME) })
+              : (result.error ?? t("The document could not be loaded.")),
         });
         return;
       }
@@ -118,7 +120,7 @@ export function DocumentViewer({
 
       setDocumentLoad({ phase: "ready", document, clauses });
     });
-  }, [apiClient, workspace?.id, documentId, clauseParam]);
+  }, [apiClient, workspace?.id, documentId, clauseParam, t]);
 
   useEffect(() => {
     loadDocument();
@@ -196,8 +198,8 @@ export function DocumentViewer({
         statusCode: result.statusCode,
         message:
           result.statusCode === 503 || result.statusCode === null
-            ? `${PREVIEW_SERVICE_NAME} is temporarily unavailable. Try again in a moment.`
-            : (result.error ?? `${PREVIEW_SERVICE_NAME} could not load this page.`),
+            ? t("{service} is temporarily unavailable. Try again in a moment.", { service: t(PREVIEW_SERVICE_NAME) })
+            : (result.error ?? t("{service} could not load this page.", { service: t(PREVIEW_SERVICE_NAME) })),
       });
     });
 
@@ -205,13 +207,13 @@ export function DocumentViewer({
       cancelled = true;
       if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
     };
-  }, [apiClient, workspace?.id, documentId, fetchPage, pageCount, reloadNonce]);
+  }, [apiClient, workspace?.id, documentId, fetchPage, pageCount, reloadNonce, t]);
 
   if (!workspace) {
     return (
       <div className="empty-state" role="status">
-        <h3>No workspace selected</h3>
-        <p className="micro-meta">Choose a workspace before opening a document.</p>
+        <h3>{t("No workspace selected")}</h3>
+        <p className="micro-meta">{t("Choose a workspace before opening a document.")}</p>
       </div>
     );
   }
@@ -219,7 +221,7 @@ export function DocumentViewer({
   if (!documentId) {
     return (
       <div className="empty-state" role="status">
-        <h3>{DOCUMENT_MISSING_COPY}</h3>
+        <h3>{t(DOCUMENT_MISSING_COPY)}</h3>
       </div>
     );
   }
@@ -229,7 +231,7 @@ export function DocumentViewer({
       <div className="document-viewer" aria-busy="true">
         <ViewerChrome
           fileName={null}
-          navLabel={formatPageNav(FIRST_PAGE, null)}
+          navLabel={formatPageNav(FIRST_PAGE, null, t)}
           canPrev={false}
           canNext={false}
           onPrev={() => undefined}
@@ -245,7 +247,7 @@ export function DocumentViewer({
   if (documentLoad.phase === "missing") {
     return (
       <div className="empty-state" role="status">
-        <h3>{DOCUMENT_MISSING_COPY}</h3>
+        <h3>{t(DOCUMENT_MISSING_COPY)}</h3>
       </div>
     );
   }
@@ -253,13 +255,13 @@ export function DocumentViewer({
   if (documentLoad.phase === "error") {
     return (
       <div className="error-state" role="alert">
-        <h4>Preview unavailable</h4>
+        <h4>{t("Preview unavailable")}</h4>
         <p className="micro-meta">
           {documentLoad.message}
           {documentLoad.statusCode !== null && ` (HTTP ${documentLoad.statusCode})`}
         </p>
         <button type="button" className="btn btn-secondary" onClick={() => setReloadNonce((n) => n + 1)}>
-          Retry
+          {t("Retry")}
         </button>
       </div>
     );
@@ -274,17 +276,17 @@ export function DocumentViewer({
       <div className="document-viewer">
         <ViewerChrome
           fileName={documentLoad.document.fileName}
-          navLabel={formatPageNav(surface.askedPage, surface.pageCount)}
+          navLabel={formatPageNav(surface.askedPage, surface.pageCount, t)}
           canPrev={false}
           canNext={false}
           onPrev={() => undefined}
           onNext={() => undefined}
         />
         <div className="empty-state" role="status">
-          <h3>{BEYOND_COUNT_HEADING}</h3>
-          <p className="micro-meta">{formatBeyondCountCopy(surface.pageCount)}</p>
+          <h3>{t(BEYOND_COUNT_HEADING)}</h3>
+          <p className="micro-meta">{formatBeyondCountCopy(surface.pageCount, t)}</p>
           <button type="button" className="btn btn-secondary" onClick={() => onPageChange(FIRST_PAGE, clauseParam)}>
-            Go to page 1
+            {t("Go to page 1")}
           </button>
         </div>
       </div>
@@ -305,7 +307,7 @@ export function DocumentViewer({
     <div className="document-viewer">
       <ViewerChrome
         fileName={documentLoad.document.fileName}
-        navLabel={formatPageNav(surface.page, documentLoad.document.pageCount)}
+        navLabel={formatPageNav(surface.page, documentLoad.document.pageCount, t)}
         canPrev={canPrev}
         canNext={canNext}
         onPrev={onPrev}
@@ -314,17 +316,17 @@ export function DocumentViewer({
 
       {citation.kind === "unresolvable" && (
         <div className="empty-state document-viewer-citation-notice" role="status" data-testid="document-viewer-citation-notice">
-          <h3>{CITATION_UNRESOLVABLE_COPY}</h3>
-          <p className="micro-meta">The document is still open. You can page through it.</p>
+          <h3>{t(CITATION_UNRESOLVABLE_COPY)}</h3>
+          <p className="micro-meta">{t("The document is still open. You can page through it.")}</p>
         </div>
       )}
 
       {previewLoad.phase === "reaped" ? (
         <div className="empty-state" role="status">
-          <h3>{REAPED_PAGE_HEADING}</h3>
-          <p className="micro-meta">{REAPED_PAGE_COPY}</p>
+          <h3>{t(REAPED_PAGE_HEADING)}</h3>
+          <p className="micro-meta">{t(REAPED_PAGE_COPY)}</p>
           <button type="button" className="btn btn-secondary" onClick={() => setReloadNonce((n) => n + 1)}>
-            Reload the document
+            {t("Reload the document")}
           </button>
         </div>
       ) : (
@@ -355,19 +357,20 @@ function ViewerChrome({
   onPrev: () => void;
   onNext: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       <header className="document-viewer-header">
-        <p className="screen-kicker">Documents</p>
-        <h2 className="screen-title">{fileName ?? "Document"}</h2>
+        <p className="screen-kicker">{t("Documents")}</p>
+        <h2 className="screen-title">{fileName ?? t("Document")}</h2>
       </header>
-      <div className="document-viewer-nav" role="navigation" aria-label="Page">
+      <div className="document-viewer-nav" role="navigation" aria-label={t("Page")}>
         <button type="button" className="btn btn-ghost" disabled={!canPrev} onClick={onPrev}>
-          Previous
+          {t("Previous")}
         </button>
         <span className="document-viewer-nav-label">{navLabel}</span>
         <button type="button" className="btn btn-ghost" disabled={!canNext} onClick={onNext}>
-          Next
+          {t("Next⟦page⟧")}
         </button>
       </div>
     </>
@@ -389,13 +392,14 @@ function PageCanvas({
   naturalSize: { width: number; height: number } | null;
   onImageLoad: (size: { width: number; height: number }) => void;
 }) {
+  const { t } = useI18n();
   if (preview.phase === "error") {
     return (
       <div className="error-state" role="alert">
-        <h4>Preview unavailable</h4>
+        <h4>{t("Preview unavailable")}</h4>
         <p className="micro-meta">{preview.message}</p>
         <button type="button" className="btn btn-secondary" onClick={onRetry}>
-          Retry
+          {t("Retry")}
         </button>
       </div>
     );
@@ -405,7 +409,7 @@ function PageCanvas({
     return (
       <div className="document-viewer-canvas">
         <div className="empty-state" role="status">
-          <h3>{EMPTY_PAGE_COPY}</h3>
+          <h3>{t(EMPTY_PAGE_COPY)}</h3>
         </div>
       </div>
     );
@@ -416,7 +420,7 @@ function PageCanvas({
       <div className="document-viewer-canvas">
         <img
           src={preview.objectUrl}
-          alt="Document page"
+          alt={t("Document page")}
           onLoad={(event) => {
             const image = event.currentTarget;
             onImageLoad({ width: image.naturalWidth, height: image.naturalHeight });

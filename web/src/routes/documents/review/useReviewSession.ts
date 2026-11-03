@@ -5,7 +5,9 @@ import type {
   ContractFieldEvidenceBody,
   CorrectionHistoryEntryBody,
 } from "../../../api/client";
+import { useI18n } from "../../../i18n/I18nProvider";
 import {
+  ACCEPTED_AS_EXTRACTED_REASON,
   acceptedFieldNames,
   applySuccessfulCorrection,
   buildReviewFields,
@@ -93,6 +95,7 @@ export function useReviewSession(
   contractId: string | null,
   preferredDocumentId: string | null = null,
 ): ReviewSession {
+  const { t } = useI18n();
   const [fetchState, setFetchState] = useState<ReviewFetchState>({ phase: "loading" });
   const [selectedField, setSelectedField] = useState<CorrectableFieldName | null>(null);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
@@ -128,8 +131,8 @@ export function useReviewSession(
           // baseline: "names the failing job, never a raw stack trace").
           message:
             contractResult.statusCode === 503 || contractResult.statusCode === null
-              ? "Raffa.ai's contract service is temporarily unavailable. Try again in a moment."
-              : (contractResult.error ?? "The contract could not be loaded."),
+              ? t("Raffa.ai's contract service is temporarily unavailable. Try again in a moment.")
+              : (contractResult.error ?? t("The contract could not be loaded.")),
         });
         return;
       }
@@ -151,7 +154,7 @@ export function useReviewSession(
         autoAcceptThreshold: evidenceResult?.ok ? (evidenceResult.autoAcceptThreshold ?? null) : null,
       });
     });
-  }, [apiClient, workspaceId, contractId]);
+  }, [apiClient, workspaceId, contractId, t]);
 
   useEffect(() => {
     load();
@@ -160,9 +163,9 @@ export function useReviewSession(
   const rows = useMemo(
     () =>
       fetchState.phase === "ready"
-        ? buildReviewFields(fetchState.contract, fetchState.history, indexEvidence(fetchState.evidence))
+        ? buildReviewFields(fetchState.contract, fetchState.history, indexEvidence(fetchState.evidence), t)
         : [],
-    [fetchState],
+    [fetchState, t],
   );
   const progress = useMemo(() => computeReviewProgress(rows), [rows]);
   const selectedRow = rows.find((row) => row.name === selectedField) ?? null;
@@ -183,7 +186,7 @@ export function useReviewSession(
       });
       setSubmitting(false);
       if (!result.ok) {
-        setCorrectionError(result.error ?? "The correction could not be saved.");
+        setCorrectionError(result.error ?? t("The correction could not be saved."));
         return;
       }
       const trimmedReason = reason.trim() === "" ? null : reason.trim();
@@ -203,7 +206,7 @@ export function useReviewSession(
       });
       load({ silent: true });
     },
-    [apiClient, workspaceId, contractId, load],
+    [apiClient, workspaceId, contractId, load, t],
   );
 
   const accept = useCallback(
@@ -214,7 +217,7 @@ export function useReviewSession(
       // unapplied proposals used to write. The same `correctContract` write stamps the extracted
       // value as a human decision whether the pipeline had applied it or not.
       if (row && !row.missing && row.decision === "pending" && row.rawValue !== "") {
-        await correct(name, row.rawValue, "Accepted as extracted.");
+        await correct(name, row.rawValue, ACCEPTED_AS_EXTRACTED_REASON);
       }
     },
     [rows, correct],
@@ -226,14 +229,14 @@ export function useReviewSession(
     if (pending.length === 0) return;
     setSubmitting(true);
     setCorrectionError(null);
-    const reason = "Accepted as extracted.";
+    const reason = ACCEPTED_AS_EXTRACTED_REASON;
     const result = await apiClient.correctContract(workspaceId, contractId, {
       corrections: Object.fromEntries(pending.map((row) => [row.name, row.rawValue])),
       reason,
     });
     setSubmitting(false);
     if (!result.ok) {
-      setCorrectionError(result.error ?? "The fields could not be accepted.");
+      setCorrectionError(result.error ?? t("The fields could not be accepted."));
       return;
     }
     const correctedAt = result.correction?.correctedAt ?? new Date().toISOString();
@@ -255,11 +258,11 @@ export function useReviewSession(
       return next;
     });
     load({ silent: true });
-  }, [apiClient, workspaceId, contractId, rows, load]);
+  }, [apiClient, workspaceId, contractId, rows, load, t]);
 
   const markValidated = useCallback(async () => {
     if (workspaceId === null || reviewDocument === null) {
-      setValidationError("This contract has no document to validate.");
+      setValidationError(t("This contract has no document to validate."));
       return false;
     }
     setValidating(true);
@@ -269,11 +272,11 @@ export function useReviewSession(
     });
     setValidating(false);
     if (!result.ok) {
-      setValidationError(result.error ?? "The document could not be marked as validated.");
+      setValidationError(result.error ?? t("The document could not be marked as validated."));
       return false;
     }
     return true;
-  }, [apiClient, workspaceId, reviewDocument, rows]);
+  }, [apiClient, workspaceId, reviewDocument, rows, t]);
 
   return {
     fetchState,
