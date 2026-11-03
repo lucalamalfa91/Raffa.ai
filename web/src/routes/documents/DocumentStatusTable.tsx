@@ -22,6 +22,7 @@ import {
 import ProcessingPipeline, { PendingSpinner, UploadingBar } from "./ProcessingPipeline";
 import { DocumentViewerLink } from "./viewer/DocumentViewerOverlay";
 import { buildDocumentViewerHref } from "./viewer/documentViewerViewModel";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export interface DocumentStatusTableProps {
   /** Already filtered by the caller's current chip. */
@@ -94,6 +95,7 @@ export default function DocumentStatusTable({
   updatesPaused = false,
   onResumeUpdates,
 }: DocumentStatusTableProps) {
+  const { t } = useI18n();
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
   // A local refusal (or an in-flight upload) appears only in the default list, above the server
@@ -110,15 +112,20 @@ export default function DocumentStatusTable({
   const { page, setPage, pageItems, totalItems } = usePagedRows(combinedRows, filter);
   const attentionEmpty = filter === "attention" && documents.length === 0 && visibleLocalUploads.length === 0;
   const rowsVisible = totalItems > 0;
+  // One message with a bold slot, split around `{all}`.
+  const [switchBefore, switchAfter] = t(
+    "Every uploaded document is validated and askable. Completed documents are tucked away — switch to {all} to browse them.",
+  ).split("{all}");
 
   return (
     <div className="documents-list-body">
       {attentionEmpty && (
         <div className="documents-attention-empty">
-          <h3>Nothing needs you right now.</h3>
+          <h3>{t("Nothing needs you right now.")}</h3>
           <p className="text-muted micro-meta">
-            Every uploaded document is validated and askable. Completed documents are tucked away — switch to{" "}
-            <strong>All documents</strong> to browse them.
+            {switchBefore}
+            <strong>{t("All documents")}</strong>
+            {switchAfter}
           </p>
         </div>
       )}
@@ -127,17 +134,17 @@ export default function DocumentStatusTable({
         <table className="table document-status-table">
           <thead>
             <tr>
-              <th scope="col">Document</th>
-              <th scope="col">Supplier · type</th>
+              <th scope="col">{t("Document")}</th>
+              <th scope="col">{t("Supplier · type")}</th>
               <th scope="col">
-                Status
+                {t("Status")}
                 <CopyTip tip={TIPS.documentsStatus} />
               </th>
               <th scope="col">
-                Next step
+                {t("Next step")}
                 <CopyTip tip={TIPS.documentsNextStep} />
               </th>
-              {isAdmin && <th scope="col">Delete</th>}
+              {isAdmin && <th scope="col">{t("Delete")}</th>}
             </tr>
           </thead>
           <tbody>
@@ -163,14 +170,14 @@ export default function DocumentStatusTable({
         </table>
       )}
 
-      <TablePager page={page} totalItems={totalItems} onPageChange={setPage} label="Document pages" />
+      <TablePager page={page} totalItems={totalItems} onPageChange={setPage} label={t("Document pages")} />
 
       {updatesPaused && (
         <div className="documents-updates-paused" role="status">
-          <p className="hint">{UPDATES_PAUSED_NOTICE}</p>
+          <p className="hint">{t(UPDATES_PAUSED_NOTICE)}</p>
           {onResumeUpdates !== undefined && (
             <button type="button" className="btn btn-secondary" onClick={onResumeUpdates}>
-              {CHECK_AGAIN_LABEL}
+              {t(CHECK_AGAIN_LABEL)}
             </button>
           )}
         </div>
@@ -180,7 +187,8 @@ export default function DocumentStatusTable({
 }
 
 function LocalUploadRow({ entry, isAdmin }: { entry: LocalUploadEntry; isAdmin: boolean }) {
-  const tag = getRowStatusTag(localRowStatus(entry.phase));
+  const { t } = useI18n();
+  const tag = getRowStatusTag(localRowStatus(entry.phase), t);
   return (
     <tr>
       <td>
@@ -196,7 +204,7 @@ function LocalUploadRow({ entry, isAdmin }: { entry: LocalUploadEntry; isAdmin: 
         {entry.phase === "rejected" || entry.phase === "failed" || entry.phase === "duplicate" ? null : (
           <span className="micro-meta">
             <PendingSpinner />
-            Processing in the background
+            {t("Processing in the background")}
           </span>
         )}
       </td>
@@ -220,12 +228,15 @@ function ServerDocumentRow({
   onAskConfirm: (documentId: string) => void;
   onCancelConfirm: () => void;
 }) {
+  const { t } = useI18n();
   const rowStatus = getRowStatus(item.processingStatus);
-  const tag = getRowStatusTag(rowStatus);
-  const action = getRowAction(item);
-  const rejectionHint = rowStatus === "rejected" ? getRejectionReasonCopy(item.rejectionReason) : null;
-  const stageFailureHint = getStageFailureHint(item);
+  const tag = getRowStatusTag(rowStatus, t);
+  const action = getRowAction(item, t);
+  const rejectionHint = rowStatus === "rejected" ? getRejectionReasonCopy(item.rejectionReason, t) : null;
+  const stageFailureHint = getStageFailureHint(item, t);
   const openTarget = getOpenTarget(item, rowStatus);
+  const pagesLabel =
+    item.pageCount === null ? null : item.pageCount === 1 ? t("{n} page", { n: item.pageCount }) : t("{n} pages", { n: item.pageCount });
 
   return (
     <tr>
@@ -237,23 +248,23 @@ function ServerDocumentRow({
         ) : (
           <>
             <div className="document-status-table-filename">{item.fileName}</div>
-            {rowStatus === "failed" && <div className="hint">{getFailedHint(item.errorDetail)}</div>}
+            {rowStatus === "failed" && <div className="hint">{getFailedHint(item.errorDetail, t)}</div>}
             {rejectionHint !== null && <div className="hint">{rejectionHint}</div>}
           </>
         )}
         {stageFailureHint !== null && <div className="hint">{stageFailureHint}</div>}
         <div className="micro-meta">
-          {item.pageCount !== null ? `${item.pageCount} page${item.pageCount === 1 ? "" : "s"} · ` : ""}
+          {pagesLabel !== null ? `${pagesLabel} · ` : ""}
           {formatUploadedAt(item.createdAt)}
         </div>
         {rowStatus !== "rejected" && rowStatus !== "failed" && (
           <DocumentViewerLink to={buildDocumentViewerHref(item.id)} className="btn btn-ghost">
-            View document
+            {t("View document")}
           </DocumentViewerLink>
         )}
       </td>
       <td className="document-status-table-supplier">
-        <span>{item.supplierName ?? "—"}</span> <span className="micro-meta">· {getDocumentTypeLabel(item.documentType)}</span>
+        <span>{item.supplierName ?? "—"}</span> <span className="micro-meta">· {getDocumentTypeLabel(item.documentType, t)}</span>
       </td>
       <td>
         <span className={`tag tag-${tag.variant}`}>{tag.label}</span>
@@ -263,18 +274,21 @@ function ServerDocumentRow({
         {rowStatus === "uploaded" ? (
           <span className="micro-meta">
             <PendingSpinner />
-            Processing in the background
+            {t("Processing in the background")}
           </span>
         ) : rowStatus === "processing" ? (
           <span className="micro-meta">
             <PendingSpinner />
-            {(item.stage ?? "Queued") + "…"}
+            {t("{stage}…", { stage: t(item.stage ?? "Queued") })}
           </span>
         ) : action !== null ? (
           action.kind === "ask" ? (
             <Link
               to={`/ask?scope=${item.contractId ?? ""}`}
-              state={{ query: `When does ${item.supplierName ?? "it"} expire?`, newChat: true }}
+              state={{
+                query: item.supplierName !== null ? t("When does {supplier} expire?", { supplier: item.supplierName }) : t("When does it expire?"),
+                newChat: true,
+              }}
               className="btn btn-secondary"
             >
               {action.label}
@@ -294,15 +308,15 @@ function ServerDocumentRow({
           {confirmingDeleteId === item.id ? (
             <div className="document-status-table-delete-confirm">
               <button type="button" className="btn btn-primary" onClick={() => onConfirmDelete(item.id)}>
-                Confirm delete
+                {t("Confirm delete")}
               </button>
               <button type="button" className="btn document-status-table-delete-cancel" onClick={onCancelConfirm}>
-                Cancel
+                {t("Cancel")}
               </button>
             </div>
           ) : (
             <button type="button" className="btn btn-ghost" onClick={() => onAskConfirm(item.id)}>
-              Delete
+              {t("Delete")}
             </button>
           )}
         </td>

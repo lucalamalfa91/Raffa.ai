@@ -1,4 +1,5 @@
 import { getStagePercent } from "./documentTable";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export interface ProcessingPipelineProps {
   /** The real stage name from `GET /api/documents` (R-DOC-09), or `null` before the first poll has
@@ -33,8 +34,9 @@ export default function ProcessingPipeline({ stage }: ProcessingPipelineProps) {
  * says work is pending.
  */
 export function UploadingBar() {
+  const { t } = useI18n();
   return (
-    <div className="document-row-progress document-row-progress-pending" role="progressbar" aria-label="Uploading">
+    <div className="document-row-progress document-row-progress-pending" role="progressbar" aria-label={t("Uploading")}>
       <div className="document-row-progress-fill" />
     </div>
   );
