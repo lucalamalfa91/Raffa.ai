@@ -133,6 +133,19 @@ describe("Rinnovi", () => {
   });
 });
 
+describe("Rinnovi without dates", () => {
+  it("reads 'Non indicata' for a contract whose dates were not read, never the board's sort sentinel", async () => {
+    const board: RenewalsBoard = {
+      viewer, openCases: 0, toStart: 1, empty: false, assignee: null, cases: [],
+      groups: [{ key: "start", label: { id: "To start" }, items: [{ contractId: "c9", caseId: null, supplier: "GitLab", contract: "Subscription", stage: -1, stageLabel: { id: "Not started" }, next: null, notice: "—", days: 2147483647, startBy: "—", owner: null, myTurn: false, hasCase: false, done: false, waiting: false, termStatus: "unknown" }] }],
+    } as RenewalsBoard;
+    renderAt("/renewals", { getRenewalsBoard: vi.fn().mockResolvedValue(ok(board)) });
+    expect(await screen.findByText("GitLab")).toBeInTheDocument();
+    expect(screen.getByText("Non indicata")).toHaveClass("dt-muted");
+    expect(screen.queryByText(/2147483647/)).toBeNull();
+  });
+});
+
 describe("Pratica", () => {
   it("shows at most three step buttons and the rest under Altro, and posts actions with the version", async () => {
     const post = vi.fn().mockResolvedValue(ok(envelope));

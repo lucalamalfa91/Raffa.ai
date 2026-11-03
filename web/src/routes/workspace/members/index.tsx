@@ -3,6 +3,8 @@ import type { ApiClient, WorkspaceMemberBody, WorkspaceSettingsBody } from "../.
 import { useShellContext } from "../../../components/shell/shellContext";
 import { canManageMembers, type WorkspaceRole } from "../../../components/shell/navItems";
 import ScreenTitle from "../../../components/ScreenTitle";
+import { useGuide } from "../../../components/shell/guide";
+import { useI18n } from "../../../i18n/I18nProvider";
 import InvitePane, { type InviteFailure } from "./InvitePane";
 import MembersTable, { type MembersActionError } from "./MembersTable";
 import {
@@ -54,6 +56,8 @@ type SettingsState =
   | { phase: "ready"; settings: WorkspaceSettingsBody; saving: boolean; error: string | null };
 
 export const WEB_RESEARCH_SETTING_LABEL = "Allow Ask Raffa to search the public web";
+export const WEB_RESEARCH_SETTING_HINT =
+  "Off by default. When on, everyone here can switch on Web search in Ask Raffa’s composer: questions then go to the public web and to your contracts together, and a personal question is pointed at Google or an AI search tool. With the toggle off, Raffa may still offer a web search for a procurement question and asks permission first. Only the question’s words are searched — nothing from your contracts leaves Raffa; web results are labelled unverified.";
 
 /**
  * Route `/workspace/members` -- Workspace & members, V2 (ADR-024 V2 IA; screens-v2.md #10;
@@ -79,6 +83,16 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
   // value and this fallback never applies.
   const effectiveRole: WorkspaceRole = role ?? "admin";
   const isAdmin = canManageMembers(effectiveRole);
+  const { t } = useI18n();
+
+  // The page's own guide (it used to inherit the last screen's, e.g. "Chiedi a Raffa").
+  useGuide({
+    where: t("Workspace & members"),
+    now: isAdmin ? t("Invite a colleague, or change who can do what.") : t("Ask a Workspace Admin to invite your colleagues."),
+    why: t("Procurement members ask, upload and work the renewals; a Workspace Admin also deletes documents and manages members."),
+    next: t("The invited colleague signs in with the link and lands in this workspace."),
+    cta: null,
+  });
 
   const [roster, setRoster] = useState<RosterState>({ phase: "loading" });
   const [email, setEmail] = useState("");
@@ -120,13 +134,13 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
       setSettings({ phase: "ready", settings: previous, saving: true, error: null });
       void apiClient.updateWorkspaceSettings(workspaceId, { webResearchEnabled: enabled }).then((result) => {
         if (!result.ok || !result.settings) {
-          setSettings({ phase: "ready", settings: previous, saving: false, error: result.error ?? "The setting could not be saved." });
+          setSettings({ phase: "ready", settings: previous, saving: false, error: result.error ?? t("The setting could not be saved.") });
           return;
         }
         setSettings({ phase: "ready", settings: result.settings, saving: false, error: null });
       });
     },
-    [apiClient, workspaceId, settings],
+    [apiClient, workspaceId, settings, t],
   );
 
   const loadRoster = useCallback(() => {
@@ -137,13 +151,13 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
         setRoster({
           phase: "error",
           statusCode: result.statusCode,
-          message: result.error ?? "The roster could not be loaded.",
+          message: result.error ?? t("The roster could not be loaded."),
         });
         return;
       }
       setRoster({ phase: "ready", members: result.members });
     });
-  }, [apiClient, workspaceId]);
+  }, [apiClient, workspaceId, t]);
 
   useEffect(() => {
     loadRoster();
@@ -152,7 +166,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
   const sendInvite = useCallback(() => {
     if (!workspaceId) return;
 
-    const validationError = validateInviteEmail(email);
+    const validationError = validateInviteEmail(email, t);
     if (validationError !== null) {
       // Keep the last successful accept link on screen -- a second empty click used to wipe it,
       // and the server cannot reproduce the token (hash only).
@@ -179,7 +193,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
 
       if (!result.ok || !result.member) {
         // A 400/409 carries the server's own validation sentence; nothing about a mail is asserted.
-        setInviteError(result.error ?? "The invitation could not be created.");
+        setInviteError(result.error ?? t("The invitation could not be created."));
         return;
       }
 
@@ -192,7 +206,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
       // server-derived status) comes back the same way every other change to it does.
       loadRoster();
     });
-  }, [apiClient, email, inviteRole, workspaceId, loadRoster]);
+  }, [apiClient, email, inviteRole, workspaceId, loadRoster, t]);
 
   const handleReissue = useCallback(
     (invitationId: string, invitedEmail: string, role: string) => {
@@ -210,14 +224,14 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
             return;
           }
           if (!result.ok || !result.member) {
-            setActionError({ id: invitationId, message: result.error ?? "The invitation could not be created." });
+            setActionError({ id: invitationId, message: result.error ?? t("The invitation could not be created.") });
             return;
           }
           setOutcome(inviteOutcomeFrom(result.member));
           loadRoster();
         });
     },
-    [apiClient, workspaceId, loadRoster],
+    [apiClient, workspaceId, loadRoster, t],
   );
 
   const handleRevoke = useCallback(
@@ -228,13 +242,13 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
       void apiClient.revokeInvitation(workspaceId, invitationId).then((result) => {
         setPendingActionId(null);
         if (!result.ok) {
-          setActionError({ id: invitationId, message: result.error ?? "The invitation could not be revoked." });
+          setActionError({ id: invitationId, message: result.error ?? t("The invitation could not be revoked.") });
           return;
         }
         loadRoster();
       });
     },
-    [apiClient, workspaceId, loadRoster],
+    [apiClient, workspaceId, loadRoster, t],
   );
 
   const handleRemove = useCallback(
@@ -245,7 +259,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
       void apiClient.removeMember(workspaceId, membershipId).then((result) => {
         if (!result.ok) {
           setPendingActionId(null);
-          setActionError({ id: membershipId, message: result.error ?? "The member could not be removed." });
+          setActionError({ id: membershipId, message: result.error ?? t("The member could not be removed.") });
           return;
         }
         if (isSelf) {
@@ -263,14 +277,14 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
         loadRoster();
       });
     },
-    [apiClient, workspaceId, loadRoster],
+    [apiClient, workspaceId, loadRoster, t],
   );
 
   if (!workspaceId) {
     return (
       <div className="empty-state" role="status">
-        <h3>No workspace selected</h3>
-        <p className="micro-meta">Choose a workspace before managing members.</p>
+        <h3>{t("No workspace selected")}</h3>
+        <p className="micro-meta">{t("Choose a workspace before managing members.")}</p>
       </div>
     );
   }
@@ -282,15 +296,15 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
     <div className="members-screen">
       <header className="screen-header">
         <div>
-          <p className="screen-kicker">Setup</p>
-          <ScreenTitle guide="members">Workspace &amp; members</ScreenTitle>
-          <p className="screen-header-summary">{formatWorkspaceLine(workspaceId, workspaceName)}</p>
+          <p className="screen-kicker">{t("Setup")}</p>
+          <ScreenTitle guide="members">{t("Workspace & members")}</ScreenTitle>
+          <p className="screen-header-summary">{formatWorkspaceLine(workspaceId, workspaceName, t)}</p>
         </div>
       </header>
 
       {shell?.kbReady === false && (
         <p className="members-tip" role="note">
-          {MEMBERS_TIP}
+          {t(MEMBERS_TIP)}
         </p>
       )}
 
@@ -298,7 +312,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
         <div className="members-table-column">
           {roster.phase === "loading" && (
             <div className="members-skeleton" role="status" aria-live="polite">
-              <p className="micro-meta">Loading members…</p>
+              <p className="micro-meta">{t("Loading members…")}</p>
               {Array.from({ length: 3 }, (_, index) => (
                 <div key={index} className="skeleton members-skeleton-row" />
               ))}
@@ -307,13 +321,13 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
 
           {roster.phase === "error" && (
             <div className="error-state" role="alert">
-              <h4>Members unavailable</h4>
+              <h4>{t("Members unavailable")}</h4>
               <p className="micro-meta">
                 {roster.message}
                 {roster.statusCode !== null && ` (HTTP ${roster.statusCode})`}
               </p>
               <button type="button" className="btn btn-secondary" onClick={loadRoster}>
-                Retry
+                {t("Retry")}
               </button>
             </div>
           )}
@@ -334,7 +348,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
           {settings.phase === "ready" && (
             <section className="members-settings" aria-labelledby="members-settings-title">
               <h3 id="members-settings-title" className="members-settings-title">
-                Ask Raffa
+                {t("Ask Raffa")}
               </h3>
               <label className="members-settings-row">
                 <input
@@ -344,17 +358,13 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
                   onChange={(event) => setWebResearch(event.target.checked)}
                 />
                 <span>
-                  <span className="members-settings-label">{WEB_RESEARCH_SETTING_LABEL}</span>
+                  <span className="members-settings-label">{t(WEB_RESEARCH_SETTING_LABEL)}</span>
                   <span className="micro-meta members-settings-hint">
-                    Off by default. When on, everyone here can switch on Web search in Ask Raffa&apos;s composer: questions then
-                    go to the public web and to your contracts together, and a personal question is pointed at Google or an AI
-                    search tool. With the toggle off, Raffa may still offer a web search for a procurement question and asks
-                    permission first. Only the question&apos;s words are searched -- nothing from your contracts leaves Raffa;
-                    web results are labelled unverified.
+                    {t(WEB_RESEARCH_SETTING_HINT)}
                   </span>
                 </span>
               </label>
-              {!settings.settings.canEdit && <p className="micro-meta">Only a Workspace Admin can change this.</p>}
+              {!settings.settings.canEdit && <p className="micro-meta">{t("Only a Workspace Admin can change this.")}</p>}
               {settings.error !== null && (
                 <p className="micro-meta members-settings-error" role="alert">
                   {settings.error}
@@ -371,7 +381,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
             tenantDomain={tenantDomain}
             error={inviteError}
             failure={inviteFailure}
-            domainWarning={inviteDomainWarning(email, tenantDomain, inviteRole)}
+            domainWarning={inviteDomainWarning(email, tenantDomain, inviteRole, t)}
             outcome={outcome}
             submitting={submitting}
             onEmailChange={(value) => {
@@ -401,14 +411,15 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
  * than rendered inert when no live Admin is on the roster yet.
  */
 function RequestAccessPane({ adminEmails, workspaceName }: { adminEmails: readonly string[]; workspaceName?: string }) {
-  const mailto = requestAccessMailto(adminEmails, workspaceName);
+  const { t } = useI18n();
+  const mailto = requestAccessMailto(adminEmails, workspaceName, t);
   return (
-    <aside className="members-invite-pane" aria-label="Request access">
-      <h4>You don&apos;t manage this workspace</h4>
-      <p className="micro-meta">Only a Workspace Admin can invite, revoke or remove members. Ask one of your workspace&apos;s Admins for access.</p>
+    <aside className="members-invite-pane" aria-label={t("Request access")}>
+      <h4>{t("You don’t manage this workspace")}</h4>
+      <p className="micro-meta">{t("Only a Workspace Admin can invite, revoke or remove members. Ask one of your workspace’s Admins for access.")}</p>
       {mailto !== null && (
         <a className="btn btn-secondary" href={mailto}>
-          Request access
+          {t("Request access")}
         </a>
       )}
     </aside>

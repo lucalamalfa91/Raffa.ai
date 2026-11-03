@@ -124,7 +124,8 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
                 {tr(g.label)} <span>· {g.items.length}</span>
               </div>
               {g.items.map((x) => {
-                const stated = x.notice.trim() !== "" && x.termStatus !== "unknown";
+                // The board sends "—" (and days = int.MaxValue) when the contract's dates were not read.
+                const stated = x.notice.trim() !== "" && x.notice !== "—" && x.termStatus !== "unknown";
                 const urgent = stated && x.days >= 0 && x.days <= 30;
                 return (
                   <div key={x.contractId} className="r-row dt-row r4-row" onClick={() => open(x)}>

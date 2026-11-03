@@ -1,6 +1,5 @@
 import type { Translate } from "../../i18n/translate";
-import { useShellContext } from "../../components/shell/shellContext";
-import { loadCurrentWorkspace } from "../signin/workspaceStore";
+import { useWorkspaceId } from "../../components/shell/shellContext";
 
 /**
  * AskRaffa 4.0 slice 4 helpers shared by Contratti, Contratto and Revisione.
@@ -38,8 +37,7 @@ export const URGENT_NOTICE_DAYS = 45;
 
 /** The tenant id the screens call the API with (the shell's workspace, else the remembered one). */
 export function useTenantId(): string | null {
-  const shell = useShellContext();
-  return shell?.workspaceId ?? loadCurrentWorkspace()?.id ?? null;
+  return useWorkspaceId();
 }
 
 /** Fired after a contract is validated or a decision changes, so other screens (the Oggi badge) re-read. */

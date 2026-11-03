@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { TipCopy } from "./infoTipCopy";
+import { useI18n } from "../i18n/I18nProvider";
 import "./InfoTip.css";
 
 const GAP = 8;
@@ -133,12 +134,14 @@ export default function InfoTip({ label, children, align = "start", guideKey }: 
 
 /** An InfoTip whose words come from the catalogue (`infoTipCopy.ts`): one paragraph per line, the small print last. */
 export function CopyTip({ tip, align, guideKey }: { tip: TipCopy; align?: "start" | "end"; guideKey?: string }) {
+  // The catalogue's English is the message id: a line with Italian in i18n/it reads in Italian, any other in English.
+  const { t } = useI18n();
   return (
-    <InfoTip label={tip.label} align={align} guideKey={guideKey}>
+    <InfoTip label={t(tip.label)} align={align} guideKey={guideKey}>
       {tip.lines.map((line) => (
-        <p key={line}>{line}</p>
+        <p key={line}>{t(line)}</p>
       ))}
-      {tip.meta !== undefined && <p className="info-tip-meta">{tip.meta}</p>}
+      {tip.meta !== undefined && <p className="info-tip-meta">{t(tip.meta)}</p>}
     </InfoTip>
   );
 }

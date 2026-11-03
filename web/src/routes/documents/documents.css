@@ -512,6 +512,15 @@
    its own size (`.v4 h1` from ds-modernist.css would otherwise win over the class rule above). ---- */
 .v4 .documents-screen:not(.documents-screen--list):not(.documents-onboarding) { padding: 32px 40px 40px; }
 .v4 .documents-onboarding-headline { font-size: clamp(30px, 3.4vw, 46px); line-height: 1.05; margin: 0 0 28px; }
+.v4 .upload-dropzone--list { margin: 20px 40px 0; }
+.v4 .documents-list-main { padding: 20px 40px 32px; }
+.v4 .documents-progress-panel { padding: 22px 40px 32px; }
+/* The empty state's rule spans the list like every other section rule; only its text keeps a measure. */
+.v4 .documents-attention-empty { max-width: none; }
+.v4 .documents-attention-empty > * { max-width: 60ch; }
 @media (max-width: 700px) {
   .v4 .documents-screen:not(.documents-screen--list):not(.documents-onboarding) { padding: 24px 16px 32px; }
+  .v4 .upload-dropzone--list { margin: 16px 16px 0; }
+  .v4 .documents-list-main { padding: 16px 16px 24px; }
+  .v4 .documents-progress-panel { padding: 20px 16px 24px; }
 }

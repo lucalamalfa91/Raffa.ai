@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
-import { loadCurrentWorkspace } from "../signin/workspaceStore";
+import { useWorkspaceId } from "../../components/shell/shellContext";
 import type { WorkspaceRole } from "../../components/shell/navItems";
 import { useDocumentsList } from "./useDocumentsList";
 import OnboardingEmptyState from "./OnboardingEmptyState";
@@ -13,6 +13,8 @@ import DocumentProgressPanel from "./DocumentProgressPanel";
 import { createSampleDocumentFile, type SampleDocumentKey } from "./sampleDocument";
 import { buildKbSummary, getDocumentTypeLabel } from "./documentTable";
 import ScreenTitle from "../../components/ScreenTitle";
+import { useGuide } from "../../components/shell/guide";
+import { useI18n } from "../../i18n/I18nProvider";
 import { CopyTip } from "../../components/InfoTip";
 import { TIPS } from "../../components/infoTipCopy";
 import "./documents.css";
@@ -58,11 +60,28 @@ interface JustValidated {
 export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const workspace = loadCurrentWorkspace();
+  // The shell's workspace first (fixture mode never writes the sign-in store), as every v4 screen does.
+  const workspaceId = useWorkspaceId();
+  const workspace = workspaceId !== null ? { id: workspaceId } : null;
   const list = useDocumentsList(apiClient);
   const [justValidated, setJustValidated] = useState<JustValidated | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
+
+  // The list's own guide (the route fallback treats all of /documents as a review, with no "what to
+  // do now"); a document under review (`?review=`) keeps that fallback.
+  const { t } = useI18n();
+  useGuide(
+    reviewDocumentIdFromUrl(searchParams) === null
+      ? {
+          where: t("Documents"),
+          now: t("Upload contracts, or verify the ones waiting for you."),
+          why: t("Raffa reads each file and asks you only about the facts it is not sure of."),
+          next: t("A validated contract feeds Today, Renewals and Contracts."),
+          cta: null,
+        }
+      : null,
+  );
 
   useEffect(() => {
     if (searchParams.get("filter") === "all") {
@@ -320,4 +339,9 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
       </div>
     </div>
   );
+}
+
+/** The document under review, if the URL opens one (`?review=:id`): that state registers its own guide. */
+function reviewDocumentIdFromUrl(searchParams: URLSearchParams): string | null {
+  return searchParams.get("review");
 }

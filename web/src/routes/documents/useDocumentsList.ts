@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApiClient, DocumentListItemBody } from "../../api/client";
-import { loadCurrentWorkspace } from "../signin/workspaceStore";
+import { useWorkspaceId } from "../../components/shell/shellContext";
 import { POLL_INTERVAL_MS, POLL_NO_CHANGE_BUDGET_MS, usePollBudget } from "../../components/shell/usePollBudget";
 import { runUploadBatch, MAX_FILES_PER_BATCH, type LocalUploadEntry } from "./uploadPipeline";
 import {
@@ -77,7 +77,9 @@ function fingerprintOf(documents: readonly DocumentListItemBody[], counts: Docum
 }
 
 export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
-  const workspace = loadCurrentWorkspace();
+  // The shell's workspace first (fixture mode never writes the sign-in store), as every v4 screen does.
+  const workspaceId = useWorkspaceId();
+  const workspace = workspaceId !== null ? { id: workspaceId } : null;
   const [fetchState, setFetchState] = useState<DocumentsFetchState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [documents, setDocuments] = useState<readonly DocumentListItemBody[]>([]);
@@ -126,8 +128,8 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
       setErrorMessage(null);
     });
     if (filterRef.current === "rejected") loadRejected();
-    // workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns a fresh
-    // object every call, the same convention every other route's own load() callback follows.
+    // workspace?.id (a primitive), not workspace itself -- `workspace` is a fresh object every render,
+    // the same convention every other route's own load() callback follows.
   }, [apiClient, workspace?.id, loadRejected]);
 
   useEffect(() => {
