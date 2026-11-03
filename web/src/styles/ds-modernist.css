@@ -189,7 +189,7 @@ html:has(.v4) #root {
 
 /* — older screens inside the v4 shell (Documents, Workspace & members): the same 40px gutters and
    page header as the v4 pages, so every page's content starts on the same x (D9) — */
-.v4 .screen-header { padding: 32px 40px 16px; align-items: flex-start; }
+.v4 .screen-header { padding: 32px 40px 16px; align-items: flex-start; flex-wrap: wrap; row-gap: 12px; }
 /* The page's actions sit on the title line (D9 option 4A), centred on its 32px x 1.12 line box. */
 .v4 .screen-header-actions { min-height: 36px; }
 .v4 .screen-reroute { padding: 48px 40px; }
