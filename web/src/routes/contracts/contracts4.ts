@@ -20,9 +20,12 @@ export function tx(t: Translate, text: ServerText | unknown): string {
   return "";
 }
 
-/** "CHF 640k" (prototype: `'CHF '+Math.round(spend/1000)+'k'`). */
+/**
+ * "CHF 640k", and "CHF 2.4M" from a million up — the same rule as Risultati (`k` in
+ * resultsViewModel.ts), so one amount reads the same on every screen (D9, PARITY.md).
+ */
 export function chfK(value: number): string {
-  return `CHF ${Math.round(value / 1000)}k`;
+  return value >= 1e6 ? `CHF ${(value / 1e6).toFixed(1)}M` : `CHF ${Math.round(value / 1000)}k`;
 }
 
 /** "1,500" — the prototype's `toLocaleString('en-US')` for contract quantities and prices. */

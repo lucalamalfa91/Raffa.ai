@@ -126,7 +126,9 @@ describe("Rinnovi", () => {
     } as RenewalsBoard;
     renderAt("/renewals", { getRenewalsBoard: vi.fn().mockResolvedValue(ok(board)) });
     expect(await screen.findByText("Tocca a te")).toBeInTheDocument();
-    expect(screen.getByText("Disdetta entro")).toBeInTheDocument();
+    // D9: "Disdetta entro" heads the column once; each cell repeats it for assistive technology.
+    expect(screen.getAllByText("Disdetta entro")[0]).toHaveClass("dt-th");
+    expect(screen.getByText("02 Oct 2026")).toHaveClass("dt-urgent");
     expect(screen.getByRole("button", { name: "Fai ora" })).toBeInTheDocument();
   });
 });

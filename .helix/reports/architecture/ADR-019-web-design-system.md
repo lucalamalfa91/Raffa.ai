@@ -482,3 +482,29 @@ existing cell shape, and the viewer is composed from `.btn-ghost`, `.table` and
 surface tokens — `## Accessibility baseline (locked)`, rows `:103-108`, the w14
 footer apart from clause 10's correction, and w15 clauses 1–6. This footer
 creates **no new ADR** and supersedes nothing.
+
+## Amendment (2026-11-03 — typeface and layout precision, product owner's request)
+
+Recorded as approved deviations **D8** and **D9** in
+`docs/design/Raffa.ai/design_handoff_askraffa_v4/PARITY.md`, where the
+reasoning and the affected screens are listed.
+
+**1. Typeface (D8).** `--font-heading` and `--font-body` move from Archivo
+(headings 800) and Inter (body, D1) to **IBM Plex Sans** for both roles,
+loaded from Google Fonts like before. `--weight-heading` becomes **700**
+(titles of 18px and up, KPI values); a new `--weight-title` (**600**) carries
+small titles, row names, tabs and buttons. Figures are tabular across the v4
+shell. This replaces the `--font-heading / --font-body` row of
+`## Token set (locked)` (`:76`) and the "Archivo only" line of the handoff
+README; colour, radius, spacing and shadow tokens are unchanged.
+
+**2. Data tables and page header (D9).** Two shared patterns join the
+component catalogue, both in `web/src/styles/ds-modernist.css`: `.dt` (one
+header row, columns set per table through `--dt-cols`, figures right-aligned,
+the row action in its own column, a stacked layout with visible cell labels
+under 760px) and `.ph` (title and the page's main action on one line, the
+summary below). Lists of records use `.dt`; the Risultati KPIs are one tile
+grid. No new colour or semantic row.
+
+**3. Unchanged.** `## Semantic mapping (locked)`, `## Accessibility baseline
+(locked)` and every earlier footer.

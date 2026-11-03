@@ -78,8 +78,11 @@ describe("Contratti", () => {
 
     expect(await screen.findByText("Salesforce")).toBeInTheDocument();
     expect(screen.getByText("1 contratti validati · ordinati per scadenza di disdetta")).toBeInTheDocument();
-    expect(screen.getByText("18 Oct 2026 · 40 g")).toHaveClass("c4-urgent");
-    expect(screen.getByText("Fine contratto")).toBeInTheDocument();
+    // D9: a table — notice date and days in their own columns, the column headers once at the top.
+    expect(screen.getByText("18 Oct 2026")).toHaveClass("dt-urgent");
+    expect(screen.getByText("40")).toHaveClass("dt-urgent");
+    expect(screen.getAllByText("Fine contratto")[0]).toHaveClass("dt-th");
+    expect(screen.getAllByText("Giorni")[0]).toHaveClass("dt-th");
     expect(screen.getByText("CHF 640k")).toBeInTheDocument();
     expect(screen.getByText("Pratica aperta")).toHaveClass("tag-accent");
     expect(screen.getByText(/2 campi da verificare prima dell’uso/)).toBeInTheDocument();

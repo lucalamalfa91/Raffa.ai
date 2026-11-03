@@ -1,4 +1,5 @@
 import type { ContractListRowV4Body } from "../../api/client";
+import { chfK } from "../contracts/contracts4";
 
 /** The kinds of digital content Raffa builds in the side panel from the validated contracts. */
 export type ArtifactKind = "dashboard" | "kpi" | "document";
@@ -33,7 +34,6 @@ export interface Artifact {
 
 type T = (id: string, vars?: Record<string, string | number>) => string;
 
-const chfK = (v: number) => `CHF ${Math.round(v / 1000).toLocaleString("en-US")}k`;
 const WINDOWS: Array<{ id: string; max: number }> = [
   { id: "Up to 30 days", max: 30 },
   { id: "31–90 days", max: 90 },

@@ -507,3 +507,11 @@
 .documents-progress-link {
   align-self: flex-start;
 }
+
+/* ---- Inside the v4 shell (D9): 40px gutters like every other page; the onboarding headline keeps
+   its own size (`.v4 h1` from ds-modernist.css would otherwise win over the class rule above). ---- */
+.v4 .documents-screen:not(.documents-screen--list):not(.documents-onboarding) { padding: 32px 40px 40px; }
+.v4 .documents-onboarding-headline { font-size: clamp(30px, 3.4vw, 46px); line-height: 1.05; margin: 0 0 28px; }
+@media (max-width: 700px) {
+  .v4 .documents-screen:not(.documents-screen--list):not(.documents-onboarding) { padding: 24px 16px 32px; }
+}

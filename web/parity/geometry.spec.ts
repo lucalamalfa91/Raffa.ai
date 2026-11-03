@@ -16,7 +16,7 @@ test('shell', async ({ page }) => {
   expect(Math.round((await guide.boundingBox())!.width)).toBe(300);
   expect(await css(guide, 'background-color')).toBe('rgb(32, 30, 29)');
   expect(await css(guide, 'border-top-width')).toBe('3px');
-  expect(await css(page.locator('body'), 'font-family')).toContain('Archivo');
+  expect(await css(page.locator('body'), 'font-family')).toContain('IBM Plex Sans'); // D8
 });
 
 test('oggi focus card', async ({ page }) => {

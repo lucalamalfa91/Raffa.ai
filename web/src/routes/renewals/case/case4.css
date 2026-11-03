@@ -14,7 +14,7 @@
 .p4-head { padding: 14px 40px 0; border-bottom: 2px solid var(--color-text); flex: none; }
 .p4-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .v4 .p4-page .p4-back { padding: 0; font-size: 13px; white-space: nowrap; }
-.p4-title { font-family: var(--font-heading); font-weight: 800; font-size: 16px; }
+.p4-title { font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 16px; }
 .v4 .p4-page .p4-scheda-toggle { margin-left: auto; padding: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .p4-cells {
   display: grid;
@@ -113,7 +113,7 @@
 }
 .p4-step-head:focus-visible { outline-offset: 4px; }
 .p4-kicker { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent-700); font-weight: 700; }
-.p4-step-title { font-family: var(--font-heading); font-weight: 800; font-size: 22px; line-height: 1.15; margin-top: 4px; text-wrap: pretty; }
+.p4-step-title { font-family: var(--font-heading); font-weight: var(--weight-heading); font-size: 22px; line-height: 1.15; margin-top: 4px; text-wrap: pretty; }
 .p4-banner { background: var(--color-accent-100); padding: 8px 12px; font-size: 13px; }
 .p4-line-text { font-size: 14px; color: var(--color-neutral-700); text-wrap: pretty; max-width: 70ch; }
 .p4-row {
@@ -159,6 +159,8 @@
 }
 .v4 .p4-page .p4-email-to { font-size: 14px; min-height: 34px; width: 100%; box-sizing: border-box; }
 .p4-email-body { padding: 4px 14px 12px; font-size: 14px; line-height: 1.6; white-space: pre-line; max-height: 260px; overflow: auto; }
+/* In the side panel the panel itself scrolls: the email shows whole, never cut mid-line. */
+.artifact-panel-body .p4-email-body { max-height: none; overflow: visible; }
 .p4-email-edit { padding: 4px 14px 12px; }
 .v4 .p4-page .p4-email-edit textarea { width: 100%; box-sizing: border-box; min-height: 200px; font-size: 14px; font-family: var(--font-body); }
 .p4-email-note { padding: 8px 14px; border-top: 1px solid var(--color-divider); font-size: 13px; color: var(--color-neutral-700); }
@@ -246,3 +248,9 @@
 .p4-email-card { width: 100%; max-width: 560px; margin-top: 10px; }
 .p4-panel-email .p4-email { border: 0; padding: 0; }
 .p4-panel-email .p4-email-body { white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
+
+/* Phone width (D9): the same 16px gutter as the nav. */
+@media (max-width: 700px) {
+  .p4-feed { padding: 20px 16px; }
+  .p4-error { padding: 20px 16px; }
+}
