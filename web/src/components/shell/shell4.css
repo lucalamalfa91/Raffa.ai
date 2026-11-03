@@ -15,7 +15,7 @@
 }
 .v4-nav-logo {
   font-family: var(--font-heading);
-  font-weight: 800;
+  font-weight: var(--weight-title);
   font-size: 17px;
   display: flex;
   align-items: center;
@@ -45,7 +45,7 @@
   background: transparent;
   padding: 16px 0 13px;
   font-family: var(--font-heading);
-  font-weight: 800;
+  font-weight: var(--weight-title);
   font-size: 15px;
   line-height: normal;
   cursor: pointer;
@@ -114,7 +114,7 @@
   min-height: 0;
 }
 .v4-guide-head { display: flex; align-items: center; gap: 10px; }
-.v4-guide-title { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
+.v4-guide-title { font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 15px; }
 .v4 .v4-guide-hide {
   margin-left: auto;
   border: 0;
@@ -135,7 +135,7 @@
 .v4-guide-where { font-size: 15px; font-weight: 700; margin-top: 3px; }
 .v4-guide-now {
   font-family: var(--font-heading);
-  font-weight: 800;
+  font-weight: var(--weight-heading);
   font-size: 19px;
   line-height: 1.2;
   margin-top: 3px;
@@ -171,7 +171,7 @@
   width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;
 }
 .v4 .v4-acct-btn.is-open { background: var(--color-text); color: var(--color-bg); }
-.v4-acct-mark { font-family: var(--font-heading); font-weight: 800; font-size: 12px; letter-spacing: 0.04em; }
+.v4-acct-mark { font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 12px; letter-spacing: 0.04em; }
 .v4-acct-menu {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 260px;
   background: var(--color-bg); border: 2px solid var(--color-text); display: flex; flex-direction: column;

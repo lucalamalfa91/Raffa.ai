@@ -4,6 +4,7 @@ import type { ApiClient, DocumentListItemBody } from "../../api/client";
 import { CHECK_AGAIN_LABEL, UPDATES_PAUSED_NOTICE } from "../../components/shell/usePollBudget";
 import { getDocumentTypeLabel, getRowStatus, getRowStatusTag } from "./documentTable";
 import { getProgressView } from "./documentProgress";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export interface DocumentProgressPanelProps {
   apiClient: ApiClient;
@@ -44,6 +45,7 @@ export default function DocumentProgressPanel({ apiClient, tenantId, item, onBac
   // Guards against re-sending the same document's prioritise call on every poll-driven re-render
   // (this effect's own dependency array already only reruns on a real id change; the ref is the
   // second, explicit line of defence against React re-mounting this component under StrictMode).
+  const { t } = useI18n();
   const prioritisedIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -52,18 +54,18 @@ export default function DocumentProgressPanel({ apiClient, tenantId, item, onBac
     void apiClient.prioritiseDocument(tenantId, item.id);
   }, [apiClient, tenantId, item.id]);
 
-  const view = getProgressView(item);
-  const tag = getRowStatusTag(getRowStatus(item.processingStatus));
+  const view = getProgressView(item, t);
+  const tag = getRowStatusTag(getRowStatus(item.processingStatus), t);
 
   return (
     <div className="documents-progress-panel">
       <button type="button" className="btn btn-ghost documents-review-back" onClick={onBack}>
-        ← Documents
+        {t("← Documents")}
       </button>
 
       <header className="documents-progress-header">
         <p className="micro-meta">
-          {getDocumentTypeLabel(item.documentType)}
+          {getDocumentTypeLabel(item.documentType, t)}
           {item.supplierName !== null ? ` · ${item.supplierName}` : ""}
         </p>
         <h2 className="screen-title">{item.fileName}</h2>
@@ -75,23 +77,23 @@ export default function DocumentProgressPanel({ apiClient, tenantId, item, onBac
 
       {view.isWaiting && (
         <>
-          <p className="hint">Raffa.ai is giving this document priority over the rest of the queue.</p>
+          <p className="hint">{t("Raffa.ai is giving this document priority over the rest of the queue.")}</p>
 
-          <ol className="documents-progress-stages" aria-label="Processing stages">
+          <ol className="documents-progress-stages" aria-label={t("Processing stages")}>
             {view.stages.map((stage) => (
               <li key={stage.name} className={`documents-progress-stage documents-progress-stage--${stage.state}`}>
                 <span className="documents-progress-stage-dot" aria-hidden="true" />
-                {stage.name}
-                {stage.state === "current" && <span className="micro-meta"> · in progress</span>}
+                {t(stage.name)}
+                {stage.state === "current" && <span className="micro-meta"> · {t("in progress")}</span>}
               </li>
             ))}
           </ol>
 
           {updatesPaused && (
             <div className="documents-updates-paused" role="status">
-              <p className="hint">{UPDATES_PAUSED_NOTICE}</p>
+              <p className="hint">{t(UPDATES_PAUSED_NOTICE)}</p>
               <button type="button" className="btn btn-secondary" onClick={onResumeUpdates}>
-                {CHECK_AGAIN_LABEL}
+                {t(CHECK_AGAIN_LABEL)}
               </button>
             </div>
           )}

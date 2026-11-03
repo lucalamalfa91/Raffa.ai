@@ -25,6 +25,11 @@ export const IT_CONTRACTS4: Readonly<Record<string, string>> = {
   "Case open": "Pratica aperta",
   "Renewed": "Rinnovato",
   "Terminated": "Disdetto",
+  // Contratti as a table (D9): column headers and the empty / passed notice cells
+  "Supplier · document": "Fornitore · documento",
+  "Days": "Giorni",
+  "Annual value": "Valore annuo",
+  "Not stated": "Non indicata",
 
   // Contratto
   "The contract could not be loaded.": "Non riesco a caricare il contratto.",

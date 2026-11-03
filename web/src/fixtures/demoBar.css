@@ -14,7 +14,7 @@
 }
 .demo-bar-kicker {
   font-family: var(--font-heading);
-  font-weight: 800;
+  font-weight: var(--weight-title);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-accent-400);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
-import { loadCurrentWorkspace } from "../signin/workspaceStore";
+import { useWorkspaceId } from "../../components/shell/shellContext";
 import type { WorkspaceRole } from "../../components/shell/navItems";
 import { useDocumentsList } from "./useDocumentsList";
 import OnboardingEmptyState from "./OnboardingEmptyState";
@@ -13,6 +13,8 @@ import DocumentProgressPanel from "./DocumentProgressPanel";
 import { createSampleDocumentFile, type SampleDocumentKey } from "./sampleDocument";
 import { buildKbSummary, getDocumentTypeLabel } from "./documentTable";
 import ScreenTitle from "../../components/ScreenTitle";
+import { useGuide } from "../../components/shell/guide";
+import { useI18n } from "../../i18n/I18nProvider";
 import { CopyTip } from "../../components/InfoTip";
 import { TIPS } from "../../components/infoTipCopy";
 import "./documents.css";
@@ -58,11 +60,28 @@ interface JustValidated {
 export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const workspace = loadCurrentWorkspace();
+  // The shell's workspace first (fixture mode never writes the sign-in store), as every v4 screen does.
+  const workspaceId = useWorkspaceId();
+  const workspace = workspaceId !== null ? { id: workspaceId } : null;
   const list = useDocumentsList(apiClient);
   const [justValidated, setJustValidated] = useState<JustValidated | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
+
+  // The list's own guide (the route fallback treats all of /documents as a review, with no "what to
+  // do now"); a document under review (`?review=`) keeps that fallback.
+  const { t } = useI18n();
+  useGuide(
+    reviewDocumentIdFromUrl(searchParams) === null
+      ? {
+          where: t("Documents"),
+          now: t("Upload contracts, or verify the ones waiting for you."),
+          why: t("Raffa reads each file and asks you only about the facts it is not sure of."),
+          next: t("A validated contract feeds Today, Renewals and Contracts."),
+          cta: null,
+        }
+      : null,
+  );
 
   useEffect(() => {
     if (searchParams.get("filter") === "all") {
@@ -82,8 +101,8 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     // that earlier check, the same posture V1 already took.
     return (
       <div className="empty-state" role="status">
-        <h3>No workspace selected</h3>
-        <p className="micro-meta">Choose a workspace before uploading documents.</p>
+        <h3>{t("No workspace selected")}</h3>
+        <p className="micro-meta">{t("Choose a workspace before uploading documents.")}</p>
       </div>
     );
   }
@@ -94,7 +113,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     if (list.fetchState === "loading" && target === undefined) {
       return (
         <div className="review-skeleton" role="status" aria-live="polite">
-          <p className="micro-meta">Loading review…</p>
+          <p className="micro-meta">{t("Loading review…")}</p>
         </div>
       );
     }
@@ -102,16 +121,16 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     if (target === undefined || target.contractId === null) {
       return (
         <div className="empty-state" role="status">
-          <h3>Document not ready for review</h3>
-          <p className="micro-meta">This document is not yet linked to a contract, or no longer exists.</p>
+          <h3>{t("Document not ready for review")}</h3>
+          <p className="micro-meta">{t("This document is not yet linked to a contract, or no longer exists.")}</p>
           <button type="button" className="btn btn-secondary" onClick={() => navigate("/documents")}>
-            ← Documents
+            {t("← Documents")}
           </button>
         </div>
       );
     }
 
-    const displayName = target.supplierName ?? getDocumentTypeLabel(target.documentType);
+    const displayName = target.supplierName ?? getDocumentTypeLabel(target.documentType, t);
     return (
       <ReviewState
         apiClient={apiClient}
@@ -133,7 +152,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     if (list.fetchState === "loading" && target === undefined) {
       return (
         <div className="review-skeleton" role="status" aria-live="polite">
-          <p className="micro-meta">Loading…</p>
+          <p className="micro-meta">{t("Loading…")}</p>
         </div>
       );
     }
@@ -141,10 +160,10 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     if (target === undefined) {
       return (
         <div className="empty-state" role="status">
-          <h3>This document no longer exists</h3>
-          <p className="micro-meta">It may have been deleted, or this link is stale.</p>
+          <h3>{t("This document no longer exists")}</h3>
+          <p className="micro-meta">{t("It may have been deleted, or this link is stale.")}</p>
           <button type="button" className="btn btn-secondary" onClick={() => navigate("/documents")}>
-            ← Documents
+            {t("← Documents")}
           </button>
         </div>
       );
@@ -180,7 +199,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     setDeleteError(null);
     void apiClient.deleteDocument(workspace.id, documentId).then((result) => {
       if (!result.ok) {
-        setDeleteError(result.error ?? "This document could not be deleted.");
+        setDeleteError(result.error ?? t("This document could not be deleted."));
         return;
       }
       list.reload();
@@ -191,7 +210,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     setDeleteError(null);
     void apiClient.deleteAllDocuments(workspace.id).then((result) => {
       if (!result.ok) {
-        setDeleteError(result.error ?? "Documents could not be deleted.");
+        setDeleteError(result.error ?? t("Documents could not be deleted."));
         return;
       }
       setConfirmingDeleteAll(false);
@@ -208,7 +227,7 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
   if (list.fetchState === "loading") {
     return (
       <div className="documents-screen" role="status" aria-live="polite">
-        <p className="micro-meta">Loading documents…</p>
+        <p className="micro-meta">{t("Loading documents…")}</p>
         {Array.from({ length: 4 }, (_, index) => (
           <div key={index} className="skeleton documents-list-skeleton-row" />
         ))}
@@ -222,10 +241,10 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
   if (list.fetchState === "error" && list.counts.all === 0 && list.counts.rejected === 0 && list.localUploads.length === 0) {
     return (
       <div className="error-state" role="alert">
-        <h4>Documents unavailable</h4>
+        <h4>{t("Documents unavailable")}</h4>
         <p className="micro-meta">{list.errorMessage}</p>
         <button type="button" className="btn btn-secondary" onClick={list.reload}>
-          Retry
+          {t("Retry")}
         </button>
       </div>
     );
@@ -235,31 +254,37 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
     return <OnboardingEmptyState onFilesSelected={handleFilesSelected} onUseSampleFile={handleUseSampleFile} />;
   }
 
+  // Sentences with a bold word: the whole sentence is one message, split around its `{slot}`.
+  const [askableBefore, askableAfter] = t("{name} is now askable.").split("{name}");
+  const [legendBefore, legendAfter] = t(
+    "uploaded → processing → needs review → completed. Only {completed} documents feed Ask Raffa, Portfolio and Renewals.",
+  ).split("{completed}");
+
   return (
     <div className="documents-screen documents-screen--list">
       <header className="screen-header">
         <div>
-          <ScreenTitle guide="documents">Documents</ScreenTitle>
-          <p className="screen-header-summary">{buildKbSummary(list.counts)}</p>
+          <ScreenTitle guide="documents">{t("Documents")}</ScreenTitle>
+          <p className="screen-header-summary">{buildKbSummary(list.counts, t)}</p>
         </div>
         {role === "admin" && (
           <div className="screen-header-actions">
             {confirmingDeleteAll ? (
               <div className="document-status-table-delete-confirm">
                 <button type="button" className="btn btn-primary" onClick={handleDeleteAll}>
-                  Confirm delete all
+                  {t("Confirm delete all")}
                 </button>
                 <button
                   type="button"
                   className="btn document-status-table-delete-cancel"
                   onClick={() => setConfirmingDeleteAll(false)}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </button>
               </div>
             ) : (
               <button type="button" className="btn btn-ghost" onClick={() => setConfirmingDeleteAll(true)}>
-                Delete all documents
+                {t("Delete all documents")}
               </button>
             )}
             <CopyTip tip={TIPS.documentsDeleteAll} align="end" />
@@ -272,14 +297,16 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
       {justValidated !== null && (
         <div className="documents-validated-hook">
           <span className="documents-validated-hook-text">
-            <strong>{justValidated.displayName}</strong> is now askable.
+            {askableBefore}
+            <strong>{justValidated.displayName}</strong>
+            {askableAfter}
           </span>
           <Link
             to={`/ask?scope=${justValidated.contractId}`}
-            state={{ query: "When does it expire?", newChat: true }}
+            state={{ query: t("When does it expire?"), newChat: true }}
             className="documents-validated-hook-ask"
           >
-            Ask: when does it expire?
+            {t("Ask: when does it expire?")}
           </Link>
         </div>
       )}
@@ -314,10 +341,16 @@ export default function DocumentsRoute({ apiClient, role }: DocumentsRouteProps)
       />
 
       <p className="micro-meta documents-legend">
-        uploaded → processing → needs review → completed. Only <strong>completed</strong> documents feed Ask Raffa,
-        Portfolio and Renewals.
+        {legendBefore}
+        <strong>{t("completed⟦documents⟧")}</strong>
+        {legendAfter}
       </p>
       </div>
     </div>
   );
+}
+
+/** The document under review, if the URL opens one (`?review=:id`): that state registers its own guide. */
+function reviewDocumentIdFromUrl(searchParams: URLSearchParams): string | null {
+  return searchParams.get("review");
 }

@@ -138,7 +138,10 @@ public sealed class ContractsV4QueryService(
                     term.RenewedOn is { } r ? ContractFactsReader.FormatDate(r) : null,
                     term.RenewedOn is { } rp && rp <= today);
             })
-            .OrderBy(r => r.NoticeDays)
+            // A contract whose notice date was not read has no deadline to sort by (its NoticeDays is 0, not
+            // "due today"): it goes last, as on the Renewals board, and the screen reads "Not stated".
+            .OrderBy(r => string.IsNullOrEmpty(r.NoticeDeadline))
+            .ThenBy(r => r.NoticeDays)
             .ThenBy(r => r.Supplier, StringComparer.Ordinal)
             .ToList();
         var attention = await readingService.GetAttentionAsync(tenantId, cancellationToken).ConfigureAwait(false);
