@@ -123,6 +123,19 @@ public sealed class ResultsReportBuilderTests
     }
 
     [Fact]
+    public void An_open_objective_without_a_notice_date_sorts_after_the_dated_ones()
+    {
+        // No notice date read: Days falls back to 0, which must not read as "due today" and lead the list.
+        var undated = new ResultsContract(Guid.NewGuid(), "GitLab", "DevOps", 101000, null, 0, "7%", true);
+        var contracts = new[] { undated, Contract(Salesforce, "Salesforce", "CRM", 640000, new DateOnly(2026, 10, 18)) };
+
+        var report = ResultsReportBuilder.Build(Today, "fy", [], contracts, []);
+
+        Assert.Equal(["Salesforce", "GitLab"], report.OpenObjectives.Select(o => o.Supplier).ToArray());
+        Assert.Equal("Salesforce", report.Kpis.NextNotice!.Supplier);
+    }
+
+    [Fact]
     public void Case_objectives_are_user_targets_on_contract_spend_and_closed_cases_drop_out()
     {
         var contracts = new[]

@@ -13,5 +13,7 @@ import { IT_TODAY } from "./today";
 import { IT_ASK4 } from "./ask4";
 import { IT_QUOTE4V } from "./quote4v";
 import { IT_SETTINGS } from "./settings";
+import { IT_MEMBERS } from "./members";
+import { IT_DOCUMENTS } from "./documents";
 
-export const IT: Readonly<Record<string, string>> = { ...IT_CASE, ...IT_RENEWALS, ...IT_CASE4, ...IT_TODAY, ...IT_RESULTS, ...IT_SHELL, ...IT_CONTRACTS4, ...IT_ASK4, ...IT_QUOTE4V, ...IT_SETTINGS };
+export const IT: Readonly<Record<string, string>> = { ...IT_CASE, ...IT_RENEWALS, ...IT_CASE4, ...IT_TODAY, ...IT_RESULTS, ...IT_SHELL, ...IT_CONTRACTS4, ...IT_ASK4, ...IT_QUOTE4V, ...IT_SETTINGS, ...IT_MEMBERS, ...IT_DOCUMENTS };

@@ -5,8 +5,12 @@ import type {
   CorrectionHistoryEntryBody,
   PortfolioContractType,
 } from "../../../api/client";
-import { getConfidenceTag, type SemanticTag } from "../../../styles/semantics";
+import { getConfidenceTag, type ConfidenceDecision, type SemanticTag } from "../../../styles/semantics";
 import { formatDateOnly, getContractTypeLabel } from "../../contracts/portfolioTableFormatters";
+import { translate, type Translate } from "../../../i18n/translate";
+
+/** English by default: the review screen passes its own `t`, so the same ids read in Italian (i18n/it/documents.ts). */
+const EN: Translate = (id, vars) => translate("en", id, vars);
 
 /**
  * Pure view-model helpers for the Review / correction screen (route `/contracts/:contractId/review`
@@ -274,7 +278,7 @@ export function applySuccessfulCorrection(input: {
 /** Human-readable rendering of a field's raw wire value, for the list column and evidence pane --
  * never fed back into the correction form (that always starts from the raw value; see
  * `ReviewFieldRow.rawValue`). */
-export function formatCorrectableValue(kind: FieldKind, name: CorrectableFieldName, rawValue: string | null): string {
+export function formatCorrectableValue(kind: FieldKind, name: CorrectableFieldName, rawValue: string | null, t: Translate = EN): string {
   if (rawValue === null) return "—";
   switch (kind) {
     case "date":
@@ -285,15 +289,19 @@ export function formatCorrectableValue(kind: FieldKind, name: CorrectableFieldNa
       return Number.isFinite(numeric) ? new Intl.NumberFormat("en-GB").format(numeric) : rawValue;
     }
     case "bool":
-      return rawValue === "true" ? "Yes" : "No";
+      return rawValue === "true" ? t("Yes") : t("No");
     case "enum":
-      return name === "type" ? getContractTypeLabel(rawValue as PortfolioContractType) : rawValue;
+      return name === "type" ? t(getContractTypeLabel(rawValue as PortfolioContractType)) : rawValue;
     default:
       return rawValue;
   }
 }
 
 export type ReviewDecision = "pending" | "accepted" | "corrected";
+
+/** The reason "Accept" / "Accept all" write with the correction. It is stored in English (it is the
+ * contract's history, read by everyone); the screen shows it with `t()` in its own language. */
+export const ACCEPTED_AS_EXTRACTED_REASON = "Accepted as extracted.";
 
 /** Latest evidence per field, keyed by the backend's `fieldName` lower-cased (the backend compares
  * field names case-insensitively, the review catalogue uses camelCase). */
@@ -363,6 +371,7 @@ export function buildReviewFields(
   contract: Contract360Body,
   history: readonly CorrectionHistoryEntryBody[],
   evidence: EvidenceByField = new Map(),
+  t: Translate = EN,
 ): ReviewFieldRow[] {
   const rows: ReviewFieldRow[] = [];
 
@@ -375,11 +384,11 @@ export function buildReviewFields(
     if (currentValue === null && (proposedValue === null || proposedValue.trim() === "")) {
       rows.push({
         name: def.name,
-        label: def.label,
+        label: t(def.label),
         kind: def.kind,
         required: def.required,
         rawValue: "",
-        displayValue: formatCorrectableValue(def.kind, def.name, null),
+        displayValue: formatCorrectableValue(def.kind, def.name, null, t),
         decision: "pending",
         latestCorrection,
         confidencePct: null,
@@ -404,11 +413,11 @@ export function buildReviewFields(
 
     rows.push({
       name: def.name,
-      label: def.label,
+      label: t(def.label),
       kind: def.kind,
       required: def.required,
       rawValue,
-      displayValue: formatCorrectableValue(def.kind, def.name, rawValue),
+      displayValue: formatCorrectableValue(def.kind, def.name, rawValue, t),
       decision,
       latestCorrection,
       confidencePct: fieldEvidence?.confidence == null ? null : fieldEvidence.confidence * 100,
@@ -432,12 +441,27 @@ export function buildReviewFields(
  */
 export function fieldTag(
   row: Pick<ReviewFieldRow, "decision" | "confidencePct" | "evidenceDecision">,
+  t: Translate = EN,
 ): SemanticTag {
-  if (row.decision === "corrected") return { variant: "neutral", label: "Corrected" };
-  if (row.evidenceDecision === "human_accepted") return getConfidenceTag(row.confidencePct ?? 0, "human_accepted");
-  if (row.evidenceDecision === "auto_accepted") return getConfidenceTag(row.confidencePct ?? 0, "auto_accepted");
-  if (row.confidencePct !== null) return getConfidenceTag(row.confidencePct, "review_required");
-  return { variant: "outline", label: "Needs review" };
+  if (row.decision === "corrected") return { variant: "neutral", label: t("Corrected") };
+  if (row.evidenceDecision === "human_accepted") return confidenceTag(row.confidencePct ?? 0, "human_accepted", t);
+  if (row.evidenceDecision === "auto_accepted") return confidenceTag(row.confidencePct ?? 0, "auto_accepted", t);
+  if (row.confidencePct !== null) return confidenceTag(row.confidencePct, "review_required", t);
+  return { variant: "outline", label: t("Needs review") };
+}
+
+/** `getConfidenceTag`'s variant, with its label (same words, same floored percentage) in the screen's language. */
+function confidenceTag(confidencePct: number, decision: ConfidenceDecision, t: Translate): SemanticTag {
+  const { variant } = getConfidenceTag(confidencePct, decision);
+  const pct = Math.floor(confidencePct);
+  switch (decision) {
+    case "auto_accepted":
+      return { variant, label: t("Accepted automatically · {pct}%", { pct }) };
+    case "human_accepted":
+      return { variant, label: t("Accepted by you") };
+    case "review_required":
+      return { variant, label: t("Review · {pct}%", { pct }) };
+  }
 }
 
 /**
@@ -454,8 +478,11 @@ export function isFieldBlocking(
 }
 
 /** Screen title: the count is what the user acts on; the sentence never names a threshold. */
-export function reviewTitle(blockingCount: number): string {
-  return `${blockingCount} facts need you — you decide`;
+export function reviewTitle(blockingCount: number, t: Translate = EN): string {
+  // English reads "facts" for every count; Italian needs its own singular (the ⟦one⟧ note is never shown).
+  return blockingCount === 1
+    ? t("{n} facts need you — you decide⟦one⟧", { n: blockingCount })
+    : t("{n} facts need you — you decide", { n: blockingCount });
 }
 
 /** Floored percentage the legend paints from the response's `autoAcceptThreshold` (0..1). */
@@ -485,10 +512,12 @@ export function isValidationBlocked(progress: ReviewProgress): boolean {
 
 /** AC-4's "visible reason" text (ADR-019 accessibility baseline: "a visible reason, not a hidden
  * control") -- empty string when nothing blocks, so a caller can render it conditionally. */
-export function blockedReason(progress: ReviewProgress): string {
+export function blockedReason(progress: ReviewProgress, t: Translate = EN): string {
   if (progress.blockingCount === 0) return "";
-  const isSingular = progress.blockingCount === 1;
-  return `${progress.blockingCount} field${isSingular ? "" : "s"} still need${isSingular ? "s" : ""} review before this contract can be marked validated.`;
+  const n = progress.blockingCount;
+  return n === 1
+    ? t("{n} field still needs review before this contract can be marked validated.", { n })
+    : t("{n} fields still need review before this contract can be marked validated.", { n });
 }
 
 /** The field names "Mark as validated" reports to `POST /api/documents/{id}/validate` as accepted

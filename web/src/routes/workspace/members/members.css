@@ -27,8 +27,10 @@
   flex-direction: column;
 }
 
-.members-tip {
-  margin: 20px 32px 0;
+/* `.v4 .members-tip`: `.v4 p { margin: 0 0 12px }` (ds-modernist.css) would otherwise win and push the
+   tip to the window edge. */
+.v4 .members-tip {
+  margin: 20px 40px 0;
   max-width: 720px;
   padding: 10px 16px;
   border-left: 2px solid var(--color-accent);
@@ -44,7 +46,7 @@
 
 .members-table-column {
   min-width: 0;
-  padding: 24px 32px;
+  padding: 24px 32px 24px 40px;
   border-right: 2px solid var(--color-divider);
 }
 
@@ -85,7 +87,7 @@
 
 .members-status-tag {
   padding: 2px 8px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .members-actions-cell {
@@ -124,8 +126,13 @@
 }
 
 .members-invite-pane {
-  padding: 24px;
+  padding: 24px 40px 24px 32px;
 }
+
+/* First column flush with the page title (40px gutter), like the v4 tables. */
+.v4 .members-table th:first-child,
+.v4 .members-table td:first-child { padding-left: 0; }
+.v4 .members-table td { vertical-align: middle; }
 
 .members-invite-title {
   margin: 0 0 14px;
@@ -211,14 +218,16 @@
     grid-template-columns: 1fr;
   }
 
+  .v4 .members-tip { margin: 16px 16px 0; }
+
   .members-table-column {
-    padding: 24px 32px 16px;
+    padding: 24px 16px 16px;
     border-right: 0;
     border-bottom: 2px solid var(--color-divider);
   }
 
   .members-invite-pane {
-    padding: 24px 32px;
+    padding: 24px 16px;
   }
 }
 
@@ -232,8 +241,11 @@
   background: var(--color-surface);
 }
 
-.members-settings-title {
+/* `.v4 h3` (ds-modernist.css, 25px heading) would otherwise win over the small label. */
+.v4 .members-settings-title {
   margin: 0 0 10px;
+  font-family: var(--font-body);
+  line-height: 1.3;
   font-size: 11px;
   font-weight: var(--weight-body-strong);
   letter-spacing: var(--tracking-kicker);

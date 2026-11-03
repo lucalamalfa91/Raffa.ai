@@ -1,5 +1,6 @@
 import UploadDropzone from "./UploadDropzone";
 import type { SampleDocumentKey } from "./sampleDocument";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export interface OnboardingEmptyStateProps {
   onFilesSelected: (files: File[]) => void;
@@ -17,26 +18,27 @@ export interface OnboardingEmptyStateProps {
  * prototype itself, not a summary of it, as the pixel/copy reference.
  */
 export default function OnboardingEmptyState({ onFilesSelected, onUseSampleFile }: OnboardingEmptyStateProps) {
+  const { t } = useI18n();
   return (
     <div className="documents-onboarding">
-      <p className="screen-kicker">Start here</p>
-      <h1 className="documents-onboarding-headline">First your contracts. Then your questions.</h1>
+      <p className="screen-kicker">{t("Start here")}</p>
+      <h1 className="documents-onboarding-headline">{t("First your contracts. Then your questions.")}</h1>
 
       <div className="documents-onboarding-steps">
         <div className="documents-onboarding-step">
-          <div className="documents-onboarding-step-kicker">01 · Upload</div>
-          <div className="documents-onboarding-step-title">Drop your contracts</div>
-          <p className="micro-meta">MSA, order forms, SOWs, amendments. PDF, DOCX, XLSX, PNG, JPG.</p>
+          <div className="documents-onboarding-step-kicker">{t("01 · Upload")}</div>
+          <div className="documents-onboarding-step-title">{t("Drop your contracts")}</div>
+          <p className="micro-meta">{t("MSA, order forms, SOWs, amendments. PDF, DOCX, XLSX, PNG, JPG.")}</p>
         </div>
         <div className="documents-onboarding-step">
-          <div className="documents-onboarding-step-kicker documents-onboarding-step-kicker--muted">02 · Process</div>
-          <div className="documents-onboarding-step-title">Raffa.ai extracts the facts</div>
-          <p className="micro-meta">Every fact has a source and a confidence. You sign off the weak ones.</p>
+          <div className="documents-onboarding-step-kicker documents-onboarding-step-kicker--muted">{t("02 · Process")}</div>
+          <div className="documents-onboarding-step-title">{t("Raffa.ai extracts the facts")}</div>
+          <p className="micro-meta">{t("Every fact has a source and a confidence. You sign off the weak ones.")}</p>
         </div>
         <div className="documents-onboarding-step">
-          <div className="documents-onboarding-step-kicker documents-onboarding-step-kicker--muted">03 · Ask</div>
-          <div className="documents-onboarding-step-title">Ask Raffa</div>
-          <p className="micro-meta">Answers only from validated facts, with the page that proves them.</p>
+          <div className="documents-onboarding-step-kicker documents-onboarding-step-kicker--muted">{t("03 · Ask")}</div>
+          <div className="documents-onboarding-step-title">{t("Ask Raffa")}</div>
+          <p className="micro-meta">{t("Answers only from validated facts, with the page that proves them.")}</p>
         </div>
       </div>
 

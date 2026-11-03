@@ -1,5 +1,6 @@
 import { DEFAULT_TABLE_PAGE_SIZE, pageCount, pagerRangeLabel } from "./pager";
 import "./tablePager.css";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export interface TablePagerProps {
   page: number;
@@ -20,18 +21,19 @@ export default function TablePager({
   totalItems,
   pageSize = DEFAULT_TABLE_PAGE_SIZE,
   onPageChange,
-  label = "Table pages",
+  label,
 }: TablePagerProps) {
+  const { t } = useI18n();
   if (totalItems <= pageSize) return null;
 
   const pages = pageCount(totalItems, pageSize);
 
   return (
-    <nav className="table-pager" aria-label={label}>
-      <p className="micro-meta table-pager-range">{pagerRangeLabel(page, totalItems, pageSize)}</p>
+    <nav className="table-pager" aria-label={label ?? t("Table pages")}>
+      <p className="micro-meta table-pager-range">{pagerRangeLabel(page, totalItems, pageSize, t)}</p>
       <div className="table-pager-controls">
         <button type="button" className="btn btn-ghost" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-          Previous
+          {t("Previous")}
         </button>
         {Array.from({ length: pages }, (_, index) => {
           const number = index + 1;
@@ -41,7 +43,7 @@ export default function TablePager({
               key={number}
               type="button"
               className={`btn btn-ghost${current ? " is-current" : ""}`}
-              aria-label={`Page ${number}`}
+              aria-label={t("Page {n}", { n: number })}
               aria-current={current ? "page" : undefined}
               onClick={() => onPageChange(number)}
             >
@@ -50,7 +52,7 @@ export default function TablePager({
           );
         })}
         <button type="button" className="btn btn-ghost" disabled={page >= pages} onClick={() => onPageChange(page + 1)}>
-          Next
+          {t("Next⟦page⟧")}
         </button>
       </div>
     </nav>

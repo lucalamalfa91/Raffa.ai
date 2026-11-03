@@ -33,7 +33,7 @@
   color: var(--color-accent-700);
   font-weight: 700;
 }
-.q6-head { font-family: var(--font-heading); font-weight: 800; font-size: 22px; line-height: 1.15; margin-top: 4px; }
+.q6-head { font-family: var(--font-heading); font-weight: var(--weight-heading); font-size: 22px; line-height: 1.15; margin-top: 4px; }
 .q6-sub { font-size: 14px; color: var(--color-neutral-700); margin-top: 4px; text-wrap: pretty; }
 
 /* step 1 */
@@ -59,7 +59,7 @@
 }
 .q6-cell { padding: 10px 12px 10px 0; }
 .q6-cell-k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600); }
-.q6-cell-v { font-family: var(--font-heading); font-weight: 800; font-size: 20px; margin-top: 3px; color: inherit; }
+.q6-cell-v { font-family: var(--font-heading); font-weight: var(--weight-heading); font-size: 20px; margin-top: 3px; color: inherit; }
 .q6-cell-v.is-alert { color: var(--color-accent-700); }
 .q6-cell-sub { font-size: 12px; color: var(--color-neutral-600); }
 .q6-point {
@@ -81,3 +81,8 @@
 .q6-choices { display: flex; gap: 10px; flex-wrap: wrap; }
 .v4 .btn.q6-choice { min-height: 44px; font-size: 14px; }
 .q6-status { font-size: 13px; color: var(--color-neutral-600); }
+
+/* Phone width (D9): the same 16px gutter as the nav. */
+@media (max-width: 700px) {
+  .q6-offer { padding-left: 16px; padding-right: 16px; }
+}
