@@ -125,6 +125,29 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_free_question_during_the_interview_is_shown_and_answered_and_never_taken_as_a_goal()
+    {
+        var s = await ServiceAsync();
+        var e = await OpenAsync(s, 4);
+        var kicker = e.View.Page.Current.Kicker.Render();
+
+        var r = await s.AskAsync(_tenant, MartaOid, e.CaseId, "Quali sono gli SLA del contratto?", e.Version, "it");
+
+        Assert.Equal(CaseResultKind.Ok, r.Kind);
+        var after = r.Envelope!;
+        // The interview did not move: the question is not the answer to the open question.
+        Assert.Equal(kicker, after.View.Page.Current.Kicker.Render());
+        var msgs = after.View.Page.Msgs.Select(m => m.Text.Render()).ToList();
+        Assert.Contains("Quali sono gli SLA del contratto?", msgs);
+        Assert.Contains(msgs, m => m.StartsWith("No basis.", StringComparison.Ordinal));
+        using var _ = _tenantContext.BeginScope(_tenant);
+        await using var db = Db();
+        var state = RenewalCaseJson.Deserialize((await db.RenewalCases.AsNoTracking().SingleAsync(x => x.Id == new EntityId(e.CaseId))).State);
+        Assert.Null(state.Goals.Prod);
+        Assert.Equal(0, state.Q);
+    }
+
+    [Fact]
     public async Task Opening_a_case_twice_returns_the_same_case()
     {
         var s = await ServiceAsync();
@@ -394,6 +417,22 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         var marta = await s.TodayAsync(_tenant, MartaOid);
         Assert.DoesNotContain(luca.Mine.Concat(luca.Waiting).Concat(marta.Mine).Concat(marta.Waiting), x => x.CaseId == e.CaseId);
         Assert.Contains((await s.BoardAsync(_tenant, LucaOid)).Cases, r => r.CaseId == e.CaseId);
+
+        // One classification for both screens: the step's owner sees it on Today as "later" (never
+        // "No open renewal") and on Renewals under "Yours, later", never under "Your turn" or "with the team".
+        Assert.Equal(1, luca.OpenCases);
+        Assert.Equal(1, marta.OpenCases);
+        var (ownerOid, owner) = luca.Later!.Any(x => x.CaseId == e.CaseId) ? (LucaOid, luca) : (MartaOid, marta);
+        Assert.Contains(owner.Later!, x => x.CaseId == e.CaseId);
+        var other = ownerOid == LucaOid ? marta : luca;
+        Assert.DoesNotContain(other.Later!, x => x.CaseId == e.CaseId);
+
+        var ownerBoard = await s.BoardAsync(_tenant, ownerOid);
+        var row = ownerBoard.Groups.Single(g => g.Items.Any(r => r.CaseId == e.CaseId));
+        Assert.Equal("mineLater", row.Key);
+        Assert.True(row.Items.Single(r => r.CaseId == e.CaseId) is { MyTurn: true, Later: true });
+        var otherBoard = await s.BoardAsync(_tenant, ownerOid == LucaOid ? MartaOid : LucaOid);
+        Assert.DoesNotContain(otherBoard.Groups.Where(g => g.Key is "mine" or "mineLater").SelectMany(g => g.Items), r => r.CaseId == e.CaseId);
     }
 
     [Fact]

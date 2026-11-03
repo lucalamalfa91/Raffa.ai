@@ -38,6 +38,8 @@ export const IT_CONTRACTS4: Readonly<Record<string, string>> = {
   "current term": "termine corrente",
   "What requires a decision": "Cosa richiede una decisione",
   "{n} points · standard terms stay below": "{n} punti · le condizioni standard restano sotto",
+  "1 point · standard terms stay below": "1 punto · le condizioni standard restano sotto",
+  "nothing to decide · standard terms stay below": "niente da decidere · le condizioni standard restano sotto",
   "Says": "Dice",
   "Why it matters": "Perché conta",
   "Raffa proposes": "Raffa propone",

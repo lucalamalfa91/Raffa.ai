@@ -1,7 +1,9 @@
 using Raffa.Documents.Contracts.Application;
+using Raffa.Documents.Contracts.Application.Facts;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -220,5 +222,91 @@ public sealed class ValidatedContractCountTests : IAsyncLifetime
         var service = new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator());
 
         Assert.Equal(0, await service.CountValidatedContractsAsync(tenantId));
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset UtcNow => now;
+    }
+
+    private sealed class FakeSupplierNames(EntityId supplierId, string name) : ISupplierNameLookup
+    {
+        public Task<IReadOnlyDictionary<EntityId, string>> GetNamesAsync(
+            TenantId tenantId, IReadOnlyCollection<EntityId> supplierIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<EntityId, string>>(
+                supplierIds.Contains(supplierId) ? new Dictionary<EntityId, string> { [supplierId] = name } : new Dictionary<EntityId, string>());
+
+        public Task<EntityId?> FindByNormalizedNameAsync(TenantId tenantId, string normalizedName, CancellationToken cancellationToken) =>
+            Task.FromResult<EntityId?>(null);
+    }
+
+    /// <summary>
+    /// The picker said 43 validated contracts while Contracts and Results listed 7: they read two
+    /// definitions. Contracts, Results, Renewals and Ask v4 read <see cref="ContractFactsReader"/>; it must
+    /// list exactly the contracts <see cref="PortfolioQueryService.CountValidatedContractsAsync"/> counts,
+    /// including one whose document completed without the v4 review (no facts row yet), and never one
+    /// whose completed document is gone. The projected facts carry a readable name, not the file name.
+    /// </summary>
+    [Fact]
+    public async Task Contracts_and_Results_list_exactly_the_contracts_the_picker_counts()
+    {
+        var tenantId = TenantId.New();
+        var tenantContext = new TenantContext();
+        var veeamId = EntityId.New();
+
+        // Completed by a clean extraction (no review, so no facts row was ever written).
+        var clean = NewContract(tenantId, annualSpend: 40_000m);
+        clean.Type = ContractDocumentType.OrderForm;
+        clean.SupplierId = veeamId;
+        await SeedContractAsync(tenantContext, clean);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, clean.Id, DocumentProcessingStatus.Completed, "Veeam_Subscription_2024.pdf"));
+
+        // Two completed documents: one contract.
+        var twice = NewContract(tenantId);
+        await SeedContractAsync(tenantContext, twice);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, twice.Id, DocumentProcessingStatus.Completed, "a.pdf"));
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, twice.Id, DocumentProcessingStatus.Completed, "b.pdf"));
+
+        // Not validated yet.
+        var review = NewContract(tenantId);
+        await SeedContractAsync(tenantContext, review);
+        await SeedDocumentAsync(tenantContext, NewDocument(tenantId, review.Id, DocumentProcessingStatus.NeedsReview, "review.pdf"));
+
+        // Validated once, then its document was deleted: the facts row stayed behind.
+        var orphan = NewContract(tenantId);
+        await SeedContractAsync(tenantContext, orphan);
+        await using (var seed = CreateAppContext(tenantContext))
+        using (tenantContext.BeginScope(tenantId))
+        {
+            seed.ContractFacts.Add(new ContractFactsRecord
+            {
+                TenantId = tenantId, ContractId = orphan.Id, Facts = "{}", ValidatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = CreateAppContext(tenantContext);
+        var count = await new PortfolioQueryService(db, tenantContext, new PortfolioAnalysisCalculator()).CountValidatedContractsAsync(tenantId);
+        var reader = new ContractFactsReader(db, tenantContext, new FixedClock(DateTimeOffset.UtcNow), new FakeSupplierNames(veeamId, "Veeam"));
+        var listed = await reader.ListValidatedAsync(tenantId);
+
+        Assert.Equal(2, count);
+        Assert.Equal(count, listed.Count);
+        Assert.Equal(new[] { clean.Id.Value, twice.Id.Value }.Order(), listed.Select(f => f.ContractId).Order());
+
+        var veeam = listed.Single(f => f.ContractId == clean.Id.Value);
+        Assert.Equal("Veeam", veeam.Supplier);
+        Assert.Equal("Veeam Order Form", veeam.Name);
+        Assert.Equal("Veeam_Subscription_2024.pdf", veeam.File);
+        Assert.NotNull(veeam.ValidatedAt);
+
+        // Stored once: a second read lists the same contracts from the stored rows, and Contract 360 reads it.
+        Assert.Equal(2, (await reader.ListValidatedAsync(tenantId)).Count);
+        Assert.Equal("Veeam Order Form", (await reader.GetAsync(tenantId, clean.Id))!.Name);
+        Assert.Null(await reader.GetAsync(tenantId, review.Id));
+        using (tenantContext.BeginScope(tenantId))
+        {
+            Assert.Equal(1, await db.ContractFacts.CountAsync(f => f.ContractId == clean.Id));
+        }
     }
 }

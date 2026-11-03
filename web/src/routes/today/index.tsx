@@ -108,6 +108,10 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
   const viewer = feed?.viewer;
   const mine = feed?.mine ?? [];
   const team = feed?.waiting ?? [];
+  // The caller's own case steps beyond the company's lead time: Renewals lists them under "Yours,
+  // later"; Today names them instead of claiming there is no open renewal.
+  const later = feed?.later ?? [];
+  const openCases = feed?.openCases ?? 0;
   const f = mine[0] ?? null;
   const startOn = !!feed?.emptyWorkspace;
   const hasDoc = (feed?.documents.length ?? 0) > 0;
@@ -136,7 +140,15 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
         ? t("1 step waits on a colleague or the supplier — see it in Renewals.")
         : team.length
           ? t("{n} steps wait on colleagues or suppliers — see them in Renewals.", { n: team.length })
-          : t("No open renewal.");
+          : later.length === 1
+            ? t("1 renewal of yours has its next step after the lead time — see it in Renewals.")
+            : later.length
+              ? t("{n} renewals of yours have their next step after the lead time — see them in Renewals.", { n: later.length })
+              : openCases === 1
+                ? t("1 open renewal, no step due today — see it in Renewals.")
+                : openCases
+                  ? t("{n} open renewals, no step due today — see them in Renewals.", { n: openCases })
+                  : t("No open renewal.");
 
   // "Start & assign to …" only with a real colleague to assign to; otherwise just start it.
   const canAssign = !!viewer?.isApprover && !!assigneeFirst;
@@ -328,6 +340,23 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
               {t("See the renewals")}
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {later.length > 0 ? (
+        <div className="o4-snoozed o4-later" data-screen-label="Tue, più avanti">
+          <div className="o4-snoozed-head">{t("Yours, later · {n}", { n: later.length })}</div>
+          {later.map((x) => (
+            <div key={x.key} className="o4-snoozed-row">
+              <strong>{x.supplier}</strong>
+              <span>
+                {tr(x.title)} · {x.due}
+              </span>
+              <button type="button" className="btn btn-ghost" onClick={() => open(x)}>
+                {t("Open⟦action⟧")}
+              </button>
+            </div>
+          ))}
         </div>
       ) : null}
 

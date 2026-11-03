@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { ReactNode } from "react";
@@ -157,6 +157,37 @@ describe("Contratto", () => {
     expect(screen.getByText("Termini chiave")).toBeInTheDocument();
     expect(screen.getByText("CHF 561,600")).toBeInTheDocument();
     expect(screen.getByText("Salesforce deve")).toBeInTheDocument();
+    expect(missing).toEqual([]);
+  });
+
+  it("counts every point it shows: none from the contract, four negotiation points from Raffa", async () => {
+    const todo = (rank: number, status: "Open" | "Done" | "Superseded" = "Open") => ({
+      contractId: CONTRACT, pointKey: `p${rank}`, topic: `Point ${rank}`, rank, current: "today", target: "target", rationale: "why",
+      citationKeys: [], source: "ask", status, createdAt: "2026-09-08T10:00:00Z", updatedAt: "2026-09-08T10:00:00Z",
+    });
+    const api = client({
+      getContractV4: vi.fn().mockResolvedValue(ok({ ...contract, supplier: "GitLab", decisionPoints: [] })),
+      getRenewalNegotiationTodos: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, todos: [todo(1), todo(2), todo(3), todo(4, "Done"), todo(5, "Superseded")], error: null }),
+    });
+    renderAt(`/contracts/${CONTRACT}`, <Route path="/contracts/:contractId" element={<Contract360Route apiClient={api} />} />);
+
+    expect(await screen.findByText("Point 1")).toBeInTheDocument();
+    const section = document.querySelector(".c4-decisions") as HTMLElement;
+    expect(within(section).getByText("· 4 punti · le condizioni standard restano sotto")).toBeInTheDocument();
+    expect(within(section).getAllByRole("listitem")).toHaveLength(4);
+    expect(screen.queryByText("Point 5")).toBeNull();
+    expect(screen.queryByText(/0 punti/)).toBeNull();
+    expect(missing).toEqual([]);
+  });
+
+  it("says there is nothing to decide when there is no point at all", async () => {
+    const api = client({
+      getContractV4: vi.fn().mockResolvedValue(ok({ ...contract, decisionPoints: [] })),
+      getRenewalNegotiationTodos: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, todos: [], error: null }),
+    });
+    renderAt(`/contracts/${CONTRACT}`, <Route path="/contracts/:contractId" element={<Contract360Route apiClient={api} />} />);
+
+    expect(await screen.findByText("· niente da decidere · le condizioni standard restano sotto")).toBeInTheDocument();
     expect(missing).toEqual([]);
   });
 

@@ -1,40 +1,61 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ApiClient, RenewalNegotiationTodoRow } from "../../api/client";
 import { useI18n } from "../../i18n/I18nProvider";
 import "./askShortcuts.css";
 
 /**
  * The negotiation points Raffa's agentic engine ranked and saved for this contract (strategy answers in
- * Chiedi write them): topic, today → target, why, each tickable. Nothing renders until Raffa has written
- * some; a point is never added here, only read back and marked done (the server's state, not optimistic).
+ * Chiedi write them), superseded ones left out, by rank. A point is never added here, only read back and
+ * marked done (the server's state, not optimistic). Contract 360 reads them through this hook so the
+ * points it shows and the number it announces come from the same list.
  */
-export default function NegotiationPoints({ apiClient, tenantId, contractId }: { apiClient: ApiClient; tenantId: string; contractId: string }) {
-  const { t } = useI18n();
+export function useNegotiationPoints(apiClient: ApiClient, tenantId: string, contractId: string) {
   const [todos, setTodos] = useState<readonly RenewalNegotiationTodoRow[]>([]);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
   useEffect(() => {
+    setTodos([]);
     if (!tenantId || !contractId || typeof apiClient.getRenewalNegotiationTodos !== "function") return;
     let alive = true;
-    void apiClient.getRenewalNegotiationTodos(tenantId, contractId).then((r) => {
-      if (alive && r.ok && r.todos) setTodos(r.todos.filter((x) => x.status !== "Superseded").sort((a, b) => a.rank - b.rank));
-    });
+    void apiClient
+      .getRenewalNegotiationTodos(tenantId, contractId)
+      .then((r) => {
+        if (alive && r.ok && r.todos) setTodos(r.todos.filter((x) => x.status !== "Superseded").sort((a, b) => a.rank - b.rank));
+      })
+      .catch(() => undefined); // no points shown rather than an unhandled rejection
     return () => {
       alive = false;
     };
   }, [apiClient, tenantId, contractId]);
 
-  if (todos.length === 0) return null;
+  const tick = useCallback(
+    async (row: RenewalNegotiationTodoRow) => {
+      setBusyKey(row.pointKey);
+      const r = await apiClient.tickRenewalNegotiationTodo(tenantId, contractId, { pointKey: row.pointKey });
+      setBusyKey(null);
+      if (r.ok && r.todo) {
+        const next = r.todo;
+        setTodos((list) => list.map((x) => (x.pointKey === next.pointKey ? next : x)));
+      }
+    },
+    [apiClient, tenantId, contractId],
+  );
 
-  const tick = async (row: RenewalNegotiationTodoRow) => {
-    setBusyKey(row.pointKey);
-    const r = await apiClient.tickRenewalNegotiationTodo(tenantId, contractId, { pointKey: row.pointKey });
-    setBusyKey(null);
-    if (r.ok && r.todo) {
-      const next = r.todo;
-      setTodos((list) => list.map((x) => (x.pointKey === next.pointKey ? next : x)));
-    }
-  };
+  return { todos, busyKey, tick };
+}
+
+/** The points as a list (topic, today → target, why, each tickable). Renders nothing while there are none. */
+export default function NegotiationPoints({
+  todos,
+  busyKey,
+  onTick,
+}: {
+  todos: readonly RenewalNegotiationTodoRow[];
+  busyKey: string | null;
+  onTick: (row: RenewalNegotiationTodoRow) => void;
+}) {
+  const { t } = useI18n();
+  if (todos.length === 0) return null;
 
   return (
     <section className="neg-points" data-parity-hide aria-label={t("Negotiation points from Raffa")}>
@@ -47,7 +68,7 @@ export default function NegotiationPoints({ apiClient, tenantId, contractId }: {
               {row.status === "Done" ? (
                 <span className="neg-point-done">{t("Done⟦point⟧")}</span>
               ) : (
-                <button type="button" className="btn btn-secondary neg-point-tick" disabled={busyKey === row.pointKey} onClick={() => void tick(row)}>
+                <button type="button" className="btn btn-secondary neg-point-tick" disabled={busyKey === row.pointKey} onClick={() => onTick(row)}>
                   {t("Mark done")}
                 </button>
               )}

@@ -48,6 +48,9 @@ public sealed record TodayNextDeadline(string Supplier, string Date, int Days);
 /// <param name="Mine">The caller's own actions, nearest due first.</param>
 /// <param name="Waiting">Items waiting on colleagues or suppliers.</param>
 /// <param name="Info">Informational items, not an action (a contract that renewed by itself recently).</param>
+/// <param name="Later">The caller's own open-case steps whose deadline is beyond the company's lead time:
+/// the same steps Renewals lists under "Yours, later". Today does not ask for them yet, but names them.</param>
+/// <param name="OpenCases">Open renewal cases of the workspace (the Renewals board's own count).</param>
 public sealed record TodayFeed(
     TodayViewer Viewer,
     bool EmptyWorkspace,
@@ -57,11 +60,14 @@ public sealed record TodayFeed(
     TodayNextDeadline? NextDeadline,
     CaseAssignee? Assignee,
     IReadOnlyList<DocumentNeedingReview> Documents,
-    IReadOnlyList<TodayItem>? Info = null);
+    IReadOnlyList<TodayItem>? Info = null,
+    IReadOnlyList<TodayItem>? Later = null,
+    int OpenCases = 0);
 
 /// <param name="Notice">The effective notice deadline (the next one when the term rolled over by itself).</param>
 /// <param name="TermStatus"><see cref="ContractTermStatus"/>: active | rolledOver | ending | expired | needsReview | unknown.</param>
 /// <param name="RenewedOn">When the term rolled over by itself: the day the current term began.</param>
+/// <param name="Later">The case's next step is beyond the company's lead time: it is not on Today yet.</param>
 public sealed record RenewalsRow(
     Guid ContractId,
     Guid? CaseId,
@@ -81,7 +87,8 @@ public sealed record RenewalsRow(
     string TermStatus = ContractTermStatus.Active,
     string? RenewedOn = null,
     string? End = null,
-    bool RenewedOnPassed = false);
+    bool RenewedOnPassed = false,
+    bool Later = false);
 
 public sealed record RenewalsGroup(string Key, CaseText Label, IReadOnlyList<RenewalsRow> Items);
 
@@ -178,11 +185,14 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
     }
 
     /// <summary>Every item of the tenant (RC.todo of each open case + unassigned deadlines + quotes + reviews),
-    /// and the informational ones apart.</summary>
-    private async Task<(List<TodayItem> Items, List<TodayItem> Info)> AllItemsAsync(TenantId tenantId, Portfolio p, CancellationToken ct)
+    /// the informational ones apart, and the open-case steps beyond the company's lead time apart
+    /// (<c>Later</c>). Today and Renewals both classify from this one result, so they cannot disagree on
+    /// whose turn a case is.</summary>
+    private async Task<(List<TodayItem> Items, List<TodayItem> Info, List<TodayItem> Later)> AllItemsAsync(TenantId tenantId, Portfolio p, CancellationToken ct)
     {
         var items = new List<TodayItem>();
         var info = new List<TodayItem>();
+        var later = new List<TodayItem>();
         foreach (var (f, cf, rec, c) in p.Contracts)
         {
             try
@@ -197,16 +207,13 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
 
                     foreach (var x in RenewalCaseEngine.Todo(c, Ctx(cf, p.Caller.Name)))
                     {
-                        // Too early to matter: the company's own lead time has not started. The case stays
-                        // on Rinnovi; Oggi brings it back when its deadline comes within the window.
-                        if (x.DueDays > p.StartWindowDays)
-                        {
-                            continue;
-                        }
-
-                        items.Add(new TodayItem(
+                        // Too early to matter: the company's own lead time has not started. Oggi does not ask
+                        // for the step yet (it brings it back when its deadline comes within the window), but
+                        // the step and its owner are the same everywhere: Rinnovi lists it as "Yours, later".
+                        var item = new TodayItem(
                             f.ContractId + ":" + x.Kind, x.Kind, rec.Id.Value, f.ContractId, null, null, cf.Supplier, shortName,
-                            x.Title, x.Why, x.Due, x.DueDays, null, x.Stage, x.StageLabel, x.Who, x.Stalled));
+                            x.Title, x.Why, x.Due, x.DueDays, null, x.Stage, x.StageLabel, x.Who, x.Stalled);
+                        (x.DueDays > p.StartWindowDays ? later : items).Add(item);
                     }
 
                     continue;
@@ -319,7 +326,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                 d.OwnerName ?? p.Approver ?? p.Caller.Name, 0));
         }
 
-        return (items, info);
+        return (items, info, later);
     }
 
     private static TodayItem Unassigned(
@@ -348,7 +355,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
     public async Task<TodayFeed> TodayAsync(TenantId tenantId, string? callerIdentity, CancellationToken ct = default)
     {
         var p = await LoadAsync(tenantId, callerIdentity, ct).ConfigureAwait(false);
-        var (items, info) = await AllItemsAsync(tenantId, p, ct).ConfigureAwait(false);
+        var (items, info, later) = await AllItemsAsync(tenantId, p, ct).ConfigureAwait(false);
         HashSet<string> snoozed = [];
         if (p.Caller.UserId is { } uid)
         {
@@ -377,7 +384,9 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
             next,
             Assignee(p),
             docs,
-            p.Approver == p.Caller.Name ? info.Where(x => !snoozed.Contains(x.Key)).OrderBy(x => x.DueDays).ToList() : []);
+            p.Approver == p.Caller.Name ? info.Where(x => !snoozed.Contains(x.Key)).OrderBy(x => x.DueDays).ToList() : [],
+            later.Where(x => x.Who == p.Caller.Name).OrderBy(x => x.DueDays).ToList(),
+            p.Contracts.Count(x => x.Record is not null && x.Case is not null && x.Case.Outcome is null));
     }
 
     /// <summary><c>GET /api/renewals?view=v4</c>: rows by notice deadline in five groups (Your turn … Closed),
@@ -385,7 +394,7 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
     public async Task<RenewalsBoard> BoardAsync(TenantId tenantId, string? callerIdentity, CancellationToken ct = default)
     {
         var p = await LoadAsync(tenantId, callerIdentity, ct).ConfigureAwait(false);
-        var (items, _) = await AllItemsAsync(tenantId, p, ct).ConfigureAwait(false);
+        var (items, _, later) = await AllItemsAsync(tenantId, p, ct).ConfigureAwait(false);
         var rows = p.Contracts.Select(x =>
         {
             try
@@ -393,7 +402,8 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
             var (f, cf, rec, c) = x;
             var term = p.Terms[f.ContractId];
             var it = items.FirstOrDefault(i => i.ContractId == f.ContractId && i.Kind != "quote");
-            var myTurn = it is not null && it.Who == p.Caller.Name;
+            var laterStep = it is null ? later.FirstOrDefault(i => i.ContractId == f.ContractId) : null;
+            var myTurn = (it ?? laterStep) is { } step && step.Who == p.Caller.Name;
             var stage = c is null ? -1 : RenewalCaseEngine.Stage(c);
             var next = c is null ? null : RenewalCaseEngine.View(c, Ctx(cf, p.Caller.Name)).Hdr.Next;
             // A contract whose dates were not read has no notice deadline: it must not break the whole board
@@ -406,7 +416,8 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
                 datesKnown ? CaseFormat.Date(cf.Cancel.AddDays(-60)) : "—", c?.Owner, myTurn, c is not null, c?.Outcome is not null,
                 c is not null && c.Phase is CasePhases.Waiting or CasePhases.DocWait,
                 term.Status, term.RenewedOn is { } r ? CaseFormat.Date(r) : null, term.End is { } e ? CaseFormat.Date(e) : null,
-                term.RenewedOn is { } rp && rp <= Today);
+                term.RenewedOn is { } rp && rp <= Today,
+                laterStep is not null);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -418,7 +429,8 @@ public sealed partial class RenewalCaseService : IContractCaseStatusReader, ICas
         static bool Expired(RenewalsRow r) => !r.HasCase && r.TermStatus == ContractTermStatus.Expired;
         var groups = new (string Key, string Label, Func<RenewalsRow, bool> Fn)[]
         {
-            ("mine", "Your turn", r => !r.Done && r.MyTurn),
+            ("mine", "Your turn", r => !r.Done && r.MyTurn && !r.Later),
+            ("mineLater", "Yours, later", r => !r.Done && r.MyTurn && r.Later),
             ("team", "In progress with the team", r => !r.Done && !r.MyTurn && r.HasCase && !r.Waiting),
             ("supplier", "Waiting for the supplier", r => !r.Done && r.Waiting && !r.MyTurn),
             ("start", "To start", r => !r.Done && !r.HasCase && !r.MyTurn && !Expired(r)),

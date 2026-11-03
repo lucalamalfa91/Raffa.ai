@@ -101,6 +101,8 @@
 .p4-msg-by.is-raffa { color: var(--color-accent); }
 .p4-msg-text { white-space: pre-line; text-wrap: pretty; font-weight: 400; }
 .p4-msg-text.is-person { font-weight: 700; }
+.p4-asking { display: flex; flex-direction: column; gap: 10px; }
+.p4-msg-pending { color: var(--color-neutral-600); font-style: italic; }
 
 /* — current step — */
 .p4-step {
@@ -228,6 +230,7 @@
 
 /* — composer — */
 .p4-composer { flex: none; padding: 8px 40px 14px; }
+.p4-ask-error { margin-bottom: 6px; background: var(--color-accent-100); border-left: 2px solid var(--color-accent); padding: 8px 12px; font-size: 14px; }
 .p4-composer-in {
   display: flex;
   gap: 8px;

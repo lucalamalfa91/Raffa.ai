@@ -111,6 +111,33 @@ describe("Oggi", () => {
     expect(await screen.findByText("Prodotti?")).toBeInTheDocument();
   });
 
+  it("never says there is no open renewal while the caller owns cases beyond the lead time, and lists them", async () => {
+    const laterItem = {
+      ...feed.mine[0],
+      key: "c9:plan", kind: "plan", caseId: "k9", contractId: "c9", supplier: "Veeam", contract: "Data Platform",
+      title: { id: "Notice deadline without an owner" }, due: "05 Apr 2028", dueDays: 522, stage: 1, stageLabel: { id: "Negotiation" },
+    };
+    renderAt("/today", { getToday: vi.fn().mockResolvedValue(ok({ ...feed, mine: [], later: [laterItem, { ...laterItem, key: "c8:plan", caseId: "k8", supplier: "GitLab" }], openCases: 2 })) });
+    expect(await screen.findByText("2 rinnovi tuoi hanno il prossimo passo oltre l’anticipo aziendale — li vedi in Rinnovi.")).toBeInTheDocument();
+    expect(screen.queryByText("Nessun rinnovo aperto.")).toBeNull();
+    const later = document.querySelector('[data-screen-label="Tue, più avanti"]') as HTMLElement;
+    expect(within(later).getByText("Tue, più avanti · 2")).toBeInTheDocument();
+    expect(within(later).getByText("Veeam")).toBeInTheDocument();
+    expect(within(later).getByText("GitLab")).toBeInTheDocument();
+    expect(missing).toEqual([]);
+  });
+
+  it("names the open cases when none needs a step today and none is the caller's", async () => {
+    renderAt("/today", { getToday: vi.fn().mockResolvedValue(ok({ ...feed, mine: [], later: [], openCases: 2 })) });
+    expect(await screen.findByText("2 rinnovi aperti, nessun passo da fare oggi — li vedi in Rinnovi.")).toBeInTheDocument();
+    expect(screen.queryByText("Nessun rinnovo aperto.")).toBeNull();
+  });
+
+  it("says there is no open renewal only when there is none", async () => {
+    renderAt("/today", { getToday: vi.fn().mockResolvedValue(ok({ ...feed, mine: [], later: [], openCases: 0 })) });
+    expect(await screen.findByText("Nessun rinnovo aperto.")).toBeInTheDocument();
+  });
+
   it("shows Punto zero on an empty workspace", async () => {
     renderAt("/today", { getToday: vi.fn().mockResolvedValue(ok({ ...feed, emptyWorkspace: true, mine: [] })) });
     expect(await screen.findByText("Carica un contratto. Tutto il resto parte da lì.")).toBeInTheDocument();
@@ -129,6 +156,16 @@ describe("Rinnovi", () => {
     expect(screen.getByText("Disdetta entro")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fai ora" })).toBeInTheDocument();
   });
+
+  it("labels the caller's cases beyond the lead time as theirs, later", async () => {
+    const board: RenewalsBoard = {
+      viewer, openCases: 1, toStart: 0, empty: false, assignee: null, cases: [],
+      groups: [{ key: "mineLater", label: { id: "Yours, later" }, items: [{ contractId: "c9", caseId: "k9", supplier: "Veeam", contract: "Data Platform", stage: 1, stageLabel: { id: "Negotiation" }, next: "Luca Lamalfa — Plan", notice: "05 Apr 2028", days: 522, startBy: "", owner: "Luca Lamalfa", myTurn: true, hasCase: true, done: false, waiting: false, later: true }] }],
+    } as RenewalsBoard;
+    renderAt("/renewals", { getRenewalsBoard: vi.fn().mockResolvedValue(ok(board)) });
+    expect(await screen.findByText("Tue, più avanti")).toBeInTheDocument();
+    expect(missing).toEqual([]);
+  });
 });
 
 describe("Pratica", () => {
@@ -145,5 +182,51 @@ describe("Pratica", () => {
     await userEvent.click(within(step).getByRole("button", { name: "Altro ▾" }));
     await userEvent.click(within(step).getByRole("button", { name: "Prepara la disdetta" }));
     expect(post).toHaveBeenCalledWith(TENANT, "case-1", "startNotice", {}, 3);
+  });
+
+  it("shows the question and a processing line at once, then the answer the server added", async () => {
+    let resolve: (value: CaseCallResult<CaseEnvelope>) => void = () => undefined;
+    const askRenewalCase = vi.fn().mockReturnValue(new Promise((r) => (resolve = r)));
+    renderAt("/renewals/case-1", { getRenewalCase: vi.fn().mockResolvedValue(ok(envelope)), askRenewalCase });
+    const box = await screen.findByPlaceholderText("Hai un dubbio? Chiedi a Raffa su questo contratto — poi torniamo al passo");
+    await userEvent.type(box, "Quali sono gli SLA?{Enter}");
+
+    const pending = document.querySelector('[data-screen-label="Domanda in corso"]') as HTMLElement;
+    expect(within(pending).getByText("Quali sono gli SLA?")).toBeInTheDocument();
+    expect(within(pending).getByText("Leggo il contratto per rispondere…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Raffa sta rispondendo…" })).toBeDisabled();
+    expect(askRenewalCase).toHaveBeenCalledWith(TENANT, "case-1", "Quali sono gli SLA?", 3, "it");
+
+    const answered = {
+      ...envelope,
+      version: 4,
+      view: {
+        ...envelope.view,
+        page: {
+          ...envelope.view.page,
+          msgs: [
+            { by: "Marta", raffa: false, text: "Quali sono gli SLA?" },
+            { by: "Raffa", raffa: true, text: "Disponibilità 99,9% (p. 7)." },
+          ],
+        },
+      },
+    } as unknown as CaseEnvelope;
+    resolve(ok(answered));
+    expect(await screen.findByText("Disponibilità 99,9% (p. 7).")).toBeInTheDocument();
+    expect(document.querySelector('[data-screen-label="Domanda in corso"]')).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(missing).toEqual([]);
+  });
+
+  it("keeps the question and says so when the answer fails, so it can be asked again", async () => {
+    const askRenewalCase = vi.fn().mockResolvedValue({ ok: false, statusCode: 500, body: null, error: "HTTP 500", code: null, current: null });
+    renderAt("/renewals/case-1", { getRenewalCase: vi.fn().mockResolvedValue(ok(envelope)), askRenewalCase });
+    const box = await screen.findByPlaceholderText("Hai un dubbio? Chiedi a Raffa su questo contratto — poi torniamo al passo");
+    await userEvent.type(box, "Quali sono gli SLA?{Enter}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Raffa non è riuscito a rispondere ora. La domanda è di nuovo nel campo: riprova.");
+    expect(box).toHaveValue("Quali sono gli SLA?");
+    expect(screen.getByRole("button", { name: "Chiedi" })).toBeEnabled();
+    expect(missing).toEqual([]);
   });
 });

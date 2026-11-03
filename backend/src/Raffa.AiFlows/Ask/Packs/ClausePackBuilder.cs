@@ -115,7 +115,7 @@ public sealed class ClausePackBuilder(
 
         var contractId = new EntityId(namedContractItem.ContractId);
 
-        Result<EmbeddingContractScopedSearchResult> searchResult;
+        Result<EmbeddingContractScopedSearchResult>? searchResult;
         try
         {
             searchResult = await embeddingRetrievalService
@@ -127,36 +127,51 @@ public sealed class ClausePackBuilder(
         catch (InvalidOperationException)
         {
             // EF InMemory cannot translate Vector.CosineDistance (see InMemoryAskEngineFactory).
-            return [];
+            searchResult = null;
         }
 
-        if (searchResult.IsFailure)
+        var own = new List<PackItem>();
+        var peers = new List<PackItem>();
+        if (searchResult is { IsSuccess: true })
         {
-            return [];
+            var contract360 = await contract360QueryService
+                .GetByIdAsync(tenantId, contractId, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var hit in searchResult.Value.ThisContract)
+            {
+                var clause = contract360?.Clauses.FirstOrDefault(c => c.ClauseId == hit.SourceId);
+                own.Add(BuildClausePackItem(hit, clause, namedContractItem.ContractId, isPeer: false));
+            }
+
+            // AC-2: labelled separately, and never resolved against this contract's own Contract360
+            // clauses or link -- a peer hit belongs to a different, unresolved contract by construction
+            // (SearchByContractAsync's own peer slice already excludes contractId itself), so it must
+            // never be citable as if it were this contract's own evidence (R-ASK-04).
+            foreach (var hit in searchResult.Value.SimilarTypes)
+            {
+                peers.Add(BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: true));
+            }
         }
 
-        var contract360 = await contract360QueryService
-            .GetByIdAsync(tenantId, contractId, cancellationToken)
-            .ConfigureAwait(false);
-
-        var items = new List<PackItem>();
-
-        foreach (var hit in searchResult.Value.ThisContract)
+        // A turn about one contract is answered from that contract first. When its own chunks did
+        // not come back (not embedded yet, or the vector search is unavailable) its extracted
+        // clauses stand in, and its validated facts always close the pack. Similar-type peers only
+        // ever sit beside the contract's own evidence: with nothing of its own, a pack of peers is
+        // another supplier's contract, and the answer would describe that one instead (the GitLab
+        // chat that summarised a GitHub contract).
+        if (own.Count == 0)
         {
-            var clause = contract360?.Clauses.FirstOrDefault(c => c.ClauseId == hit.SourceId);
-            items.Add(BuildClausePackItem(hit, clause, namedContractItem.ContractId, isPeer: false));
+            own.AddRange((await BuildNamedContractExcerptItemsAsync(namedContractItem, cancellationToken).ConfigureAwait(false))
+                .Where(item => !string.IsNullOrWhiteSpace(item.Snippet)));
         }
 
-        // AC-2: labelled separately, and never resolved against this contract's own Contract360
-        // clauses or link -- a peer hit belongs to a different, unresolved contract by construction
-        // (SearchByContractAsync's own peer slice already excludes contractId itself), so it must
-        // never be citable as if it were this contract's own evidence (R-ASK-04).
-        foreach (var hit in searchResult.Value.SimilarTypes)
-        {
-            items.Add(BuildClausePackItem(hit, clause: null, namedContractId: null, isPeer: true));
-        }
-
-        return items;
+        var fact = BuildContractFactItem(
+            namedContractItem,
+            await context.ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false));
+        var hasOwnClauses = own.Count > 0;
+        own.Add(fact);
+        return hasOwnClauses ? [.. own, .. peers] : own;
     }
 
     /// <summary>
