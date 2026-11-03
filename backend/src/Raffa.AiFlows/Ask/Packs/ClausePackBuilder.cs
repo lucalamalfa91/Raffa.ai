@@ -154,24 +154,11 @@ public sealed class ClausePackBuilder(
             }
         }
 
-        // A turn about one contract is answered from that contract first. When its own chunks did
-        // not come back (not embedded yet, or the vector search is unavailable) its extracted
-        // clauses stand in, and its validated facts always close the pack. Similar-type peers only
-        // ever sit beside the contract's own evidence: with nothing of its own, a pack of peers is
-        // another supplier's contract, and the answer would describe that one instead (the GitLab
-        // chat that summarised a GitHub contract).
-        if (own.Count == 0)
-        {
-            own.AddRange((await BuildNamedContractExcerptItemsAsync(namedContractItem, cancellationToken).ConfigureAwait(false))
-                .Where(item => !string.IsNullOrWhiteSpace(item.Snippet)));
-        }
-
-        var fact = BuildContractFactItem(
-            namedContractItem,
-            await context.ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false));
-        var hasOwnClauses = own.Count > 0;
-        own.Add(fact);
-        return hasOwnClauses ? [.. own, .. peers] : own;
+        // Similar-type peers only ever sit beside the contract's own evidence. With nothing of its own
+        // the pack stays empty, so the turn abstains with "not among the validated clauses of X"
+        // (AnswerPhase) instead of answering from another supplier's contract -- the GitLab chat
+        // that summarised a GitHub contract.
+        return own.Count > 0 ? [.. own, .. peers] : [];
     }
 
     /// <summary>
