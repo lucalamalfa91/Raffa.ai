@@ -68,4 +68,9 @@ export const IT_SHELL: Readonly<Record<string, string>> = {
     "Un’attività diventa una pratica guidata; una conversazione archiviata si riapre scrivendo.",
   "Renewals⟦guide⟧": "Rinnovi",
   "Contracts⟦guide⟧": "Contratti",
+  // Table pager (components/table/TablePager.tsx)
+  "Table pages": "Pagine della tabella",
+  "Page {n}": "Pagina {n}",
+  "0 items": "0 elementi",
+  "{start}–{end} of {total}": "{start}–{end} di {total}",
 };
