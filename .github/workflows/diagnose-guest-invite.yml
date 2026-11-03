@@ -92,7 +92,7 @@ jobs:
             echo
             echo '```'
             az monitor log-analytics query -w "$WS" --timespan P2D --analytics-query \
-              "ContainerAppConsoleLogs_CL | where ContainerAppName_s == '${APP}' | where Log_s has 'Guest provisioning' | top 10 by TimeGenerated desc | project TimeGenerated, Log_s" \
+              "union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppConsoleLogs | extend App = coalesce(column_ifexists('ContainerAppName_s',''), column_ifexists('ContainerAppName','')), Line = coalesce(column_ifexists('Log_s',''), column_ifexists('Log','')) | where App == '${APP}' | where Line has 'Guest provisioning' | top 10 by TimeGenerated desc | project TimeGenerated, Line" \
               -o table 2>&1 | head -40 || true
             echo '```'
           } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
