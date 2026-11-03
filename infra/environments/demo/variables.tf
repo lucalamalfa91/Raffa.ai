@@ -120,3 +120,27 @@ variable "platform_admin_object_ids" {
     # Luca: add his Entra object id here.
   ]
 }
+
+variable "mail_custom_domain" {
+  description = "Domain invitation mail is sent from (e.g. raffa.ai), or null to keep the Azure-managed sender. Phase 1 of 2, see modules/communication/variables.tf."
+  type        = string
+  default     = null
+}
+
+variable "mail_dns_zone_name" {
+  description = "Azure DNS zone hosting mail_custom_domain (same name), or null to write no DNS records."
+  type        = string
+  default     = null
+}
+
+variable "mail_dns_zone_resource_group_name" {
+  description = "Resource group of that Azure DNS zone."
+  type        = string
+  default     = null
+}
+
+variable "mail_use_custom_sender" {
+  description = "Phase 2 of 2: send from the verified custom domain. Only after all four Azure verifications show Verified."
+  type        = bool
+  default     = false
+}

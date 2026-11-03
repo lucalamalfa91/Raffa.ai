@@ -126,6 +126,12 @@ module "communication" {
 
   environment         = local.environment
   resource_group_name = azurerm_resource_group.this.name
+
+  # Sender domain (two-phase, see modules/communication/variables.tf). All null/false = unchanged.
+  custom_domain                = var.mail_custom_domain
+  dns_zone_name                = var.mail_dns_zone_name
+  dns_zone_resource_group_name = var.mail_dns_zone_resource_group_name
+  use_custom_sender            = var.mail_use_custom_sender
 }
 
 module "containerapps" {

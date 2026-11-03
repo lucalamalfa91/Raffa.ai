@@ -111,7 +111,11 @@ internal sealed class AcsInvitationMailer(
             return false;
         }
 
-        var content = new EmailContent(ComposeProspectSubject()) { PlainText = ComposeProspectBody(acceptUrl, expiresAt) };
+        var content = new EmailContent(ComposeProspectSubject())
+        {
+            PlainText = ComposeProspectBody(acceptUrl, expiresAt),
+            Html = ComposeProspectHtml(acceptUrl, expiresAt),
+        };
         try
         {
             var operation = await client
@@ -130,6 +134,28 @@ internal sealed class AcsInvitationMailer(
             logger.LogWarning(exception, "Prospect invitation mail could not be sent");
             return false;
         }
+    }
+
+    /// <summary>The same invitation as <see cref="ComposeProspectBody"/>, with a button. Inline styles only (mail
+    /// clients ignore stylesheets); the link is HTML-encoded and is the only variable part.</summary>
+    public static string ComposeProspectHtml(string acceptUrl, DateTimeOffset expiresAt)
+    {
+        var expiry = expiresAt.UtcDateTime.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+        var link = System.Net.WebUtility.HtmlEncode(acceptUrl);
+        return $"""
+            <!doctype html>
+            <html lang="en"><body style="margin:0;padding:24px;background:#f2f2f2;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+            <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;padding:32px">
+            <tr><td style="font-size:20px;font-weight:bold">Raffa.ai</td></tr>
+            <tr><td style="padding-top:24px;font-size:22px;font-weight:bold">Welcome to Raffa</td></tr>
+            <tr><td style="padding-top:8px;font-size:15px;line-height:22px">Your AI-powered procurement assistant. You have been invited to create your company workspace.</td></tr>
+            <tr><td style="padding-top:24px"><a href="{link}" style="display:inline-block;background:#ee2d12;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 24px">Accept your invitation</a></td></tr>
+            <tr><td style="padding-top:24px;font-size:13px;line-height:20px;color:#555555">Signing in uses your email address: Microsoft will send you a one-time code.<br>This link expires {expiry} and can be used once.</td></tr>
+            <tr><td style="padding-top:16px;font-size:12px;line-height:18px;color:#777777">If the button does not work, copy this address into your browser:<br>{link}</td></tr>
+            <tr><td style="padding-top:16px;font-size:12px;color:#777777">If you were not expecting this, you can ignore this message.</td></tr>
+            </table></td></tr></table></body></html>
+            """;
     }
 
     public static string ComposeProspectSubject() => "You've been invited to Raffa.ai";
