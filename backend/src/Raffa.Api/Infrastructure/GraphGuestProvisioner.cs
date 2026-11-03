@@ -96,17 +96,18 @@ internal sealed class GraphGuestProvisioner(
             logger.LogWarning(
                 "Guest provisioning failed for workspace '{WorkspaceName}': {Reason} (Graph status {Status}, code {Code}, request-id {RequestId})",
                 workspaceName, reason.ToWireValue(), error.ResponseStatusCode, error.Error?.Code ?? "-", requestId ?? "-");
-            return GuestProvisioningResult.Failed(reason, requestId);
+            return GuestProvisioningResult.Failed(
+                reason, requestId, $"Graph {error.ResponseStatusCode} {error.Error?.Code ?? "-"}");
         }
         catch (CredentialUnavailableException exception)
         {
             logger.LogWarning(exception, "Guest provisioning could not obtain a workload identity token for workspace '{WorkspaceName}'", workspaceName);
-            return GuestProvisioningResult.Failed(GuestProvisioningFailureReason.DirectoryUnavailable);
+            return GuestProvisioningResult.Failed(GuestProvisioningFailureReason.DirectoryUnavailable, null, "no workload identity token (CredentialUnavailable)");
         }
         catch (AuthenticationFailedException exception)
         {
             logger.LogWarning(exception, "Guest provisioning could not authenticate the workload identity for workspace '{WorkspaceName}'", workspaceName);
-            return GuestProvisioningResult.Failed(GuestProvisioningFailureReason.DirectoryUnavailable);
+            return GuestProvisioningResult.Failed(GuestProvisioningFailureReason.DirectoryUnavailable, null, "workload identity authentication failed (AuthenticationFailed)");
         }
         catch (HttpRequestException exception)
         {

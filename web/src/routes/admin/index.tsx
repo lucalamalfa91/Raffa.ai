@@ -28,16 +28,28 @@ const DELIVERY_COPY: Record<AdminIssuedInvitationBody["deliveryOutcome"], string
   no_transport: "This environment sends no email. Copy the link below and send it yourself.",
 };
 
-/** The API's 502 body is `{"failureReason": ...}`: the directory would not prepare the prospect's sign-in. */
+/** The API's 502 body is `{"failureReason": ..., "detail": ...}`: the directory would not prepare the prospect's sign-in. */
 function invitationFailureCopy(error: string | null): string {
-  if (error?.includes("consent_missing")) {
-    return "The directory has not been allowed to create sign-in accounts for new people (admin consent is missing), so the invitation was not created.";
+  let reason: string | null = null;
+  let detail: string | null = null;
+  try {
+    const body = JSON.parse(error ?? "") as { failureReason?: unknown; detail?: unknown };
+    reason = typeof body.failureReason === "string" ? body.failureReason : null;
+    detail = typeof body.detail === "string" && body.detail.length > 0 ? body.detail : null;
+  } catch {
+    reason = error?.includes("consent_missing") ? "consent_missing" : null;
   }
-  if (error?.includes("directory_unavailable")) {
-    return "The directory is not reachable right now, so the invitation was not created. Try again in a moment.";
+  const withDetail = (text: string) => (detail ? `${text} (${detail})` : text);
+  if (reason === "consent_missing") {
+    return withDetail(
+      "The directory refused to create a sign-in account for new people (permission or tenant guest-invite settings), so the invitation was not created.",
+    );
   }
-  if (error?.includes("provisioning_failed")) {
-    return "The directory refused to create a sign-in account for this address, so the invitation was not created.";
+  if (reason === "directory_unavailable") {
+    return withDetail("The directory is not reachable right now, so the invitation was not created. Try again in a moment.");
+  }
+  if (reason === "provisioning_failed") {
+    return withDetail("The directory refused to create a sign-in account for this address, so the invitation was not created.");
   }
   return error ?? "The change was not applied.";
 }
