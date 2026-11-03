@@ -1,17 +1,18 @@
 import { useState, type FormEvent } from "react";
 import { CopyTip } from "../../../components/InfoTip";
-import { TIPS } from "../../../components/infoTipCopy";
+import { TIPS, translateTip } from "../../../components/infoTipCopy";
+import { useI18n } from "../../../i18n/I18nProvider";
 import {
-  IDENTITY_ONE_TIME_CODE_LINE,
-  INVITE_ROLE_LABEL,
   INVITE_ROLE_ORDER,
-  INVITE_ROLE_SUMMARY,
-  NO_INVITATION_CREATED_META,
   composeAcceptLink,
+  identityOneTimeCodeLine,
   inviteEmailPlaceholder,
   inviteFailureCopy,
   inviteLinkExpiryMeta,
   inviteOutcomeSentence,
+  inviteRoleLabel,
+  inviteRoleSummary,
+  noInvitationCreatedMeta,
   type Day1InviteRole,
   type InviteOutcome,
 } from "./memberViewModel";
@@ -75,6 +76,7 @@ export default function InvitePane({
   onRoleChange,
   onSubmit,
 }: InvitePaneProps) {
+  const { t } = useI18n();
   // "Copied" belongs to the outcome whose link was copied: a new invite (or none) reads "Copy link"
   // again by construction. Derived rather than reset in an effect -- a passive effect for a fresh
   // outcome could run after a quick click and wipe the confirmation it had just shown.
@@ -94,22 +96,22 @@ export default function InvitePane({
   };
 
   return (
-    <aside className="members-invite-pane" aria-label="Invite a colleague">
+    <aside className="members-invite-pane" aria-label={t("Invite a colleague")}>
       <div className="heading-with-tip members-invite-title">
-        <h4>Invite a colleague</h4>
-        <CopyTip tip={TIPS.membersInvite} align="end" />
+        <h4>{t("Invite a colleague")}</h4>
+        <CopyTip tip={translateTip(t, TIPS.membersInvite)} align="end" />
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
         <div className="field members-invite-field">
-          <label htmlFor="invite-email">Work email</label>
+          <label htmlFor="invite-email">{t("Work email")}</label>
           <input
             id="invite-email"
             className="input"
             type="email"
             name="email"
             autoComplete="off"
-            placeholder={inviteEmailPlaceholder(tenantDomain)}
+            placeholder={inviteEmailPlaceholder(t, tenantDomain)}
             value={email}
             onChange={(event) => onEmailChange(event.target.value)}
             disabled={submitting}
@@ -118,7 +120,7 @@ export default function InvitePane({
         </div>
 
         <fieldset className="invite-role-fieldset">
-          <legend className="visually-hidden">Role</legend>
+          <legend className="visually-hidden">{t("Role")}</legend>
           {INVITE_ROLE_ORDER.map((option) => (
             <label key={option} className="invite-role-option">
               <span className="invite-role-control">
@@ -134,15 +136,15 @@ export default function InvitePane({
                 <span className="dot" />
               </span>
               <span className="invite-role-copy">
-                <strong className="invite-role-label">{INVITE_ROLE_LABEL[option]}</strong>
-                <span className="invite-role-summary">{INVITE_ROLE_SUMMARY[option]}</span>
+                <strong className="invite-role-label">{inviteRoleLabel(t, option)}</strong>
+                <span className="invite-role-summary">{inviteRoleSummary(t, option)}</span>
               </span>
             </label>
           ))}
         </fieldset>
 
         <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-          {submitting ? "Sending…" : "Send invitation"}
+          {submitting ? t("Sending…") : t("Send invitation")}
         </button>
 
         {error !== null && (
@@ -153,29 +155,29 @@ export default function InvitePane({
 
         {error === null && failure !== null && (
           <div className="members-invite-error" role="alert">
-            <p className="members-invite-failure">{inviteFailureCopy(failure.failureReason, failure.email)}</p>
-            <p className="micro-meta">{NO_INVITATION_CREATED_META}</p>
+            <p className="members-invite-failure">{inviteFailureCopy(t, failure.failureReason, failure.email)}</p>
+            <p className="micro-meta">{noInvitationCreatedMeta(t)}</p>
           </div>
         )}
 
         {failure === null && outcome !== null && (
           <div className="members-invite-link" role="status">
-            <p className="members-invite-outcome">{inviteOutcomeSentence(outcome)}</p>
+            <p className="members-invite-outcome">{inviteOutcomeSentence(t, outcome)}</p>
             <div className="members-invite-link-row">
               <input
                 className="input members-invite-link-field"
                 type="text"
                 readOnly
-                aria-label="Invitation link"
+                aria-label={t("Invitation link")}
                 value={composeAcceptLink(outcome.acceptUrl, window.location.origin)}
                 onFocus={(event) => event.currentTarget.select()}
               />
               <button type="button" className="btn btn-secondary" onClick={() => copyLink(composeAcceptLink(outcome.acceptUrl, window.location.origin))}>
-                {linkCopied ? "Copied" : "Copy link"}
+                {linkCopied ? t("Copied⟦link⟧") : t("Copy link")}
               </button>
             </div>
-            <p className="micro-meta">{inviteLinkExpiryMeta(outcome.expiresAt)}</p>
-            {outcome.identityProvisioned && <p className="micro-meta">{IDENTITY_ONE_TIME_CODE_LINE}</p>}
+            <p className="micro-meta">{inviteLinkExpiryMeta(t, outcome.expiresAt)}</p>
+            {outcome.identityProvisioned && <p className="micro-meta">{identityOneTimeCodeLine(t)}</p>}
           </div>
         )}
       </form>

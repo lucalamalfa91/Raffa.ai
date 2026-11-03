@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import MembersRoute from "../../../../src/routes/workspace/members";
+import GuidePanel from "../../../../src/components/shell/GuidePanel";
+import { GuideProvider } from "../../../../src/components/shell/guide";
+import { I18nProvider } from "../../../../src/i18n/I18nProvider";
+import { trackMissingItalian } from "../../../../src/i18n/translate";
 import type { WorkspaceRole } from "../../../../src/components/shell/navItems";
 import type { ShellOutletContext } from "../../../../src/components/shell/shellContext";
 import type { ApiClient, GetWorkspaceMembersResult, InviteWorkspaceMemberResult, WorkspaceMemberBody } from "../../../../src/api/client";
@@ -552,5 +556,86 @@ describe("MembersRoute workspace settings (ADR-030 gate 2)", () => {
 
     await screen.findByText(USER_LABEL);
     expect(screen.queryByRole("checkbox", { name: /Allow Ask Raffa/ })).toBeNull();
+  });
+});
+
+describe("MembersRoute in Italian, with Guida Raffa", () => {
+  const missing: string[] = [];
+  beforeEach(() => {
+    missing.length = 0;
+    trackMissingItalian((id) => missing.push(id));
+  });
+  afterEach(() => {
+    trackMissingItalian(null);
+    window.localStorage.clear();
+  });
+
+  function renderItalian(apiClient: ApiClient, role: WorkspaceRole) {
+    const shell: ShellOutletContext = { kbReady: false, validatedContractCount: 0 };
+    return render(
+      <MemoryRouter initialEntries={["/workspace/members?lang=it"]}>
+        <I18nProvider>
+          <GuideProvider>
+            <Routes>
+              <Route element={<Outlet context={shell} />}>
+                <Route
+                  path="/workspace/members"
+                  element={<MembersRoute apiClient={apiClient} userLabel={USER_LABEL} workspaceId={WORKSPACE_ID} workspaceName="Acme" role={role} />}
+                />
+              </Route>
+            </Routes>
+            <GuidePanel />
+          </GuideProvider>
+        </I18nProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  const settingsOk = { ok: true, statusCode: 200, settings: { webResearchEnabled: false, canEdit: true }, error: null };
+
+  it("renders the Admin screen, its tips and an invite outcome in Italian, and states its own guide instead of Ask's", async () => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember(), activeMember({ id: "admin-2", membershipId: "m-2", email: "other@acme.example" }), invitedMember()]));
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ deliveryOutcome: "sent", identityProvisioned: true }));
+    const { container } = renderItalian(
+      mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember, getWorkspaceSettings: vi.fn().mockResolvedValue(settingsOk) }),
+      "admin",
+    );
+
+    const table = await screen.findByRole("table");
+    expect(screen.getByText("Configurazione")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Workspace e membri" })).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(/^Suggerimento: invita il team/);
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual(["Membro", "Ruolo", "Stato", "Azioni"]);
+    expect(within(table).getAllByRole("cell", { name: "Admin del workspace" })).toHaveLength(2);
+    expect(within(table).getByText("Invitato")).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: /Consenti a Chiedi a Raffa di cercare sul web pubblico/ })).toBeInTheDocument();
+
+    const otherRow = within(table).getByText("other@acme.example").closest("tr");
+    if (!otherRow) throw new Error("other row not found");
+    fireEvent.click(within(otherRow).getByRole("button", { name: "Rimuovi" }));
+    expect(within(otherRow).getByText("Rimuovere other@acme.example?")).toBeInTheDocument();
+    fireEvent.click(within(otherRow).getByRole("button", { name: "Annulla" }));
+
+    const pane = screen.getByRole("complementary", { name: "Invita un collega" });
+    fireEvent.change(within(pane).getByLabelText("Email di lavoro"), { target: { value: "buyer@acme.example" } });
+    fireEvent.click(within(pane).getByRole("button", { name: "Invia l'invito" }));
+    expect(await screen.findByText("Invito inviato a buyer@acme.example.")).toBeInTheDocument();
+    expect(screen.getByText("Al primo accesso riceverà da Microsoft un codice monouso.")).toBeInTheDocument();
+
+    expect(container.querySelector(".v4-guide-where")).toHaveTextContent("Workspace e membri");
+    expect(container.querySelector(".v4-guide-now")).toHaveTextContent(/^Invita un collega con la sua email di lavoro/);
+    expect(missing).toEqual([]);
+  });
+
+  it("renders the read-only Procurement variant and its guide in Italian", async () => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember({ id: "admin-1", email: "boss@acme.example" }), activeMember({ id: "self-1", email: USER_LABEL, role: "Procurement" })]));
+    const { container } = renderItalian(mockApiClient({ getWorkspaceMembers }), "procurement");
+
+    await screen.findByRole("table");
+    const requestAccess = screen.getByRole("link", { name: "Richiedi l'accesso" });
+    expect(requestAccess.getAttribute("href")).toContain(encodeURIComponent("Accesso come Admin del workspace — Acme"));
+    expect(screen.getByRole("heading", { level: 4, name: "Non gestisci questo workspace" })).toBeInTheDocument();
+    expect(container.querySelector(".v4-guide-now")).toHaveTextContent(/^Guarda chi lavora in questo workspace/);
+    expect(missing).toEqual([]);
   });
 });

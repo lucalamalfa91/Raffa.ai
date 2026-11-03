@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { WorkspaceMemberBody } from "../../../api/client";
 import { CopyTip } from "../../../components/InfoTip";
-import { TIPS } from "../../../components/infoTipCopy";
+import { TIPS, translateTip } from "../../../components/infoTipCopy";
+import { useI18n } from "../../../i18n/I18nProvider";
 import { getMemberStatusTag, isLastActiveAdmin, memberRoleLabel, reissueConsequence, removeConsequence, revokeConsequence } from "./memberViewModel";
 
 export interface MembersActionError {
@@ -46,31 +47,32 @@ export interface MembersTableProps {
  * ADR-020's w14 design footer (screen 10, D-58.5/D-58.6/D-58.7).
  */
 export default function MembersTable({ members, currentUserEmail, canManage, pendingActionId, actionError, onRevoke, onReissue, onRemove }: MembersTableProps) {
+  const { t } = useI18n();
   const [confirming, setConfirming] = useState<{ id: string; kind: "revoke" | "reissue" | "remove" } | null>(null);
 
   return (
     <table className="table members-table">
       <thead>
         <tr>
-          <th scope="col">Member</th>
+          <th scope="col">{t("Member")}</th>
           <th scope="col" className="members-col-role">
-            Role
-            <CopyTip tip={TIPS.membersRole} />
+            {t("Role")}
+            <CopyTip tip={translateTip(t, TIPS.membersRole)} />
           </th>
           <th scope="col" className="members-col-status">
-            Status
-            <CopyTip tip={TIPS.membersStatus} />
+            {t("Status")}
+            <CopyTip tip={translateTip(t, TIPS.membersStatus)} />
           </th>
           {canManage && (
             <th scope="col" className="members-col-actions">
-              Actions
+              {t("Actions")}
             </th>
           )}
         </tr>
       </thead>
       <tbody>
         {members.map((member) => {
-          const statusTag = getMemberStatusTag(member.status);
+          const statusTag = getMemberStatusTag(t, member.status);
           const isSelf = member.email.toLowerCase() === currentUserEmail.toLowerCase();
           // Fix 2026-09-15: `pendingActionId`/`actionError.id` (routes/workspace/members/index.tsx's
           // `handleRevoke`/`handleRemove`) are keyed by the same action id now passed to
@@ -83,9 +85,9 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
             <tr key={member.id}>
               <td>
                 <div className="members-member-primary">{member.email}</div>
-                {isSelf && <div className="members-member-secondary">You</div>}
+                {isSelf && <div className="members-member-secondary">{t("You")}</div>}
               </td>
-              <td>{memberRoleLabel(member.role)}</td>
+              <td>{memberRoleLabel(t, member.role)}</td>
               <td>
                 <span className={`tag tag-${statusTag.variant} members-status-tag`}>{statusTag.label}</span>
               </td>
@@ -149,21 +151,31 @@ function MemberActions({
   onReissue,
   onRemove,
 }: MemberActionsProps) {
+  const { t } = useI18n();
   if (member.status === "Invited") {
     if (confirmingKind === "revoke") {
-      const { question, detail } = revokeConsequence(member.email);
-      return (
-        <ConfirmBlock question={question} detail={detail} confirmLabel="Yes, revoke" pendingLabel="Revoking…" pending={pending} error={error} onConfirm={onRevoke} onCancel={onCancelConfirm} />
-      );
-    }
-    if (confirmingKind === "reissue") {
-      const { question, detail } = reissueConsequence(member.email);
+      const { question, detail } = revokeConsequence(t, member.email);
       return (
         <ConfirmBlock
           question={question}
           detail={detail}
-          confirmLabel="Yes, send a new invitation"
-          pendingLabel="Sending…"
+          confirmLabel={t("Yes, revoke")}
+          pendingLabel={t("Revoking…")}
+          pending={pending}
+          error={error}
+          onConfirm={onRevoke}
+          onCancel={onCancelConfirm}
+        />
+      );
+    }
+    if (confirmingKind === "reissue") {
+      const { question, detail } = reissueConsequence(t, member.email);
+      return (
+        <ConfirmBlock
+          question={question}
+          detail={detail}
+          confirmLabel={t("Yes, send a new invitation")}
+          pendingLabel={t("Sending…")}
           pending={pending}
           error={error}
           onConfirm={onReissue}
@@ -174,10 +186,10 @@ function MemberActions({
     return (
       <div className="members-invited-actions">
         <button type="button" className="btn btn-ghost" onClick={() => onRequestConfirm("reissue")}>
-          Send a new invitation
+          {t("Send a new invitation")}
         </button>
         <button type="button" className="btn btn-ghost" onClick={() => onRequestConfirm("revoke")}>
-          Revoke
+          {t("Revoke")}
         </button>
       </div>
     );
@@ -188,21 +200,30 @@ function MemberActions({
       return (
         <span className="members-action-disabled">
           <button type="button" className="btn btn-ghost" disabled>
-            Remove
+            {t("Remove")}
           </button>
-          <span className="hint">This is the last Workspace Admin. Invite another Workspace Admin first.</span>
+          <span className="hint">{t("This is the last Workspace Admin. Invite another Workspace Admin first.")}</span>
         </span>
       );
     }
     if (confirmingKind === "remove") {
-      const { question, detail } = removeConsequence(member.email, isSelf);
+      const { question, detail } = removeConsequence(t, member.email, isSelf);
       return (
-        <ConfirmBlock question={question} detail={detail} confirmLabel="Yes, remove" pendingLabel="Removing…" pending={pending} error={error} onConfirm={onRemove} onCancel={onCancelConfirm} />
+        <ConfirmBlock
+          question={question}
+          detail={detail}
+          confirmLabel={t("Yes, remove")}
+          pendingLabel={t("Removing…")}
+          pending={pending}
+          error={error}
+          onConfirm={onRemove}
+          onCancel={onCancelConfirm}
+        />
       );
     }
     return (
       <button type="button" className="btn btn-ghost" onClick={() => onRequestConfirm("remove")}>
-        Remove
+        {t("Remove")}
       </button>
     );
   }
@@ -224,6 +245,7 @@ interface ConfirmBlockProps {
 /** The two-step inline confirm every destructive row action shares (ADR-020 w14 footer D-58.5:
  * "the `Actions` cell swaps to the question, two buttons, and the consequence line"). */
 function ConfirmBlock({ question, detail, confirmLabel, pendingLabel, pending, error, onConfirm, onCancel }: ConfirmBlockProps) {
+  const { t } = useI18n();
   return (
     <div className="members-action-confirm">
       <p className="members-action-question">{question}</p>
@@ -233,7 +255,7 @@ function ConfirmBlock({ question, detail, confirmLabel, pendingLabel, pending, e
           {pending ? pendingLabel : confirmLabel}
         </button>
         <button type="button" className="btn btn-ghost" disabled={pending} onClick={onCancel}>
-          Cancel
+          {t("Cancel")}
         </button>
       </div>
       {error !== null && (

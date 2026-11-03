@@ -1,3 +1,5 @@
+import type { Translate } from "../i18n/translate";
+
 /**
  * Every InfoTip's words, in one place, so the whole app explains itself in the same voice: plain
  * words, second person, what a thing means and what to do next -- never a figure the screen itself
@@ -20,6 +22,19 @@ export interface TipCopy {
   lines: readonly string[];
   /** Small print under a rule: a source, a limit, a shortcut. */
   meta?: string;
+}
+
+/**
+ * `tip` in the language on screen: its words are English message ids (gettext style, see
+ * `i18n/translate.ts`), so a screen that renders a tip in Italian passes it through here with its
+ * `t`. Ids the catalogue lacks stay in English.
+ */
+export function translateTip(t: Translate, tip: TipCopy): TipCopy {
+  return {
+    label: t(tip.label),
+    lines: tip.lines.map((line) => t(line)),
+    ...(tip.meta !== undefined ? { meta: t(tip.meta) } : {}),
+  };
 }
 
 export type ScreenGuideKey =
