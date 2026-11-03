@@ -1,0 +1,97 @@
+name: diagnose-guest-invite
+
+# READ-ONLY diagnostic for "the Pannello admin cannot create a prospect invitation" (the directory refuses
+# to create the guest). It changes nothing: it logs in with the same per-environment CI identity the deploys
+# use (ADR-015, OIDC, no secret) and writes what it finds to the job summary:
+#   1. the API app's guest/mail/admin settings (an allow-list of NON-secret names only) and which identity it runs as;
+#   2. whether that identity holds the Microsoft Graph User.Invite.All application role (needs Graph read; the
+#      CI identity may not have it, which the step then says plainly);
+#   3. the API's own log lines for guest provisioning, which carry the directory's HTTP status and error code.
+# Manual only. The `demo` run waits for the demo environment's reviewers like any other demo job.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Environment to inspect."
+        required: true
+        type: choice
+        options: [dev, demo]
+        default: demo
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    name: diagnose (${{ inputs.target_environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    env:
+      ENV_NAME: ${{ inputs.target_environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: API settings and identity
+        continue-on-error: true
+        run: |
+          RG="rg-raffa-${ENV_NAME}"; APP="ca-raffa-${ENV_NAME}-api"; ID="id-raffa-${ENV_NAME}-workload"
+          {
+            echo "## ${ENV_NAME}: API settings and identity"
+            echo
+            echo '```'
+            az containerapp show -g "$RG" -n "$APP" \
+              --query "properties.template.containers[0].env[?starts_with(name,'Invitations__') || starts_with(name,'PlatformAdmin__') || name=='AZURE_CLIENT_ID'].{name:name,value:value,secret:secretRef}" \
+              -o table 2>&1 | grep -vi "connectionstring" || true
+            echo '```'
+            echo
+            echo "Workload identity (id-raffa-${ENV_NAME}-workload):"
+            echo '```'
+            az identity show -g "$RG" -n "$ID" --query "{clientId:clientId,principalId:principalId}" -o json 2>&1 || true
+            echo '```'
+            echo "Identities attached to the app:"
+            echo '```'
+            az containerapp show -g "$RG" -n "$APP" --query "identity.userAssignedIdentities | keys(@)" -o json 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Graph app roles of the workload identity
+        continue-on-error: true
+        run: |
+          RG="rg-raffa-${ENV_NAME}"; ID="id-raffa-${ENV_NAME}-workload"
+          PRINCIPAL=$(az identity show -g "$RG" -n "$ID" --query principalId -o tsv)
+          {
+            echo "## ${ENV_NAME}: Graph application roles held by ${ID}"
+            echo
+            echo '```'
+            az rest --method GET \
+              --uri "https://graph.microsoft.com/v1.0/servicePrincipals/${PRINCIPAL}/appRoleAssignments?\$select=appRoleId,resourceDisplayName,createdDateTime" \
+              -o json 2>&1 | head -40 \
+              || echo "(the CI identity cannot read Graph app role assignments)"
+            echo '```'
+            echo "User.Invite.All is appRoleId 09850681-111b-4a89-9bed-3f2cae46d706."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: API log lines about guest provisioning
+        continue-on-error: true
+        run: |
+          RG="rg-raffa-${ENV_NAME}"; APP="ca-raffa-${ENV_NAME}-api"; LAW="log-raffa-${ENV_NAME}"
+          az config set extension.use_dynamic_install=yes_without_prompt extension.dynamic_install_allow_preview=true >/dev/null 2>&1 || true
+          WS=$(az monitor log-analytics workspace show -g "$RG" -n "$LAW" --query customerId -o tsv)
+          {
+            echo "## ${ENV_NAME}: last guest-provisioning log lines of ${APP}"
+            echo
+            echo '```'
+            az monitor log-analytics query -w "$WS" --timespan P2D --analytics-query \
+              "ContainerAppConsoleLogs_CL | where ContainerAppName_s == '${APP}' | where Log_s has 'Guest provisioning' | top 10 by TimeGenerated desc | project TimeGenerated, Log_s" \
+              -o table 2>&1 | head -40 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
