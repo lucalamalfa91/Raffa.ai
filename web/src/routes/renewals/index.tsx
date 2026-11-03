@@ -116,10 +116,25 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
             <div key={x.contractId} className="r-row r4-row" onClick={() => open(x)}>
               <div className="r4-main">
                 <div className="r4-sup">
-                  {x.supplier} <span>{x.contract}</span>
+                  {x.supplier}
+                  <span className="r4-file" title={x.contract}>{x.contract}</span>
                 </div>
                 <div className="r4-phase">
-                  {situation(x) ?? (x.hasCase ? t("Phase {n}/6 · {label}", { n: x.stage + 1, label: tr(x.stageLabel) }) : t("Not started"))} · <strong>{next(x)}</strong>
+                  <svg className="r4-ico" viewBox="0 0 16 16" aria-hidden="true">
+                    {x.hasCase ? <path d="M3 8a5 5 0 1 0 1.5-3.5M3 2.5V5h2.5" /> : x.termStatus === "rolledOver" ? <path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5V5h-2.5" /> : <circle cx="8" cy="8" r="5" />}
+                  </svg>
+                  <span className="r4-phase-txt">
+                    {situation(x) ?? (x.hasCase ? t("Phase {n}/6 · {label}", { n: x.stage + 1, label: tr(x.stageLabel) }) : t("Not started"))}
+                  </span>
+                  {x.hasCase ? (
+                    <span className="r4-steps" aria-hidden="true">
+                      {[0, 1, 2, 3, 4, 5].map((i) => <i key={i} className={i <= x.stage ? "on" : ""} />)}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="r4-next">
+                  <svg className="r4-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg>
+                  <strong>{next(x)}</strong>
                 </div>
               </div>
               <div className="r4-notice">
@@ -134,7 +149,10 @@ export default function RenewalsRoute({ apiClient }: RenewalsRouteProps) {
                   )}
                 </div>
               </div>
-              <div className="r4-owner">{x.owner ? `${t("Owner⟦short⟧")} ${x.owner.split(" ")[0]}` : t("No owner")}</div>
+              <div className="r4-owner" title={x.owner ?? t("No owner")}>
+                <span className={x.owner ? "r4-avatar" : "r4-avatar is-none"}>{x.owner ? x.owner.trim().charAt(0).toUpperCase() : "–"}</span>
+                <span className="r4-owner-name">{x.owner ? x.owner.split(/[ @]/)[0] : t("No owner")}</span>
+              </div>
               <button type="button" className={`btn ${x.myTurn || !x.hasCase ? "btn-primary" : "btn-secondary"} r4-cta`}>
                 {cta(x)}
               </button>

@@ -15,7 +15,7 @@
   --chat-muted: var(--color-neutral-600);
   --chat-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
-.k6-chiedi.has-panel { grid-template-columns: 260px minmax(0, 1fr) auto; }
+.k6-chiedi.has-panel { grid-template-columns: var(--k6-rail-w, 260px) minmax(0, 1fr) auto; }
 
 .reply-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .reply-markdown { display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.65; max-width: 74ch; text-wrap: pretty; }
