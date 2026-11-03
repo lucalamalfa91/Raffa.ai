@@ -1,3 +1,4 @@
+using Azure.Core;
 using Azure.Identity;
 using Raffa.Identity.Workspace.Application;
 using Microsoft.Graph;
@@ -43,6 +44,10 @@ internal sealed class GraphGuestProvisioner(
 
     /// <summary>Graph's <c>invitation.status</c> for an address that already redeemed a guest object.</summary>
     private const string CompletedStatus = "Completed";
+
+    // Used only to read the claims of the token Graph just refused (see DescribeTokenAsync). A separate
+    // credential instance asks the platform's identity endpoint for the same token; nothing is stored.
+    private static readonly DefaultAzureCredential DiagnosticCredential = new();
 
     public async Task<GuestProvisioningResult> EnsureGuestAsync(string email, string workspaceName, CancellationToken cancellationToken = default)
     {
@@ -93,11 +98,14 @@ internal sealed class GraphGuestProvisioner(
                 _ => GuestProvisioningFailureReason.ProvisioningFailed,
             };
             var requestId = ReadRequestId(error);
+            var tokenClaims = error.ResponseStatusCode is 401 or 403
+                ? await DescribeTokenAsync(cancellationToken).ConfigureAwait(false)
+                : null;
             logger.LogWarning(
-                "Guest provisioning failed for workspace '{WorkspaceName}': {Reason} (Graph status {Status}, code {Code}, request-id {RequestId})",
-                workspaceName, reason.ToWireValue(), error.ResponseStatusCode, error.Error?.Code ?? "-", requestId ?? "-");
+                "Guest provisioning failed for workspace '{WorkspaceName}': {Reason} (Graph status {Status}, code {Code}, request-id {RequestId}, {TokenClaims})",
+                workspaceName, reason.ToWireValue(), error.ResponseStatusCode, error.Error?.Code ?? "-", requestId ?? "-", tokenClaims ?? "token claims not read");
             return GuestProvisioningResult.Failed(
-                reason, requestId, $"Graph {error.ResponseStatusCode} {error.Error?.Code ?? "-"}");
+                reason, requestId, $"Graph {error.ResponseStatusCode} {error.Error?.Code ?? "-"}{(tokenClaims is null ? string.Empty : ", " + tokenClaims)}");
         }
         catch (CredentialUnavailableException exception)
         {
@@ -118,6 +126,22 @@ internal sealed class GraphGuestProvisioner(
         {
             logger.LogWarning("Guest provisioning timed out against the directory for workspace '{WorkspaceName}'", workspaceName);
             return GuestProvisioningResult.Failed(GuestProvisioningFailureReason.DirectoryUnavailable);
+        }
+    }
+
+    /// <summary>The non-secret claims of the token this identity gets for Graph, or why they could not be read.</summary>
+    private static async Task<string> DescribeTokenAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var token = await DiagnosticCredential
+                .GetTokenAsync(new TokenRequestContext(Scopes), cancellationToken)
+                .ConfigureAwait(false);
+            return TokenClaimsSummary.Describe(token.Token);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return $"token claims unavailable ({exception.GetType().Name})";
         }
     }
 
