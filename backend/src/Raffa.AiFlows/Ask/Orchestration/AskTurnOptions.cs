@@ -35,6 +35,15 @@ public sealed class AskTurnOptions
     /// step name. The request to the gateway and the guard policy are unchanged. <see langword="false"/> = today.</summary>
     public bool AnswerOnRunner { get; set; }
 
+    /// <summary>
+    /// <c>Chat:AskTurn:AiUnderstanding</c>: the model reads every typed turn against the whole conversation
+    /// (<see cref="TurnUnderstanding"/>) and decides its label, intent, supplier and any clarification,
+    /// instead of the gate's word lists, the intent lexicon and the ambiguity detector. The class default is
+    /// off (a hand-built options object reproduces the deterministic turn); the API host switches it on
+    /// before binding configuration, so this key turns it back off without a redeploy.
+    /// </summary>
+    public bool AiUnderstanding { get; set; }
+
     /// <summary>A-05: backstop deadline of one answer-composer step when <see cref="AnswerOnRunner"/> is on;
     /// far above the gateway's own timeout, so it bounds a hung call and changes no normal turn.</summary>
     public TimeSpan AnswerStepDeadline { get; set; } = TimeSpan.FromMinutes(10);

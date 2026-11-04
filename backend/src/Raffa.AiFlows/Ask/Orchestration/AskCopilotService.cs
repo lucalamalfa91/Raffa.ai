@@ -204,7 +204,10 @@ public sealed class AskCopilotService(
     InDomainReplyPipeline inDomain,
     CapabilityCheckCoordinator capabilityChecks,
     ITenantContext tenantContext,
-    ContractContextReader? turnReads = null)
+    ContractContextReader? turnReads = null,
+    TurnUnderstanding? understanding = null,
+    AskTurnOptions? turnOptions = null,
+    Raffa.AiFlows.Ask.Artifacts.ArtifactComposer? artifactComposer = null)
 {
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
@@ -282,6 +285,85 @@ public sealed class AskCopilotService(
             .ToList();
 
         var gate = domainGate.Classify(question, knownSuppliers);
+
+        // Turn understanding (model): what the user means, read against the whole conversation. It
+        // replaces the gate's word lists, the intent lexicon and the ambiguity detector as the decision
+        // maker; the deterministic gate result stays only as the fallback when the model cannot be
+        // read, and for the capability-gap catalog (it carries the gap the drafting flow needs). An
+        // interview/consent resolution is already decided by key and is not re-understood.
+        var understandingReply = default((CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)?);
+        if (understanding is not null
+            && turnOptions?.AiUnderstanding == true
+            && turnHints.ForcedIntent is null
+            && turnHints.ForcedSupplierName is null
+            && turnHints.ForcedContractId is null
+            && turnHints.AuthorizedWebResearch is null
+            && !turnHints.DeclinedWebResearch)
+        {
+            var understood = await understanding
+                .ResolveAsync(question, recentTurns, supplierNames.Values.Distinct().ToList(), scopeContractId is not null, cancellationToken)
+                .ConfigureAwait(false);
+            if (understood is not null)
+            {
+                question = understood.StandaloneQuestion;
+                var supplier = understood.SupplierName;
+                if (understood.Clarification is { } clarification)
+                {
+                    understandingReply = (new CopilotReply(
+                        ReplyKind.Answer, clarification, [], [], ReplyProvenance.NoModelCall([]), []), false, false);
+                }
+                else if (gate.Label != GateLabel.CapabilityGap || understood.Label != "inDomain")
+                {
+                    gate = understood.Label switch
+                    {
+                        "greeting" => gate with { Label = GateLabel.Greeting, Reason = "understood by the model: greeting.", NamedSupplier = null },
+                        "offDomain" => gate with { Label = GateLabel.OffDomain, Reason = "understood by the model: off domain.", NamedSupplier = null },
+                        "legal" => gate with { Label = GateLabel.Legal, Reason = "understood by the model: legal advice.", NamedSupplier = supplier },
+                        "capability" => gate with { Label = GateLabel.Capability, Reason = "understood by the model: capability question.", NamedSupplier = null },
+                        _ when supplier is null && understood.UnknownSupplier is { } unknown =>
+                            gate with { Label = GateLabel.NeedsDocument, Reason = "understood by the model: a supplier with no contract on file.", NamedSupplier = unknown },
+                        _ => gate with { Label = GateLabel.InDomain, Reason = "understood by the model: in domain.", NamedSupplier = supplier },
+                    };
+                }
+                else if (supplier is not null)
+                {
+                    gate = gate with { NamedSupplier = supplier };
+                }
+
+                // A request to build a dashboard / KPIs / a brief: the artifact-composer agent writes it
+                // from this same understanding (no second model call to decide scope) and it travels in
+                // the reply payload. If the agents cannot deliver, the turn is answered in words as usual.
+                if (gate.Label == GateLabel.InDomain && understood.Artifact is { } artifactAsk && artifactComposer is not null)
+                {
+                    var composed = await artifactComposer
+                        .ComposeAsync(
+                            tenantId,
+                            new Raffa.AiFlows.Ask.Artifacts.ArtifactRequest(question, recentTurns, scopeContractId, (Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it")),
+                            new Raffa.AiFlows.Ask.Artifacts.ArtifactScopeHint(supplier, artifactAsk.UsesPortfolio, artifactAsk.UsesMarket, artifactAsk.Kind),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (composed is not null)
+                    {
+                        var draft = composed.Draft;
+                        var ack = artifactAsk.Acknowledgement.Length > 0 ? artifactAsk.Acknowledgement : draft.Title;
+                        understandingReply = (new CopilotReply(
+                            ReplyKind.Answer, ack, [], [],
+                            new ReplyProvenance([], Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerName, Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerVersion, null),
+                            [],
+                            new ReplyPayload(Artifact: Raffa.AiFlows.Ask.Artifacts.ArtifactPayloads.From(composed, draft))), false, false);
+                    }
+                }
+
+                if (gate.Label == GateLabel.InDomain && understood.Intent is { } plannedIntent)
+                {
+                    turnHints = turnHints with { PlannedIntent = plannedIntent, Understood = true };
+                }
+                else if (gate.Label == GateLabel.InDomain)
+                {
+                    turnHints = turnHints with { Understood = true };
+                }
+            }
+        }
 
         // ADR-030: an interview option that named a supplier is a known supplier by construction
         // (the planner built it from this tenant's own portfolio), so it wins over the gate's own
@@ -379,7 +461,9 @@ public sealed class AskCopilotService(
         // InDomainReplyPipeline's tuple return).
         // ADR-032: the composer's web-search toggle takes every question that is a search (see
         // IsWebModeTurn) to the web and to the store, the procurement-only filters lifted.
-        var (reply, guardIntervened, fallbackUsed) = WebModeFlow.IsWebModeTurn(turnHints, gate, question)
+        var (reply, guardIntervened, fallbackUsed) = understandingReply is { } earlyReply
+            ? earlyReply
+            : WebModeFlow.IsWebModeTurn(turnHints, gate, question)
             ? await webModeFlow.BuildReplyAsync(
                 tenantId, question, gate, portfolio, scopedContractItem, actor,
                 (webQuestion, namedSupplier, ct) => inDomain.BuildAsync(

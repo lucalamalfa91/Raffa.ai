@@ -1,4 +1,4 @@
-import type { ContractListRowV4Body } from "../../api/client";
+import type { ArtifactPayloadBody, ContractListRowV4Body } from "../../api/client";
 import { chfK } from "../contracts/contracts4";
 
 /** The kinds of digital content Raffa builds in the side panel from the validated contracts. */
@@ -180,6 +180,46 @@ export function buildArtifact(kind: ArtifactKind, rows: readonly ContractListRow
   };
 }
 
+/**
+ * The content the artifact-composer agent wrote for a turn (from the chat's context, the portfolio and, when
+ * asked, the market RAG), as the panel's artifact. The server has already checked that every figure is in its fact pack.
+ */
+export function payloadToArtifact(p: ArtifactPayloadBody, version: number, t: T, id = `${p.kind}-${Date.now()}`): Artifact {
+  const note = [p.focusSupplier, p.usedPortfolio ? t("all contracts") : null, p.usedMarket ? t("market data") : null].filter(Boolean).join(" · ");
+  return {
+    id,
+    kind: p.kind,
+    title: p.title,
+    subtitle: [p.subtitle, note].filter(Boolean).join(" · "),
+    tiles: p.tiles.map((x) => ({ label: x.label, value: x.value, ...(x.hint ? { hint: x.hint } : {}), ...(x.tone === "urgent" || x.tone === "good" ? { tone: x.tone } : {}) })),
+    charts: p.charts,
+    tables: p.tables,
+    markdown: p.markdown,
+    version,
+  };
+}
+
+/**
+ * The dashboards, KPI sets and briefs the agents wrote in a conversation, read back from its stored replies
+ * (`payload.artifact`), each right after its own reply. Reopening a conversation shows them again.
+ */
+export function storedArtifacts(
+  messages: ReadonlyArray<{ id: string; payload?: { artifact?: ArtifactPayloadBody | null } | null }>,
+  conversationId: string | null,
+  t: T,
+): PlacedArtifact[] {
+  const seen = new Map<ArtifactKind, number>();
+  const out: PlacedArtifact[] = [];
+  for (const m of messages) {
+    const stored = m.payload?.artifact;
+    if (!stored) continue;
+    const version = (seen.get(stored.kind) ?? 0) + 1;
+    seen.set(stored.kind, version);
+    out.push({ artifact: payloadToArtifact(stored, version, t, `artifact-${m.id}`), conversationId, afterMessageId: m.id, request: null });
+  }
+  return out;
+}
+
 /** The artifact as plain markdown: what Copy and Download hand to the user. */
 export function artifactToMarkdown(a: Artifact): string {
   const out: string[] = [`# ${a.title}`, a.subtitle, ""];
@@ -209,35 +249,4 @@ export function artifactToCsv(a: Artifact): string | null {
   const chart = a.charts[0];
   if (chart) return [["label", "value"], ...chart.items.map((i) => [i.label, String(i.value)])].map((r) => r.map(esc).join(",")).join("\n") + "\n";
   return null;
-}
-
-const CREATE = /\b(crea|creami|create|build|make|genera|generate|fammi|prepara|costruisci|write|scrivi|show me|mostrami)\b/;
-/** A change to something already built ("modifica il KPI", "aggiorna la dashboard", "visualizza il KPI per anno"). */
-const REVISE =
-  /\b(modific(a|are|alo|ala|ali|ami)|cambi(a|are|alo|ala|ami)|aggiorn(a|are|alo|ala|ami)|rif(ai|are|allo|alla)|rigener(a|are|alo|ala)|rivedi|correggi|visualizz(a|are|alo|ala|ami)|mostra|edit|update|change|modify|revise|redo|regenerate|refresh|show|view)\b/;
-const NEW_VERSION = /\b(nuova|altra)\s+versione\b|\b(new|another)\s+version\b/;
-/** A question about the content ("cosa cambia nei KPI?", "how do I update the dashboard?") is not a request to change it. */
-const QUESTION = /^\s*(che|cosa|come|quando|perch[eé]|quanto|quanti|quante|quale|quali|dove|chi|what|how|when|why|which|who|where)\b/;
-
-function namedKind(s: string): ArtifactKind | null {
-  if (/\b(dashboards?|cruscotto)\b/.test(s)) return "dashboard";
-  if (/\b(kpis?|indicatori)\b/.test(s)) return "kpi";
-  if (/\b(brief|report|documento|document|riepilogo)\b/.test(s)) return "document";
-  return null;
-}
-
-/**
- * Which artifact a typed request asks for ("create a dashboard", "fammi i KPI", "scrivi un brief"), or null.
- * `built` are the kinds already built in this conversation, oldest first: asking to change one of them
- * ("modifica il KPI", "visualizza il kpi per anno", "crea una nuova versione") asks for its next version.
- */
-export function artifactRequest(text: string, built: readonly ArtifactKind[] = []): ArtifactKind | null {
-  const s = text.toLowerCase();
-  const named = namedKind(s);
-  if (named && CREATE.test(s)) return named;
-  if (!built.length || QUESTION.test(s)) return null;
-  const revise = REVISE.test(s) || NEW_VERSION.test(s);
-  if (named) return revise && built.includes(named) ? named : null;
-  // "Fanne una nuova versione": the one built last.
-  return NEW_VERSION.test(s) ? (built[built.length - 1] ?? null) : null;
 }

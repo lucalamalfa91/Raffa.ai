@@ -55,7 +55,7 @@ public sealed class InDomainReplyPipeline(
         // any pack is built, so an ambiguous turn retrieves nothing and calls no model. An answer
         // to an interview (hints.SuppressInterview) never triggers a second one, and neither does
         // a turn that directly follows one.
-        if (interviewOptions.Enabled && !hints.SuppressInterview)
+        if (interviewOptions.Enabled && !hints.SuppressInterview && !hints.Understood)
         {
             var interviewContext = new InterviewContext(
                 HasScope: scope.ScopeContractId is not null || turn.ForcedContractItem is not null,

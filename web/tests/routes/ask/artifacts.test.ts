@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { artifactRequest, buildArtifact, threadItems, type PlacedArtifact } from "../../../src/routes/ask/artifacts";
+import { buildArtifact, storedArtifacts, threadItems, type PlacedArtifact } from "../../../src/routes/ask/artifacts";
 
 const t = (id: string) => id;
 const placed = (id: string, conversationId: string | null, afterMessageId: string | null): PlacedArtifact => ({
@@ -24,32 +24,28 @@ describe("threadItems", () => {
   });
 });
 
-describe("artifactRequest", () => {
-  it("still reads a request to build something", () => {
-    expect(artifactRequest("Crea una dashboard")).toBe("dashboard");
-    expect(artifactRequest("fammi i KPI")).toBe("kpi");
-    expect(artifactRequest("scrivi un brief")).toBe("document");
-    expect(artifactRequest("When is the Salesforce notice?")).toBeNull();
+
+describe("storedArtifacts", () => {
+  const t = (id: string) => id;
+  const artifact = (kind: "kpi" | "dashboard") => ({
+    kind, title: kind, subtitle: "", focusSupplier: "GitLab", usedPortfolio: false, usedMarket: true,
+    tiles: [{ label: "A", value: "1", hint: "", tone: "" }], charts: [], tables: [], markdown: "",
   });
 
-  it("reads a change to a KPI or dashboard built in the conversation as a request for its next version", () => {
-    expect(artifactRequest("modifica il KPI", ["kpi"])).toBe("kpi");
-    expect(artifactRequest("visualizza il kpi per anno, voglio capire il trend", ["kpi"])).toBe("kpi");
-    expect(artifactRequest("crea una nuova versione del KPI", ["kpi"])).toBe("kpi");
-    expect(artifactRequest("aggiorna la dashboard", ["dashboard", "kpi"])).toBe("dashboard");
-    expect(artifactRequest("fanne una nuova versione", ["dashboard", "kpi"])).toBe("kpi");
-    expect(artifactRequest("Update the KPIs by year", ["kpi"])).toBe("kpi");
-  });
-
-  it("leaves a change to nothing built, or a question about the content, to Raffa's answer", () => {
-    expect(artifactRequest("modifica il KPI")).toBeNull();
-    expect(artifactRequest("aggiorna la dashboard", ["kpi"])).toBeNull();
-    expect(artifactRequest("Cosa cambia nei KPI se rinnovo Salesforce?", ["kpi"])).toBeNull();
-    expect(artifactRequest("modifica il contratto Salesforce", ["kpi"])).toBeNull();
-  });
-
-  it("numbers a later version", () => {
-    expect(buildArtifact("kpi", [], t, "2026-11-04").version).toBe(1);
-    expect(buildArtifact("kpi", [], t, "2026-11-04", 2).version).toBe(2);
+  it("reads the agents' content back from the stored replies, each after its own reply, numbering versions per kind", () => {
+    const messages = [
+      { id: "m1", payload: null },
+      { id: "m2", payload: { artifact: artifact("kpi") } },
+      { id: "m3", payload: { artifact: artifact("dashboard") } },
+      { id: "m4", payload: { artifact: artifact("kpi") } },
+    ];
+    const out = storedArtifacts(messages, "c1", t);
+    expect(out.map((c) => [c.afterMessageId, c.artifact.id, c.artifact.version])).toEqual([
+      ["m2", "artifact-m2", 1],
+      ["m3", "artifact-m3", 1],
+      ["m4", "artifact-m4", 2],
+    ]);
+    expect(out[0]!.artifact.subtitle).toContain("GitLab");
+    expect(out[0]!.conversationId).toBe("c1");
   });
 });

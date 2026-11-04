@@ -23,7 +23,9 @@ public sealed record AskTurnHints(
     bool SuppressInterview,
     WebResearchRequest? AuthorizedWebResearch = null,
     bool DeclinedWebResearch = false,
-    bool WebMode = false)
+    bool WebMode = false,
+    AskIntent? PlannedIntent = null,
+    bool Understood = false)
 {
     public static AskTurnHints None { get; } = new(null, null, null, false);
 

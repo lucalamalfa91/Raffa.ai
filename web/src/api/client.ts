@@ -4517,6 +4517,8 @@ export interface ConversationMessage4 {
     feedbackOffer?: import("../routes/ask/FeedbackCard").FeedbackOffer | null;
     /** On the confirmation turn: which offer was answered. */
     feedbackResult?: { forMessageId: string } | null;
+    /** A dashboard / KPI set / brief written for this turn: it opens in the side panel. */
+    artifact?: ArtifactPayloadBody | null;
   } | null;
   /** Raffa asks before acting: questions with clickable options. */
   interview?: {
@@ -4656,6 +4658,20 @@ export interface OpenCase4 {
   supplier: string;
   contract: string;
   phase: string;
+}
+
+/** A dashboard / KPI set / document the artifact-composer agent wrote for a turn (the reply's `payload.artifact`). */
+export interface ArtifactPayloadBody {
+  kind: "kpi" | "dashboard" | "document";
+  title: string;
+  subtitle: string;
+  focusSupplier: string | null;
+  usedPortfolio: boolean;
+  usedMarket: boolean;
+  tiles: Array<{ label: string; value: string; hint: string; tone: string }>;
+  charts: Array<{ title: string; items: Array<{ label: string; value: number; display: string }> }>;
+  tables: Array<{ title: string; columns: string[]; rows: string[][] }>;
+  markdown: string;
 }
 
 export interface AskOfferApi {

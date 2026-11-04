@@ -189,6 +189,7 @@ public sealed class AnswerPhase(
             interviewOptions.Enabled
             && interviewOptions.ConvertAmbiguousAbstain
             && !hints.SuppressInterview
+            && !hints.Understood
             && !previousRaffaTurnWasInterview
             && AmbiguousAbstainDetector.IsAmbiguous(reason);
 

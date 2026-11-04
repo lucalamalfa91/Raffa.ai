@@ -99,6 +99,11 @@ internal static class InMemoryAskEngineFactory
 
         return factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
         {
+            // The suite pins the deterministic gate/planner/interview (call-count invariants); the model's
+            // turn understanding (Chat:AskTurn:AiUnderstanding, on in production) has its own tests.
+            services.RemoveAll<Raffa.AiFlows.Ask.Orchestration.AskTurnOptions>();
+            services.AddSingleton(new Raffa.AiFlows.Ask.Orchestration.AskTurnOptions());
+
             // AddDbContext's own core-services registration is TryAdd (first registration wins) —
             // unlike a plain AddSingleton<TInterface> override (see IAiGateway/IAuditWriter below),
             // the existing Npgsql-configured DbContextOptions<T>/T registrations from

@@ -272,7 +272,7 @@ builder.Configuration.GetSection(Raffa.AiFlows.Ask.Interview.InterviewOptions.Se
 builder.Services.AddSingleton(interviewOptions);
 
 // F1 Ask turn options (Chat:AskTurn): every default reproduces today's behaviour.
-var askTurnOptions = new Raffa.AiFlows.Ask.Orchestration.AskTurnOptions();
+var askTurnOptions = new Raffa.AiFlows.Ask.Orchestration.AskTurnOptions { AiUnderstanding = true };
 builder.Configuration.GetSection(Raffa.AiFlows.Ask.Orchestration.AskTurnOptions.SectionName).Bind(askTurnOptions);
 builder.Services.AddSingleton(askTurnOptions);
 

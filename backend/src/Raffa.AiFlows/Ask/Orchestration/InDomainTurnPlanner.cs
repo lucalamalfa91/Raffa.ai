@@ -78,7 +78,9 @@ public sealed class InDomainTurnPlanner(IntentPlanner intentPlanner, GateReplyBu
                                    string.Equals(t.Role, "user", StringComparison.OrdinalIgnoreCase))
             .Markdown;
 
-        var plan = hints.ForcedIntent is { } forcedIntent
+        // PlannedIntent: the intent the model understood this turn from the whole conversation; it
+        // plans like a forced one (no lexicon) but, unlike ForcedIntent, stays a fresh typed turn.
+        var plan = (hints.ForcedIntent ?? hints.PlannedIntent) is { } forcedIntent
             ? intentPlanner.Plan(question, namedSupplier, previousUserQuestion, forcedIntent)
             : intentPlanner.Plan(question, namedSupplier, previousUserQuestion);
 
