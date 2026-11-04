@@ -71,20 +71,24 @@ locals {
 
   verification = local.custom_domain_enabled ? azurerm_email_communication_service_domain.custom[0].verification_records[0] : null
 
-  # DKIM selectors are CNAMEs: always safe to manage.
-  dkim_records = local.manage_dns ? {
+  # DKIM selectors are CNAMEs: always safe to manage (written when a DNS zone is given, reported otherwise).
+  dkim_candidates = local.custom_domain_enabled ? {
     dkim  = local.verification.dkim[0]
     dkim2 = local.verification.dkim2[0]
   } : {}
+  dkim_records = local.manage_dns ? local.dkim_candidates : {}
 
-  # Domain-verification and SPF are TXT records. At the zone apex ("@") a TXT record set is one object: writing
-  # it would REPLACE any TXT already there (mail-provider verification, an existing SPF), so apex records are
-  # never written here, only reported. Any other name is created.
+  # Domain-verification and SPF are TXT records, and they are never written here, only reported
+  # (`manual_dns_records`):
+  # - custom_domain must equal the zone (precondition below), so both sit at the zone apex, where a TXT record
+  #   set is one object: writing it would REPLACE any TXT already there (mail-provider verification, an
+  #   existing SPF);
+  # - their names are only known after the domain exists, and a for_each filtered on them would fail the
+  #   first plan ("Invalid for_each argument": keys must be known at plan time).
   txt_candidates = local.custom_domain_enabled ? {
     domain = local.verification.domain[0]
     spf    = local.verification.spf[0]
   } : {}
-  txt_records = local.manage_dns ? { for key, record in local.txt_candidates : key => record if record.name != "@" } : {}
 }
 
 resource "azurerm_email_communication_service_domain" "custom" {
@@ -126,19 +130,6 @@ resource "azurerm_dns_cname_record" "dkim" {
       condition     = var.custom_domain == var.dns_zone_name
       error_message = "custom_domain must equal dns_zone_name (a sender sub-domain of a parent zone is not supported here)."
     }
-  }
-}
-
-resource "azurerm_dns_txt_record" "verification" {
-  for_each = local.txt_records
-
-  name                = each.value.name
-  zone_name           = data.azurerm_dns_zone.mail[0].name
-  resource_group_name = data.azurerm_dns_zone.mail[0].resource_group_name
-  ttl                 = each.value.ttl
-
-  record {
-    value = each.value.value
   }
 }
 

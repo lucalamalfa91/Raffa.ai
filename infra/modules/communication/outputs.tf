@@ -19,9 +19,10 @@ output "sender_address" {
 }
 
 output "manual_dns_records" {
-  description = "Records for the custom domain that Terraform deliberately does NOT write (apex TXT sets, and everything when no DNS zone is given), to add or merge by hand: Domain verification, SPF (merge into an existing SPF, there can be only one), plus a suggested DMARC. Empty when no custom_domain is set."
+  description = "Records for the custom domain that Terraform deliberately does NOT write (the Domain-verification and SPF TXT records, always; the DKIM CNAMEs too when no DNS zone is given), to add or merge by hand: Domain verification, SPF (merge into an existing SPF, there can be only one), plus a suggested DMARC. Empty when no custom_domain is set."
   value = local.custom_domain_enabled ? concat(
-    [for key, record in local.txt_candidates : "${upper(key)} (${record.type}) name=${record.name} ttl=${record.ttl} value=${record.value}" if !contains(keys(local.txt_records), key)],
+    [for key, record in local.txt_candidates : "${upper(key)} (${record.type}) name=${record.name} ttl=${record.ttl} value=${record.value}"],
+    local.manage_dns ? [] : [for key, record in local.dkim_candidates : "${upper(key)} (${record.type}) name=${record.name} ttl=${record.ttl} value=${record.value}"],
     ["DMARC (TXT) name=_dmarc value=v=DMARC1; p=none; rua=mailto:dmarc@${var.custom_domain} [suggested, optional; skip if a _dmarc record already exists]"],
   ) : []
 }
