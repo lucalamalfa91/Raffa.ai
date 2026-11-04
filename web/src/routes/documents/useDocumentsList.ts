@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApiClient, DocumentListItemBody } from "../../api/client";
-import { loadCurrentWorkspace } from "../signin/workspaceStore";
+import { useWorkspaceId } from "../../components/shell/shellContext";
 import { POLL_INTERVAL_MS, POLL_NO_CHANGE_BUDGET_MS, usePollBudget } from "../../components/shell/usePollBudget";
-import { runUploadBatch, MAX_FILES_PER_BATCH, type LocalUploadEntry } from "./uploadPipeline";
+import { runUploadBatch, MAX_FILES_PER_BATCH, UPLOAD_DEADLINE_MS, type LocalUploadEntry } from "./uploadPipeline";
+import { useI18n } from "../../i18n/I18nProvider";
 import {
   filterDocumentsByAttention,
   STUCK_REPROCESS_AFTER_MS,
@@ -77,7 +78,10 @@ function fingerprintOf(documents: readonly DocumentListItemBody[], counts: Docum
 }
 
 export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
-  const workspace = loadCurrentWorkspace();
+  // The shell's workspace first (fixture mode never writes the sign-in store), as every v4 screen does.
+  const { t } = useI18n();
+  const workspaceId = useWorkspaceId();
+  const workspace = workspaceId !== null ? { id: workspaceId } : null;
   const [fetchState, setFetchState] = useState<DocumentsFetchState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [documents, setDocuments] = useState<readonly DocumentListItemBody[]>([]);
@@ -115,8 +119,8 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
         setFetchState("error");
         setErrorMessage(
           result.statusCode === 503 || result.statusCode === null
-            ? "Raffa.ai's document service is temporarily unavailable. Try again in a moment."
-            : (result.error ?? "The document list could not be loaded."),
+            ? t("Raffa.ai's document service is temporarily unavailable. Try again in a moment.")
+            : (result.error ?? t("The document list could not be loaded.")),
         );
         return;
       }
@@ -126,9 +130,9 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
       setErrorMessage(null);
     });
     if (filterRef.current === "rejected") loadRejected();
-    // workspace?.id (a primitive), not workspace itself -- loadCurrentWorkspace() returns a fresh
-    // object every call, the same convention every other route's own load() callback follows.
-  }, [apiClient, workspace?.id, loadRejected]);
+    // workspace?.id (a primitive), not workspace itself -- `workspace` is a fresh object every render,
+    // the same convention every other route's own load() callback follows.
+  }, [apiClient, workspace?.id, loadRejected, t]);
 
   useEffect(() => {
     load();
@@ -245,9 +249,9 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
       // R-DOC-01 AC-1: a row exists the moment the file is picked, before the request even starts.
       setLocalUploads((current) => [...entries.map((entry) => ({ ...entry, phase: "uploading" as const })), ...current]);
 
-      void runUploadBatch(entries, apiClient, workspace.id, settle);
+      void runUploadBatch(entries, apiClient, workspace.id, settle, UPLOAD_DEADLINE_MS, t);
     },
-    [apiClient, workspace?.id, settle],
+    [apiClient, workspace?.id, settle, t],
   );
 
   const retryLocalUpload = useCallback(
@@ -259,9 +263,9 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
         current.map((e) => (e.key === key ? { ...e, phase: "uploading" as const, errorMessage: undefined } : e)),
       );
 
-      void runUploadBatch([{ key: entry.key, file: entry.file }], apiClient, workspace.id, settle);
+      void runUploadBatch([{ key: entry.key, file: entry.file }], apiClient, workspace.id, settle, UPLOAD_DEADLINE_MS, t);
     },
-    [apiClient, workspace?.id, localUploads, settle],
+    [apiClient, workspace?.id, localUploads, settle, t],
   );
 
   const retryServerDocument = useCallback(
@@ -271,13 +275,13 @@ export function useDocumentsList(apiClient: ApiClient): UseDocumentsListResult {
       void apiClient.reprocessDocument(workspace.id, documentId).then((result) => {
         if (!mountedRef.current) return;
         if (!result.ok) {
-          setRetryError(result.error ?? "Raffa.ai could not reprocess this document.");
+          setRetryError(result.error ?? t("Raffa.ai could not reprocess this document."));
           return;
         }
         load();
       });
     },
-    [apiClient, workspace?.id, load],
+    [apiClient, workspace?.id, load, t],
   );
 
   // Auto-reprocess stuck Uploaded (never claimed) and hung Processing (claimed, then silent)

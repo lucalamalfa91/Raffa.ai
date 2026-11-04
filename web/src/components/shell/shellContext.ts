@@ -1,6 +1,7 @@
 import { useOutletContext } from "react-router-dom";
 import type { DocumentCountsBody } from "./useDocumentCounts";
 import type { WorkspaceRole } from "./navItems";
+import { loadCurrentWorkspace } from "../../routes/signin/workspaceStore";
 
 /**
  * What the app shell knows once, for every screen under it (ADR-024 V2 IA; R-WEB-02): whether the
@@ -42,4 +43,13 @@ export interface ShellOutletContext {
 export function useShellContext(): ShellOutletContext | null {
   const context = useOutletContext<ShellOutletContext | undefined>();
   return context ?? null;
+}
+
+/**
+ * The workspace the screen works in: the shell's (always set inside the signed-in shell, and the only
+ * one in fixture mode, which never writes the sign-in store), else the one the sign-in remembered.
+ */
+export function useWorkspaceId(): string | null {
+  const shell = useShellContext();
+  return shell?.workspaceId ?? loadCurrentWorkspace()?.id ?? null;
 }

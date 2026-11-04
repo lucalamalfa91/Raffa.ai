@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { WorkspaceMemberBody } from "../../../api/client";
 import { CopyTip } from "../../../components/InfoTip";
-import { TIPS, translateTip } from "../../../components/infoTipCopy";
+import { TIPS } from "../../../components/infoTipCopy";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { getMemberStatusTag, isLastActiveAdmin, memberRoleLabel, reissueConsequence, removeConsequence, revokeConsequence } from "./memberViewModel";
 
@@ -57,11 +57,11 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
           <th scope="col">{t("Member")}</th>
           <th scope="col" className="members-col-role">
             {t("Role")}
-            <CopyTip tip={translateTip(t, TIPS.membersRole)} />
+            <CopyTip tip={TIPS.membersRole} />
           </th>
           <th scope="col" className="members-col-status">
             {t("Status")}
-            <CopyTip tip={translateTip(t, TIPS.membersStatus)} />
+            <CopyTip tip={TIPS.membersStatus} />
           </th>
           {canManage && (
             <th scope="col" className="members-col-actions">
@@ -72,7 +72,7 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
       </thead>
       <tbody>
         {members.map((member) => {
-          const statusTag = getMemberStatusTag(t, member.status);
+          const statusTag = getMemberStatusTag(member.status, t);
           const isSelf = member.email.toLowerCase() === currentUserEmail.toLowerCase();
           // Fix 2026-09-15: `pendingActionId`/`actionError.id` (routes/workspace/members/index.tsx's
           // `handleRevoke`/`handleRemove`) are keyed by the same action id now passed to
@@ -87,7 +87,7 @@ export default function MembersTable({ members, currentUserEmail, canManage, pen
                 <div className="members-member-primary">{member.email}</div>
                 {isSelf && <div className="members-member-secondary">{t("You")}</div>}
               </td>
-              <td>{memberRoleLabel(t, member.role)}</td>
+              <td>{memberRoleLabel(member.role, t)}</td>
               <td>
                 <span className={`tag tag-${statusTag.variant} members-status-tag`}>{statusTag.label}</span>
               </td>
@@ -154,22 +154,13 @@ function MemberActions({
   const { t } = useI18n();
   if (member.status === "Invited") {
     if (confirmingKind === "revoke") {
-      const { question, detail } = revokeConsequence(t, member.email);
+      const { question, detail } = revokeConsequence(member.email, t);
       return (
-        <ConfirmBlock
-          question={question}
-          detail={detail}
-          confirmLabel={t("Yes, revoke")}
-          pendingLabel={t("Revoking…")}
-          pending={pending}
-          error={error}
-          onConfirm={onRevoke}
-          onCancel={onCancelConfirm}
-        />
+        <ConfirmBlock question={question} detail={detail} confirmLabel={t("Yes, revoke")} pendingLabel={t("Revoking…")} pending={pending} error={error} onConfirm={onRevoke} onCancel={onCancelConfirm} />
       );
     }
     if (confirmingKind === "reissue") {
-      const { question, detail } = reissueConsequence(t, member.email);
+      const { question, detail } = reissueConsequence(member.email, t);
       return (
         <ConfirmBlock
           question={question}
@@ -207,18 +198,9 @@ function MemberActions({
       );
     }
     if (confirmingKind === "remove") {
-      const { question, detail } = removeConsequence(t, member.email, isSelf);
+      const { question, detail } = removeConsequence(member.email, isSelf, t);
       return (
-        <ConfirmBlock
-          question={question}
-          detail={detail}
-          confirmLabel={t("Yes, remove")}
-          pendingLabel={t("Removing…")}
-          pending={pending}
-          error={error}
-          onConfirm={onRemove}
-          onCancel={onCancelConfirm}
-        />
+        <ConfirmBlock question={question} detail={detail} confirmLabel={t("Yes, remove")} pendingLabel={t("Removing…")} pending={pending} error={error} onConfirm={onRemove} onCancel={onCancelConfirm} />
       );
     }
     return (

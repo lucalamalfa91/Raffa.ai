@@ -1,6 +1,5 @@
 import type { Translate } from "../../i18n/translate";
-import { useShellContext } from "../../components/shell/shellContext";
-import { loadCurrentWorkspace } from "../signin/workspaceStore";
+import { useWorkspaceId } from "../../components/shell/shellContext";
 
 /**
  * AskRaffa 4.0 slice 4 helpers shared by Contratti, Contratto and Revisione.
@@ -20,9 +19,12 @@ export function tx(t: Translate, text: ServerText | unknown): string {
   return "";
 }
 
-/** "CHF 640k" (prototype: `'CHF '+Math.round(spend/1000)+'k'`). */
+/**
+ * "CHF 640k", and "CHF 2.4M" from a million up — the same rule as Risultati (`k` in
+ * resultsViewModel.ts), so one amount reads the same on every screen (D9, PARITY.md).
+ */
 export function chfK(value: number): string {
-  return `CHF ${Math.round(value / 1000)}k`;
+  return value >= 1e6 ? `CHF ${(value / 1e6).toFixed(1)}M` : `CHF ${Math.round(value / 1000)}k`;
 }
 
 /** "1,500" — the prototype's `toLocaleString('en-US')` for contract quantities and prices. */
@@ -35,8 +37,7 @@ export const URGENT_NOTICE_DAYS = 45;
 
 /** The tenant id the screens call the API with (the shell's workspace, else the remembered one). */
 export function useTenantId(): string | null {
-  const shell = useShellContext();
-  return shell?.workspaceId ?? loadCurrentWorkspace()?.id ?? null;
+  return useWorkspaceId();
 }
 
 /** Fired after a contract is validated or a decision changes, so other screens (the Oggi badge) re-read. */

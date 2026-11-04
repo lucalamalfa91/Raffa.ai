@@ -4,6 +4,7 @@ import ReviewHeader from "./review/ReviewHeader";
 import ReviewFieldList from "./review/ReviewFieldList";
 import EvidencePane from "./review/EvidencePane";
 import { useReviewSession } from "./review/useReviewSession";
+import { useI18n } from "../../i18n/I18nProvider";
 import "./review/review.css";
 
 export interface ReviewStateProps {
@@ -36,14 +37,15 @@ export interface ReviewStateProps {
  * the evidence GET. Corrections are already durable through `PATCH /api/contracts/{id}` by then.
  */
 export default function ReviewState({ apiClient, contractId, documentId, onBack, onValidated }: ReviewStateProps) {
+  const { t } = useI18n();
   const workspace = loadCurrentWorkspace();
   const session = useReviewSession(apiClient, workspace?.id ?? null, contractId, documentId);
 
   if (!workspace) {
     return (
       <div className="empty-state" role="status">
-        <h3>No workspace selected</h3>
-        <p className="micro-meta">Choose a workspace before reviewing a document.</p>
+        <h3>{t("No workspace selected")}</h3>
+        <p className="micro-meta">{t("Choose a workspace before reviewing a document.")}</p>
       </div>
     );
   }
@@ -53,7 +55,7 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
   if (fetchState.phase === "loading") {
     return (
       <div className="review-skeleton" role="status" aria-live="polite">
-        <p className="micro-meta">Loading review…</p>
+        <p className="micro-meta">{t("Loading review…")}</p>
         {Array.from({ length: 5 }, (_, index) => (
           <div key={index} className="skeleton review-skeleton-row" />
         ))}
@@ -64,8 +66,8 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
   if (fetchState.phase === "not-found") {
     return (
       <div className="empty-state" role="status">
-        <h3>Contract not found</h3>
-        <p className="micro-meta">This document's contract does not exist, or is not in your workspace.</p>
+        <h3>{t("Contract not found")}</h3>
+        <p className="micro-meta">{t("This document's contract does not exist, or is not in your workspace.")}</p>
       </div>
     );
   }
@@ -73,13 +75,13 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
   if (fetchState.phase === "error") {
     return (
       <div className="error-state" role="alert">
-        <h4>Review unavailable</h4>
+        <h4>{t("Review unavailable")}</h4>
         <p className="micro-meta">
           {fetchState.message}
           {fetchState.statusCode !== null && ` (HTTP ${fetchState.statusCode})`}
         </p>
         <button type="button" className="btn btn-secondary" onClick={session.reload}>
-          Retry
+          {t("Retry")}
         </button>
       </div>
     );
@@ -88,7 +90,7 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
   return (
     <div className="review-screen">
       <button type="button" className="btn btn-ghost documents-review-back" onClick={onBack}>
-        ← Documents
+        {t("← Documents")}
       </button>
 
       <ReviewHeader
@@ -108,12 +110,12 @@ export default function ReviewState({ apiClient, contractId, documentId, onBack,
 
       {fetchState.historyDegraded && (
         <p className="hint" role="alert">
-          Correction history could not be loaded — an already-corrected field may show as pending review.
+          {t("Correction history could not be loaded — an already-corrected field may show as pending review.")}
         </p>
       )}
       {fetchState.evidenceDegraded && (
         <p className="hint" role="alert">
-          Extraction evidence could not be loaded — every field shows as needing review, with no source passage.
+          {t("Extraction evidence could not be loaded — every field shows as needing review, with no source passage.")}
         </p>
       )}
 

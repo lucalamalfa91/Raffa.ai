@@ -49,11 +49,11 @@ describe("ds-modernist.css", () => {
     expect(root).toMatch(/line-height:\s*1\.5/);
   });
 
-  it("buttons are the DS ones: 1px border, centred, heading 800, square", () => {
+  it("buttons are the DS ones: 1px border, centred, title weight (D8), square", () => {
     const btn = rule(css, ".v4 .btn");
     expect(btn).toMatch(/border:\s*1px solid transparent/);
     expect(btn).toMatch(/justify-content:\s*center/);
-    expect(btn).toMatch(/font-weight:\s*800/);
+    expect(btn).toMatch(/font-weight:\s*var\(--weight-title\)/);
     expect(btn).toMatch(/border-radius:\s*0/);
   });
 

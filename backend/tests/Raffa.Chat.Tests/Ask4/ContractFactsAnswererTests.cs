@@ -38,6 +38,22 @@ public sealed class ContractFactsAnswererTests
     }
 
     [Fact]
+    public void Notice_question_on_a_contract_without_a_notice_date_says_so()
+    {
+        var undated = By("Salesforce") with { NoticeDeadline = null, Cancel = "", CancelDays = 0 };
+
+        var it = ContractFactsAnswerer.Answer("Quando dobbiamo dare disdetta a Salesforce?", undated, Today, "it");
+        Assert.Equal(
+            "Nei campi validati di Salesforce non c’è una scadenza di disdetta. Verifica la clausola di rinnovo nel contratto prima di contare su una data.",
+            it.Text);
+        Assert.DoesNotContain("Mancano", it.Text, StringComparison.Ordinal);
+        Assert.Equal("campi validati", it.Source);
+
+        var en = ContractFactsAnswerer.Answer("When must we give notice to Salesforce?", undated, Today, "en");
+        Assert.DoesNotContain("days left", en.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Liability_question_quotes_the_evidence_with_page_and_section()
     {
         var a = ContractFactsAnswerer.Answer("Qual è il massimale di responsabilità con AWS?", By("AWS"), Today, "it");

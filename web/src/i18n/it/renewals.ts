@@ -31,6 +31,7 @@ export const IT_RENEWALS: Readonly<Record<string, string>> = {
   "Notice by": "Disdetta entro",
   "Ends": "Scade",
   "Owner": "Responsabile",
+  "Supplier · case": "Fornitore · pratica",
   "Approver": "Approvatore",
   "you": "tu",
   "days": "giorni",

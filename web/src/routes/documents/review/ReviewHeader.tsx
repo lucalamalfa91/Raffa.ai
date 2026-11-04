@@ -3,6 +3,7 @@ import { CopyTip } from "../../../components/InfoTip";
 import { TIPS } from "../../../components/infoTipCopy";
 import ScreenTitle from "../../../components/ScreenTitle";
 import { formatSupplier, getContractTypeLabel } from "../../contracts/portfolioTableFormatters";
+import { useI18n } from "../../../i18n/I18nProvider";
 import {
   blockedReason,
   isValidationBlocked,
@@ -48,28 +49,41 @@ export default function ReviewHeader({
   canValidate = true,
   autoAcceptThreshold = null,
 }: ReviewHeaderProps) {
+  const { t } = useI18n();
   const blocked = isValidationBlocked(progress);
   const thresholdPct = autoAcceptThreshold === null ? null : legendThresholdPct(autoAcceptThreshold);
   const supplier = formatSupplier(header.supplierId);
-  const supplierLabel = header.supplierName ?? supplier.label;
-  const typeLabel = getContractTypeLabel(header.type);
+  // `formatSupplier`'s "Supplier 1a2b3c4d" fallback, with its word in the screen's language.
+  const supplierLabel =
+    header.supplierName ?? (header.supplierId === null ? supplier.label : t("Supplier {id}", { id: header.supplierId.slice(0, 8) }));
+  const typeLabel = t(getContractTypeLabel(header.type));
 
   const disabled = blocked || validating || alreadyValidated || !canValidate;
-  const ctaLabel = validating ? "Validating…" : alreadyValidated ? "Validated" : "Mark as validated";
+  const ctaLabel = validating ? t("Validating…") : alreadyValidated ? t("Validated") : t("Mark as validated");
   const hint = alreadyValidated
-    ? "This document is already validated."
+    ? t("This document is already validated.")
     : !canValidate
-      ? "This contract has no document to validate."
+      ? t("This contract has no document to validate.")
       : blocked
-        ? blockedReason(progress)
+        ? blockedReason(progress, t)
         : null;
+  const progressLine =
+    progress.total === 1
+      ? t("{resolved} of {total} field resolved", { resolved: progress.resolvedCount, total: progress.total })
+      : t("{resolved} of {total} fields resolved", { resolved: progress.resolvedCount, total: progress.total });
+  const needsReviewLine =
+    progress.blockingCount === 0
+      ? null
+      : progress.blockingCount === 1
+        ? t("{n} needs review", { n: progress.blockingCount })
+        : t("{n} need review", { n: progress.blockingCount });
 
   return (
     <header className="review-header">
       <div className="review-header-top">
         <div>
-          <p className="screen-kicker">R1 · Human validation</p>
-          <ScreenTitle guide="review">{reviewTitle(progress.blockingCount)}</ScreenTitle>
+          <p className="screen-kicker">{t("R1 · Human validation")}</p>
+          <ScreenTitle guide="review">{reviewTitle(progress.blockingCount, t)}</ScreenTitle>
           <p className="micro-meta review-header-summary" title={header.supplierName ?? supplier.title}>
             {supplierLabel} · {typeLabel}
           </p>
@@ -91,17 +105,15 @@ export default function ReviewHeader({
       </div>
       <div className="review-progress-bar">
         <p className="micro-meta review-progress-line">
-          {progress.resolvedCount} of {progress.total} field{progress.total === 1 ? "" : "s"} resolved
-          {progress.blockingCount > 0
-            ? ` · ${progress.blockingCount} ${progress.blockingCount === 1 ? "needs" : "need"} review`
-            : ""}
+          {progressLine}
+          {needsReviewLine !== null ? ` · ${needsReviewLine}` : ""}
         </p>
         <p className="review-legend">
           <span className="review-legend-item">
-            <span className="tag tag-neutral">{thresholdPct === null ? "auto" : `≥${thresholdPct}%`}</span> auto-accepted
+            <span className="tag tag-neutral">{thresholdPct === null ? t("auto") : `≥${thresholdPct}%`}</span> {t("auto-accepted")}
           </span>{" "}
           <span className="review-legend-item">
-            <span className="tag tag-outline">{thresholdPct === null ? "review" : `<${thresholdPct}%`}</span> review required
+            <span className="tag tag-outline">{thresholdPct === null ? t("review⟦legend⟧") : `<${thresholdPct}%`}</span> {t("review required")}
           </span>
         </p>
       </div>

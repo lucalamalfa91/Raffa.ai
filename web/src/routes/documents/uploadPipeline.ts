@@ -1,4 +1,8 @@
 import type { ApiClient, UploadDocumentResult } from "../../api/client";
+import { translate, type Translate } from "../../i18n/translate";
+
+/** English by default: the list passes its own `t`, so the same ids read in Italian (i18n/it/documents.ts). */
+const EN: Translate = (id, vars) => translate("en", id, vars);
 
 /**
  * Upload-outcome concerns for Documents V2 (task E13/F09/US01/T03, screens-v2.md #3; requirements
@@ -50,12 +54,12 @@ export function isOversized(file: File): boolean {
  * never a guessed reason (§7's "a blank hint is a gap a user can ask about; a remembered one is a
  * lie the next browser tells"). The two sentences are requirements copy and are not re-authored.
  */
-export function getRejectionReasonCopy(reason: string | null): string | null {
+export function getRejectionReasonCopy(reason: string | null, t: Translate = EN): string | null {
   switch (reason) {
     case "not_a_contract":
-      return "This looks like a recipe, not a contract. Raffa.ai only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.";
+      return t("This looks like a recipe, not a contract. Raffa.ai only keeps contracts, order forms, quotes and the documents around them. Drop the signed agreement or the supplier's proposal.");
     case "no_readable_text":
-      return "Raffa.ai could not read any contract text in this file. Try a clearer scan or the original PDF.";
+      return t("Raffa.ai could not read any contract text in this file. Try a clearer scan or the original PDF.");
     default:
       return null;
   }
@@ -64,8 +68,8 @@ export function getRejectionReasonCopy(reason: string | null): string | null {
 /** A file this browser refused before ever calling the API (oversized). Same "Not added" reading as
  * the server's `Rejected` row (ADR-019 w15 clause 4), rendered as a *local* row (ADR-020 w15 §6).
  * App-authored copy, so it may lose the file name the row's own filename cell already carries. */
-export function getOversizedCopy(): string {
-  return "This file is larger than 50 MB, the most Raffa.ai accepts.";
+export function getOversizedCopy(t: Translate = EN): string {
+  return t("This file is larger than 50 MB, the most Raffa.ai accepts.");
 }
 
 /**
@@ -75,16 +79,16 @@ export function getOversizedCopy(): string {
  * (the browser already refuses at that limit, so a 413 is the platform refusing a file the client
  * thought was fine); the 415 sentence is derived from the shipped `no_readable_text` clause.
  */
-export function getRefusalCopy(statusCode: 413 | 415): string {
+export function getRefusalCopy(statusCode: 413 | 415, t: Translate = EN): string {
   return statusCode === 413
-    ? "This file is too large for Raffa.ai to accept. Try a smaller file, or split it into parts."
-    : "Raffa.ai cannot open this file type. Try the original PDF, or a clear scan of the signed pages.";
+    ? t("This file is too large for Raffa.ai to accept. Try a smaller file, or split it into parts.")
+    : t("Raffa.ai cannot open this file type. Try the original PDF, or a clear scan of the signed pages.");
 }
 
 /** A file whose bytes this workspace already holds (the server's 200 `alreadyUploaded`): not an
  * error, so it is shown as "Not uploaded" with this sentence rather than a failure. */
-export function getDuplicateCopy(): string {
-  return "This file is already in your documents, so it was not uploaded again.";
+export function getDuplicateCopy(t: Translate = EN): string {
+  return t("This file is already in your documents, so it was not uploaded again.");
 }
 
 /**
@@ -92,23 +96,23 @@ export function getDuplicateCopy(): string {
  * selects the sentence; the response body (which can be raw JSON or a stack-trace-like string) is
  * never shown to the user.
  */
-export function getUploadFailureCopy(fileName: string, statusCode: number | null): string {
+export function getUploadFailureCopy(fileName: string, statusCode: number | null, t: Translate = EN): string {
   if (statusCode === 401 || statusCode === 403) {
-    return `You do not have permission to upload ${fileName}. Sign in again or ask a workspace admin.`;
+    return t("You do not have permission to upload {file}. Sign in again or ask a workspace admin.", { file: fileName });
   }
   if (statusCode === 429) {
-    return "Too many uploads at once. Wait a moment, then try again.";
+    return t("Too many uploads at once. Wait a moment, then try again.");
   }
   if (statusCode !== null && statusCode >= 500) {
-    return `Raffa.ai is temporarily unavailable and could not process ${fileName}. Try again in a few minutes.`;
+    return t("Raffa.ai is temporarily unavailable and could not process {file}. Try again in a few minutes.", { file: fileName });
   }
-  return getTransportFailureCopy(fileName);
+  return getTransportFailureCopy(fileName, t);
 }
 
 /** The retryable "failed" sentence for a request that never got an answer (deadline hit, network
  * down) -- Raffa.ai's own words, never a platform 502's. */
-export function getTransportFailureCopy(fileName: string): string {
-  return `Raffa.ai could not process ${fileName}. Try again.`;
+export function getTransportFailureCopy(fileName: string, t: Translate = EN): string {
+  return t("Raffa.ai could not process {file}. Try again.", { file: fileName });
 }
 
 /**
@@ -153,6 +157,7 @@ export async function runUploadBatch(
   tenantId: string,
   onSettled: (outcome: UploadBatchOutcome) => void,
   deadlineMs: number = UPLOAD_DEADLINE_MS,
+  t: Translate = EN,
 ): Promise<void> {
   let cursor = 0;
 
@@ -164,7 +169,7 @@ export async function runUploadBatch(
       const { key, file } = entries[index];
 
       if (isOversized(file)) {
-        onSettled({ kind: "rejected", key, fileName: file.name, message: getOversizedCopy() });
+        onSettled({ kind: "rejected", key, fileName: file.name, message: getOversizedCopy(t) });
         continue;
       }
 
@@ -183,12 +188,12 @@ export async function runUploadBatch(
       }
 
       if (result.alreadyUploaded) {
-        onSettled({ kind: "duplicate", key, fileName: file.name, message: getDuplicateCopy() });
+        onSettled({ kind: "duplicate", key, fileName: file.name, message: getDuplicateCopy(t) });
         continue;
       }
 
       if (result.statusCode === 413 || result.statusCode === 415) {
-        onSettled({ kind: "rejected", key, fileName: file.name, message: getRefusalCopy(result.statusCode) });
+        onSettled({ kind: "rejected", key, fileName: file.name, message: getRefusalCopy(result.statusCode, t) });
         continue;
       }
 
@@ -196,7 +201,7 @@ export async function runUploadBatch(
         kind: "failed",
         key,
         fileName: file.name,
-        message: controller.signal.aborted ? getTransportFailureCopy(file.name) : getUploadFailureCopy(file.name, result.statusCode),
+        message: controller.signal.aborted ? getTransportFailureCopy(file.name, t) : getUploadFailureCopy(file.name, result.statusCode, t),
       });
     }
   }

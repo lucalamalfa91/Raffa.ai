@@ -1,18 +1,18 @@
 import { useState, type FormEvent } from "react";
 import { CopyTip } from "../../../components/InfoTip";
-import { TIPS, translateTip } from "../../../components/infoTipCopy";
+import { TIPS } from "../../../components/infoTipCopy";
 import { useI18n } from "../../../i18n/I18nProvider";
 import {
+  IDENTITY_ONE_TIME_CODE_LINE,
+  INVITE_ROLE_LABEL,
   INVITE_ROLE_ORDER,
+  INVITE_ROLE_SUMMARY,
+  NO_INVITATION_CREATED_META,
   composeAcceptLink,
-  identityOneTimeCodeLine,
   inviteEmailPlaceholder,
   inviteFailureCopy,
   inviteLinkExpiryMeta,
   inviteOutcomeSentence,
-  inviteRoleLabel,
-  inviteRoleSummary,
-  noInvitationCreatedMeta,
   type Day1InviteRole,
   type InviteOutcome,
 } from "./memberViewModel";
@@ -99,7 +99,7 @@ export default function InvitePane({
     <aside className="members-invite-pane" aria-label={t("Invite a colleague")}>
       <div className="heading-with-tip members-invite-title">
         <h4>{t("Invite a colleague")}</h4>
-        <CopyTip tip={translateTip(t, TIPS.membersInvite)} align="end" />
+        <CopyTip tip={TIPS.membersInvite} align="end" />
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -111,7 +111,7 @@ export default function InvitePane({
             type="email"
             name="email"
             autoComplete="off"
-            placeholder={inviteEmailPlaceholder(t, tenantDomain)}
+            placeholder={inviteEmailPlaceholder(tenantDomain)}
             value={email}
             onChange={(event) => onEmailChange(event.target.value)}
             disabled={submitting}
@@ -136,8 +136,8 @@ export default function InvitePane({
                 <span className="dot" />
               </span>
               <span className="invite-role-copy">
-                <strong className="invite-role-label">{inviteRoleLabel(t, option)}</strong>
-                <span className="invite-role-summary">{inviteRoleSummary(t, option)}</span>
+                <strong className="invite-role-label">{t(INVITE_ROLE_LABEL[option])}</strong>
+                <span className="invite-role-summary">{t(INVITE_ROLE_SUMMARY[option])}</span>
               </span>
             </label>
           ))}
@@ -155,14 +155,14 @@ export default function InvitePane({
 
         {error === null && failure !== null && (
           <div className="members-invite-error" role="alert">
-            <p className="members-invite-failure">{inviteFailureCopy(t, failure.failureReason, failure.email)}</p>
-            <p className="micro-meta">{noInvitationCreatedMeta(t)}</p>
+            <p className="members-invite-failure">{inviteFailureCopy(failure.failureReason, failure.email, t)}</p>
+            <p className="micro-meta">{t(NO_INVITATION_CREATED_META)}</p>
           </div>
         )}
 
         {failure === null && outcome !== null && (
           <div className="members-invite-link" role="status">
-            <p className="members-invite-outcome">{inviteOutcomeSentence(t, outcome)}</p>
+            <p className="members-invite-outcome">{inviteOutcomeSentence(outcome, t)}</p>
             <div className="members-invite-link-row">
               <input
                 className="input members-invite-link-field"
@@ -176,8 +176,8 @@ export default function InvitePane({
                 {linkCopied ? t("Copied⟦link⟧") : t("Copy link")}
               </button>
             </div>
-            <p className="micro-meta">{inviteLinkExpiryMeta(t, outcome.expiresAt)}</p>
-            {outcome.identityProvisioned && <p className="micro-meta">{identityOneTimeCodeLine(t)}</p>}
+            <p className="micro-meta">{inviteLinkExpiryMeta(outcome.expiresAt, t)}</p>
+            {outcome.identityProvisioned && <p className="micro-meta">{t(IDENTITY_ONE_TIME_CODE_LINE)}</p>}
           </div>
         )}
       </form>

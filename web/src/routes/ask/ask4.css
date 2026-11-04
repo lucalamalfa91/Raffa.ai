@@ -80,7 +80,7 @@
 .k6-mark { width: 10px; height: 10px; background: var(--color-accent); display: inline-block; flex: none; }
 .k6-pane-title {
   font-family: var(--font-heading);
-  font-weight: 800;
+  font-weight: var(--weight-title);
   font-size: 15px;
   min-width: 0;
   overflow: hidden;
@@ -94,7 +94,7 @@
 
 .k6-empty-title {
   font-family: var(--font-heading);
-  font-weight: 800;
+  font-weight: var(--weight-heading);
   font-size: clamp(24px, 2.4vw, 32px);
   line-height: 1.05;
   letter-spacing: -0.02em;
@@ -111,17 +111,18 @@
   border-right: 1px solid var(--color-divider);
   border-bottom: 1px solid var(--color-divider);
   background: transparent;
-  padding: 14px 16px 14px 0;
+  /* Same padding on every tile (D9, as the Risultati tiles): a label never touches the rule on its left. */
+  padding: 16px 20px;
   cursor: pointer;
   font: inherit;
   color: inherit;
 }
 .v4 .k6-intent:hover { background: var(--color-neutral-200); }
-.k6-intent-label { font-family: var(--font-heading); font-weight: 800; font-size: 15px; }
+.k6-intent-label { font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 15px; }
 .k6-intent-hint { font-size: 13px; color: var(--color-neutral-700); margin-top: 4px; text-wrap: pretty; }
 
 .k6-pick { border: 2px solid var(--color-text); padding: 16px 20px; }
-.k6-pick-title { font-family: var(--font-heading); font-weight: 800; font-size: 17px; }
+.k6-pick-title { font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 17px; }
 .k6-pick-opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .v4 .btn.k6-pick-opt { font-size: 14px; }
 .v4 .btn.k6-pick-cancel { font-size: 13px; }
@@ -139,7 +140,7 @@
 .k6-qa-text {
   white-space: pre-line;
   text-wrap: pretty;
-  font-weight: 800;
+  font-weight: var(--weight-heading);
   font-size: 18px;
   line-height: 1.35;
   font-family: var(--font-heading);
@@ -190,3 +191,14 @@
 .k6-rail-grip { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; z-index: 5; touch-action: none; }
 .k6-rail-grip:hover, .k6-rail-grip.is-drag { background: var(--color-accent); opacity: .35; }
 .k6-conv-title, .k6-conv-meta { overflow-wrap: anywhere; }
+
+/* Phone width (D9): the conversations stack above the conversation instead of squeezing it to a
+   sliver; the list scrolls in its own band, the pane keeps the rest of the height. */
+@media (max-width: 760px) {
+  .k6-chiedi { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: auto minmax(0, 1fr); }
+  .k6-rail { max-height: 34vh; border-right: 0; border-bottom: 2px solid var(--color-divider); padding-bottom: 8px; }
+  .k6-rail-grip { display: none; }
+  .k6-pane-head { padding: 0 16px; }
+  .k6-scroll { padding: 20px 16px; }
+  .k6-composer-wrap { padding: 8px 16px 12px; }
+}

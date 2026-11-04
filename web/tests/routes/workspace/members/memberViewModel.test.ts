@@ -1,24 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceMemberBody } from "../../../../src/api/client";
-import { translator } from "../../../../src/i18n/translate";
 import {
   INVITE_ROLE_ORDER,
+  INVITE_ROLE_SUMMARY,
+  MEMBERS_TIP,
+  IDENTITY_ONE_TIME_CODE_LINE,
+  NO_INVITATION_CREATED_META,
   composeAcceptLink,
   formatExpiryDate,
   formatWorkspaceLine,
   getMemberStatusTag,
-  identityOneTimeCodeLine,
   inviteDomainWarning,
   inviteEmailPlaceholder,
   inviteFailureCopy,
   inviteLinkExpiryMeta,
   inviteOutcomeFrom,
   inviteOutcomeSentence,
-  inviteRoleSummary,
   isLastActiveAdmin,
   memberRoleLabel,
-  membersTip,
-  noInvitationCreatedMeta,
   removeConsequence,
   requestAccessMailto,
   reissueConsequence,
@@ -27,10 +26,6 @@ import {
   validateInviteEmail,
   workspaceDomainFromEmail,
 } from "../../../../src/routes/workspace/members/memberViewModel";
-
-/** The helpers take the screen's `t`; these tests read the English (the message ids) unless they say otherwise. */
-const en = translator("en");
-const it_ = translator("it");
 
 function member(overrides: Partial<WorkspaceMemberBody> = {}): WorkspaceMemberBody {
   return {
@@ -56,90 +51,90 @@ describe("workspaceDomainFromEmail", () => {
 
 describe("validateInviteEmail (format only -- the domain check moved to a warning)", () => {
   it("requires a non-empty address", () => {
-    expect(validateInviteEmail(en, "  ")).toBe("An email is required.");
+    expect(validateInviteEmail("  ")).toBe("An email is required.");
   });
 
   it("rejects a malformed address", () => {
-    expect(validateInviteEmail(en, "not-an-email")).toBe("Enter a valid email address.");
+    expect(validateInviteEmail("not-an-email")).toBe("Enter a valid email address.");
   });
 
   it("accepts a cross-domain address -- the domain rule no longer blocks (AC-5, OQ-w14-005)", () => {
-    expect(validateInviteEmail(en, "buyer@gmail.com")).toBeNull();
+    expect(validateInviteEmail("buyer@gmail.com")).toBeNull();
   });
 
   it("accepts a same-domain address", () => {
-    expect(validateInviteEmail(en, "buyer@acme.example")).toBeNull();
+    expect(validateInviteEmail("buyer@acme.example")).toBeNull();
   });
 });
 
 describe("inviteDomainWarning (AC-5: non-blocking, submit stays enabled)", () => {
   it("warns for a cross-domain address, naming the role that will get full access", () => {
-    expect(inviteDomainWarning(en, "buyer@gmail.com", "acme.example", "Procurement")).toBe(
+    expect(inviteDomainWarning("buyer@gmail.com", "acme.example", "Procurement")).toBe(
       "buyer@gmail.com is outside acme.example. They will get full Procurement access to this workspace.",
     );
-    expect(inviteDomainWarning(en, "buyer@gmail.com", "acme.example", "Admin")).toBe(
+    expect(inviteDomainWarning("buyer@gmail.com", "acme.example", "Admin")).toBe(
       "buyer@gmail.com is outside acme.example. They will get full Workspace Admin access to this workspace.",
     );
   });
 
   it("is null for a same-domain address", () => {
-    expect(inviteDomainWarning(en, "buyer@acme.example", "acme.example", "Procurement")).toBeNull();
+    expect(inviteDomainWarning("buyer@acme.example", "acme.example", "Procurement")).toBeNull();
   });
 
   it("is null when no tenant domain is known", () => {
-    expect(inviteDomainWarning(en, "buyer@gmail.com", null, "Procurement")).toBeNull();
+    expect(inviteDomainWarning("buyer@gmail.com", null, "Procurement")).toBeNull();
   });
 
   it("is null for an address with no parseable domain -- the blocking format check owns that case", () => {
-    expect(inviteDomainWarning(en, "not-an-email", "acme.example", "Procurement")).toBeNull();
+    expect(inviteDomainWarning("not-an-email", "acme.example", "Procurement")).toBeNull();
   });
 });
 
 describe("roles (requirements D8 win over the prototype's summaries)", () => {
   it("offers Procurement first, then Workspace Admin", () => {
     expect(INVITE_ROLE_ORDER).toEqual(["Procurement", "Admin"]);
-    expect(memberRoleLabel(en, "Admin")).toBe("Workspace Admin");
-    expect(memberRoleLabel(en, "Procurement")).toBe("Procurement");
-    expect(memberRoleLabel(en, "Legal")).toBe("Legal");
+    expect(memberRoleLabel("Admin")).toBe("Workspace Admin");
+    expect(memberRoleLabel("Procurement")).toBe("Procurement");
+    expect(memberRoleLabel("Legal")).toBe("Legal");
   });
 
   it("puts uploading on the Procurement line and only delete/manage on the Admin line", () => {
-    expect(inviteRoleSummary(en, "Procurement")).toBe("Asks, uploads, reviews, triages renewals");
-    expect(inviteRoleSummary(en, "Admin")).toBe("Also deletes documents and manages members");
+    expect(INVITE_ROLE_SUMMARY.Procurement).toBe("Asks, uploads, reviews, triages renewals");
+    expect(INVITE_ROLE_SUMMARY.Admin).toBe("Also deletes documents and manages members");
   });
 });
 
 describe("copy and small formatters", () => {
   it("quotes the prototype's tip verbatim", () => {
-    expect(membersTip(en)).toBe("Tip: invite the team once the first contract is validated — there is nothing for them to ask before that.");
+    expect(MEMBERS_TIP).toBe("Tip: invite the team once the first contract is validated — there is nothing for them to ask before that.");
   });
 
   it("formats the header line from the tenant id alone when no workspace name is available", () => {
-    expect(formatWorkspaceLine(en, "1111")).toBe("tenant 1111");
+    expect(formatWorkspaceLine("1111")).toBe("tenant 1111");
   });
 
   it("formats the header line with the workspace name when one is available", () => {
-    expect(formatWorkspaceLine(en, "1111", "Acme Procurement")).toBe("Acme Procurement · tenant 1111");
+    expect(formatWorkspaceLine("1111", "Acme Procurement")).toBe("Acme Procurement · tenant 1111");
   });
 
   it("builds the Work email placeholder from the tenant domain, neutral when unknown", () => {
-    expect(inviteEmailPlaceholder(en, "acme.example")).toBe("name@acme.example");
-    expect(inviteEmailPlaceholder(en, null)).toBe("name@company.com");
+    expect(inviteEmailPlaceholder("acme.example")).toBe("name@acme.example");
+    expect(inviteEmailPlaceholder(null)).toBe("name@company.com");
   });
 });
 
 describe("getMemberStatusTag (ADR-019 w14 footer: Active / Invited / Expired)", () => {
   it("tags Active rows neutral and Invited rows accent, text first", () => {
-    expect(getMemberStatusTag(en, "Active")).toEqual({ variant: "neutral", label: "Active" });
-    expect(getMemberStatusTag(en, "Invited")).toEqual({ variant: "accent", label: "Invited" });
+    expect(getMemberStatusTag("Active")).toEqual({ variant: "neutral", label: "Active" });
+    expect(getMemberStatusTag("Invited")).toEqual({ variant: "accent", label: "Invited" });
   });
 
   it("tags Expired rows with the existing 'needs your decision' outline treatment, never a new colour", () => {
-    expect(getMemberStatusTag(en, "Expired")).toEqual({ variant: "outline", label: "Expired" });
+    expect(getMemberStatusTag("Expired")).toEqual({ variant: "outline", label: "Expired" });
   });
 
   it("passes an unmodelled status through by its own name rather than mislabelling it Active", () => {
-    expect(getMemberStatusTag(en, "Suspended")).toEqual({ variant: "neutral", label: "Suspended" });
+    expect(getMemberStatusTag("Suspended")).toEqual({ variant: "neutral", label: "Suspended" });
   });
 });
 
@@ -165,28 +160,28 @@ describe("isLastActiveAdmin (ADR-025 Rule D.5a)", () => {
 
 describe("revoke/remove consequence copy (ADR-020 w14 design footer, screen 10)", () => {
   it("revoke never claims a grant that never existed", () => {
-    expect(revokeConsequence(en, "buyer@acme.example")).toEqual({
+    expect(revokeConsequence("buyer@acme.example")).toEqual({
       question: "Revoke the invitation for buyer@acme.example?",
       detail: "Their link stops working. They never had access to this workspace.",
     });
   });
 
   it("re-issue tells the Admin the already-shared link dies before the click", () => {
-    expect(reissueConsequence(en, "buyer@acme.example")).toEqual({
+    expect(reissueConsequence("buyer@acme.example")).toEqual({
       question: "Send a new invitation to buyer@acme.example?",
       detail: "The link you already shared stops working.",
     });
   });
 
   it("remove (someone else) says they lose access -- a different fact from revoke", () => {
-    expect(removeConsequence(en, "buyer@acme.example", false)).toEqual({
+    expect(removeConsequence("buyer@acme.example", false)).toEqual({
       question: "Remove buyer@acme.example?",
       detail: "They lose access immediately. To bring them back you will need to send a new invitation.",
     });
   });
 
   it("remove (self) uses the second-person variant", () => {
-    expect(removeConsequence(en, "me@acme.example", true)).toEqual({
+    expect(removeConsequence("me@acme.example", true)).toEqual({
       question: "Remove yourself from this workspace?",
       detail: "You will lose access immediately and will need a new invitation to return.",
     });
@@ -211,7 +206,7 @@ describe("expiry formatting", () => {
   });
 
   it("builds the false-outcome meta line verbatim (ADR-020's second w14 amendment footer)", () => {
-    expect(inviteLinkExpiryMeta(en, "2026-09-20T00:00:00Z")).toBe("It expires 20/09/2026, can be used once, and is not shown again.");
+    expect(inviteLinkExpiryMeta("2026-09-20T00:00:00Z")).toBe("It expires 20/09/2026, can be used once, and is not shown again.");
   });
 });
 
@@ -262,33 +257,33 @@ describe("inviteOutcomeFrom / inviteOutcomeSentence", () => {
   });
 
   it("renders each outcome's own sentence verbatim, and the word 'sent' appears in the first only", () => {
-    expect(inviteOutcomeSentence(en, inviteOutcomeFrom({ ...member, deliveryOutcome: "sent" }))).toBe("Invitation sent to buyer@acme.example.");
-    expect(inviteOutcomeSentence(en, inviteOutcomeFrom({ ...member, deliveryOutcome: "mail_failed" }))).toBe(
+    expect(inviteOutcomeSentence(inviteOutcomeFrom({ ...member, deliveryOutcome: "sent" }))).toBe("Invitation sent to buyer@acme.example.");
+    expect(inviteOutcomeSentence(inviteOutcomeFrom({ ...member, deliveryOutcome: "mail_failed" }))).toBe(
       "Invitation created, but the email could not be sent.",
     );
-    expect(inviteOutcomeSentence(en, inviteOutcomeFrom({ ...member, deliveryOutcome: "no_transport" }))).toBe("Invitation ready for buyer@acme.example.");
+    expect(inviteOutcomeSentence(inviteOutcomeFrom({ ...member, deliveryOutcome: "no_transport" }))).toBe("Invitation ready for buyer@acme.example.");
   });
 });
 
 describe("inviteFailureCopy (ADR-020 w15 §3.5: the closed reason set plus the catch-all)", () => {
   it("names what someone must do next for each reason, addressing a tenant administrator rather than the Admin", () => {
-    expect(inviteFailureCopy(en, "consent_missing", "x@acme.example")).toBe(
+    expect(inviteFailureCopy("consent_missing", "x@acme.example")).toBe(
       "Raffa.ai is not allowed to add guests to your company directory yet. A tenant administrator has to approve that permission.",
     );
-    expect(inviteFailureCopy(en, "provisioning_failed", "x@acme.example")).toBe(
+    expect(inviteFailureCopy("provisioning_failed", "x@acme.example")).toBe(
       "Your company directory would not add x@acme.example. Check the address, or ask a tenant administrator.",
     );
-    expect(inviteFailureCopy(en, "directory_unavailable", "x@acme.example")).toBe("Your company directory could not be reached. Try again in a few minutes.");
+    expect(inviteFailureCopy("directory_unavailable", "x@acme.example")).toBe("Your company directory could not be reached. Try again in a few minutes.");
   });
 
   it("never renders a raw enum: an unknown value hits the catch-all", () => {
-    expect(inviteFailureCopy(en, "proxy_mangled", "x@acme.example")).toBe("Raffa.ai could not create this invitation.");
-    expect(inviteFailureCopy(en, "", "x@acme.example")).toBe("Raffa.ai could not create this invitation.");
+    expect(inviteFailureCopy("proxy_mangled", "x@acme.example")).toBe("Raffa.ai could not create this invitation.");
+    expect(inviteFailureCopy("", "x@acme.example")).toBe("Raffa.ai could not create this invitation.");
   });
 
   it("keeps the two shared sentences verbatim", () => {
-    expect(noInvitationCreatedMeta(en)).toBe("No invitation was created.");
-    expect(identityOneTimeCodeLine(en)).toBe("They will get a one-time code from Microsoft the first time they sign in.");
+    expect(NO_INVITATION_CREATED_META).toBe("No invitation was created.");
+    expect(IDENTITY_ONE_TIME_CODE_LINE).toBe("They will get a one-time code from Microsoft the first time they sign in.");
   });
 });
 
@@ -302,31 +297,18 @@ describe("toInviteWorkspaceRole", () => {
 
 describe("requestAccessMailto (AC-9, ADR-020 w14 footer D-58.8)", () => {
   it("builds a real mailto to every live Admin, subject-prefilled with the workspace name", () => {
-    expect(requestAccessMailto(en, ["admin@acme.example"], "Acme Procurement")).toBe(
+    expect(requestAccessMailto(["admin@acme.example"], "Acme Procurement")).toBe(
       "mailto:admin@acme.example?subject=Workspace%20Admin%20access%20%E2%80%94%20Acme%20Procurement",
     );
   });
 
   it("joins multiple Admin addresses and degrades the subject when no workspace name is known", () => {
-    expect(requestAccessMailto(en, ["a@acme.example", "b@acme.example"])).toBe(
+    expect(requestAccessMailto(["a@acme.example", "b@acme.example"])).toBe(
       "mailto:a@acme.example,b@acme.example?subject=Workspace%20Admin%20access",
     );
   });
 
   it("is null rather than a dead link when the roster has no live Admin yet", () => {
-    expect(requestAccessMailto(en, [])).toBeNull();
-  });
-});
-
-describe("in Italian (the same helpers with the Italian t)", () => {
-  it("translates the copy and fills the values, including the role inside the domain warning", () => {
-    expect(validateInviteEmail(it_, "  ")).toBe("Serve un indirizzo email.");
-    expect(inviteDomainWarning(it_, "buyer@gmail.com", "acme.example", "Admin")).toBe(
-      "buyer@gmail.com è fuori dal dominio acme.example. Avrà accesso completo come Admin del workspace a questo workspace.",
-    );
-    expect(getMemberStatusTag(it_, "Invited")).toEqual({ variant: "accent", label: "Invitato" });
-    expect(memberRoleLabel(it_, "Legal")).toBe("Legal");
-    expect(inviteLinkExpiryMeta(it_, "2026-09-20T00:00:00Z")).toBe("Scade il 20/09/2026, si può usare una sola volta e non verrà più mostrato.");
-    expect(formatWorkspaceLine(it_, "1111", "Acme Procurement")).toBe("Acme Procurement · tenant 1111");
+    expect(requestAccessMailto([])).toBeNull();
   });
 });

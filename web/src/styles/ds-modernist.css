@@ -12,10 +12,10 @@
 .v4 {
   --color-bg: #ffffff;
   --color-surface: #f3f2f2;
-  /* Approved deviation D1 (PARITY.md): body text in Inter, clearer than Archivo at small sizes;
-     headings stay Archivo 800. D2: every size up to 14px is one pixel larger. D3: no page
-     max-width at or above 900px — screens use the whole window. */
-  --font-body: "Inter", system-ui, sans-serif;
+  /* Approved deviations (PARITY.md). D8: IBM Plex Sans for headings and body (tokens.css; it
+     replaces D1's Inter body). D2: every size up to 14px is one pixel larger. D3: no page
+     max-width at or above 900px — screens use the whole window. D9: tabular figures, so digits
+     line up in every column. */
   width: 100vw;
   height: 100vh;
   display: flex;
@@ -25,6 +25,7 @@
   font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
 }
 html:has(.v4),
 html:has(.v4) body {
@@ -44,7 +45,7 @@ html:has(.v4) #root {
 
 /* — base elements — */
 .v4 h1, .v4 h2, .v4 h3, .v4 h4, .v4 h5, .v4 h6 {
-  font-family: var(--font-heading); font-weight: 800;
+  font-family: var(--font-heading); font-weight: var(--weight-heading);
   line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 var(--space-2);
 }
 .v4 h1 { font-size: 42px; }
@@ -64,7 +65,7 @@ html:has(.v4) #root {
 .v4 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   cursor: pointer; text-decoration: none; text-align: center;
-  font-family: var(--font-heading); font-weight: 800;
+  font-family: var(--font-heading); font-weight: var(--weight-title);
   font-size: 15px; line-height: 1.2; color: var(--color-text);
   background: transparent; border: 1px solid transparent;
   padding: var(--space-2) calc(var(--space-3) * 1.2);
@@ -106,7 +107,7 @@ html:has(.v4) #root {
   padding: var(--space-3); border: 0; border-radius: 0; background: var(--color-surface);
 }
 .v4 .card-kicker { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
-.v4 .card-title { font-family: var(--font-heading); font-weight: 800; font-size: 17px; line-height: 1.2; }
+.v4 .card-title { font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 17px; line-height: 1.2; }
 .v4 .card-body { margin: 0; font-size: 14px; opacity: 0.8; flex: 1; }
 .v4 .card-meta {
   display: flex; align-items: center; gap: 6px; font-size: 12px;
@@ -133,3 +134,67 @@ html:has(.v4) #root {
 }
 .v4 .table td { padding: var(--space-2); border-bottom: 1px solid var(--color-divider); }
 .v4 .table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+
+/* — data tables (approved deviation D9, PARITY.md) —
+   One header row; every cell of a column starts on the same edge whatever the content (badge widths,
+   long file names, missing values). Columns are set per table through --dt-cols with fr minimums,
+   so they grow in proportion on wide windows (D3). Figures sit right-aligned. The row label each
+   cell repeats for assistive technology is visible only where the table stacks (narrow screens). */
+.v4 .dt { border-top: 2px solid var(--color-text); container-type: inline-size; }
+.v4 .dt-row {
+  display: grid; grid-template-columns: var(--dt-cols); column-gap: 24px; row-gap: 6px; align-items: center;
+  min-height: 64px; box-sizing: border-box; padding: 12px 8px 12px 0; border-bottom: 1px solid var(--color-divider);
+}
+.v4 .dt-head { min-height: 0; padding-block: 10px; }
+.v4 .dt-th {
+  font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.3;
+  color: var(--color-neutral-600); min-width: 0; overflow-wrap: anywhere;
+}
+.v4 .dt-group {
+  display: flex; align-items: baseline; gap: 6px; padding: 18px 8px 8px 0; border-bottom: 1px solid var(--color-text);
+  font-weight: var(--weight-title); font-size: 14px;
+}
+.v4 .dt-group > span { font-weight: 400; color: var(--color-neutral-600); }
+.v4 .dt-cell { min-width: 0; }
+.v4 .dt-num { text-align: right; justify-self: stretch; white-space: nowrap; }
+.v4 .dt-end { justify-self: end; }
+.v4 .dt-title { font-weight: var(--weight-title); font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+.v4 .dt-sub { font-size: 13px; line-height: 1.35; color: var(--color-neutral-600); margin-top: 2px; overflow-wrap: anywhere; }
+.v4 .dt-strong { font-weight: 600; }
+.v4 .dt-muted { color: var(--color-neutral-600); }
+.v4 .dt-urgent { color: var(--color-accent); font-weight: 600; }
+.v4 .dt-note { font-size: 12px; color: var(--color-neutral-600); margin-top: 2px; white-space: normal; }
+.v4 .dt-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.v4 .dt .tag { white-space: normal; text-align: left; }
+.v4 .dt-span { grid-column: 1 / -1; }
+@container (max-width: 760px) {
+  .v4 .dt-head { display: none; }
+  .v4 .dt-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; row-gap: 10px; align-items: start; }
+  .v4 .dt-row > .dt-cell:first-child { grid-column: 1 / -1; }
+  .v4 .dt-num { text-align: left; }
+  .v4 .dt-end { justify-self: start; }
+  .v4 .dt-label {
+    position: static; width: auto; height: auto; overflow: visible; clip: auto; clip-path: none; display: block;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-600);
+  }
+}
+
+/* — page header (D9): title and the page's main action share the title line — */
+.v4 .ph { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 24px; row-gap: 4px; }
+.v4 .ph > h2 { margin: 0; min-width: 0; text-wrap: balance; }
+.v4 .ph-sub { grid-column: 1 / -1; font-size: 14px; color: var(--color-neutral-700); max-width: 75ch; text-wrap: pretty; }
+.v4 .ph-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+/* — older screens inside the v4 shell (Documents, Workspace & members): the same 40px gutters and
+   page header as the v4 pages, so every page's content starts on the same x (D9) — */
+.v4 .screen-header { padding: 32px 40px 16px; align-items: flex-start; flex-wrap: wrap; row-gap: 12px; }
+/* The page's actions sit on the title line (D9 option 4A), centred on its 32px x 1.12 line box. */
+.v4 .screen-header-actions { min-height: 36px; }
+.v4 .screen-reroute { padding: 48px 40px; }
+.v4 .screen-kicker { font-size: 12px; font-weight: var(--weight-title); }
+@media (max-width: 900px) {
+  .v4 .screen-header { padding: 24px 16px 12px; }
+  .v4 .screen-reroute { padding: 32px 16px; }
+}

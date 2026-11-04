@@ -79,6 +79,13 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
   const [doneOpen, setDoneOpen] = useState<Record<number, boolean>>({});
   const [more, setMore] = useState(false);
   const [rq, setRq] = useState("");
+  /** The composer question while Raffa answers it (shown at once, before the answer arrives). */
+  const [asking, setAsking] = useState<string | null>(null);
+  /** Why the last question got no answer; the question goes back into the composer to retry. */
+  const [askError, setAskError] = useState<string | null>(null);
+  /** The question and Raffa's answer sit above the step: bring them into view when they arrive. */
+  const askView = useRef<HTMLDivElement | null>(null);
+  const showAnswer = useRef(false);
   const [localWarn, setLocalWarn] = useState<Text | null>(null);
   const [drafts, setDrafts] = useState<Record<string, unknown>>({});
   const pending = useRef<Record<string, unknown>>({});
@@ -190,15 +197,52 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
     if (!r.ok) setLocalWarn(t("Raffa could not add this file. Try a PDF or a text file."));
   };
 
+  /**
+   * The composer question: shown at once with a processing line, then the answer (the server adds both
+   * bubbles to the case) or a recoverable error with the question back in the composer. Serialised with
+   * the step actions and sent with the version current after the pending inputs were flushed, so a
+   * draft saved just before cannot turn the question into a silent conflict.
+   */
   const ask = async () => {
     const text = rq.trim();
-    if (!text || !tenantId || !env || !apiClient.askRenewalCase) return;
+    if (!text || !tenantId || !envRef.current || !apiClient.askRenewalCase || busy.current) return;
+    busy.current = true;
     setRq("");
-    await flush();
-    const r = await apiClient.askRenewalCase(tenantId, caseId, text, env.version, lang);
-    const next = r.ok ? r.body : r.current;
-    if (next) setEnv(next);
+    setAskError(null);
+    setAsking(text);
+    try {
+      await flush();
+      const cur = envRef.current;
+      if (!cur) return;
+      const r = await apiClient.askRenewalCase(tenantId, caseId, text, cur.version, lang);
+      const next = r.ok ? r.body : r.current;
+      if (next) {
+        envRef.current = next;
+        showAnswer.current = r.ok;
+        setEnv(next);
+      }
+      if (!r.ok) {
+        setRq((typed) => typed || text);
+        setAskError(
+          r.code === "stale_version"
+            ? t("The case changed while Raffa was answering. Your question is back in the box: ask it again.")
+            : t("Raffa could not answer right now. Your question is back in the box: try again."),
+        );
+      }
+    } catch {
+      setRq((typed) => typed || text);
+      setAskError(t("Raffa could not answer right now. Your question is back in the box: try again."));
+    } finally {
+      busy.current = false;
+      setAsking(null);
+    }
   };
+
+  useEffect(() => {
+    if (!asking && !showAnswer.current) return;
+    showAnswer.current = false;
+    askView.current?.scrollIntoView?.({ block: "nearest" });
+  }, [asking, env]);
 
   // A4: after a step change, focus moves to the new step's heading.
   const headRef = useRef<HTMLDivElement | null>(null);
@@ -508,11 +552,23 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
           ) : null}
 
           {page.msgs.map((m, i) => (
-            <div key={i} className="p4-msg">
+            <div key={i} className="p4-msg" ref={!asking && i === page.msgs.length - 1 ? askView : undefined}>
               <span className={m.raffa ? "p4-msg-by is-raffa" : "p4-msg-by"}>{m.by}</span>
               <div className={m.raffa ? "p4-msg-text" : "p4-msg-text is-person"}>{tr(m.text)}</div>
             </div>
           ))}
+          {asking ? (
+            <div className="p4-asking" data-screen-label="Domanda in corso" aria-live="polite" aria-busy="true" ref={askView}>
+              <div className="p4-msg">
+                <span className="p4-msg-by">{t("You")}</span>
+                <div className="p4-msg-text is-person">{asking}</div>
+              </div>
+              <div className="p4-msg">
+                <span className="p4-msg-by is-raffa">Raffa</span>
+                <div className="p4-msg-text p4-msg-pending">{t("Reading the contract to answer…")}</div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="p4-step" data-screen-label="Passo corrente">
             <div ref={headRef} tabIndex={-1} className="p4-step-head">
@@ -686,11 +742,17 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
       </div>
 
       <div className="p4-composer">
+        {askError ? (
+          <div className="p4-ask-error" role="alert">
+            {askError}
+          </div>
+        ) : null}
         <div className="p4-composer-in">
           <input
             className="input"
             placeholder={t("A doubt? Ask Raffa about this contract — then we return to the step")}
             value={rq}
+            disabled={asking !== null}
             onChange={(e) => setRq(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -699,8 +761,8 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
               }
             }}
           />
-          <button type="button" className="btn btn-primary" onClick={() => void ask()}>
-            {t("Ask")}
+          <button type="button" className="btn btn-primary" onClick={() => void ask()} disabled={asking !== null}>
+            {asking !== null ? t("Raffa is answering…") : t("Ask")}
           </button>
         </div>
       </div>

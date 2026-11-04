@@ -1,6 +1,10 @@
 import type { DocumentListItemBody } from "../../api/client";
 import { getRejectionReasonCopy } from "./uploadPipeline";
 import { DOCUMENT_PROCESSING_STAGES, getFailedHint, getOpenTarget, getRowStatus } from "./documentTable";
+import { translate, type Translate } from "../../i18n/translate";
+
+/** English by default: the panel passes its own `t`, so the same ids read in Italian (i18n/it/documents.ts). */
+const EN: Translate = (id, vars) => translate("en", id, vars);
 
 /**
  * View-model for `DocumentProgressPanel.tsx` (`?progress=<id>`; task E16/F03/US02/T02, wave w15,
@@ -59,6 +63,7 @@ export interface DocumentProgressView {
 
 export function getProgressView(
   item: Pick<DocumentListItemBody, "id" | "processingStatus" | "stage" | "contractId" | "documentType" | "rejectionReason" | "errorDetail">,
+  t: Translate = EN,
 ): DocumentProgressView {
   const rowStatus = getRowStatus(item.processingStatus);
 
@@ -66,7 +71,7 @@ export function getProgressView(
     return {
       isWaiting: true,
       stages: getProgressStages(item.stage),
-      headline: item.stage === null ? "Queued, starting shortly" : `${item.stage}…`,
+      headline: item.stage === null ? t("Queued, starting shortly") : t("{stage}…", { stage: t(item.stage) }),
       link: null,
     };
   }
@@ -77,8 +82,8 @@ export function getProgressView(
     return {
       isWaiting: false,
       stages,
-      headline: "Ready for a quick review.",
-      link: { href: getOpenTarget(item, rowStatus)!, label: "Review now" },
+      headline: t("Ready for a quick review."),
+      link: { href: getOpenTarget(item, rowStatus)!, label: t("Review now") },
     };
   }
 
@@ -88,13 +93,13 @@ export function getProgressView(
     return {
       isWaiting: false,
       stages,
-      headline: isQuote ? "Ready in Quote check." : "Done -- it is now askable.",
-      link: href !== null ? { href, label: isQuote ? "Open Quote check" : "Open the contract" } : null,
+      headline: isQuote ? t("Ready in Quote check.") : t("Done -- it is now askable."),
+      link: href !== null ? { href, label: isQuote ? t("Open Quote check") : t("Open the contract") } : null,
     };
   }
 
   if (rowStatus === "failed") {
-    return { isWaiting: false, stages, headline: getFailedHint(item.errorDetail), link: null };
+    return { isWaiting: false, stages, headline: getFailedHint(item.errorDetail, t), link: null };
   }
 
   // rowStatus === "rejected": the same reason sentence the row's own hint shows -- silent (a plain,
@@ -103,7 +108,7 @@ export function getProgressView(
   return {
     isWaiting: false,
     stages,
-    headline: getRejectionReasonCopy(item.rejectionReason) ?? "Raffa.ai did not add this file.",
+    headline: getRejectionReasonCopy(item.rejectionReason, t) ?? t("Raffa.ai did not add this file."),
     link: null,
   };
 }

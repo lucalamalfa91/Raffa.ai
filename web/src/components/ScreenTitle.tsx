@@ -1,19 +1,18 @@
 import type { ReactNode } from "react";
 import { CopyTip } from "./InfoTip";
-import { SCREEN_GUIDES, type ScreenGuideKey, type TipCopy } from "./infoTipCopy";
+import { SCREEN_GUIDES, type ScreenGuideKey } from "./infoTipCopy";
 
 /**
  * A screen's `h2.screen-title` with its guide beside it: the "i" that says what the screen is for,
  * how to use it and where it leads (`SCREEN_GUIDES`). The guide is a sibling of the heading, not
  * inside it, so the heading's accessible name stays the screen's own name. It stays accent-inked
- * until opened once in this browser, so a newcomer sees where to start on every screen. `tip`
- * replaces the guide's words (a screen passes its translated copy); `guide` still keys the "seen" mark.
+ * until opened once in this browser, so a newcomer sees where to start on every screen.
  */
-export default function ScreenTitle({ guide, tip, children }: { guide: ScreenGuideKey; tip?: TipCopy; children: ReactNode }) {
+export default function ScreenTitle({ guide, children }: { guide: ScreenGuideKey; children: ReactNode }) {
   return (
     <div className="screen-title-row">
       <h2 className="screen-title">{children}</h2>
-      <CopyTip tip={tip ?? SCREEN_GUIDES[guide]} guideKey={guide} />
+      <CopyTip tip={SCREEN_GUIDES[guide]} guideKey={guide} />
     </div>
   );
 }

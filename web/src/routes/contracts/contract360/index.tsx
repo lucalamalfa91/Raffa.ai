@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AskShortcuts from "../../../components/ask/AskShortcuts";
-import NegotiationPoints from "../../../components/ask/NegotiationPoints";
+import NegotiationPoints, { useNegotiationPoints } from "../../../components/ask/NegotiationPoints";
 import type { ApiClient, ContractV4Body, DecisionPointBody, DecisionPointChoice } from "../../../api/client";
 import { useGuide } from "../../../components/shell/guide";
 import { useI18n } from "../../../i18n/I18nProvider";
@@ -37,6 +37,10 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
   const [allOpen, setAllOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState(false);
+  // One list of points to decide: the contract's decision points and the negotiation points Raffa saved
+  // for it are shown in the same section, under one count.
+  // Read once the contract itself is on screen (as before), never for a contract that failed to load.
+  const negotiation = useNegotiationPoints(apiClient, tenantId ?? "", contract?.contractId === contractId ? contractId : "");
 
   const load = useCallback(async () => {
     if (!tenantId || !contractId) return;
@@ -120,6 +124,7 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
   }
 
   const d = contract.dates;
+  const pointCount = contract.decisionPoints.length + negotiation.todos.length;
   const meta = t("{type} · version {version} · validated · {value} / year", {
     type: contract.type,
     version: contract.version,
@@ -188,11 +193,19 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
       <div className="c4-decisions">
         <div className="c4-decisions-head">
           {t("What requires a decision")}{" "}
-          <span className="c4-decisions-sub">· {t("{n} points · standard terms stay below", { n: contract.decisionPoints.length })}</span>
+          <span className="c4-decisions-sub">
+            ·{" "}
+            {pointCount === 0
+              ? t("nothing to decide · standard terms stay below")
+              : pointCount === 1
+                ? t("1 point · standard terms stay below")
+                : t("{n} points · standard terms stay below", { n: pointCount })}
+          </span>
         </div>
         {contract.decisionPoints.map((point) => (
           <DecisionCard key={point.key} point={point} onDecide={(choice) => void decide(point, choice)} />
         ))}
+        <NegotiationPoints todos={negotiation.todos} busyKey={negotiation.busyKey} onTick={(row) => void negotiation.tick(row)} />
       </div>
 
       <div className="c4-next">
@@ -217,7 +230,6 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
           { label: t("Negotiation email"), question: t("Draft the negotiation email to the supplier for this renewal.") },
         ]}
       />
-      <NegotiationPoints apiClient={apiClient} tenantId={tenantId ?? ""} contractId={contractId} />
       {actionError ? (
         <div className="c4-error" role="alert">
           <span>{t("The renewal case could not be opened.")}</span>

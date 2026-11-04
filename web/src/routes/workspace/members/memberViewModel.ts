@@ -1,6 +1,9 @@
 import type { WorkspaceMemberBody } from "../../../api/client";
-import type { Translate } from "../../../i18n/translate";
 import type { SemanticTag } from "../../../styles/semantics";
+import { translate, type Translate } from "../../../i18n/translate";
+
+/** English by default: the screen passes its own `t`, so the same ids read in Italian (i18n/it/members.ts). */
+const EN: Translate = (id, vars) => translate("en", id, vars);
 
 /**
  * Pure helpers for the Workspace & members screen (route `/workspace/members`; ADR-024 V2 IA;
@@ -15,9 +18,6 @@ import type { SemanticTag } from "../../../styles/semantics";
  * (`getWorkspaceMembers`, `inviteWorkspaceMember`'s `mailDelivered`) instead of the deleted
  * per-browser echo module's per-tab cache -- see `index.tsx`'s own header comment for the full
  * defect this closes.
- *
- * Every helper that produces copy takes the screen's `t` first and passes a literal English id to it
- * (Italian in `i18n/it/members.ts`), so the catalogue test sees each id this screen can show.
  */
 
 export type Day1InviteRole = "Admin" | "Procurement";
@@ -35,9 +35,10 @@ export function toInviteWorkspaceRole(role: string): ReissueRole {
 /** Radio order quoted from the prototype: Procurement first (the default), Workspace Admin second. */
 export const INVITE_ROLE_ORDER: readonly Day1InviteRole[] = ["Procurement", "Admin"];
 
-export function inviteRoleLabel(t: Translate, role: Day1InviteRole): string {
-  return role === "Admin" ? t("Workspace Admin") : t("Procurement");
-}
+export const INVITE_ROLE_LABEL: Record<Day1InviteRole, string> = {
+  Admin: "Workspace Admin",
+  Procurement: "Procurement",
+};
 
 /**
  * One-line permission summaries under each radio. The prototype reads "Asks, reviews, triages
@@ -47,15 +48,14 @@ export function inviteRoleLabel(t: Translate, role: Day1InviteRole): string {
  * really Admin-only. Unchanged by this task (w14 table: "no task should regress an accepted
  * decision" -- ADR-020 w14 footer 10.6/10.9).
  */
-export function inviteRoleSummary(t: Translate, role: Day1InviteRole): string {
-  return role === "Admin" ? t("Also deletes documents and manages members") : t("Asks, uploads, reviews, triages renewals");
-}
+export const INVITE_ROLE_SUMMARY: Record<Day1InviteRole, string> = {
+  Procurement: "Asks, uploads, reviews, triages renewals",
+  Admin: "Also deletes documents and manages members",
+};
 
 /** `markup.html` `kbOff` tip, verbatim. Shown while the knowledge base has no validated contract yet.
  * Unchanged by this task -- no task should "improve" it into an always-on banner (w14 table). */
-export function membersTip(t: Translate): string {
-  return t("Tip: invite the team once the first contract is validated — there is nothing for them to ask before that.");
-}
+export const MEMBERS_TIP = "Tip: invite the team once the first contract is validated — there is nothing for them to ask before that.";
 
 /** Header meta line. Task E15/F02/US01/T01's own interface contract with its phase-4 sibling
  * `E14/F03/US02/T01` threads only `workspaceId` + `role` into this route -- not a workspace name --
@@ -63,7 +63,7 @@ export function membersTip(t: Translate): string {
  * nothing extra to pass one, since `WorkspaceShellAppProps` already carries it, so this stays ready
  * for it without depending on it). Still refuses the export's invented "HF-CH-001": the id is always
  * the real `X-Tenant-Id`. */
-export function formatWorkspaceLine(t: Translate, tenantId: string, workspaceName?: string): string {
+export function formatWorkspaceLine(tenantId: string, workspaceName?: string, t: Translate = EN): string {
   return workspaceName ? t("{name} · tenant {id}", { name: workspaceName, id: tenantId }) : t("tenant {id}", { id: tenantId });
 }
 
@@ -75,8 +75,8 @@ export function workspaceDomainFromEmail(email: string): string | null {
 }
 
 /** "Work email" placeholder: `name@{{ domain }}` (prototype `name@helvetiafoods.ch`), a neutral one when no tenant domain is known. */
-export function inviteEmailPlaceholder(t: Translate, tenantDomain: string | null): string {
-  return tenantDomain !== null ? t("name@{domain}", { domain: tenantDomain }) : t("name@company.com");
+export function inviteEmailPlaceholder(tenantDomain: string | null): string {
+  return tenantDomain !== null ? `name@${tenantDomain}` : "name@company.com";
 }
 
 /**
@@ -84,7 +84,7 @@ export function inviteEmailPlaceholder(t: Translate, tenantDomain: string | null
  * OQ-w14-005). The domain check that used to live here is no longer a block: see
  * `inviteDomainWarning` below.
  */
-export function validateInviteEmail(t: Translate, email: string): string | null {
+export function validateInviteEmail(email: string, t: Translate = EN): string | null {
   const trimmed = email.trim();
   if (trimmed.length === 0) return t("An email is required.");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return t("Enter a valid email address.");
@@ -100,20 +100,17 @@ export function validateInviteEmail(t: Translate, email: string): string | null 
  * once the address does not parse to a domain (the blocking format check above owns that case), once
  * no tenant domain is known, or once the domains already agree.
  */
-export function inviteDomainWarning(t: Translate, email: string, tenantDomain: string | null, role: Day1InviteRole): string | null {
+export function inviteDomainWarning(email: string, tenantDomain: string | null, role: Day1InviteRole, t: Translate = EN): string | null {
   if (tenantDomain === null) return null;
   const trimmed = email.trim();
   const inviteDomain = workspaceDomainFromEmail(trimmed);
   if (inviteDomain === null || inviteDomain === tenantDomain) return null;
-  return t("{email} is outside {domain}. They will get full {role} access to this workspace.", {
-    email: trimmed,
-    domain: tenantDomain,
-    role: inviteRoleLabel(t, role),
-  });
+  return t("{email} is outside {domain}. They will get full {role} access to this workspace.", { email: trimmed, domain: tenantDomain, role: t(INVITE_ROLE_LABEL[role]) });
 }
 
-export function memberRoleLabel(t: Translate, role: string): string {
-  if (role === "Admin" || role === "Procurement") return inviteRoleLabel(t, role);
+export function memberRoleLabel(role: string, t: Translate = EN): string {
+  if (role === "Admin") return t(INVITE_ROLE_LABEL.Admin);
+  if (role === "Procurement") return t(INVITE_ROLE_LABEL.Procurement);
   return role;
 }
 
@@ -133,10 +130,10 @@ export type MemberStatus = WorkspaceMemberBody["status"];
  * forward-compatible rather than reachable today; any other value passes through by its own name
  * rather than being mislabelled "Active".
  */
-export function getMemberStatusTag(t: Translate, status: MemberStatus): SemanticTag {
-  if (status === "Invited") return { variant: "accent", label: t("Invited") };
-  if (status === "Expired") return { variant: "outline", label: t("Expired") };
-  if (status === "Active") return { variant: "neutral", label: t("Active") };
+export function getMemberStatusTag(status: MemberStatus, t: Translate = EN): SemanticTag {
+  if (status === "Invited") return { variant: "accent", label: t("Invited⟦member⟧") };
+  if (status === "Expired") return { variant: "outline", label: t("Expired⟦member⟧") };
+  if (status === "Active") return { variant: "neutral", label: t("Active⟦member⟧") };
   return { variant: "neutral", label: status };
 }
 
@@ -157,7 +154,7 @@ export interface ActionConsequence {
 
 /** ADR-020 w14 design footer, screen 10 table (D-58.5): revoke never claims a grant that never
  * existed. */
-export function revokeConsequence(t: Translate, email: string): ActionConsequence {
+export function revokeConsequence(email: string, t: Translate = EN): ActionConsequence {
   return {
     question: t("Revoke the invitation for {email}?", { email }),
     detail: t("Their link stops working. They never had access to this workspace."),
@@ -167,7 +164,7 @@ export function revokeConsequence(t: Translate, email: string): ActionConsequenc
 /** ADR-020 second w14 footer / INDEX: re-issue is revoke-then-invite; the Invited row must say
  * the already-shared link dies before the click. The server stores only a SHA-256 of the token,
  * so this is the only way to recover a lost accept URL. */
-export function reissueConsequence(t: Translate, email: string): ActionConsequence {
+export function reissueConsequence(email: string, t: Translate = EN): ActionConsequence {
   return {
     question: t("Send a new invitation to {email}?", { email }),
     detail: t("The link you already shared stops working."),
@@ -178,7 +175,7 @@ export function reissueConsequence(t: Translate, email: string): ActionConsequen
  * for the same reason `formatWorkspaceLine` above degrades gracefully -- this route is never handed
  * one -- and reads naturally with "this workspace" instead, since the Admin confirming is already
  * looking at it. */
-export function removeConsequence(t: Translate, email: string, isSelf: boolean): ActionConsequence {
+export function removeConsequence(email: string, isSelf: boolean, t: Translate = EN): ActionConsequence {
   return isSelf
     ? {
         question: t("Remove yourself from this workspace?"),
@@ -231,7 +228,7 @@ export function inviteOutcomeFrom(member: {
 
 /** ADR-020 w15 §3.3, verbatim: the 201 sentences, one per outcome. The word "sent" appears in the
  * first only. */
-export function inviteOutcomeSentence(t: Translate, outcome: InviteOutcome): string {
+export function inviteOutcomeSentence(outcome: InviteOutcome, t: Translate = EN): string {
   switch (outcome.outcome) {
     case "sent":
       return t("Invitation sent to {email}.", { email: outcome.email });
@@ -244,15 +241,11 @@ export function inviteOutcomeSentence(t: Translate, outcome: InviteOutcome): str
 
 /** ADR-020 w15 §3.6, verbatim: rendered only while the 201's `identityProvisioned` is true, and
  * identical whether the guest was created or already existed (no directory-enumeration oracle). */
-export function identityOneTimeCodeLine(t: Translate): string {
-  return t("They will get a one-time code from Microsoft the first time they sign in.");
-}
+export const IDENTITY_ONE_TIME_CODE_LINE = "They will get a one-time code from Microsoft the first time they sign in.";
 
 /** ADR-020 w15 §3.5: every 502 row carries this, so the Admin never wonders whether a
  * half-invitation exists. */
-export function noInvitationCreatedMeta(t: Translate): string {
-  return t("No invitation was created.");
-}
+export const NO_INVITATION_CREATED_META = "No invitation was created.";
 
 /**
  * ADR-020 w15 §3.5's copy for the 502's closed reason set, plus the mandatory catch-all: the wire
@@ -262,7 +255,7 @@ export function noInvitationCreatedMeta(t: Translate): string {
  * unreachable). `consent_missing` names "a tenant administrator", not "you": a Raffa.ai workspace
  * Admin is usually not the Entra tenant admin.
  */
-export function inviteFailureCopy(t: Translate, failureReason: string, email: string): string {
+export function inviteFailureCopy(failureReason: string, email: string, t: Translate = EN): string {
   switch (failureReason) {
     case "consent_missing":
       return t("Raffa.ai is not allowed to add guests to your company directory yet. A tenant administrator has to approve that permission.");
@@ -294,7 +287,7 @@ export function formatExpiryDate(expiresAt: string): string {
 
 /** ADR-020's second w14 amendment footer ("lost the link" / "the invitation lapsed" prevention
  * string): the false-outcome meta line, verbatim. */
-export function inviteLinkExpiryMeta(t: Translate, expiresAt: string): string {
+export function inviteLinkExpiryMeta(expiresAt: string, t: Translate = EN): string {
   return t("It expires {date}, can be used once, and is not shown again.", { date: formatExpiryDate(expiresAt) });
 }
 
@@ -305,7 +298,7 @@ export function inviteLinkExpiryMeta(t: Translate, expiresAt: string): string {
  * roster carries no live Admin to address (should not happen structurally, but a dead link is worse
  * than no link -- D-58.8: "a dead button is the one option that is not available").
  */
-export function requestAccessMailto(t: Translate, adminEmails: readonly string[], workspaceName?: string): string | null {
+export function requestAccessMailto(adminEmails: readonly string[], workspaceName?: string, t: Translate = EN): string | null {
   if (adminEmails.length === 0) return null;
   const subject = workspaceName ? t("Workspace Admin access — {name}", { name: workspaceName }) : t("Workspace Admin access");
   return `mailto:${adminEmails.join(",")}?subject=${encodeURIComponent(subject)}`;

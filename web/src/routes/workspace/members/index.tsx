@@ -2,17 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import type { ApiClient, WorkspaceMemberBody, WorkspaceSettingsBody } from "../../../api/client";
 import { useShellContext } from "../../../components/shell/shellContext";
 import { canManageMembers, type WorkspaceRole } from "../../../components/shell/navItems";
-import { useGuide } from "../../../components/shell/guide";
 import ScreenTitle from "../../../components/ScreenTitle";
-import { SCREEN_GUIDES, translateTip } from "../../../components/infoTipCopy";
+import { useGuide } from "../../../components/shell/guide";
 import { useI18n } from "../../../i18n/I18nProvider";
 import InvitePane, { type InviteFailure } from "./InvitePane";
 import MembersTable, { type MembersActionError } from "./MembersTable";
 import {
+  MEMBERS_TIP,
   formatWorkspaceLine,
   inviteDomainWarning,
   inviteOutcomeFrom,
-  membersTip,
   requestAccessMailto,
   toInviteWorkspaceRole,
   validateInviteEmail,
@@ -56,6 +55,10 @@ type SettingsState =
   | { phase: "hidden" }
   | { phase: "ready"; settings: WorkspaceSettingsBody; saving: boolean; error: string | null };
 
+export const WEB_RESEARCH_SETTING_LABEL = "Allow Ask Raffa to search the public web";
+export const WEB_RESEARCH_SETTING_HINT =
+  "Off by default. When on, everyone here can switch on Web search in Ask Raffa’s composer: questions then go to the public web and to your contracts together, and a personal question is pointed at Google or an AI search tool. With the toggle off, Raffa may still offer a web search for a procurement question and asks permission first. Only the question’s words are searched — nothing from your contracts leaves Raffa; web results are labelled unverified.";
+
 /**
  * Route `/workspace/members` -- Workspace & members, V2 (ADR-024 V2 IA; screens-v2.md #10;
  * `raffa-v2/markup.html` "WORKSPACE & MEMBERS" block). Header ("Setup" kicker · "Workspace &
@@ -74,13 +77,22 @@ type SettingsState =
  */
 export default function MembersRoute({ apiClient, userLabel, workspaceId, workspaceName, role }: MembersRouteProps) {
   const shell = useShellContext();
-  const { t } = useI18n();
   // Pre-merge, this route is only ever reached through `RequireRole role={role} allow="admin"`
   // (WorkspaceShellApp.tsx, unmodified until the sibling above lands), so an absent `role` prop is
   // always the Admin case in practice; post-merge the sibling always supplies the real, server-derived
   // value and this fallback never applies.
   const effectiveRole: WorkspaceRole = role ?? "admin";
   const isAdmin = canManageMembers(effectiveRole);
+  const { t } = useI18n();
+
+  // The page's own guide (it used to inherit the last screen's, e.g. "Chiedi a Raffa").
+  useGuide({
+    where: t("Workspace & members"),
+    now: isAdmin ? t("Invite a colleague, or change who can do what.") : t("Ask a Workspace Admin to invite your colleagues."),
+    why: t("Procurement members ask, upload and work the renewals; a Workspace Admin also deletes documents and manages members."),
+    next: t("The invited colleague signs in with the link and lands in this workspace."),
+    cta: null,
+  });
 
   const [roster, setRoster] = useState<RosterState>({ phase: "loading" });
   const [email, setEmail] = useState("");
@@ -145,6 +157,8 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
       }
       setRoster({ phase: "ready", members: result.members });
     });
+    // `t` stays out of the deps: a language switch must not re-read the roster (the fallback
+    // message is translated where it renders).
   }, [apiClient, workspaceId]);
 
   useEffect(() => {
@@ -154,7 +168,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
   const sendInvite = useCallback(() => {
     if (!workspaceId) return;
 
-    const validationError = validateInviteEmail(t, email);
+    const validationError = validateInviteEmail(email, t);
     if (validationError !== null) {
       // Keep the last successful accept link on screen -- a second empty click used to wipe it,
       // and the server cannot reproduce the token (hash only).
@@ -268,21 +282,6 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
     [apiClient, workspaceId, loadRoster, t],
   );
 
-  // Guida Raffa for this screen (otherwise the panel falls back to Ask's copy): where the user is,
-  // and -- by role -- what inviting and the two Day-1 roles mean.
-  useGuide({
-    where: t("Workspace & members"),
-    now: isAdmin
-      ? t("Invite a colleague with their work email and choose their role: Procurement or Workspace Admin.")
-      : t("See who works in this workspace. To invite someone, ask a Workspace Admin."),
-    why: t(
-      "Procurement asks Raffa, uploads and reviews documents and handles renewals; a Workspace Admin can also delete documents and manage members. Everyone works on the same contracts; chats stay personal.",
-    ),
-    next: isAdmin
-      ? t("The colleague gets a link that works once and expires. Until they accept it they show as Invited, and you can send a new invitation or revoke it.")
-      : t("Once a Workspace Admin invites someone, they show here as Invited until they accept."),
-  });
-
   if (!workspaceId) {
     return (
       <div className="empty-state" role="status">
@@ -300,16 +299,14 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
       <header className="screen-header">
         <div>
           <p className="screen-kicker">{t("Setup")}</p>
-          <ScreenTitle guide="members" tip={translateTip(t, SCREEN_GUIDES.members)}>
-            {t("Workspace & members")}
-          </ScreenTitle>
-          <p className="screen-header-summary">{formatWorkspaceLine(t, workspaceId, workspaceName)}</p>
+          <ScreenTitle guide="members">{t("Workspace & members")}</ScreenTitle>
+          <p className="screen-header-summary">{formatWorkspaceLine(workspaceId, workspaceName, t)}</p>
         </div>
       </header>
 
       {shell?.kbReady === false && (
         <p className="members-tip" role="note">
-          {membersTip(t)}
+          {t(MEMBERS_TIP)}
         </p>
       )}
 
@@ -363,11 +360,9 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
                   onChange={(event) => setWebResearch(event.target.checked)}
                 />
                 <span>
-                  <span className="members-settings-label">{t("Allow Ask Raffa to search the public web")}</span>
+                  <span className="members-settings-label">{t(WEB_RESEARCH_SETTING_LABEL)}</span>
                   <span className="micro-meta members-settings-hint">
-                    {t(
-                      "Off by default. When on, everyone here can switch on Web search in Ask Raffa's composer: questions then go to the public web and to your contracts together, and a personal question is pointed at Google or an AI search tool. With the toggle off, Raffa may still offer a web search for a procurement question and asks permission first. Only the question's words are searched -- nothing from your contracts leaves Raffa; web results are labelled unverified.",
-                    )}
+                    {t(WEB_RESEARCH_SETTING_HINT)}
                   </span>
                 </span>
               </label>
@@ -388,7 +383,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
             tenantDomain={tenantDomain}
             error={inviteError}
             failure={inviteFailure}
-            domainWarning={inviteDomainWarning(t, email, tenantDomain, inviteRole)}
+            domainWarning={inviteDomainWarning(email, tenantDomain, inviteRole, t)}
             outcome={outcome}
             submitting={submitting}
             onEmailChange={(value) => {
@@ -419,11 +414,11 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
  */
 function RequestAccessPane({ adminEmails, workspaceName }: { adminEmails: readonly string[]; workspaceName?: string }) {
   const { t } = useI18n();
-  const mailto = requestAccessMailto(t, adminEmails, workspaceName);
+  const mailto = requestAccessMailto(adminEmails, workspaceName, t);
   return (
     <aside className="members-invite-pane" aria-label={t("Request access")}>
-      <h4>{t("You don't manage this workspace")}</h4>
-      <p className="micro-meta">{t("Only a Workspace Admin can invite, revoke or remove members. Ask one of your workspace's Admins for access.")}</p>
+      <h4>{t("You don’t manage this workspace")}</h4>
+      <p className="micro-meta">{t("Only a Workspace Admin can invite, revoke or remove members. Ask one of your workspace’s Admins for access.")}</p>
       {mailto !== null && (
         <a className="btn btn-secondary" href={mailto}>
           {t("Request access")}

@@ -1,4 +1,5 @@
 import type { ContractListRowV4Body } from "../../api/client";
+import { chfK } from "../contracts/contracts4";
 
 /** The kinds of digital content Raffa builds in the side panel from the validated contracts. */
 export type ArtifactKind = "dashboard" | "kpi" | "document";
@@ -33,7 +34,6 @@ export interface Artifact {
 
 type T = (id: string, vars?: Record<string, string | number>) => string;
 
-const chfK = (v: number) => `CHF ${Math.round(v / 1000).toLocaleString("en-US")}k`;
 const WINDOWS: Array<{ id: string; max: number }> = [
   { id: "Up to 30 days", max: 30 },
   { id: "31–90 days", max: 90 },
@@ -44,7 +44,8 @@ const WINDOWS: Array<{ id: string; max: number }> = [
 
 /** Rows that have a notice deadline ahead (dates not read, or passed, are counted apart). */
 function aheadRows(rows: readonly ContractListRowV4Body[]) {
-  return rows.filter((r) => r.noticeDays >= 0 && r.noticeDays < 100000).sort((a, b) => a.noticeDays - b.noticeDays);
+  // A contract whose notice date was not read has noticeDays 0: it is not "due today", so it is left out.
+  return rows.filter((r) => r.noticeDeadline.trim() !== "" && r.noticeDays >= 0 && r.noticeDays < 100000).sort((a, b) => a.noticeDays - b.noticeDays);
 }
 
 /**
@@ -57,7 +58,7 @@ export function buildArtifact(kind: ArtifactKind, rows: readonly ContractListRow
   const total = rows.reduce((s, r) => s + (r.annualValue || 0), 0);
   const within90 = ahead.filter((r) => r.noticeDays <= 90);
   const valueWithin180 = ahead.filter((r) => r.noticeDays <= 180).reduce((s, r) => s + (r.annualValue || 0), 0);
-  const passed = rows.filter((r) => r.noticeDays < 0).length;
+  const passed = rows.filter((r) => r.noticeDeadline.trim() !== "" && r.noticeDays < 0).length;
   const autoRenewed = rows.filter((r) => r.termStatus === "rolledOver").length;
   const next = ahead[0];
 
