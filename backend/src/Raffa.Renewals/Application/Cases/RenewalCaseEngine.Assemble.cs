@@ -97,8 +97,10 @@ public static partial class RenewalCaseEngine
 
         var hdr = new CaseHeader
         {
+            // A renewed case keeps naming the contract it renewed: once closed, the facts carry the new term.
             Title = B("Renewal · {supplier} · {contract} {from}–{to}", "Rinnovo · {supplier} · {contract} {from}–{to}",
-                ("supplier", cn.Supplier), ("contract", ShortName(cn.Name)), ("from", CaseFormat.Js(cn.Start.Year)), ("to", CaseFormat.Js(cn.End.Year))),
+                ("supplier", cn.Supplier), ("contract", ShortName(cn.Name)),
+                ("from", CaseFormat.Js((renewed?.PrevStart ?? cn.Start).Year)), ("to", CaseFormat.Js((renewed?.PreviousEnd(cn.End) ?? cn.End).Year))),
             Supplier = cn.Supplier,
             Contract = cn.Name,
             Status = stat,
@@ -107,7 +109,7 @@ public static partial class RenewalCaseEngine
             NoticeBy = D(renewed?.Cancel ?? cn.Cancel),
             NoticeDays = renewed?.CancelDays ?? DaysTo(ctx, cn.Cancel),
             End = renewed is not null
-                ? B("{end} (new contract; previous ends {prev})", "{end} (nuovo contratto; il precedente termina il {prev})", ("end", D(renewed.End)), ("prev", D(cn.End)))
+                ? B("{end} (new contract; previous ends {prev})", "{end} (nuovo contratto; il precedente termina il {prev})", ("end", D(renewed.End)), ("prev", D(renewed.PreviousEnd(cn.End))))
                 : D(cn.End),
             Owner = c.Owner,
             Tracks = tracks,
@@ -565,7 +567,7 @@ public static partial class RenewalCaseEngine
 
             default:
                 It(c.Pipe is { Stage: >= 3 }, B("Extraction done", "Estrazione completata"));
-                It(c.Pipe is not null && !c.Pipe.Weak.Any(w => w.State == "open"), B("Flagged fields decided", "Campi segnalati decisi"), c.Owner);
+                It(c.Pipe is not null && (c.Pipe.Extracted || c.Pipe.Weak.Count > 0) && !c.Pipe.Weak.Any(w => w.State == "open"), B("Flagged fields decided", "Campi segnalati decisi"), c.Owner);
                 It(c.Outcome is not null, B("New contract validated and scheduled", "Nuovo contratto validato e programmato"));
                 break;
         }
@@ -726,7 +728,7 @@ public static partial class RenewalCaseEngine
             {
                 if (LiabilityConflict(c) && string.IsNullOrWhiteSpace(c.Ui.Auth))
                 {
-                    Add("policy", apw, B("Policy exception: liability 18 vs 24 months", "Deroga alla policy: responsabilità 18 vs 24 mesi"), B("Binding rule in Procurement Policy v3.2. Record who authorizes it.", "Regola vincolante della Procurement Policy v3.2. Registra chi la autorizza."));
+                    Add("policy", apw, B("Policy exception: liability {liab} vs 24 months", "Deroga alla policy: responsabilità {liab} vs 24 mesi", ("liab", CaseAgreement.ProposedLiability(c))), B("Binding rule in Procurement Policy v3.2. Record who authorizes it.", "Regola vincolante della Procurement Policy v3.2. Registra chi la autorizza."));
                 }
                 else
                 {
@@ -750,9 +752,12 @@ public static partial class RenewalCaseEngine
             Add("sigok", apw, B("Confirm the signed contract", "Conferma il contratto firmato"), B("Only you can close the negotiation.", "Solo tu puoi chiudere la negoziazione."));
         }
 
-        if (c.Pipe is { Stage: 3 })
+        if (c.Pipe is { Stage: 3 } pipe)
         {
-            Add("fields", c.Owner, B("Validate the flagged fields", "Valida i campi segnalati"), B("2 fields below 80% in the new contract.", "2 campi sotto l’80% nel nuovo contratto."));
+            Add("fields", c.Owner, B("Validate the flagged fields", "Valida i campi segnalati"),
+                pipe.Extracted
+                    ? B("2 fields below 80% in the new contract.", "2 campi sotto l’80% nel nuovo contratto.")
+                    : B("{n} values to check against the signed contract.", "{n} valori da verificare sul contratto firmato.", ("n", pipe.Weak.Count(w => w.State == "open"))));
         }
 
         if (c.Notice is { State: "check" })

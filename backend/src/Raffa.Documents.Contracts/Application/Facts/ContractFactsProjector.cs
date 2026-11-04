@@ -28,9 +28,15 @@ public sealed class ContractFactsProjector(
         var contract = await dbContext.Contracts.AsNoTracking()
             .SingleAsync(c => c.TenantId == tenantId && c.Id == contractId, cancellationToken)
             .ConfigureAwait(false);
-        var lines = await dbContext.ContractLineItems.AsNoTracking()
+        // In the document's order (page, then extraction order): the first recurring line is the one the
+        // renewal case prices, so the order must not depend on how the database returns rows.
+        var lines = (await dbContext.ContractLineItems.AsNoTracking()
             .Where(l => l.TenantId == tenantId && l.ContractId == contractId)
-            .ToListAsync(cancellationToken).ConfigureAwait(false);
+            .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .OrderBy(l => l.SourcePage ?? int.MaxValue)
+            .ThenBy(l => l.CreatedAt)
+            .ThenBy(l => l.Id.Value)
+            .ToList();
         var obligations = await dbContext.Obligations.AsNoTracking()
             .Where(o => o.TenantId == tenantId && o.ContractId == contractId)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -100,7 +106,7 @@ public sealed class ContractFactsProjector(
             Deep = new ContractDeepFacts
             {
                 Products = lines.Select(l => new ContractProduct(
-                    l.Description, l.Sku ?? "", l.Unit ?? "", l.Quantity ?? 1, l.UnitPrice ?? 0, l.AnnualCost ?? 0)).ToList(),
+                    l.Description, l.Sku ?? "", l.Unit ?? "", l.Quantity ?? 1, l.UnitPrice ?? 0, l.AnnualCost ?? 0, l.BillingPeriod)).ToList(),
                 Std = clauses.Select(c => new ContractStandardTerm(
                     c.ClauseType, c.NormalizedValue ?? c.RawText, c.SourcePage is { } p ? $"p.{p}" : "")).ToList(),
                 OblYou = obligations.Where(o => IsOurs(o.Party)).Select(Obligation).ToList(),

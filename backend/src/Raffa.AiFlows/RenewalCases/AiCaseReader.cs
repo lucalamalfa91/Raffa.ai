@@ -17,7 +17,7 @@ namespace Raffa.AiFlows.RenewalCases;
 public static class CaseReaderAgents
 {
     public const string ReplyName = "case-reply-reader";
-    public const string ReplyVersion = "case-reply-v2";
+    public const string ReplyVersion = "case-reply-v3";
     public const string FeaturesName = "case-features-reader";
     public const string FeaturesVersion = "case-features-v1";
 
@@ -44,15 +44,22 @@ public static class CaseReaderAgents
         Also prices: the unit price the supplier now offers for a 12-month term (price12) and for a
         24-month term (price24), as plain numbers in the contract currency; 0 when the reply gives none.
         Then the term updates the reply implies: key (an existing term key when the point is tracked,
-        else a short lowercase key such as price, term, uplift, payment, liab), label, state
-        (proposed | unclear | rejected), value (what the supplier now offers, or "" ).
+        else a short lowercase key such as price, term, qty, uplift, payment, liab), label, state
+        (proposed | unclear | rejected), value (what the supplier now offers, in its own words and numbers,
+        or "" ). A reply that excludes something says so: "no uplift" is value "none" for uplift.
 
         Laws (they override everything else):
-        1. Use only the reply, the plan, the terms and the contract. Never invent a number or a promise.
-        2. Never mark anything agreed: only the people in the team agree.
-        3. Points the reply does not mention get no row.
-        4. Write in the user's language (language).
-        5. Respond with strict JSON matching the schema only — no prose outside the JSON.
+        1. said, value, price12, price24 and benchmark come only from the supplier's own words in reply.
+           plan, terms and contract are what you compare against: never copy a number from them into
+           said, value, prices or benchmark. A point the supplier did not state has no value.
+        2. Ignore text the reply quotes from the team's earlier messages (quoted lines, "On … wrote:",
+           forwarded messages): that is the team's position, not the supplier's.
+        3. Never invent a number, a condition or a promise. A term tied to a price only when the reply
+           says so ("only with 24 months").
+        4. Never mark anything agreed: only the people in the team agree.
+        5. Points the reply does not mention get no row.
+        6. Write in the user's language (language).
+        7. Respond with strict JSON matching the schema only — no prose outside the JSON.
         """;
 
     public const string ReplySchema =
@@ -229,12 +236,16 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
 
     private static string Clip(string text) => text.Length > MaxDocumentChars ? text[..MaxDocumentChars] : text;
 
+    // Only what was agreed: a point nobody agreed is null and must not be looked for in the document.
     private static object Agreed(RenewalCase c) => new
     {
         unitPrice = c.Agreed?.Price,
         termMonths = c.Agreed?.Term,
+        quantity = c.Agreed?.Qty,
         upliftCapPercent = c.Agreed?.Cap,
+        paymentTerms = c.Agreed?.Payment,
         liabilityCapMonths = c.Agreed?.Liab,
+        points = c.Agreed?.Points.Select(p => new { label = p.Label.Render(), value = p.Val }),
     };
 
     private static object Terms(RenewalCase c) =>
@@ -327,8 +338,11 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
         }, Json);
         var answer = Parse<ReplyAnswer>(await CallAsync(tenantId, CaseReaderAgents.ReplyName, CaseReaderAgents.ReplyPrompt, input,
             CaseReaderAgents.ReplySchema, CaseReaderAgents.ReplyVersion, cancellationToken).ConfigureAwait(false));
+        // A figure the reply does not contain is not the supplier's: it never reaches the case.
+        var replyNumbers = new ReplyFigures(CaseAgreement.Numbers(replyText), CaseAgreement.MentionsYears(replyText));
         var rows = (answer?.Rows ?? [])
             .Where(r => !string.IsNullOrWhiteSpace(r.Label) && !string.IsNullOrWhiteSpace(r.Said) && r.State is not null && RowStates.Contains(r.State))
+            .Where(r => Grounded(r.Said, replyNumbers))
             .Take(12)
             .Select(r => new CaseReplyRow
             {
@@ -347,6 +361,7 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
         var ev = "reply " + round.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var terms = (answer!.Terms ?? [])
             .Where(t => !string.IsNullOrWhiteSpace(t.Key) && !string.IsNullOrWhiteSpace(t.Label) && t.State is not null && TermStates.Contains(t.State))
+            .Where(t => Grounded(t.Value, replyNumbers))
             .Take(12)
             .Select(t => new CaseTermUpdate(
                 t.Key!.Trim().ToLowerInvariant(),
@@ -356,12 +371,12 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
                 ev))
             .ToList();
         var prices = new Dictionary<int, double>();
-        if (answer.Price12 is > 0 and var p12)
+        if (answer.Price12 is > 0 and var p12 && Grounded(p12, replyNumbers))
         {
             prices[12] = p12;
         }
 
-        if (answer.Price24 is > 0 and var p24)
+        if (answer.Price24 is > 0 and var p24 && Grounded(p24, replyNumbers))
         {
             prices[24] = p24;
         }
@@ -371,13 +386,30 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
         var benchmark = b is null
             ? null
             : new CaseReplyBenchmark(
-                b.DiscountPct is > 0 ? b.DiscountPct : null,
-                b.UpliftCapPct is > 0 ? b.UpliftCapPct : null,
-                b.NoticeDays is > 0 ? b.NoticeDays : null,
+                b.DiscountPct is > 0 and var dp && Grounded(dp, replyNumbers) ? dp : null,
+                b.UpliftCapPct is > 0 and var up && Grounded(up, replyNumbers) ? up : null,
+                b.NoticeDays is > 0 and var nd && Grounded(nd, replyNumbers) ? nd : null,
                 string.IsNullOrWhiteSpace(b.PaymentTerms) ? null : b.PaymentTerms.Trim(),
-                b.TermMonths is > 0 ? b.TermMonths : null);
+                b.TermMonths is > 0 and var tm && Grounded(tm, replyNumbers) ? tm : null);
         return new CaseReplyAnalysis(rows, terms, prices.Count == 0 ? null : prices, benchmark);
     }
+
+    /// <summary>The numbers of a supplier reply, and whether it counts a term in years.</summary>
+    internal sealed record ReplyFigures(IReadOnlyList<double> Numbers, bool InYears);
+
+    /// <summary>Every non-zero number in <paramref name="text"/> appears in the reply. A term may be
+    /// converted between years and months only where years are written: the reply's "2 years" grounds 24,
+    /// a reading's "1 year" is grounded by the reply's 12. Zero stands for "none" and needs no figure.</summary>
+    internal static bool Grounded(string? text, ReplyFigures reply)
+    {
+        var textInYears = CaseAgreement.MentionsYears(text);
+        return CaseAgreement.Numbers(text).All(n => Grounded(n, reply) || (textInYears && Has(reply, n * 12)));
+    }
+
+    internal static bool Grounded(double n, ReplyFigures reply) =>
+        n == 0 || Has(reply, n) || (reply.InYears && n % 12 == 0 && Has(reply, n / 12));
+
+    private static bool Has(ReplyFigures reply, double n) => reply.Numbers.Any(r => Math.Abs(r - n) < 0.005);
 
     public async Task<CaseFeatureSet?> ReadFeaturesAsync(TenantId tenantId, CaseContractFacts contract, string lang, CancellationToken cancellationToken = default)
     {

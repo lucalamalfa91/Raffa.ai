@@ -41,6 +41,40 @@ public static partial class RenewalCaseEngine
         return c;
     }
 
+    /// <summary>
+    /// Drafts written before contracts had a commercial name carry the uploaded file name in their subject
+    /// and text ("Veeam_Subscription_2024.docx — renewal discussion"). An email still in draft takes the
+    /// contract's name instead; one already in approval, approved or sent keeps the words it was approved
+    /// or sent with. The attachment keeps the file name: that is the file.
+    /// </summary>
+    public static RenewalCase RenameDraftsFromFileName(RenewalCase c, CaseContractFacts cn)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        ArgumentNullException.ThrowIfNull(cn);
+        var file = cn.File?.Trim() ?? string.Empty;
+        if (file.Length == 0 || string.Equals(file, cn.Name, StringComparison.Ordinal))
+        {
+            return c;
+        }
+
+        var stem = Path.GetFileNameWithoutExtension(file);
+        string Fix(string text)
+        {
+            var fixedText = text.Replace(file, cn.Name, StringComparison.Ordinal);
+            return stem.Length >= 6 && !string.Equals(stem, cn.Name, StringComparison.Ordinal)
+                ? fixedText.Replace(stem, cn.Name, StringComparison.Ordinal)
+                : fixedText;
+        }
+
+        foreach (var e in c.Emails.Where(e => e.State == EmailStates.Draft))
+        {
+            e.Subject = Fix(e.Subject);
+            e.Body = Fix(e.Body);
+        }
+
+        return c;
+    }
+
     public static bool IsPermissionDenial(RenewalCase c)
     {
         var id = c.Ui.Warn?.Id;

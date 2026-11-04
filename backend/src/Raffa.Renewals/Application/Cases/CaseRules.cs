@@ -31,7 +31,10 @@ public static partial class CaseRules
 
     public static CasePriceFacts Price(CaseContext ctx)
     {
-        var p = ctx.Contract.Products.Count > 0 ? ctx.Contract.Products[0] : new CaseProduct("—", string.Empty, "unit", 1, 0);
+        // The line the renewal prices is the first recurring one: a one-off amount (onboarding, setup)
+        // is never renewed, so it never drives the price arithmetic.
+        var products = ctx.Contract.Products;
+        var p = products.FirstOrDefault(x => !x.OneOff) ?? (products.Count > 0 ? products[0] : new CaseProduct("—", string.Empty, "unit", 1, 0));
         return new CasePriceFacts(p, p.Price, p.Qty, p.Unit, p.Unit.Contains("month", StringComparison.Ordinal) ? 12 : 1);
     }
 

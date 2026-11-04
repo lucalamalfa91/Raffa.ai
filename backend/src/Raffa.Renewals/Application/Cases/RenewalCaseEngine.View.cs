@@ -419,13 +419,32 @@ public static partial class RenewalCaseEngine
                                 new CaseCell(label, 600, tone),
                             ];
                         }).ToList());
-                    d.Lines =
-                    [
-                        rp2.Round == 1
-                            ? B("Nothing is agreed yet: a supplier proposal is not an agreement. Payment terms are unclear — I will ask for clarification in the counter-proposal.", "Nulla è concordato: una proposta del fornitore non è un accordo. I pagamenti sono poco chiari — chiederò chiarimenti nella controproposta.")
-                            : B("These are proposals backed by the supplier’s written reply. They become “agreed” only when you confirm them.", "Sono proposte con evidenza scritta del fornitore. Diventano «concordate» solo quando le confermi."),
-                    ];
-                    d.Note = B("Prototype: the reading of the reply is scripted for the demo scenario.", "Prototipo: la lettura della risposta è scriptata per lo scenario demo.");
+                    if (ctx.Services.Scripted)
+                    {
+                        d.Lines =
+                        [
+                            rp2.Round == 1
+                                ? B("Nothing is agreed yet: a supplier proposal is not an agreement. Payment terms are unclear — I will ask for clarification in the counter-proposal.", "Nulla è concordato: una proposta del fornitore non è un accordo. I pagamenti sono poco chiari — chiederò chiarimenti nella controproposta.")
+                                : B("These are proposals backed by the supplier’s written reply. They become “agreed” only when you confirm them.", "Sono proposte con evidenza scritta del fornitore. Diventano «concordate» solo quando le confermi."),
+                        ];
+                        d.Note = B("Prototype: the reading of the reply is scripted for the demo scenario.", "Prototipo: la lettura della risposta è scriptata per lo scenario demo.");
+                    }
+                    else
+                    {
+                        // Only what this reading found: no point is said to be unclear unless the reading marked it so.
+                        var unclear = rp2.Rows.Where(r => r.State == "unclear").Select(r => r.Label.Render()).ToList();
+                        d.Lines =
+                        [
+                            rp2.Round == 1
+                                ? B("Nothing is agreed yet: a supplier proposal is not an agreement.", "Nulla è concordato: una proposta del fornitore non è un accordo.")
+                                : B("These are proposals backed by the supplier’s written reply. They become “agreed” only when you confirm them.", "Sono proposte con evidenza scritta del fornitore. Diventano «concordate» solo quando le confermi."),
+                        ];
+                        if (unclear.Count > 0 && rp2.Round == 1)
+                        {
+                            d.Lines.Add(B("Unclear in the reply: {points} — I ask for clarification in the counter-proposal.", "Poco chiaro nella risposta: {points} — chiedo chiarimenti nella controproposta.", ("points", string.Join(", ", unclear))));
+                        }
+                    }
+
                     break;
                 }
 
@@ -433,7 +452,11 @@ public static partial class RenewalCaseEngine
                 {
                     var q = c.Qs[it.Did ?? 0];
                     d.Kicker = B("Decision needed", "Decisione richiesta");
-                    d.Title = B("The discount is tied to 24 months. What is your limit?", "Lo sconto è legato a 24 mesi. Qual è il tuo limite?");
+                    d.Title = ctx.Services.Scripted || CaseAgreement.OfferedPrice(c, 24) is not { } o24
+                        ? B("The discount is tied to 24 months. What is your limit?", "Lo sconto è legato a 24 mesi. Qual è il tuo limite?")
+                        : CaseAgreement.OfferedPrice(c, 12) is { } o12
+                            ? B("The supplier offers {p24} for 24 months and {p12} for 12 months. What is your limit?", "Il fornitore offre {p24} per 24 mesi e {p12} per 12 mesi. Qual è il tuo limite?", ("p24", CaseRules.Ps(f, o24)), ("p12", CaseRules.Ps(f, o12)))
+                            : B("The supplier offers {p24} for 24 months only. What is your limit?", "Il fornitore offre {p24} solo per 24 mesi. Qual è il tuo limite?", ("p24", CaseRules.Ps(f, o24)));
                     if (q.State == "open")
                     {
                         var p24 = CaseRules.Ps(f, CounterPrice(c, ctx, 24));
@@ -531,8 +554,14 @@ public static partial class RenewalCaseEngine
                         new CaseRow(B("Next notice deadline", "Prossima scadenza disdetta"), o.Cancel is { } oc ? D(oc) : string.Empty),
                         new CaseRow(B("New price", "Nuovo prezzo"), o.Price ?? CaseText.Empty),
                         new CaseRow(B("Annual change vs previous (same quantities)", "Variazione annua vs precedente (stesse quantità)"), ((o.Delta ?? 0) > 0 ? "−" : "+") + CaseFormat.Chf(Math.Abs(o.Delta ?? 0)), 600),
-                        new CaseRow(B("Previous contract", "Contratto precedente"), B("stays active until {end}", "resta attivo fino al {end}", ("end", D(cn.End)))),
+                        new CaseRow(B("Previous contract", "Contratto precedente"), B("stays active until {end}", "resta attivo fino al {end}", ("end", D(o.PreviousEnd(cn.End))))),
                     ];
+                    // The final document the new contract rests on (the demo script keeps the prototype's rows).
+                    if (!ctx.Services.Scripted && !string.IsNullOrEmpty(o.File))
+                    {
+                        d.Rows.Add(new CaseRow(B("Signed document", "Documento firmato"), o.File));
+                    }
+
                     d.Lines = [B("Signature, validation and start date are separate events. The change is computed from the two contracts’ prices — not a market saving. The next cycle is planned from the validated dates.", "Firma, validazione e decorrenza sono eventi distinti. La variazione è calcolata dai prezzi dei due contratti — non è un risparmio di mercato. Il prossimo ciclo è pianificato dalle date validate.")];
                     d.Buttons = [Bt(B("Open Contract 360", "Apri Contract 360"), "nav", new CaseActionPayload { To = "c360" }), Bt(B("See in Renewals", "Vedi in Rinnovi"), "nav", new CaseActionPayload { To = "renewals" })];
                     break;
@@ -862,7 +891,9 @@ public static partial class RenewalCaseEngine
         var e = c.Emails[it.Eid ?? 0];
         var es = e.State;
         var sup = es == EmailStates.Superseded;
-        var cur3 = !sup && es != EmailStates.Sent;
+        // An unsent draft is the step to work on only while the negotiation runs: once the signed
+        // contract is in (pipeline) or the case has an outcome, a leftover request is history.
+        var cur3 = !sup && es != EmailStates.Sent && c.Outcome is null && c.Phase != CasePhases.Pipeline;
         var apw0 = Apw(c);
         CaseText sl = es switch
         {
@@ -1030,7 +1061,7 @@ public static partial class RenewalCaseEngine
             d.Lines = [B("“Agreed” needs the written exchange as evidence and your confirmation. Silence is not acceptance.", "«Concordato» richiede lo scambio scritto come evidenza e la tua conferma. Il silenzio non è accettazione.")];
             if (liabConf)
             {
-                d.Banner = B("Liability 18 months conflicts with Procurement Policy v3.2 (binding, min. 24). A deviation needs authorization from the competent role — collected outside Raffa in this release.", "Responsabilità 18 mesi in conflitto con la Procurement Policy v3.2 (vincolante, min. 24). La deroga richiede l’autorizzazione del ruolo competente — raccolta fuori da Raffa in questo rilascio.");
+                d.Banner = B("Liability {liab} months conflicts with Procurement Policy v3.2 (binding, min. 24). A deviation needs authorization from the competent role — collected outside Raffa in this release.", "Responsabilità {liab} mesi in conflitto con la Procurement Policy v3.2 (vincolante, min. 24). La deroga richiede l’autorizzazione del ruolo competente — raccolta fuori da Raffa in questo rilascio.", ("liab", CaseAgreement.ProposedLiability(c)));
                 d.Inputs = [new CaseInput(B("Exception authorized by (name / role)", "Deroga autorizzata da (nome / ruolo)"), c.Ui.Auth ?? string.Empty, "auth", "text")];
             }
 
@@ -1101,24 +1132,45 @@ public static partial class RenewalCaseEngine
     private static void PipeCard(RenewalCase c, CaseCard d)
     {
         var pp = c.Pipe ?? new CasePipe();
-        CaseText[] sn = [B("Upload", "Caricamento"), B("Processing", "Elaborazione"), B("Extraction", "Estrazione"), B("Review", "Revisione"), B("Validation", "Validazione")];
         d.Kicker = B("Negotiation completed · new contract in review", "Negoziazione completata · nuovo contratto in revisione");
-        d.Title = B("Standard pipeline — same one, inside the chat", "Pipeline standard — la stessa, dentro la chat");
-        d.Steps = sn.Select((x, i) => new CaseCardStep(x, pp.Stage >= i, pp.Stage == i)).ToList();
+        if (pp.Extracted)
+        {
+            CaseText[] sn = [B("Upload", "Caricamento"), B("Processing", "Elaborazione"), B("Extraction", "Estrazione"), B("Review", "Revisione"), B("Validation", "Validazione")];
+            d.Title = B("Standard pipeline — same one, inside the chat", "Pipeline standard — la stessa, dentro la chat");
+            d.Steps = sn.Select((x, i) => new CaseCardStep(x, pp.Stage >= i, pp.Stage == i)).ToList();
+        }
+        else
+        {
+            // No extraction ran on the signed file: no processing stage is shown as done.
+            d.Title = B("Check the signed contract before it becomes the new contract", "Verifica il contratto firmato prima che diventi il nuovo contratto");
+            d.Steps =
+            [
+                new CaseCardStep(B("Upload", "Caricamento"), true, false),
+                new CaseCardStep(B("Review", "Revisione"), pp.Stage >= 3, pp.Stage == 3),
+                new CaseCardStep(B("Validation", "Validazione"), pp.Stage >= 4, pp.Stage == 4),
+            ];
+        }
+
         if (pp.Stage >= 3)
         {
-            d.Lines = [B("41 facts extracted · 39 above threshold · 2 below 80% for you to decide. An extraction error never reopens the signed negotiation.", "41 fatti estratti · 39 sopra soglia · 2 sotto l’80% da decidere. Un errore di estrazione non riapre la negoziazione firmata.")];
+            var open = pp.Weak.Count(x => x.State == "open");
+            d.Lines = pp.Extracted
+                ? [B("41 facts extracted · 39 above threshold · 2 below 80% for you to decide. An extraction error never reopens the signed negotiation.", "41 fatti estratti · 39 sopra soglia · 2 sotto l’80% da decidere. Un errore di estrazione non riapre la negoziazione firmata.")]
+                : [B("Raffa did not read the signed document automatically. Check these {n} values against it: once validated they become the contract’s new terms. A difference never reopens the signed negotiation — correct the value.", "Raffa non ha letto automaticamente il documento firmato. Verifica questi {n} valori sul documento: una volta validati diventano le nuove condizioni del contratto. Una differenza non riapre la negoziazione firmata — correggi il valore.", ("n", pp.Weak.Count))];
             d.Fields = pp.Weak.Select((w, i) =>
             {
                 var key = "cf" + CaseFormat.Js(i);
-                return new CaseField(w.Name, w.Val, CaseFormat.Js(w.Conf) + "%", w.State, w.State == "open",
+                return new CaseField(w.Name, w.Val, w.Conf is { } cf ? CaseFormat.Js(cf) + "%" : string.Empty, w.State, w.State == "open",
                     w.State == "accepted" ? B("Accepted", "Accettato") : w.State == "corrected" ? B("Corrected", "Corretto") : CaseText.Empty,
-                    key, c.Ui.Cf.TryGetValue(key, out var iv) ? iv : string.Empty, i);
+                    key, c.Ui.Cf.TryGetValue(key, out var iv) ? iv : string.Empty, i, w.Src);
             }).ToList();
             if (pp.Stage == 3)
             {
                 d.Current = true;
-                d.Buttons = [new CaseButton(B("Mark as validated", "Segna come validato"), "validate", CaseActionPayload.None, true, pp.Weak.Any(x => x.State == "open"), B("Decide both fields first", "Decidi prima i due campi"))];
+                var why = pp.Extracted
+                    ? B("Decide both fields first", "Decidi prima i due campi")
+                    : B("Accept or correct each value first ({n} still open)", "Accetta o correggi prima ogni valore ({n} ancora aperti)", ("n", open));
+                d.Buttons = [new CaseButton(B("Mark as validated", "Segna come validato"), "validate", CaseActionPayload.None, true, open > 0 || (!pp.Extracted && pp.Weak.Count == 0), why)];
             }
         }
         else

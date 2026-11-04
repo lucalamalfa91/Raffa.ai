@@ -106,7 +106,8 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
       setCorrected("");
       if (result.data.status === "done") announceContractsChanged();
     } else {
-      setDecisionError(result.error ?? "");
+      // A server failure saved nothing (the reading stays in review): say so plainly, not the raw response.
+      setDecisionError(result.statusCode !== null && result.statusCode >= 500 ? "" : (result.error ?? ""));
     }
   };
 

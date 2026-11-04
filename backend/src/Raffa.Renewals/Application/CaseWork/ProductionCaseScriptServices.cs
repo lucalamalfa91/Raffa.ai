@@ -32,23 +32,41 @@ public sealed class ProductionCaseScriptServices : ICaseScriptServices
         return new CaseReplyAnalysis(rows, []);
     }
 
+    // One row per agreed point, never a point nobody agreed (a liability cap, a payment term…).
     public IReadOnlyList<CaseDraftRow> VerifyDraft(RenewalCase c, CaseContext ctx, int version)
     {
         var a = c.Agreed ?? new CaseAgreed();
         var f = CaseRules.Price(ctx);
         var manual = B("not read automatically — check it in the document");
-        return
-        [
-            new CaseDraftRow { Label = B("Unit price"), Agreed = CaseRules.Ps(f, a.Price), Draft = manual, Res = "manual", Src = string.Empty },
-            new CaseDraftRow { Label = B("Term"), Agreed = CaseText.Message("{term} months", ("term", a.Term)), Draft = manual, Res = "manual", Src = string.Empty },
-            new CaseDraftRow { Label = B("Liability cap"), Agreed = CaseText.Message("{liab} months of fees", ("liab", a.Liab)), Draft = manual, Res = "manual", Src = string.Empty },
-        ];
+        var rows = new List<CaseDraftRow>
+        {
+            new() { Label = B("Unit price"), Agreed = CaseRules.Ps(f, a.Price), Draft = manual, Res = "manual", Src = string.Empty },
+            new() { Label = B("Term"), Agreed = CaseText.Message("{term} months", ("term", a.Term)), Draft = manual, Res = "manual", Src = string.Empty },
+        };
+        if (a.Cap is { } cap)
+        {
+            rows.Add(new() { Label = Tx.B("Uplift cap", "Tetto aumento"), Agreed = CaseAgreement.CapText(cap), Draft = manual, Res = "manual", Src = string.Empty });
+        }
+
+        if (a.Payment is { Length: > 0 } pay)
+        {
+            rows.Add(new() { Label = Tx.B("Payment terms", "Pagamenti"), Agreed = CaseText.Of(pay), Draft = manual, Res = "manual", Src = string.Empty });
+        }
+
+        if (a.Liab is { } liab)
+        {
+            rows.Add(new() { Label = B("Liability cap"), Agreed = CaseText.Message("{liab} months of fees", ("liab", liab)), Draft = manual, Res = "manual", Src = string.Empty });
+        }
+
+        return rows;
     }
 
     // The model's reading of the signed file, stored on the case when it was uploaded; nothing read = 0 / 0.
     public CaseSignedCheck CheckSigned(RenewalCase c, CaseContext ctx) => new(c.Signed?.CheckedPoints ?? 0, c.Signed?.Differences ?? 0);
 
-    public CasePipe StartExtraction(RenewalCase c, CaseContext ctx) => new() { Stage = 0, Weak = [] };
+    // The signed file is not extracted automatically in this release: the values that will become the
+    // contract's new terms are put to the owner, with their source, to check against it before validating.
+    public CasePipe StartExtraction(RenewalCase c, CaseContext ctx) => CaseAgreement.SignedFieldsToCheck(c, ctx);
 
     public IReadOnlyList<string> ExampleVendors() => [];
 
