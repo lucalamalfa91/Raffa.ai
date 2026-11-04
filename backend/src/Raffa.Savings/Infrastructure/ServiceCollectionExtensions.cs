@@ -99,6 +99,9 @@ public static class ServiceCollectionExtensions
         // Spesa e risparmi: the contracts' value per fiscal quarter (IContractTermHistoryReader comes
         // from Documents.Contracts, IWorkspaceFinanceSettingsReader from the host).
         services.AddScoped<Application.Spend.SpendReportQueryService>();
+        // A host without the Identity module (the worker, module tests) reports in CHF on a calendar
+        // year with no budget rates; the API host registers the workspace's own settings.
+        services.TryAddScoped<Raffa.SharedKernel.Savings.IWorkspaceFinanceSettingsReader, DefaultWorkspaceFinanceSettingsReader>();
         services.AddScoped<SavingsGoalService>();
         services.TryAddScoped<CaseObjectiveTableStore>();
         services.TryAddScoped<ICaseObjectiveSource>(sp => sp.GetRequiredService<CaseObjectiveTableStore>());
