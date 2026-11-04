@@ -181,7 +181,7 @@ public sealed partial class RenewalCaseService(
             return CaseResult.NotFound("The contract of this case is no longer available.");
         }
 
-        var c = RenewalCaseJson.Deserialize(record.State);
+        var c = RenewalCaseEngine.RenameDraftsFromFileName(RenewalCaseJson.Deserialize(record.State), cf);
         if (visit)
         {
             c = RenewalCaseEngine.Act(c, "visit", CaseActionPayload.None, Ctx(cf, caller.Name));
@@ -454,7 +454,7 @@ public sealed partial class RenewalCaseService(
             return CaseResult.NotFound("The contract of this case is no longer available.");
         }
 
-        var before = RenewalCaseJson.Deserialize(record.State);
+        var before = RenewalCaseEngine.RenameDraftsFromFileName(RenewalCaseJson.Deserialize(record.State), cf);
         if (version is { } v && v != record.Version)
         {
             return new CaseResult(CaseResultKind.Conflict, Envelope(record, before, cf, caller.Name), "The case changed since you loaded it. Your text is kept; review the current version.");

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Npgsql;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
@@ -26,7 +28,8 @@ public sealed class ContractFactsReader(
     DocumentsContractsDbContext dbContext,
     ITenantContext tenantContext,
     IClock clock,
-    ISupplierNameLookup? supplierNameLookup = null)
+    ISupplierNameLookup? supplierNameLookup = null,
+    ILogger<ContractFactsReader>? logger = null)
     : IContractFactsReader
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -99,6 +102,7 @@ public sealed class ContractFactsReader(
             .Where(f => !f.Evidence.Keys.Any(k => k.Contains("renew", StringComparison.OrdinalIgnoreCase) || k.Contains("notice", StringComparison.OrdinalIgnoreCase)))
             .Select(f => new EntityId(f.ContractId))
             .ToList();
+        facts = await EnrichBillingPeriodsAsync(tenantId, facts, cancellationToken).ConfigureAwait(false);
         if (needTerm.Count == 0 && needEvidence.Count == 0)
         {
             return facts;
@@ -143,6 +147,52 @@ public sealed class ContractFactsReader(
     }
 
     private sealed record CitedField(Guid ContractId, string FieldName, int? SourcePage, string? SourceSpan, DateTimeOffset CreatedAt);
+
+    /// <summary>Facts written before products carried their billing period get it from the contract's
+    /// line items (same description and SKU), so a one-off amount is told apart from a recurring line on
+    /// contracts validated earlier too. Fixture contracts keep their curated products.</summary>
+    private async Task<List<ContractFacts>> EnrichBillingPeriodsAsync(TenantId tenantId, List<ContractFacts> facts, CancellationToken cancellationToken)
+    {
+        var need = facts
+            .Where(f => f.FixtureId is null && f.Deep.Products.Any(p => p.BillingPeriod is null))
+            .Select(f => new EntityId(f.ContractId))
+            .ToList();
+        if (need.Count == 0)
+        {
+            return facts;
+        }
+
+        var lines = await dbContext.ContractLineItems.AsNoTracking()
+            .Where(l => l.TenantId == tenantId && need.Contains(l.ContractId) && l.BillingPeriod != null)
+            .Select(l => new { l.ContractId, l.Description, l.Sku, l.BillingPeriod })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (lines.Count == 0)
+        {
+            return facts;
+        }
+
+        return facts.Select(f =>
+        {
+            var own = lines.Where(l => l.ContractId.Value == f.ContractId).ToList();
+            if (own.Count == 0 || f.Deep.Products.All(p => p.BillingPeriod is not null))
+            {
+                return f;
+            }
+
+            var products = f.Deep.Products
+                .Select(p => p.BillingPeriod is not null
+                    ? p
+                    : p with
+                    {
+                        BillingPeriod = own.FirstOrDefault(l =>
+                            string.Equals(l.Description, p.Name, StringComparison.Ordinal)
+                            && string.Equals(l.Sku ?? string.Empty, p.Sku, StringComparison.Ordinal))?.BillingPeriod,
+                    })
+                .ToList();
+            return f with { Deep = f.Deep with { Products = products } };
+        }).ToList();
+    }
 
     /// <summary>The contracts with a linked <c>Completed</c> document — the same predicate as
     /// <c>PortfolioQueryService.CountValidatedContractsAsync</c> — optionally narrowed to one.</summary>
@@ -231,7 +281,7 @@ public sealed class ContractFactsReader(
             {
                 await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException exception) when (IsUniqueViolation(exception))
             {
                 // Another request projected the same contract first (unique tenant + contract): keep theirs.
                 dbContext.Entry(existing).State = EntityState.Detached;
@@ -243,6 +293,17 @@ public sealed class ContractFactsReader(
                     continue;
                 }
             }
+            catch (DbUpdateException exception)
+            {
+                // The projection could not be stored. The contract is validated all the same (a completed
+                // document): it is served from this projection, never dropped from Contracts, Renewals and
+                // Results, and the failure is logged with the contract so it can be repaired.
+                dbContext.Entry(existing).State = EntityState.Detached;
+                logger?.LogError(exception,
+                    "Contract facts of validated contract {ContractId} could not be stored; serving the projection unsaved",
+                    contractId.Value);
+                existing = new ContractFactsRecord { TenantId = tenantId, ContractId = contractId, Facts = json, ValidatedAt = now, UpdatedAt = now };
+            }
 
             rows.RemoveAll(r => r.ContractId == contractId);
             rows.Add(existing);
@@ -252,6 +313,9 @@ public sealed class ContractFactsReader(
     }
 
     public static string Serialize(ContractFacts facts) => JsonSerializer.Serialize(facts, Json);
+
+    private static bool IsUniqueViolation(DbUpdateException exception) =>
+        exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     /// <summary>"18 Oct 2026" — the display form the facts carry.</summary>
     public static string FormatDate(DateOnly date) => date.ToString("dd MMM yyyy", CultureInfo.InvariantCulture);

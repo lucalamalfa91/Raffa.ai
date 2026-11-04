@@ -129,7 +129,8 @@ public sealed record CaseChip(CaseText Label, string Act, CaseActionPayload P, b
 /// <summary>An input bound to the <c>ui</c> action (<c>Act("ui", { k: Ui, v })</c>). Type: text | check | area.</summary>
 public sealed record CaseInput(CaseText Label, object Value, string Ui, string Type);
 
-public sealed record CaseField(CaseText Name, string Val, string Conf, string State, bool Open, CaseText DoneLabel, string InKey, string InVal, int I);
+/// <param name="Src">Where the value comes from (page, section, the reply it was agreed in); empty when unknown.</param>
+public sealed record CaseField(CaseText Name, string Val, string Conf, string State, bool Open, CaseText DoneLabel, string InKey, string InVal, int I, CaseText? Src = null);
 
 public sealed record CaseCardEmail
 {

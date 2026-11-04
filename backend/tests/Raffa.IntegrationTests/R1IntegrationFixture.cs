@@ -7,6 +7,7 @@ using Raffa.Chat.Infrastructure;
 using Raffa.Documents.Contracts.Application.Extraction;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.Identity.Workspace.Infrastructure;
+using Raffa.Renewals.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Storage;
 using Raffa.Suppliers.Products.Infrastructure;
@@ -109,6 +110,16 @@ public sealed class R1IntegrationFixture : WebApplicationFactory<Program>, IAsyn
         await using (var db = new SuppliersDbContext(suppliersOptions.Options))
         {
             // Applies Initial + AddTenantRowLevelSecurity for Raffa.Suppliers.Products' own table.
+            await db.Database.MigrateAsync();
+        }
+
+        // GET /api/contracts/{id}/v4 and ?view=v4 read the contract's renewal-case status
+        // (IContractCaseStatusReader, served by Raffa.Renewals): the AskRaffa 4.0 review path needs
+        // the Renewals tables to exist, not only the connection string.
+        var renewalsOptions = new DbContextOptionsBuilder<RenewalsDbContext>();
+        RenewalsDbContextOptions.Configure(renewalsOptions, superuserConnectionString);
+        await using (var db = new RenewalsDbContext(renewalsOptions.Options))
+        {
             await db.Database.MigrateAsync();
         }
 
@@ -218,6 +229,16 @@ public sealed class R1IntegrationFixture : WebApplicationFactory<Program>, IAsyn
     /// assertion on what processing produces. Messages are consumed from the channel, so a second
     /// drain is a no-op. Returns how many messages were handled.
     /// </summary>
+    /// <summary>Runs <paramref name="sql"/> as the container's superuser (outside RLS): for tests that
+    /// need the database itself to misbehave, e.g. a write that fails.</summary>
+    public async Task ExecuteAsSuperuserAsync(string sql)
+    {
+        await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        await command.ExecuteNonQueryAsync();
+    }
+
     public async Task<int> DrainExtractionQueueAsync()
     {
         var queue = Services.GetRequiredService<InMemoryExtractionQueue>();

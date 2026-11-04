@@ -33,6 +33,11 @@ namespace Raffa.Renewals.Application.Cases;
 /// </summary>
 public interface ICaseScriptServices
 {
+    /// <summary>True only for the prototype's demo script (<see cref="FixtureCaseScriptServices"/>): the engine
+    /// then writes the prototype's own texts and figures, word for word (prototype parity). Every other
+    /// implementation gets texts and figures built from the case's readings and the user's decisions only.</summary>
+    bool Scripted => false;
+
     /// <summary>Text "Use example reply" puts in the reply box for <paramref name="round"/> (1-based).</summary>
     string SampleReply(RenewalCase c, CaseContext ctx, int round);
 

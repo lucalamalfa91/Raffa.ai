@@ -389,6 +389,10 @@ public sealed class CasePipe
     /// <summary>0 upload · 1 processing · 2 extraction · 3 review · 4 validation.</summary>
     public int Stage { get; set; }
 
+    /// <summary>False when no automatic extraction ran on the signed file: the fields are the values that
+    /// will become the contract's new terms, for the user to check against the signed document.</summary>
+    public bool Extracted { get; set; } = true;
+
     public List<CaseWeakField> Weak { get; set; } = [];
 }
 
@@ -400,7 +404,11 @@ public sealed class CaseWeakField
 
     public string Val { get; set; } = string.Empty;
 
-    public int Conf { get; set; }
+    /// <summary>Extraction confidence in %; null when the value was not extracted from the document.</summary>
+    public int? Conf { get; set; }
+
+    /// <summary>Where the value comes from (page, section, or the reply it was agreed in); "" when unknown.</summary>
+    public CaseText Src { get; set; } = CaseText.Empty;
 
     /// <summary>open | accepted | corrected.</summary>
     public string State { get; set; } = "open";
@@ -430,6 +438,17 @@ public sealed class CaseOutcome
     public DateOnly? When { get; set; }
 
     public string? ReplacedBy { get; set; }
+
+    /// <summary>The contract the case renewed, as it stood when the case closed. Once the outcome is
+    /// written the contract's facts carry the new term, so the case keeps the previous dates itself.
+    /// Null on cases closed before these were recorded.</summary>
+    public DateOnly? PrevStart { get; set; }
+
+    public DateOnly? PrevEnd { get; set; }
+
+    /// <summary>The end of the contract this case renewed: recorded at closure, else the day before the new
+    /// term starts, else <paramref name="currentEnd"/>.</summary>
+    public DateOnly PreviousEnd(DateOnly currentEnd) => PrevEnd ?? Start?.AddDays(-1) ?? currentEnd;
 }
 
 public sealed class CaseNotice
@@ -504,17 +523,47 @@ public sealed class CaseOwnerChange
     public DateOnly At { get; set; }
 }
 
+/// <summary>
+/// What the owner confirmed as agreed ("Confirm as agreed"). Outside the demo script it is a snapshot of
+/// the terms the supplier's replies proposed and the owner confirmed (<see cref="Points"/>): a point
+/// nobody agreed stays null and never reaches an email or a document check.
+/// </summary>
 public sealed class CaseAgreed
 {
+    /// <summary>Agreed unit price of the priced (first recurring) line.</summary>
     public double Price { get; set; }
 
+    /// <summary>Agreed term in months.</summary>
     public int Term { get; set; }
 
-    public int Cap { get; set; }
+    /// <summary>Agreed cap on yearly price increases in %; 0 = no increase; null = not agreed.</summary>
+    public int? Cap { get; set; }
 
-    public int Liab { get; set; }
+    /// <summary>Agreed limitation of liability in months of fees; null = not agreed.</summary>
+    public int? Liab { get; set; }
+
+    /// <summary>Agreed quantity of the priced line; null = unchanged.</summary>
+    public double? Qty { get; set; }
+
+    /// <summary>Agreed payment terms as the supplier wrote them; null = not agreed.</summary>
+    public string? Payment { get; set; }
+
+    /// <summary>Every confirmed point, as read from the supplier's replies (label, value, evidence).</summary>
+    public List<CaseAgreedPoint> Points { get; set; } = [];
 
     public string? Auth { get; set; }
+}
+
+public sealed class CaseAgreedPoint
+{
+    public string Key { get; set; } = string.Empty;
+
+    public CaseText Label { get; set; } = CaseText.Empty;
+
+    public string Val { get; set; } = string.Empty;
+
+    /// <summary>Evidence: "reply 2".</summary>
+    public string Ev { get; set; } = string.Empty;
 }
 
 /// <summary>Per-case UI state the prototype keeps in the case (inputs, open panels, warnings).</summary>
