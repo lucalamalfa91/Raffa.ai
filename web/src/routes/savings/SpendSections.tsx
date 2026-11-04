@@ -179,7 +179,7 @@ export function SpendOverview({ report, filters, onChange }: { report: SpendRepo
   ];
   return (
     <section id="overview" className="sp4-section" aria-labelledby="sp4-overview-h">
-      <h3 id="sp4-overview-h" className="sp4-visually-hidden">
+      <h3 id="sp4-overview-h" className="visually-hidden">
         {t("Overview")}
       </h3>
       <div className="sp4-kpis">
@@ -564,7 +564,7 @@ export function SpendBudget({ report, filters, onChange, onOpenCase }: { report:
               <th scope="col">{t("If you do nothing")}</th>
               <th scope="col">{t("Objective in the case")}</th>
               <th scope="col">{t("Decide by")}</th>
-              <th scope="col"><span className="sp4-visually-hidden">{t("Action")}</span></th>
+              <th scope="col"><span className="visually-hidden">{t("Action")}</span></th>
             </tr>
           </thead>
           <tbody>

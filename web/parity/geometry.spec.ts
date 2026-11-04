@@ -56,7 +56,7 @@ test('chiedi: both headers share one 56px line', async ({ page }) => {
 
 test('risultati: goal bar collapsed by default, slim', async ({ page }) => {
   await page.goto(`${URL}/today?now=2026-09-08&fixture=full`); await stabilise(page);
-  await tab(page, 'Risultati').click();
+  await tab(page, 'Spesa e risparmi').click(); // D10: the Risultati tab
   const bar = page.locator('[data-screen-label="Obiettivo"]');
   expect((await bar.boundingBox())!.height).toBeLessThan(60);
   await expect(bar.getByRole('textbox')).toHaveCount(0);
@@ -64,7 +64,7 @@ test('risultati: goal bar collapsed by default, slim', async ({ page }) => {
 
 test('no market benchmark / no estimates anywhere', async ({ page }) => {
   await page.goto(`${URL}/today?now=2026-09-08&fixture=full`); await stabilise(page);
-  for (const name of ['Oggi', 'Rinnovi', 'Contratti', 'Risultati', 'Chiedi']) {
+  for (const name of ['Oggi', 'Rinnovi', 'Contratti', 'Spesa e risparmi', 'Chiedi']) {
     await tab(page, name).click();
     const text = (await page.locator('body').innerText()).toLowerCase();
     expect(text).not.toMatch(/benchmark di mercato attivo|sopra mercato|sotto mercato|mediana|p25|p75|risparmio stimato/);

@@ -4,7 +4,6 @@
  * Spend: actual = ink, committed = ink at 60%, renews by itself = accent, to decide = dashed outline.
  * Savings: proven = ink, signed = ink hatching, objective = accent-100 with a dashed accent-700 edge.
  */
-.sp4-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .sp4-sections { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: 14px; font-size: 14px; font-weight: 600; }
 .sp4-sections a { color: var(--color-text); }
