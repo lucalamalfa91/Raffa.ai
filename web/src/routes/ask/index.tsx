@@ -24,6 +24,7 @@ import DraftPanel, { ArtifactCard } from "./DraftPanel";
 import { splitEmailDraft, type EmailDraft } from "./draft";
 import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
 import { artifactRequest, buildArtifact, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
+import { buildSpendArtifact, revisedIntent } from "./askSpend";
 
 export interface AskRouteProps {
   apiClient: ApiClient;
@@ -213,14 +214,30 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     const afterMessageId = current?.messages[current.messages.length - 1]?.id ?? null;
     setBuilding(true);
     setConvError(null);
-    const r = await apiClient.listContractsV4(tenantId);
-    setBuilding(false);
-    if (!r.ok || !r.data) {
-      setConvError(t("The contracts could not be loaded."));
-      return;
+    const earlier = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === kind);
+    const version = earlier.length + 1;
+    let made: Artifact;
+    if (apiClient.getSpendReport) {
+      // Built on Spesa e risparmi's figures: the request's "per anno", "per trimestre", "cassa", a
+      // fiscal year or a category change the view, on top of what the earlier versions asked; the
+      // page opens on the same filters.
+      const intent = revisedIntent(earlier.map((c) => c.request), request ?? "");
+      const r = await apiClient.getSpendReport(tenantId, { basis: intent.basis });
+      setBuilding(false);
+      if (!r.ok || !r.data) {
+        setConvError(t("Spend and savings could not be loaded."));
+        return;
+      }
+      made = buildSpendArtifact(kind, r.data, intent, t, version);
+    } else {
+      const r = await apiClient.listContractsV4(tenantId);
+      setBuilding(false);
+      if (!r.ok || !r.data) {
+        setConvError(t("The contracts could not be loaded."));
+        return;
+      }
+      made = buildArtifact(kind, r.data.rows, t, today, version);
     }
-    const version = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === kind).length + 1;
-    const made = buildArtifact(kind, r.data.rows, t, today, version);
     setContents((list) => [...list, { artifact: made, conversationId, afterMessageId, request }]);
     setPanel({ id: made.id, artifact: made });
   };

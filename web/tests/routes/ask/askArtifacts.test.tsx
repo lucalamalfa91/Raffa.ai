@@ -9,6 +9,7 @@ import {
   type ConversationMessage4,
 } from "../../../src/api/client";
 import AskRoute from "../../../src/routes/ask";
+import { spendReport } from "../savings/spendFixture";
 
 const ROWS: ContractListRowV4Body[] = [
   {
@@ -52,7 +53,7 @@ const conversation = (id: string, title: string, messages: ConversationMessage4[
 });
 
 /** Two saved conversations and a backend that answers every question in plain text. */
-function renderAsk(start: string) {
+function renderAsk(start: string, withSpend = false) {
   const store = new Map<string, ConversationDetail4>([
     ["A", conversation("A", "Notice for Salesforce", [message("you", "When is the Salesforce notice?"), message("raffa", "By 1 December 2026.")])],
     ["B", conversation("B", "GitLab spend", [message("you", "How much do we spend on GitLab?"), message("raffa", "CHF 101k a year.")])],
@@ -81,6 +82,7 @@ function renderAsk(start: string) {
   const client = {
     getWorkspaceSettings: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, settings: null, error: null }),
     listContractsV4: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, data: { rows: ROWS, document: null }, error: null }),
+    ...(withSpend ? { getSpendReport: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, data: spendReport(), error: null }) } : {}),
   } as unknown as ApiClient;
   registerAskOfferTransport(client, { baseUrl: "http://api.test", getAccessToken: async () => null, fetch });
   render(
@@ -185,5 +187,31 @@ describe("Ask Raffa: what Raffa builds sits in its own conversation, at its own 
       "Raffa.ai: Contract KPIsKPIs · Version 3 · Open",
     ]);
     expect(screen.getByRole("complementary", { name: "KPIs · Version 3" })).toBeInTheDocument();
+  });
+});
+
+describe("Ask Raffa: KPIs and dashboards come from Spesa e risparmi", () => {
+  it("builds the KPIs on the spend report and a change of view is a real new version, linked to the page", async () => {
+    const { asked } = renderAsk("/ask/A", true);
+    expect(await screen.findByText("By 1 December 2026.")).toBeInTheDocument();
+
+    await send("Fammi i KPI");
+    const first = await screen.findByRole("complementary", { name: "KPIs" });
+    expect(first.textContent).toContain("Spend FY 2026 · accrual");
+    expect(first.textContent).toContain("CHF 190k");
+    expect(screen.getByRole("link", { name: "Open in Spend and savings" }).getAttribute("href")).toBe("/savings");
+
+    await send("visualizza i KPI per trimestre, 2027, per cassa");
+    const second = await screen.findByRole("complementary", { name: "KPIs · Version 2" });
+    expect(second.textContent).toContain("Spend and savings by quarter");
+    expect(second.textContent).toContain("Q4 2027");
+    expect(second.textContent).not.toContain("Q4 2026");
+    expect(screen.getByRole("link", { name: "Open in Spend and savings" }).getAttribute("href")).toBe("/savings?view=quarter&year=2027&basis=cash");
+
+    // A change to that version keeps the quarters, the year and the basis it did not mention.
+    await send("modifica il KPI, solo impegnato");
+    await screen.findByRole("complementary", { name: "KPIs · Version 3" });
+    expect(screen.getByRole("link", { name: "Open in Spend and savings" }).getAttribute("href")).toBe("/savings?view=quarter&year=2027&basis=cash&include=committed");
+    expect(asked).toEqual([]);
   });
 });

@@ -32,6 +32,8 @@ export interface Artifact {
   markdown: string;
   /** 1 for the first one of its kind in a conversation; a change asked for later is the next version. */
   version: number;
+  /** The screen the figures come from, on the same filters (Spesa e risparmi). */
+  link?: { label: string; to: string };
 }
 
 /** A dashboard, KPIs or document Raffa built, and the turn of the conversation it answers. */

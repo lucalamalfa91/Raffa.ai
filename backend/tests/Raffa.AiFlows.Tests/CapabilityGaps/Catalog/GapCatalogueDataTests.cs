@@ -53,7 +53,10 @@ public sealed class GapCatalogueDataTests
         Assert.Equal("inviare un'email al fornitore", send.OperationIt);
         Assert.Equal(GapAlternative.DraftEmail, send.Alternative);
         Assert.Equal(GapAlternative.Renewals, CapabilityGapCatalog.Find(CapabilityGapCatalog.ReminderKey)!.Alternative);
-        Assert.Equal(GapAlternative.Portfolio, CapabilityGapCatalog.Find(CapabilityGapCatalog.ExportFileKey)!.Alternative);
+        // gap-catalogue-3: the export points at Spend and savings' CSV, not Portfolio's table.
+        var export = CapabilityGapCatalog.Find(CapabilityGapCatalog.ExportFileKey)!;
+        Assert.Equal(GapAlternative.SpendAndSavings, export.Alternative);
+        Assert.Equal("export an answer, a Word document or an Excel workbook", export.OperationEn);
         Assert.Equal(GapAlternative.ContractDetail, CapabilityGapCatalog.Find(CapabilityGapCatalog.PurchaseOrderKey)!.Alternative);
     }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Translate } from "../../i18n/translate";
 import ArtifactPanel from "./ArtifactPanel";
@@ -108,6 +109,11 @@ export default function ArtifactViewPanel({ artifact, onClose }: { artifact: Art
     >
       <article className="content-doc">
         <p className="content-sub">{artifact.subtitle}</p>
+        {artifact.link ? (
+          <Link className="btn btn-secondary content-link" to={artifact.link.to}>
+            {artifact.link.label}
+          </Link>
+        ) : null}
         {artifact.tiles.length ? (
           <div className="content-tiles">
             {artifact.tiles.map((x) => (

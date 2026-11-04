@@ -17,8 +17,11 @@ public enum GapAlternative
     /// <summary>Renewals already tracks every notice deadline (a reminder's real content).</summary>
     Renewals,
 
-    /// <summary>Portfolio already lists the same data as a filterable table (an export's content).</summary>
+    /// <summary>Portfolio already lists the same data as a filterable table.</summary>
     Portfolio,
+
+    /// <summary>Spend and savings exports its contracts table as CSV (an export's content).</summary>
+    SpendAndSavings,
 
     /// <summary>Contract 360 holds the facts a purchase order needs.</summary>
     ContractDetail,

@@ -234,7 +234,7 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
     }
 
     [Fact]
-    public async Task Export_request_redirects_to_portfolio_in_english()
+    public async Task Export_request_redirects_to_the_spend_csv_in_english()
     {
         var tenantId = TenantId.New();
         var (host, gateway, _) = Host(new Dictionary<EntityId, string>());
@@ -244,8 +244,11 @@ public sealed class AskCapabilityGapTests(RaffaApiFactory factory) : IClassFixtu
 
         var root = reply.RootElement;
         Assert.Equal("redirect", root.GetProperty("kind").GetString());
-        Assert.StartsWith("I can't export files from Raffa.ai yet, but", root.GetProperty("answerMarkdown").GetString(), StringComparison.Ordinal);
-        // An empty portfolio swaps the greyed Portfolio capability for the upload action (R-SYS-04).
+        Assert.StartsWith(
+            "I can't export an answer, a Word document or an Excel workbook from Raffa.ai yet, but Spend and savings exports as CSV",
+            root.GetProperty("answerMarkdown").GetString(),
+            StringComparison.Ordinal);
+        // An empty portfolio swaps the greyed Spend and savings capability for the upload action (R-SYS-04).
         Assert.Equal("upload", root.GetProperty("actions")[0].GetProperty("kind").GetString());
         Assert.Empty(gateway.Calls);
     }

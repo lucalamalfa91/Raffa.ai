@@ -1,5 +1,17 @@
 /** Italian for Spesa e risparmi: the integrated spend and savings report (filters, chart, contracts, budget, register). */
 export const IT_SPEND: Readonly<Record<string, string>> = {
+  // Ask: KPIs, dashboards and briefs built on Spesa e risparmi.
+  "From Spend and savings · {year} · {basis} · in {currency}": "Da Spesa e risparmi · {year} · {basis} · in {currency}",
+  "In {year} the contracts cost {spend} ({basis}); {committed} of {next} is already committed for {nextYear}.": "Nel {year} i contratti costano {spend} ({basis}); per il {nextYear} sono già impegnati {committed} su {next}.",
+  "Next decisions": "Prossime decisioni",
+  "Nothing depends on a decision yet.": "Nulla dipende ancora da una decisione.",
+  "Open in Spend and savings": "Apri in Spesa e risparmi",
+  "Quarter": "Trimestre",
+  "Spend and savings could not be loaded.": "Non è stato possibile caricare Spesa e risparmi.",
+  "Spend by category · {year}": "Spesa per categoria · {year}",
+  "by quarter": "per trimestre",
+  "by year": "per anno",
+  "{amount} depend on a decision in the next 12 months.": "{amount} dipendono da una decisione nei prossimi 12 mesi.",
   "1 contract": "1 contratto",
   "Against the year before": "Rispetto all’anno precedente",
   "Proven by 1 invoice up to {date}": "Provato da 1 fattura fino al {date}",

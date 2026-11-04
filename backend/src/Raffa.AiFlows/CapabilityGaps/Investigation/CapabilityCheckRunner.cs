@@ -326,6 +326,7 @@ public sealed class CapabilityCheckRunner(
                 var capabilityKey = gap.Alternative switch
                 {
                     GapAlternative.Renewals => CapabilityCatalog.RenewalsKey,
+                    GapAlternative.SpendAndSavings => CapabilityCatalog.SavingsKey,
                     GapAlternative.ContractDetail when contractId is not null => CapabilityCatalog.ContractDetailKey,
                     _ => CapabilityCatalog.PortfolioKey,
                 };
