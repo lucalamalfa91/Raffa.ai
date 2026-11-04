@@ -1,4 +1,4 @@
-import type { ContractListRowV4Body } from "../../api/client";
+import type { ComposedArtifactBody, ContractListRowV4Body } from "../../api/client";
 import { chfK } from "../contracts/contracts4";
 
 /** The kinds of digital content Raffa builds in the side panel from the validated contracts. */
@@ -176,6 +176,30 @@ export function buildArtifact(kind: ArtifactKind, rows: readonly ContractListRow
     charts: kind === "dashboard" ? charts : [],
     tables: kind === "dashboard" ? tables : [],
     markdown: kind === "document" ? lines.join("\n") : "",
+    version,
+  };
+}
+
+/**
+ * The content the artifact-composer agent wrote (from the chat's context, the portfolio and, when asked, the
+ * market RAG), as the panel's artifact. The server has already checked that every figure is in its fact pack.
+ */
+export function composedToArtifact(body: ComposedArtifactBody, version: number, t: T): Artifact {
+  const d = body.draft;
+  const note = [
+    body.focusSupplier ? body.focusSupplier : null,
+    body.usedPortfolio ? t("all contracts") : null,
+    body.usedMarket ? t("market data") : null,
+  ].filter(Boolean).join(" · ");
+  return {
+    id: `${body.kind}-${Date.now()}`,
+    kind: body.kind,
+    title: d.title,
+    subtitle: [d.subtitle, note].filter(Boolean).join(" · "),
+    tiles: d.tiles.map((x) => ({ label: x.label, value: x.value, ...(x.hint ? { hint: x.hint } : {}), ...(x.tone === "urgent" || x.tone === "good" ? { tone: x.tone } : {}) })),
+    charts: d.charts,
+    tables: d.tables,
+    markdown: d.markdown,
     version,
   };
 }

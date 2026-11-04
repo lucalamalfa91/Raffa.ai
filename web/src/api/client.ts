@@ -4658,7 +4658,25 @@ export interface OpenCase4 {
   phase: string;
 }
 
+/** A dashboard / KPI set / document written by the artifact-composer agent (`POST /api/ask/artifact`). */
+export interface ComposedArtifactBody {
+  kind: "kpi" | "dashboard" | "document";
+  focusSupplier: string | null;
+  usedPortfolio: boolean;
+  usedMarket: boolean;
+  draft: {
+    title: string;
+    subtitle: string;
+    tiles: Array<{ label: string; value: string; hint: string; tone: string }>;
+    charts: Array<{ title: string; items: Array<{ label: string; value: number; display: string }> }>;
+    tables: Array<{ title: string; columns: string[]; rows: string[][] }>;
+    markdown: string;
+  };
+}
+
 export interface AskOfferApi {
+  /** The agents' own content for what the user asked in this chat; `data: null` = fall back to the deterministic build. */
+  composeArtifact(tenantId: string, request: { conversationId: string | null; contractId: string | null; request: string; lang: "it" | "en" }): Promise<AskOfferResult<ComposedArtifactBody>>;
   listConversations(tenantId: string, state: ConversationState): Promise<AskOfferResult<ConversationSummary4[]>>;
   getConversation(tenantId: string, id: string): Promise<AskOfferResult<ConversationDetail4>>;
   ask(tenantId: string, request: AskTurnRequest): Promise<AskOfferResult<AskTurnResult>>;
@@ -4757,6 +4775,7 @@ export function askOfferApi(client: object): AskOfferApi {
     listConversations: (tenantId, state) => call("GET", `/api/conversations?state=${state}`, tenantId),
     getConversation: (tenantId, conversationId) => call("GET", `/api/conversations/${seg(conversationId)}`, tenantId),
     ask: (tenantId, request) => call("POST", "/api/conversations/ask", tenantId, request),
+    composeArtifact: (tenantId, request) => call("POST", "/api/ask/artifact", tenantId, request),
     setArchived: (tenantId, conversationId, archived) =>
       call("POST", `/api/conversations/${seg(conversationId)}/${archived ? "archive" : "unarchive"}`, tenantId, {}),
     listAskContracts: (tenantId) => call("GET", "/api/ask/contracts", tenantId),

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Raffa.AiGateway.Agents;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.AiFlows.Ask.Answering;
 using Raffa.AiFlows.Ask.Gate;
@@ -46,6 +47,11 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<IntentPlanner>();
         services.AddScoped<AnswerComposer>();
         services.AddScoped<ConversationFocusResolver>();
+        services.AddScoped<Raffa.AiFlows.Ask.Artifacts.ArtifactComposer>();
+        services.AddAgentRegistry();
+        services.AddAgentDefinitions(
+            Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.Flow,
+            Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.Definition());
 
         // ADR-030: the interview (kill switch + bounds).
         services.TryAddSingleton(new InterviewOptions());

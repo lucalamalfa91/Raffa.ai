@@ -23,7 +23,7 @@ import FeedbackCard from "./FeedbackCard";
 import DraftPanel, { ArtifactCard } from "./DraftPanel";
 import { splitEmailDraft, type EmailDraft } from "./draft";
 import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
-import { artifactRequest, buildArtifact, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
+import { artifactRequest, buildArtifact, composedToArtifact, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
 import { buildSpendArtifact, revisedIntent } from "./askSpend";
 
 export interface AskRouteProps {
@@ -216,8 +216,24 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setConvError(null);
     const earlier = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === kind);
     const version = earlier.length + 1;
-    let made: Artifact;
-    if (apiClient.getSpendReport) {
+    let made: Artifact | null = null;
+    // The agents write it from the chat's own context (the open contract, the portfolio, the market RAG).
+    // Only when they cannot deliver a grounded one does the deterministic build below answer instead.
+    if (request) {
+      const composed = await api.composeArtifact(tenantId, {
+        conversationId,
+        contractId: current?.scopeContractId ?? scopeId ?? null,
+        request,
+        lang,
+      });
+      if (composed.data) {
+        made = composedToArtifact(composed.data, version, t);
+        setBuilding(false);
+      }
+    }
+    if (made) {
+      // nothing more to build
+    } else if (apiClient.getSpendReport) {
       // Built on Spesa e risparmi's figures: the request's "per anno", "per trimestre", "cassa", a
       // fiscal year or a category change the view, on top of what the earlier versions asked; the
       // page opens on the same filters.
@@ -238,8 +254,10 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       }
       made = buildArtifact(kind, r.data.rows, t, today, version);
     }
-    setContents((list) => [...list, { artifact: made, conversationId, afterMessageId, request }]);
-    setPanel({ id: made.id, artifact: made });
+    if (!made) return;
+    const placed: Artifact = made;
+    setContents((list) => [...list, { artifact: placed, conversationId, afterMessageId, request }]);
+    setPanel({ id: placed.id, artifact: placed });
   };
 
   const ask = async (
