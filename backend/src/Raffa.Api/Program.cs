@@ -376,6 +376,8 @@ builder.Services.AddRenewalsModule(renewalsConnectionString);
 // replaced by the modules that own them) and the workspace members a case can name.
 builder.Services.AddRenewalCases();
 builder.Services.AddScoped<Raffa.Renewals.Application.CaseWork.ICaseMemberDirectory, WorkspaceCaseMemberDirectory>();
+// Spesa e risparmi: the workspace's reporting currency, fiscal year and budget rates (Identity owns them).
+builder.Services.AddScoped<Raffa.SharedKernel.Savings.IWorkspaceFinanceSettingsReader, WorkspaceFinanceSettingsReader>();
 
 // Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3):
 // RenewalAlertRecomputeService is host-composition wiring, the same kind as

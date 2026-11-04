@@ -131,7 +131,7 @@ public sealed class ContractsV4QueryService(
                     rolled ? term.NoticeDays!.Value : NoticeDays(f, today),
                     rolled ? ContractFactsReader.FormatDate(term.End!.Value) : f.End,
                     f.Spend,
-                    "CHF",
+                    CurrencyOf(f),
                     ContractRowStatus.Of(status, term),
                     status.CaseId,
                     term.Status,
@@ -196,7 +196,7 @@ public sealed class ContractsV4QueryService(
             1,
             facts.ValidatedAt is not null,
             facts.Spend,
-            "CHF",
+            CurrencyOf(facts),
             dates,
             points,
             NextAction(facts, status, noticeDays, term),
@@ -245,6 +245,10 @@ public sealed class ContractsV4QueryService(
     }
 
     private DateOnly Today => DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+
+    /// <summary>The contract's own currency; CHF only for facts built outside the reader (test fakes).</summary>
+    public static string CurrencyOf(ContractFacts facts) =>
+        string.IsNullOrWhiteSpace(facts.Currency) ? Raffa.SharedKernel.Savings.WorkspaceFinanceSettings.DefaultCurrency : facts.Currency;
 
     private static int NoticeDays(ContractFacts facts, DateOnly today) =>
         facts.NoticeDeadline is { } deadline ? deadline.DayNumber - today.DayNumber : facts.CancelDays;

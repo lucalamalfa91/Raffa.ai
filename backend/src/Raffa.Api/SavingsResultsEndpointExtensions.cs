@@ -18,7 +18,38 @@ public static class SavingsResultsEndpointExtensions
         endpoints.MapGet("/api/savings/goals/active", GetActiveGoalAsync);
         endpoints.MapDelete("/api/savings/goals/active", ClearGoalAsync);
         endpoints.MapGet("/api/savings/goals/active/progress", GetGoalProgressAsync);
+        endpoints.MapGet("/api/savings/spend", GetSpendAsync);
         return endpoints;
+    }
+
+    /// <summary>
+    /// <c>GET /api/savings/spend?from=2024&amp;to=2028&amp;basis=accrual|cash</c> (Spesa e risparmi): the
+    /// value of every validated contract per fiscal quarter, from its documented terms and its renewal
+    /// clause; contracts that cannot be valued exactly are listed apart, never estimated. Fiscal years
+    /// are named by the calendar year they start in; both bounds default around the current one.
+    /// </summary>
+    private static async Task<IResult> GetSpendAsync(
+        HttpRequest request,
+        int? from,
+        int? to,
+        string? basis,
+        Raffa.Savings.Application.Spend.SpendReportQueryService spend,
+        ICallerContext callerContext,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null) return caller.Failure;
+        using var scope = caller.Scope;
+        var b = string.IsNullOrWhiteSpace(basis) ? Raffa.Savings.Application.Spend.SpendBasis.Accrual : basis.Trim();
+        if (!Raffa.Savings.Application.Spend.SpendBasis.IsKnown(b)) return Results.BadRequest("basis must be accrual or cash.");
+        if (from is < 1990 or > 2100 || to is < 1990 or > 2100) return Results.BadRequest("from and to must be fiscal years between 1990 and 2100.");
+        if ((from is null) != (to is null)) return Results.BadRequest("from and to go together.");
+        if (from is { } f && to is { } t && (t < f || t - f >= Raffa.Savings.Application.Spend.SpendCalculator.MaxFiscalYears))
+        {
+            return Results.BadRequest($"The report covers 1 to {Raffa.Savings.Application.Spend.SpendCalculator.MaxFiscalYears} fiscal years.");
+        }
+
+        return Results.Ok(await spend.GetAsync(caller.TenantId, from, to, b, cancellationToken).ConfigureAwait(false));
     }
 
     /// <summary><c>POST /api/savings/goals/parse</c> body.</summary>

@@ -49,7 +49,7 @@ public sealed class ContractFactsProjector(
         var deadline = contract.CancellationDeadline
             ?? (contract.EndDate is { } end && contract.NoticePeriodDays is { } notice ? end.AddDays(-notice) : null);
         string Date(DateOnly? d) => d is { } v ? ContractFactsReader.FormatDate(v) : "";
-        string Money(decimal? v) => v is { } m ? "CHF " + m.ToString("#,0", CultureInfo.InvariantCulture) : "";
+        string Money(decimal? v) => v is { } m ? contract.Currency.Trim().ToUpperInvariant() + " " + m.ToString("#,0", CultureInfo.InvariantCulture) : "";
         var terms = new List<ContractTerm>();
         void Term(string label, string? value)
         {
@@ -84,6 +84,7 @@ public sealed class ContractFactsProjector(
             Type = contract.Type.ToString(),
             File = document.FileName,
             Spend = contract.AnnualSpend ?? 0,
+            Currency = contract.Currency.Trim().ToUpperInvariant(),
             Start = Date(contract.StartDate ?? contract.EffectiveDate),
             End = Date(contract.EndDate),
             Days = contract.EndDate is { } e ? e.DayNumber - today.DayNumber : 0,
