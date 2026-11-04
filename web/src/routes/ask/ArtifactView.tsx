@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "../../i18n/I18nProvider";
+import type { Translate } from "../../i18n/translate";
 import ArtifactPanel from "./ArtifactPanel";
 import { artifactToCsv, artifactToMarkdown, type Artifact } from "./artifacts";
 import { MailIcon } from "./DraftPanel";
@@ -24,6 +25,12 @@ export function artifactIcon(a: Artifact) {
 }
 void MailIcon;
 
+/** "KPIs", or "KPIs · Version 2" for a later version of the same content. */
+function artifactKindLabel(a: Artifact, t: Translate): string {
+  const kind = a.kind === "dashboard" ? t("Dashboard") : a.kind === "kpi" ? t("KPIs") : t("Document");
+  return a.version > 1 ? `${kind} · ${t("Version {n}", { n: a.version })}` : kind;
+}
+
 function download(name: string, text: string, type: string) {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = document.createElement("a");
@@ -36,7 +43,7 @@ function download(name: string, text: string, type: string) {
 /** The in-chat handle of a digital content Raffa built: one line, opens the panel. */
 export function ContentCard({ artifact, active, onOpen }: { artifact: Artifact; active: boolean; onOpen: () => void }) {
   const { t } = useI18n();
-  const kind = artifact.kind === "dashboard" ? t("Dashboard") : artifact.kind === "kpi" ? t("KPIs") : t("Document");
+  const kind = artifactKindLabel(artifact, t);
   return (
     <button type="button" className="artifact-card" data-active={active ? "true" : undefined} aria-pressed={active} onClick={onOpen}>
       <span className="artifact-card-icon" aria-hidden="true">
@@ -65,7 +72,7 @@ export default function ArtifactViewPanel({ artifact, onClose }: { artifact: Art
     return () => window.clearTimeout(timer);
   }, [copied]);
   const csv = artifactToCsv(artifact);
-  const kind = artifact.kind === "dashboard" ? t("Dashboard") : artifact.kind === "kpi" ? t("KPIs") : t("Document");
+  const kind = artifactKindLabel(artifact, t);
   const copy = () => {
     const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
     if (clipboard) void clipboard.writeText(artifactToMarkdown(artifact)).then(() => setCopied(true));

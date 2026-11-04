@@ -36,6 +36,7 @@ export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "Contract KPIs": "KPI dei contratti",
   "Contracts dashboard": "Dashboard dei contratti",
   "Portfolio brief": "Brief del portafoglio",
+  "Version {n}": "Versione {n}",
   "From the validated contracts · {date}": "Dai contratti validati · {date}",
   "Build a dashboard": "Crea una dashboard",
   "Value by supplier and notice deadlines, from your contracts.": "Valore per fornitore e disdette, dai tuoi contratti.",

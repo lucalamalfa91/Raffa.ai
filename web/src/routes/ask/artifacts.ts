@@ -30,6 +30,40 @@ export interface Artifact {
   tables: DataTable[];
   /** Document body (markdown subset: headings, lists, paragraphs, bold). */
   markdown: string;
+  /** 1 for the first one of its kind in a conversation; a change asked for later is the next version. */
+  version: number;
+}
+
+/** A dashboard, KPIs or document Raffa built, and the turn of the conversation it answers. */
+export interface PlacedArtifact {
+  artifact: Artifact;
+  /** The conversation it was built in; null while the conversation is new and not saved yet. */
+  conversationId: string | null;
+  /** The message it comes after (the last one when it was asked for); null: before the first message. */
+  afterMessageId: string | null;
+  /** What the user typed to ask for it; null when it came from a button. */
+  request: string | null;
+}
+
+export type ThreadItem<M> = { message: M; content?: undefined } | { content: PlacedArtifact; message?: undefined };
+
+/**
+ * The conversation in the order it happened: each message, then whatever was built right after it.
+ * Only this conversation's contents appear — another conversation's never do.
+ */
+export function threadItems<M extends { id: string }>(
+  messages: readonly M[],
+  contents: readonly PlacedArtifact[],
+  conversationId: string | null,
+): Array<ThreadItem<M>> {
+  const mine = contents.filter((c) => c.conversationId === conversationId);
+  const after = (id: string | null) => mine.filter((c) => c.afterMessageId === id).map((content) => ({ content }));
+  const items: Array<ThreadItem<M>> = after(null);
+  for (const message of messages) items.push({ message }, ...after(message.id));
+  // A content whose message is no longer there still shows, last.
+  const ids = new Set(messages.map((m) => m.id));
+  for (const content of mine) if (content.afterMessageId !== null && !ids.has(content.afterMessageId)) items.push({ content });
+  return items;
 }
 
 type T = (id: string, vars?: Record<string, string | number>) => string;
@@ -53,7 +87,7 @@ function aheadRows(rows: readonly ContractListRowV4Body[]) {
  * writes a number. A contract whose dates were not read, or whose notice deadline passed, is counted in
  * its own KPI instead of being guessed at.
  */
-export function buildArtifact(kind: ArtifactKind, rows: readonly ContractListRowV4Body[], t: T, today: string): Artifact {
+export function buildArtifact(kind: ArtifactKind, rows: readonly ContractListRowV4Body[], t: T, today: string, version = 1): Artifact {
   const ahead = aheadRows(rows);
   const total = rows.reduce((s, r) => s + (r.annualValue || 0), 0);
   const within90 = ahead.filter((r) => r.noticeDays <= 90);
@@ -140,6 +174,7 @@ export function buildArtifact(kind: ArtifactKind, rows: readonly ContractListRow
     charts: kind === "dashboard" ? charts : [],
     tables: kind === "dashboard" ? tables : [],
     markdown: kind === "document" ? lines.join("\n") : "",
+    version,
   };
 }
 
@@ -174,13 +209,33 @@ export function artifactToCsv(a: Artifact): string | null {
   return null;
 }
 
-/** Which artifact a typed request asks for ("create a dashboard", "fammi i KPI", "scrivi un brief"), or null. */
-export function artifactRequest(text: string): ArtifactKind | null {
-  const s = text.toLowerCase();
-  const verb = /\b(crea|creami|create|build|make|genera|generate|fammi|prepara|costruisci|write|scrivi|show me|mostrami)\b/.test(s);
-  if (!verb) return null;
-  if (/\b(dashboard|cruscotto)\b/.test(s)) return "dashboard";
-  if (/\b(kpi|indicatori)\b/.test(s)) return "kpi";
+const CREATE = /\b(crea|creami|create|build|make|genera|generate|fammi|prepara|costruisci|write|scrivi|show me|mostrami)\b/;
+/** A change to something already built ("modifica il KPI", "aggiorna la dashboard", "visualizza il KPI per anno"). */
+const REVISE =
+  /\b(modific(a|are|alo|ala|ali|ami)|cambi(a|are|alo|ala|ami)|aggiorn(a|are|alo|ala|ami)|rif(ai|are|allo|alla)|rigener(a|are|alo|ala)|rivedi|correggi|visualizz(a|are|alo|ala|ami)|mostra|edit|update|change|modify|revise|redo|regenerate|refresh|show|view)\b/;
+const NEW_VERSION = /\b(nuova|altra)\s+versione\b|\b(new|another)\s+version\b/;
+/** A question about the content ("cosa cambia nei KPI?", "how do I update the dashboard?") is not a request to change it. */
+const QUESTION = /^\s*(che|cosa|come|quando|perch[eé]|quanto|quanti|quante|quale|quali|dove|chi|what|how|when|why|which|who|where)\b/;
+
+function namedKind(s: string): ArtifactKind | null {
+  if (/\b(dashboards?|cruscotto)\b/.test(s)) return "dashboard";
+  if (/\b(kpis?|indicatori)\b/.test(s)) return "kpi";
   if (/\b(brief|report|documento|document|riepilogo)\b/.test(s)) return "document";
   return null;
+}
+
+/**
+ * Which artifact a typed request asks for ("create a dashboard", "fammi i KPI", "scrivi un brief"), or null.
+ * `built` are the kinds already built in this conversation, oldest first: asking to change one of them
+ * ("modifica il KPI", "visualizza il kpi per anno", "crea una nuova versione") asks for its next version.
+ */
+export function artifactRequest(text: string, built: readonly ArtifactKind[] = []): ArtifactKind | null {
+  const s = text.toLowerCase();
+  const named = namedKind(s);
+  if (named && CREATE.test(s)) return named;
+  if (!built.length || QUESTION.test(s)) return null;
+  const revise = REVISE.test(s) || NEW_VERSION.test(s);
+  if (named) return revise && built.includes(named) ? named : null;
+  // "Fanne una nuova versione": the one built last.
+  return NEW_VERSION.test(s) ? (built[built.length - 1] ?? null) : null;
 }
