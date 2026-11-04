@@ -257,6 +257,42 @@ public sealed partial class RenewalCaseService(
 
         CaseQuestionAnswer? answer = null;
         var isCommand = CommandRegex().IsMatch(q);
+        var turn = isCommand ? null : await ProposeEmailRevisionAsync(tenantId, caseId, q, lang, ct).ConfigureAwait(false);
+        if (turn is { Revision.Body.Length: > 0 } proposal)
+        {
+            // The words change the open email draft: the answer is a new version of it in the action panel,
+            // not a chat reply about it.
+            return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (_, _, _) =>
+            [
+                ("ask", new CaseActionPayload { Text = CaseText.Of(q) }),
+                ("reviseEmail", new CaseActionPayload
+                {
+                    Eid = proposal.Eid,
+                    Subject = proposal.Revision!.Subject,
+                    Body = proposal.Revision.Body,
+                    Text = CaseText.Of(string.IsNullOrWhiteSpace(proposal.Revision.Note)
+                        ? (lang == "en" ? "I updated the email draft: the new version is in the panel." : "Ho aggiornato la bozza: trovi la nuova versione nel pannello.")
+                        : proposal.Revision.Note + (lang == "en" ? " The new version is in the panel." : " Trovi la nuova versione nel pannello.")),
+                }),
+            ]).ConfigureAwait(false);
+        }
+
+        if (turn is { Revision: null })
+        {
+            // The words were about the open email but no safe new version came out: say so, never answer them as
+            // a general question about the contract.
+            return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (_, _, _) =>
+            [
+                ("ask", new CaseActionPayload { Text = CaseText.Of(q) }),
+                ("answer", new CaseActionPayload
+                {
+                    Text = CaseText.Of(lang == "en"
+                        ? "I could not prepare a new version of the email from this. Tell me the detail to put in (for example the quantities) and I will redo it; the current draft is unchanged."
+                        : "Non sono riuscita a preparare una nuova versione della mail da questo. Dimmi il dato da inserire (ad esempio le quantità) e la rifaccio; la bozza attuale è invariata."),
+                }),
+            ]).ConfigureAwait(false);
+        }
+
         if (!isCommand)
         {
             using var scope = tenantContext.BeginScope(tenantId);
@@ -287,6 +323,83 @@ public sealed partial class RenewalCaseService(
 
             return list;
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>The email draft the person's composer words would change, as the model's revision of it.
+    /// Null when no email is open (the Q&amp;A answers). Revision null: no safe new version came out. Revision with an empty body: the words are a question, the Q&amp;A answers.</summary>
+    private async Task<(int Eid, CaseEmailRevision? Revision)?> ProposeEmailRevisionAsync(TenantId tenantId, Guid caseId, string text, string? lang, CancellationToken ct)
+    {
+        if (aiReader is null or NoCaseAiReader || scriptServices is not ProductionCaseScriptServices)
+        {
+            return null;
+        }
+
+        try
+        {
+            RenewalCase c;
+            CaseContractFacts? cf;
+            using (tenantContext.BeginScope(tenantId))
+            {
+                var record = await db.RenewalCases.AsNoTracking().FirstOrDefaultAsync(x => x.Id == new EntityId(caseId), ct).ConfigureAwait(false);
+                if (record is null)
+                {
+                    return null;
+                }
+
+                c = RenewalCaseJson.Deserialize(record.State);
+                cf = await FactsAsync(tenantId, record, ct).ConfigureAwait(false);
+            }
+
+            // The draft on the table: the latest email not yet copied or sent.
+            var open = c.Emails.LastOrDefault(e => e.State is EmailStates.Draft or EmailStates.ToApprove or EmailStates.Approved);
+            if (open is null || cf is null)
+            {
+                return null;
+            }
+
+            var language = lang == "en" || (lang is null && Raffa.SharedKernel.Language.ResponseLanguage.Current == "en") ? "en" : "it";
+            return (open.Id, await aiReader.ReviseEmailAsync(tenantId, c, cf, open, text, language, ct).ConfigureAwait(false));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (logger is not null)
+            {
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Email revision from the composer failed; the question is answered instead.");
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>Every email the engine drafts is a skeleton of facts; the model makes each new one a complete
+    /// email. The legal notice of non-renewal keeps its fixed wording. Any failure or doubt leaves the skeleton.</summary>
+    private async Task ComposeNewEmailsAsync(TenantId tenantId, RenewalCase next, CaseContractFacts cf, int from, CancellationToken ct)
+    {
+        if (aiReader is null || scriptServices is not ProductionCaseScriptServices)
+        {
+            return;
+        }
+
+        var lang = Raffa.SharedKernel.Language.ResponseLanguage.Current == "en" ? "en" : "it";
+        var fresh = next.Emails.Skip(from).Where(e => e.Kind != "notice").ToList();
+        await Task.WhenAll(fresh.Select(async email =>
+        {
+            try
+            {
+                if (await aiReader.ReviseEmailAsync(tenantId, next, cf, email, null, lang, ct).ConfigureAwait(false) is { Body.Length: > 0 } composed)
+                {
+                    email.Subject = composed.Subject;
+                    email.Body = composed.Body;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                if (logger is not null)
+                {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Composition of a {Kind} email failed; the drafted skeleton stands.", email.Kind);
+                }
+            }
+        })).ConfigureAwait(false);
     }
 
     // The model's reading of the supplier reply of this request: the case uses it, and so does the market benchmark.
@@ -488,6 +601,11 @@ public sealed partial class RenewalCaseService(
             var (stepCtx, afterStep) = await ReadBeforeStepAsync(tenantId, c, cf, type, p, ctx, ct).ConfigureAwait(false);
             var next = RenewalCaseEngine.Act(c, type, p, stepCtx);
             afterStep?.Invoke(next);
+            if (next.Emails.Count > c.Emails.Count)
+            {
+                await ComposeNewEmailsAsync(tenantId, next, cf, c.Emails.Count, ct).ConfigureAwait(false);
+            }
+
             if (RenewalCaseEngine.IsPermissionDenial(next))
             {
                 return new CaseResult(CaseResultKind.Forbidden, Envelope(record, next, cf, caller.Name), next.Ui.Warn?.Render());
@@ -524,7 +642,7 @@ public sealed partial class RenewalCaseService(
         var tick = c.Tick;
         foreach (var (type, p, eid) in events.Where(e => !CaseActions.Passive.Contains(e.Type)))
         {
-            var invalidated = type == "saveEdit" && eid is { } i && i < before.Emails.Count && before.Emails[i].State != EmailStates.Draft;
+            var invalidated = type is "saveEdit" or "reviseEmail" && eid is { } i && i < before.Emails.Count && before.Emails[i].State != EmailStates.Draft;
             await AppendEventAsync(tenantId, record, caller.Name, invalidated ? "email_edited_invalidated" : type, p, eid, ct).ConfigureAwait(false);
         }
 

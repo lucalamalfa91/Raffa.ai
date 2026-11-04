@@ -28,7 +28,20 @@ public interface ICaseAiReader
     /// <summary>An alternative supplier's offer (its text) against the functions and sizing the case asks for.</summary>
     Task<CaseAltOffer?> ReadOfferAsync(
         TenantId tenantId, RenewalCase c, CaseContractFacts contract, string vendor, string documentText, string by, string lang, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The email draft written or changed by the model. With an <paramref name="instruction"/> (the person's
+    /// words in the case composer): a revised version when the words ask to change the email, an empty-bodied revision
+    /// when they are a question about the contract. Without one: the draft made complete and professional. Null also on any
+    /// failure or doubt (a figure the model added, nothing changed): the current draft stands.
+    /// </summary>
+    Task<CaseEmailRevision?> ReviseEmailAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, CaseEmail email, string? instruction, string lang, CancellationToken cancellationToken = default) =>
+        Task.FromResult<CaseEmailRevision?>(null);
 }
+
+/// <summary>A new subject and body for an email draft, and Raffa's one-line note on what changed (user's language).</summary>
+public sealed record CaseEmailRevision(string Subject, string Body, string Note);
 
 /// <summary>The default: no model readings.</summary>
 public sealed class NoCaseAiReader : ICaseAiReader

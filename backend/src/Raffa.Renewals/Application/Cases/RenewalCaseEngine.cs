@@ -702,6 +702,47 @@ public static partial class RenewalCaseEngine
             case "cancelEdit":
                 c.Ui.Edit = null;
                 break;
+            case "reviseEmail":
+            {
+                // Raffa's proposal for a change the person asked for in the composer: a new version of the
+                // draft, never sent and never approved. Same effect as saving an edit (version up, approval
+                // invalidated), so the person reviews it in the panel like any other draft.
+                if (!CaseRules.CanWork(c, v))
+                {
+                    return Deny(c, NoWork);
+                }
+
+                e = EmailById(c, p.Eid);
+                var revised = (p.Body ?? string.Empty).Trim();
+                if (e is null || revised.Length == 0 || e.State is EmailStates.Sent or EmailStates.Copied or EmailStates.Superseded)
+                {
+                    break;
+                }
+
+                e.Body = revised;
+                if (!string.IsNullOrWhiteSpace(p.Subject))
+                {
+                    e.Subject = p.Subject.Trim();
+                }
+
+                e.Ver++;
+                if (e.State != EmailStates.Draft)
+                {
+                    Log(c, ctx, v, B("Email revised by Raffa on request — previous approval invalidated", "Email rivista da Raffa su richiesta — approvazione precedente invalidata"));
+                }
+
+                e.State = EmailStates.Draft;
+                e.ApprovedBy = null;
+                e.ApprovedVer = null;
+                c.Ui.Edit = null;
+                if (p.Text is { } note && (note.IsMessage || !string.IsNullOrEmpty(note.Plain)))
+                {
+                    Say(c, ctx, note);
+                }
+
+                break;
+            }
+
             case "saveEdit":
                 e = EmailById(c, p.Eid);
                 if (e is null)

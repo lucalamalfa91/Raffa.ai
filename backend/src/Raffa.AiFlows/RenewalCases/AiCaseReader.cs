@@ -201,6 +201,70 @@ public static class CaseReaderAgents
           "additionalProperties": false
         }
         """;
+
+    public const string EmailName = "case-email-writer";
+    public const string EmailVersion = "case-email-v1";
+
+    public const string EmailPrompt =
+        """
+        You are Raffa, the contract assistant of a procurement team negotiating a renewal. You write the
+        emails the team sends to the supplier. Input: mode, instruction, email (kind, subject, body), plan
+        (the team's goals), contract (supplier, products with unit prices, dates, notice, uplift, annual
+        spend, key terms, clauses to push or raise), language.
+
+        email.kind is its purpose: first (opens the renewal), followup (chases a missing reply), counter
+        (answers the supplier's proposal: keep what is attributed to the supplier and what is ours exactly
+        as labelled), docreq (asks for the contract draft reflecting what was agreed), fix (lists the points
+        of the received draft that differ), rfq (asks an alternative vendor for an offer, by functions, not
+        product names). Keep the purpose and the structure of the points; improve the writing.
+
+        mode "compose": rewrite email as the complete, professional email an experienced procurement lead
+        would send: a precise subject; an opening that names the agreement, its end date and the notice
+        date; one short, concrete paragraph or bullet per ask, each with its business reason taken from the
+        contract facts (current unit price, uplift clause, notice period, term) - not generic phrases; a
+        clear request for a revised written proposal by the date already in the draft; a courteous close.
+        Keep the greeting, the signature and every figure and date of the draft. 120-260 words.
+        instruction is empty in this mode: intent is "revise".
+
+        mode "revise": instruction is what the person typed in the case composer while the email draft is
+        open. Decide intent:
+        - "revise": the person asks to change, add, remove, reword or correct something in the email, or
+          states a fact or constraint that belongs in it ("quantities down to 50 seats", "mention the SLA",
+          "less aggressive", "the reduction is 20%", "add that we need an answer by Friday"). Return the full
+          updated email with that change made and everything else kept as it is.
+        - "question": only a clearly separate question that is not about the email (about the contract, the
+          market, what to do next). Return empty strings for subject, body and note.
+        While an email draft is open, default to "revise": a complaint, a doubt or a remark about the email
+        ("it says nothing", "too generic", "details missing", "not good") is a request to improve it. When
+        the person gives no new data, improve the wording and structure yourself using only the facts in
+        the input, and say in note which data you still need from them.
+
+        Laws (they override everything else):
+        1. The email is written in the language of email.body, whatever the language of instruction.
+        2. Every number, percentage, amount and date you write comes from email, plan, contract or
+           instruction. Never invent or compute a new figure, a benchmark, a competitor offer, a promise or
+           a deadline. When a point is still open ("details to follow"), say plainly that the details will
+           follow and ask the supplier to keep the proposal flexible on it; never pretend to have them.
+        3. Never add a recipient name, a person's name or a contact. Keep the signature of email.body.
+        4. Never present anything as agreed by the supplier.
+        5. note: one short sentence in the language field saying what you changed (empty for compose).
+        6. Respond with strict JSON matching the schema only - no prose outside the JSON.
+        """;
+
+    public const string EmailSchema =
+        """
+        {
+          "type": "object",
+          "properties": {
+            "intent": { "type": "string", "enum": ["revise", "question"] },
+            "subject": { "type": "string" },
+            "body": { "type": "string" },
+            "note": { "type": "string" }
+          },
+          "required": ["intent", "subject", "body", "note"],
+          "additionalProperties": false
+        }
+        """;
 }
 
 /// <summary>The model-backed <see cref="ICaseAiReader"/>: reads the supplier reply and the functions an
@@ -311,6 +375,75 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
             Gap = (answer.Gap ?? string.Empty).Trim(),
             By = by,
         };
+    }
+
+    private sealed record EmailAnswer(string? Intent, string? Subject, string? Body, string? Note);
+
+    public async Task<CaseEmailRevision?> ReviseEmailAsync(
+        TenantId tenantId, RenewalCase c, CaseContractFacts contract, CaseEmail email, string? instruction, string lang, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        ArgumentNullException.ThrowIfNull(contract);
+        ArgumentNullException.ThrowIfNull(email);
+        var compose = string.IsNullOrWhiteSpace(instruction);
+        var instructionText = compose ? string.Empty : instruction!.Trim();
+        var plan = new
+        {
+            products = c.Goals.Prod ?? c.Goals.ProdText,
+            term = c.Goals.Term == "custom" ? c.Goals.TermText : c.Goals.Term,
+            target = c.Goals.Target == "custom" ? c.Goals.TargetText : c.Goals.Target,
+            clauses = c.Goals.Clauses,
+        };
+        var facts = Describe(contract);
+        var input = JsonSerializer.Serialize(new
+        {
+            mode = compose ? "compose" : "revise",
+            language = lang,
+            instruction = instructionText,
+            email = new { kind = email.Kind, subject = email.Subject, body = email.Body },
+            plan,
+            contract = facts,
+        }, Json);
+        var answer = Parse<EmailAnswer>(await CallAsync(tenantId, CaseReaderAgents.EmailName, CaseReaderAgents.EmailPrompt, input,
+            CaseReaderAgents.EmailSchema, CaseReaderAgents.EmailVersion, cancellationToken).ConfigureAwait(false));
+        var body = answer?.Body?.Trim();
+        if (answer is null)
+        {
+            return null;
+        }
+
+        // The words are a question, not a change to the email: an empty revision tells the caller to answer them.
+        if (answer.Intent == "question" && !compose)
+        {
+            return new CaseEmailRevision(string.Empty, string.Empty, string.Empty);
+        }
+
+        if (answer.Intent != "revise" || string.IsNullOrEmpty(body) || body.Length is < 40 or > 6000 || body == email.Body.Trim())
+        {
+            return null;
+        }
+
+        // A figure that is neither in the draft, the plan, the contract nor the person's words is the model's:
+        // the draft stands. A composed email must also keep every figure the deterministic draft had.
+        var source = string.Join('\n', email.Subject, email.Body, instructionText, JsonSerializer.Serialize(plan, Json), JsonSerializer.Serialize(facts, Json));
+        var figures = new ReplyFigures(CaseAgreement.Numbers(source), CaseAgreement.MentionsYears(source));
+        var subject = string.IsNullOrWhiteSpace(answer.Subject) ? email.Subject : answer.Subject.Trim();
+        if (!Grounded(body, figures) || !Grounded(subject, figures))
+        {
+            logger?.LogInformation("Case email {Mode}: the model added a figure not in the case; the draft stands.", compose ? "compose" : "revise");
+            return null;
+        }
+
+        if (compose)
+        {
+            var kept = CaseAgreement.Numbers(body);
+            if (CaseAgreement.Numbers(email.Body).Any(n => !kept.Any(k => Math.Abs(k - n) < 0.005)))
+            {
+                return null;
+            }
+        }
+
+        return new CaseEmailRevision(subject, body, (answer.Note ?? string.Empty).Trim());
     }
 
     private sealed record FeaturesAnswer(string? CategoryEn, List<string>? Functions);

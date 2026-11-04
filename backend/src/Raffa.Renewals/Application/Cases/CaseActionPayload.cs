@@ -25,6 +25,12 @@ public sealed record CaseActionPayload
 
     public int? Eid { get; init; }
 
+    /// <summary><c>reviseEmail</c> (server-internal, not in <see cref="CaseActions.All"/>): the revised body.</summary>
+    public string? Body { get; init; }
+
+    /// <summary><c>reviseEmail</c>: the revised subject; empty keeps the current one.</summary>
+    public string? Subject { get; init; }
+
     public int? Rid { get; init; }
 
     public int? Did { get; init; }
