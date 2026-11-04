@@ -46,7 +46,7 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<DomainGate>();
         services.AddScoped<IntentPlanner>();
         services.AddScoped<AnswerComposer>();
-        services.AddScoped<ConversationFocusResolver>();
+        services.AddScoped<TurnUnderstanding>();
         services.AddScoped<Raffa.AiFlows.Ask.Artifacts.ArtifactComposer>();
         services.AddAgentRegistry();
         services.AddAgentDefinitions(

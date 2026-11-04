@@ -205,7 +205,8 @@ public sealed class AskCopilotService(
     CapabilityCheckCoordinator capabilityChecks,
     ITenantContext tenantContext,
     ContractContextReader? turnReads = null,
-    ConversationFocusResolver? focusResolver = null)
+    TurnUnderstanding? understanding = null,
+    AskTurnOptions? turnOptions = null)
 {
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
@@ -284,33 +285,57 @@ public sealed class AskCopilotService(
 
         var gate = domainGate.Classify(question, knownSuppliers);
 
-        // Conversation focus (model-resolved): a follow-up that names no supplier ("mostramelo con
-        // dei kpi", "questo contratto") keeps the contract the chat is about instead of falling to
-        // the portfolio. Runs only when the turn has history, no persisted scope, no interview
-        // resolution and the gate found no supplier of its own; any failure leaves the turn as is.
-        if (focusResolver is not null
-            && scopeContractId is null
-            && recentTurns.Count > 0
+        // Turn understanding (model): what the user means, read against the whole conversation. It
+        // replaces the gate's word lists, the intent lexicon and the ambiguity detector as the decision
+        // maker; the deterministic gate result stays only as the fallback when the model cannot be
+        // read, and for the capability-gap catalog (it carries the gap the drafting flow needs). An
+        // interview/consent resolution is already decided by key and is not re-understood.
+        var understandingReply = default((CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)?);
+        if (understanding is not null
+            && turnOptions?.AiUnderstanding == true
+            && turnHints.ForcedIntent is null
             && turnHints.ForcedSupplierName is null
             && turnHints.ForcedContractId is null
-            && gate.NamedSupplier is null
-            && gate.Label is GateLabel.InDomain or GateLabel.NeedsDocument)
+            && turnHints.AuthorizedWebResearch is null
+            && !turnHints.DeclinedWebResearch)
         {
-            var focus = await focusResolver
-                .ResolveAsync(question, recentTurns, supplierNames.Values.Distinct().ToList(), cancellationToken)
+            var understood = await understanding
+                .ResolveAsync(question, recentTurns, supplierNames.Values.Distinct().ToList(), scopeContractId is not null, cancellationToken)
                 .ConfigureAwait(false);
-            if (focus is not null)
+            if (understood is not null)
             {
-                question = focus.StandaloneQuestion;
-                gate = domainGate.Classify(question, knownSuppliers);
-                if (focus.SupplierName is { } focusSupplier && gate.Label is GateLabel.InDomain or GateLabel.NeedsDocument && gate.NamedSupplier is null)
+                question = understood.StandaloneQuestion;
+                var supplier = understood.SupplierName;
+                if (understood.Clarification is { } clarification)
                 {
-                    gate = gate with
+                    understandingReply = (new CopilotReply(
+                        ReplyKind.Answer, clarification, [], [], ReplyProvenance.NoModelCall([]), []), false, false);
+                }
+                else if (gate.Label != GateLabel.CapabilityGap || understood.Label != "inDomain")
+                {
+                    gate = understood.Label switch
                     {
-                        Label = GateLabel.InDomain,
-                        Reason = $"follow-up resolved from the conversation to known supplier '{focusSupplier}'.",
-                        NamedSupplier = focusSupplier,
+                        "greeting" => gate with { Label = GateLabel.Greeting, Reason = "understood by the model: greeting.", NamedSupplier = null },
+                        "offDomain" => gate with { Label = GateLabel.OffDomain, Reason = "understood by the model: off domain.", NamedSupplier = null },
+                        "legal" => gate with { Label = GateLabel.Legal, Reason = "understood by the model: legal advice.", NamedSupplier = supplier },
+                        "capability" => gate with { Label = GateLabel.Capability, Reason = "understood by the model: capability question.", NamedSupplier = null },
+                        _ when supplier is null && understood.UnknownSupplier is { } unknown =>
+                            gate with { Label = GateLabel.NeedsDocument, Reason = "understood by the model: a supplier with no contract on file.", NamedSupplier = unknown },
+                        _ => gate with { Label = GateLabel.InDomain, Reason = "understood by the model: in domain.", NamedSupplier = supplier },
                     };
+                }
+                else if (supplier is not null)
+                {
+                    gate = gate with { NamedSupplier = supplier };
+                }
+
+                if (gate.Label == GateLabel.InDomain && understood.Intent is { } plannedIntent)
+                {
+                    turnHints = turnHints with { PlannedIntent = plannedIntent, Understood = true };
+                }
+                else if (gate.Label == GateLabel.InDomain)
+                {
+                    turnHints = turnHints with { Understood = true };
                 }
             }
         }
@@ -411,7 +436,9 @@ public sealed class AskCopilotService(
         // InDomainReplyPipeline's tuple return).
         // ADR-032: the composer's web-search toggle takes every question that is a search (see
         // IsWebModeTurn) to the web and to the store, the procurement-only filters lifted.
-        var (reply, guardIntervened, fallbackUsed) = WebModeFlow.IsWebModeTurn(turnHints, gate, question)
+        var (reply, guardIntervened, fallbackUsed) = understandingReply is { } earlyReply
+            ? earlyReply
+            : WebModeFlow.IsWebModeTurn(turnHints, gate, question)
             ? await webModeFlow.BuildReplyAsync(
                 tenantId, question, gate, portfolio, scopedContractItem, actor,
                 (webQuestion, namedSupplier, ct) => inDomain.BuildAsync(

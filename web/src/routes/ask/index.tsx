@@ -208,7 +208,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
    * It answers the turn it was asked at: this conversation, right after its last message. Asked again
    * in the same conversation, it is the next version of that content.
    */
-  const createContent = async (kind: ArtifactKind, request: string | null = null) => {
+  const createContent = async (kind: ArtifactKind, request: string | null = null, tryAgents = true) => {
     if (!tenantId || building) return;
     const conversationId = current?.id ?? null;
     const afterMessageId = current?.messages[current.messages.length - 1]?.id ?? null;
@@ -219,7 +219,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     let made: Artifact | null = null;
     // The agents write it from the chat's own context (the open contract, the portfolio, the market RAG).
     // Only when they cannot deliver a grounded one does the deterministic build below answer instead.
-    if (request) {
+    if (request && tryAgents) {
       const composed = await api.composeArtifact(tenantId, {
         conversationId,
         contractId: current?.scopeContractId ?? scopeId ?? null,
@@ -268,14 +268,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   ) => {
     const text = question.trim();
     if (!text || busy) return;
-    // "Create a dashboard / KPIs / a brief", or a change to one built here: built from the contracts, shown in the panel.
     const here = current?.id ?? null;
-    const requested = artifactRequest(text, contents.filter((c) => c.conversationId === here).map((c) => c.artifact.kind));
-    if (requested) {
-      setQ("");
-      void createContent(requested, text);
-      return;
-    }
     setBusy(true);
     setPendingQuestion(text);
     setPick(null);
@@ -299,6 +292,17 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
         setContents((list) => [...list, { artifact: placed, conversationId, afterMessageId, request: text }]);
         setPanel({ id: placed.id, artifact: placed });
         return;
+      }
+      // 204: the model judged this is not an artifact request, the chat answers. Anything else (the agents
+      // are down, no grounded draft): the old wording rules still catch an explicit "create a dashboard".
+      if (probe.status !== 204) {
+        const requested = artifactRequest(text, contents.filter((c) => c.conversationId === here).map((c) => c.artifact.kind));
+        if (requested) {
+          setBusy(false);
+          setPendingQuestion(null);
+          void createContent(requested, text, false);
+          return;
+        }
       }
     }
     const r = await api.ask(tenantId, {
