@@ -809,7 +809,7 @@ public sealed partial class RenewalCaseService(
             o.End,
             cf.Notice,
             o.Spend is { } s ? (decimal)s : null,
-            "CHF",
+            cf.CurrencyOrDefault,
             cf.Auto,
             null,
             record.Id.Value), ct).ConfigureAwait(false);
@@ -826,7 +826,7 @@ public sealed partial class RenewalCaseService(
                 null,
                 "price",
                 (decimal)delta,
-                "CHF",
+                cf.CurrencyOrDefault,
                 o.Price?.Render() ?? string.Empty,
                 "previous contract price, same quantities",
                 p is null ? null : (decimal)p.Price,

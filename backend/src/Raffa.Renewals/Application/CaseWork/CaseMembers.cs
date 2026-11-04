@@ -70,6 +70,7 @@ public static class CaseFactsMapper
             Type = f.Type,
             File = f.File,
             Spend = (double)f.Spend,
+            Currency = f.Currency,
             Start = start,
             End = end,
             Cancel = cancel,

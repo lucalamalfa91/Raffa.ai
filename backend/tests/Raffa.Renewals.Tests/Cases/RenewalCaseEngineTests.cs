@@ -363,6 +363,18 @@ public sealed class RenewalCaseEngineTests
         Assert.Equal("Marta", RenewalCaseEngine.View(Act(c, Marta, "ask", new() { Text = CaseText.Of("e il preavviso?") }), Ctx(1, Marta)).Page.Msgs[^1].By);
     }
 
+    [Fact]
+    public void The_case_keeps_the_contracts_currency_so_renewed_terms_and_results_are_recorded_in_it()
+    {
+        var facts = new Raffa.SharedKernel.Contracts.ContractFacts { Supplier = "Euro", Name = "Euro MSA", Currency = "EUR", Spend = 100_000m };
+
+        var cf = Raffa.Renewals.Application.CaseWork.CaseFactsMapper.ToCaseFacts(facts);
+
+        Assert.Equal("EUR", cf.Currency);
+        Assert.Equal("EUR", cf.CurrencyOrDefault);
+        Assert.Equal("CHF", (cf with { Currency = "" }).CurrencyOrDefault);
+    }
+
     private sealed class NoExampleAddressServices : ICaseScriptServices
     {
         private static readonly FixtureCaseScriptServices Inner = FixtureCaseScriptServices.Instance;
