@@ -280,6 +280,27 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setPendingQuestion(text);
     setPick(null);
     setQ("");
+    // Any other message: the agents first judge whether it asks for a dashboard, KPIs or a brief (any
+    // wording — "mostramelo con dei kpi"), and if so build it on this chat's context. 204 = not one: the chat answers.
+    if (!interviewAnswer && !answerOnly) {
+      const probe = await api.composeArtifact(tenantId, {
+        conversationId: current?.id ?? null,
+        contractId: contractId ?? current?.scopeContractId ?? scopeId ?? null,
+        request: text,
+        lang,
+      });
+      if (probe.data) {
+        setBusy(false);
+        setPendingQuestion(null);
+        const conversationId = current?.id ?? null;
+        const afterMessageId = current?.messages[current.messages.length - 1]?.id ?? null;
+        const earlier = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === probe.data!.kind);
+        const placed: Artifact = composedToArtifact(probe.data, earlier.length + 1, t);
+        setContents((list) => [...list, { artifact: placed, conversationId, afterMessageId, request: text }]);
+        setPanel({ id: placed.id, artifact: placed });
+        return;
+      }
+    }
     const r = await api.ask(tenantId, {
       conversationId: current?.id ?? null,
       question: text,

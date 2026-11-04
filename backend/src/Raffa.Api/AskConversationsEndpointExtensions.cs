@@ -100,7 +100,7 @@ public static class AskConversationsEndpointExtensions
     /// <summary>
     /// `POST /api/ask/artifact`: a dashboard, KPI set or document written by the artifact-composer agent on the
     /// chat's own context (the conversation, the contract it is on, the portfolio, the market RAG when asked).
-    /// 200 with the content, or 422 when the agents could not deliver a grounded one — the client then falls
+    /// 200 with the content, 204 when the message is not a request for one, or 422 when the agents could not deliver a grounded one — the client then falls
     /// back to its deterministic build.
     /// </summary>
     private static async Task<IResult> ComposeArtifactAsync(
@@ -146,6 +146,12 @@ public static class AskConversationsEndpointExtensions
         var result = await composer
             .ComposeAsync(caller.TenantId, new Raffa.AiFlows.Ask.Artifacts.ArtifactRequest(body.Request.Trim(), history, scope, body.Lang == "en" ? "en" : "it"), cancellationToken)
             .ConfigureAwait(false);
+        if (result is { Draft: null })
+        {
+            // The model judged this message is not a request for an artifact: the chat answers it.
+            return Results.NoContent();
+        }
+
         return result is null
             ? Results.UnprocessableEntity()
             : Results.Ok(new

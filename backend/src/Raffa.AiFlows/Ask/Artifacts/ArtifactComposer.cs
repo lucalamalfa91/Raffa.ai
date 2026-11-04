@@ -41,9 +41,10 @@ public sealed record ArtifactRequest(
     string Language);
 
 /// <summary>The composed content with the scope it was built on (for the audit trail and the panel's subtitle).</summary>
-public sealed record ArtifactResult(ArtifactDraft Draft, string Kind, string? FocusSupplier, bool UsedPortfolio, bool UsedMarket);
+/// <summary><c>Draft</c> null = the model judged the message is not a request for an artifact (the chat answers it).
+public sealed record ArtifactResult(ArtifactDraft? Draft, string Kind, string? FocusSupplier, bool UsedPortfolio, bool UsedMarket);
 
-internal sealed record ArtifactScopePlan(string? Supplier, bool UsesPortfolio, bool UsesMarket, string Kind);
+internal sealed record ArtifactScopePlan(bool WantsArtifact, string? Supplier, bool UsesPortfolio, bool UsesMarket, string Kind);
 
 /// <summary>The composer agent's input: the user's request and the fact pack, all the figures it may use.</summary>
 public sealed record ArtifactComposerInput(string Request, string Language, string Kind, string FactsJson);
@@ -113,6 +114,11 @@ public sealed class ArtifactComposer(
             return null;
         }
 
+        if (!plan.WantsArtifact)
+        {
+            return new ArtifactResult(null, plan.Kind, null, false, false);
+        }
+
         // The contract(s) in focus: the supplier the model resolved from the chat, else the contract the chat is opened on.
         var focusItems = plan.Supplier is { } supplier
             ? portfolio.Items.Where(i => string.Equals(NameOf(i), supplier, StringComparison.OrdinalIgnoreCase)).ToList()
@@ -160,7 +166,8 @@ public sealed class ArtifactComposer(
     private async Task<ArtifactScopePlan?> PlanScopeAsync(ArtifactRequest request, IReadOnlyCollection<string> suppliers, CancellationToken cancellationToken)
     {
         var prompt = new StringBuilder();
-        prompt.AppendLine("A procurement user asks Raffa to build a dashboard, a KPI set or a document in a chat. Decide its scope. You never build it.");
+        prompt.AppendLine("A procurement user wrote a message in a chat with Raffa. Decide whether it asks for a dashboard, a KPI set, a chart/table view or a written brief/document to be BUILT (any wording, any language, with or without a verb: 'mostramelo con dei kpi', 'rappresentalo con dei grafici', 'show it as a dashboard'), and if so its scope. A question to be answered in words, a clarification or a follow-up on the text is NOT a request for an artifact. You never build or answer anything.");
+        prompt.AppendLine("wantsArtifact: true only if the message asks for such content to be built.");
         prompt.AppendLine("supplier: the listed supplier whose contract the request is about, resolving 'this contract', 'questo contratto', 'it' and the like from the conversation (exactly as listed; null if no single contract is in focus or the request is portfolio-wide).");
         prompt.AppendLine("usesPortfolio: true if the request looks across several contracts (similar contracts, all contracts, rankings, totals) or no contract is in focus.");
         prompt.AppendLine("usesMarket: true only if the request asks how a contract sits against the market, benchmarks, or similar contracts on the market.");
@@ -181,12 +188,13 @@ public sealed class ArtifactComposer(
             type = "object",
             properties = new
             {
+                wantsArtifact = new { type = "boolean" },
                 supplier = new { type = new[] { "string", "null" } },
                 usesPortfolio = new { type = "boolean" },
                 usesMarket = new { type = "boolean" },
                 kind = new { type = "string", @enum = new[] { "kpi", "dashboard", "document" } },
             },
-            required = new[] { "supplier", "usesPortfolio", "usesMarket", "kind" },
+            required = new[] { "wantsArtifact", "supplier", "usesPortfolio", "usesMarket", "kind" },
             additionalProperties = false,
         });
 
@@ -207,7 +215,7 @@ public sealed class ArtifactComposer(
             var supplier = answer.Supplier is { Length: > 0 } s
                 ? suppliers.FirstOrDefault(x => string.Equals(x, s, StringComparison.OrdinalIgnoreCase))
                 : null;
-            return new ArtifactScopePlan(supplier, answer.UsesPortfolio, answer.UsesMarket, answer.Kind);
+            return new ArtifactScopePlan(answer.WantsArtifact, supplier, answer.UsesPortfolio, answer.UsesMarket, answer.Kind);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -216,7 +224,7 @@ public sealed class ArtifactComposer(
         }
     }
 
-    private sealed record ScopeAnswer(string? Supplier, bool UsesPortfolio, bool UsesMarket, string? Kind);
+    private sealed record ScopeAnswer(bool WantsArtifact, string? Supplier, bool UsesPortfolio, bool UsesMarket, string? Kind);
 
     private static object Row(PortfolioListItem i, string supplier, DateOnly today) => new
     {

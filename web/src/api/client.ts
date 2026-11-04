@@ -4775,7 +4775,15 @@ export function askOfferApi(client: object): AskOfferApi {
     listConversations: (tenantId, state) => call("GET", `/api/conversations?state=${state}`, tenantId),
     getConversation: (tenantId, conversationId) => call("GET", `/api/conversations/${seg(conversationId)}`, tenantId),
     ask: (tenantId, request) => call("POST", "/api/conversations/ask", tenantId, request),
-    composeArtifact: (tenantId, request) => call("POST", "/api/ask/artifact", tenantId, request),
+    composeArtifact: async (tenantId, request) => {
+      const r = await call<ComposedArtifactBody>("POST", "/api/ask/artifact", tenantId, request);
+      // Anything that is not the agents' content (204 "not an artifact", 422, a malformed body) is "no artifact".
+      const d = r.data?.draft;
+      const valid =
+        !!d && Array.isArray(d.tiles) && Array.isArray(d.charts) && Array.isArray(d.tables) && typeof d.title === "string" &&
+        (r.data?.kind === "kpi" || r.data?.kind === "dashboard" || r.data?.kind === "document");
+      return valid ? r : { ok: false, status: r.status, data: null };
+    },
     setArchived: (tenantId, conversationId, archived) =>
       call("POST", `/api/conversations/${seg(conversationId)}/${archived ? "archive" : "unarchive"}`, tenantId, {}),
     listAskContracts: (tenantId) => call("GET", "/api/ask/contracts", tenantId),
