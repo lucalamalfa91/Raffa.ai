@@ -66,6 +66,8 @@ export interface CaseField {
   inKey: string;
   inVal: string;
   i: number;
+  /** Where the value comes from (page, section, the reply it was agreed in); null when unknown. */
+  src?: Text | null;
 }
 
 export interface CaseRow {

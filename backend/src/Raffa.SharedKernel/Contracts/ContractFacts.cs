@@ -101,7 +101,9 @@ public sealed record ContractDeepFacts
     public IReadOnlyList<ContractTerm> Terms { get; init; } = [];
 }
 
-public sealed record ContractProduct(string Name, string Sku, string Unit, decimal Quantity, decimal UnitPrice, decimal Annual);
+/// <param name="BillingPeriod">How the line is billed as the extraction read it ("monthly", "annual",
+/// "one-time", …); null when not read. See <see cref="ContractBillingPeriod"/>.</param>
+public sealed record ContractProduct(string Name, string Sku, string Unit, decimal Quantity, decimal UnitPrice, decimal Annual, string? BillingPeriod = null);
 
 public sealed record ContractLever(string Strength, string Value, string Title, string Ask, string Source);
 

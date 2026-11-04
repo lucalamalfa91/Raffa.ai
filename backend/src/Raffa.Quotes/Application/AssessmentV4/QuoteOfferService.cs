@@ -156,7 +156,10 @@ public sealed class QuoteOfferService(
         var (quote, lines) = loaded.Value;
         var (input, assessment) = await AssessAsync(tenantId, quote, lines, "en", cancellationToken).ConfigureAwait(false);
         var body = QuoteAssessorV4.CounterEmail(input, assessment, actorName, organisation);
-        var subject = $"Re: {Path.GetFileNameWithoutExtension(quote.FileName)} — counter-proposal";
+        // The supplier's commercial name (and the quote's own reference when it has one), never the
+        // uploaded file name: the subject goes to the supplier.
+        var who = string.IsNullOrWhiteSpace(quote.Supplier) ? "Your proposal" : quote.Supplier.Trim();
+        var subject = $"Re: {who}{(string.IsNullOrWhiteSpace(quote.Reference) ? "" : " " + quote.Reference.Trim())} — counter-proposal";
         var draft = await emailDrafts.CreateDraftAsync(
                 tenantId,
                 new CaseEmailDraftRequest(quote.CaseId, quote.ContractId, subject, body, $"quote:{quoteId.Value}", actor),

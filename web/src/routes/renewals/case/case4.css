@@ -195,6 +195,7 @@
 .p4-field-name { font-weight: 600; flex: 0 1 160px; }
 .p4-field-val { flex: 1 1 160px; }
 .p4-field-conf { color: var(--color-accent-700); font-weight: 600; }
+.p4-field-src { flex: 1 1 100%; color: var(--color-neutral-600); font-size: 13px; }
 .v4 .p4-page .p4-field-accept { font-size: 13px; padding: 4px 10px; }
 .v4 .p4-page .p4-field-in { font-size: 13px; min-height: 30px; width: 150px; }
 .v4 .p4-page .p4-field-correct { font-size: 13px; padding: 0 4px; }

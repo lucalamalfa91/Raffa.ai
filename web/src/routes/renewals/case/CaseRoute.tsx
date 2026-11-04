@@ -660,6 +660,7 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
                     <span className="p4-field-name">{tr(x.name)}</span>
                     <span className="p4-field-val">{x.val}</span>
                     <span className="p4-field-conf">{x.conf}</span>
+                    {!isEmpty(x.src) ? <span className="p4-field-src">{tr(x.src!)}</span> : null}
                     {x.open ? (
                       <>
                         <button type="button" className="btn btn-secondary p4-field-accept" onClick={() => void act("acceptF", { i: x.i })}>

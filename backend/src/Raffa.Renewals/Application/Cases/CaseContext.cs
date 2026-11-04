@@ -78,7 +78,8 @@ public sealed record CaseContractFacts
 }
 
 /// <summary>A price-table line: <c>[name, sku, unit, qty, price]</c>.</summary>
-public sealed record CaseProduct(string Name, string Sku, string Unit, double Qty, double Price);
+/// <param name="OneOff">A one-off amount (onboarding, setup): paid once, not part of what a renewal renews.</param>
+public sealed record CaseProduct(string Name, string Sku, string Unit, double Qty, double Price, bool OneOff = false);
 
 /// <summary>A clause: <c>[type, what the contract says, what to ask, source]</c>.</summary>
 public sealed record CaseClause(string Type, string Norm, string Ask, string Src);

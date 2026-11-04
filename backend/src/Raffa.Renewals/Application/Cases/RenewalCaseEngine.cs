@@ -59,8 +59,14 @@ public static partial class RenewalCaseEngine
 
     /* ---------- helpers ---------- */
 
+    /// <summary>The recurring lines the renewal covers ("2,850 × Falcon Enterprise"); one-off amounts are
+    /// listed apart by <see cref="OneOffText"/>.</summary>
     internal static string ProductsText(CaseContext ctx) =>
-        string.Join(", ", ctx.Contract.Products.Select(p => (p.Qty > 1 ? CaseFormat.Num(p.Qty) + " × " : string.Empty) + p.Name));
+        string.Join(", ", ctx.Contract.Products.Where(p => !p.OneOff).Select(p => (p.Qty > 1 ? CaseFormat.Num(p.Qty) + " × " : string.Empty) + p.Name));
+
+    /// <summary>The current contract's one-off amounts ("Onboarding fee"); empty when there are none.</summary>
+    internal static string OneOffText(CaseContext ctx) =>
+        string.Join(", ", ctx.Contract.Products.Where(p => p.OneOff).Select(p => p.Name));
 
     private static string D(DateOnly d) => CaseFormat.Date(d);
 
@@ -291,6 +297,12 @@ public static partial class RenewalCaseEngine
                     "• Commercials: " + priceTxt,
                 };
                 lines.AddRange(cl.Select(x => "• " + x.Type + ": " + x.Ask));
+                if (g.Prod != "reduce" && g.Prod != "add" && OneOffText(ctx) is { Length: > 0 } oneOff)
+                {
+                    // Paid once under the current contract: named apart so the supplier does not price it again.
+                    lines.Insert(1, "• One-off items of the current contract, not part of this renewal: " + oneOff);
+                }
+
                 body = "Dear " + sup + " team,\n\nOur " + cn.Name + " agreement ends on " + D(cn.End) + ". Ahead of the " + D(cn.Cancel) +
                        " notice date we would like to open the renewal discussion.\n\nWhat we are looking for:\n" + string.Join("\n", lines) +
                        "\n\nCould you send a revised proposal by " + D(ctx.Today.AddDays(10)) + "? We are keeping all options open until we receive it." + signature;
@@ -303,6 +315,26 @@ public static partial class RenewalCaseEngine
                        ". We have not registered a reply on our side yet. Could you let us know when we can expect your proposal? Our notice date under the agreement is " +
                        D(cn.Cancel) + "." + signature;
                 break;
+            case "counter" when !ctx.Services.Scripted:
+            {
+                // What the supplier proposed and what we ask, in two blocks: a figure is attributed to the
+                // supplier only when its reply stated it, and every request of ours is labelled as ours.
+                subject = "Re: " + cn.Name + " — counter-proposal";
+                var theirs = CaseAgreement.SupplierProposalLines(c);
+                var ours = CaseAgreement.OurRequestLines(c, ctx, f, cl);
+                var text = "Dear " + sup + " team,\n\nThank you for your proposal.";
+                if (theirs.Count > 0)
+                {
+                    text += " This is how we read it:\n" + string.Join("\n", theirs);
+                }
+
+                text += ours.Count > 0
+                    ? "\n\nOn our side we ask for:\n" + string.Join("\n", ours)
+                    : "\n\nWe can move forward on this basis.";
+                body = text + "\n\nIf this works for you, please confirm in writing and send the revised Order Form." + signature;
+                break;
+            }
+
             case "counter":
             {
                 var l = c.Limits ?? new CaseLimits();
@@ -321,21 +353,42 @@ public static partial class RenewalCaseEngine
                 break;
             }
 
+            case "docreq" when !ctx.Services.Scripted && c.Agreed is { } agreedNow:
+                // Only the points the owner confirmed: a clause nobody agreed is never presented as agreed.
+                subject = cn.Name + " — revised Order Form for signature";
+                body = "Dear " + sup + " team,\n\nThank you for confirming. Please send the revised Order Form / amendment reflecting what we agreed:\n" +
+                       string.Join("\n", CaseAgreement.AgreedLines(agreedNow, ctx, f)) +
+                       "\n\nWe will review it and come back before signature." + signature;
+                break;
             case "docreq":
             {
                 var a = c.Agreed ?? new CaseAgreed();
                 subject = cn.Name + " — revised Order Form for signature";
                 body = "Dear " + sup + " team,\n\nThank you for confirming. Please send the revised Order Form / amendment reflecting what we agreed:\n• Quantities: unchanged\n• Unit price: " +
-                       CaseRules.Ps(f, a.Price) + "\n• Term: " + CaseFormat.Js(a.Term) + " months\n• Uplift: capped at " + CaseFormat.Js(a.Cap) +
-                       "%\n• Payment: quarterly in advance\n• Limitation of liability: " + CaseFormat.Js(a.Liab) +
+                       CaseRules.Ps(f, a.Price) + "\n• Term: " + CaseFormat.Js(a.Term) + " months\n• Uplift: capped at " + CaseFormat.Js(a.Cap ?? 0) +
+                       "%\n• Payment: quarterly in advance\n• Limitation of liability: " + CaseFormat.Js(a.Liab ?? 0) +
                        " months of fees\n\nWe will review it and come back before signature." + signature;
+                break;
+            }
+
+            case "fix" when !ctx.Services.Scripted:
+            {
+                // The differences and unreadable points of the last verified draft, as the check found them.
+                subject = cn.Name + " — corrections to the draft Order Form";
+                var fixes = CaseAgreement.DraftCorrectionLines(c);
+                body = "Dear " + sup + " team,\n\nThank you for the draft. Before we can sign, " + fixes.Count switch
+                {
+                    0 => "please confirm that it reflects every point we agreed:\n" + string.Join("\n", c.Agreed is { } fa ? CaseAgreement.AgreedLines(fa, ctx, f) : []),
+                    1 => "one point differs from what we agreed:\n" + fixes[0],
+                    _ => "these points differ from what we agreed:\n" + string.Join("\n", fixes),
+                } + signature;
                 break;
             }
 
             case "fix":
                 subject = cn.Name + " — corrections to the draft Order Form";
                 body = "Dear " + sup + " team,\n\nThank you for the draft. Before we can sign, two points differ from what we agreed:\n• Uplift: the draft states 5%; we agreed a cap of " +
-                       (c.Agreed is { } ag ? CaseFormat.Js(ag.Cap) : "undefined") +
+                       (c.Agreed is { } ag ? CaseFormat.Js(ag.Cap ?? 0) : "undefined") +
                        "%.\n• Payment: the draft states annual in advance; we agreed quarterly in advance.\nPlease also send the Annex (SLA schedule) in a readable version." + signature;
                 break;
             case "notice":
@@ -870,24 +923,45 @@ public static partial class RenewalCaseEngine
                     break;
                 }
 
-                q2.State = "done";
-                q2.By = v;
-                foreach (var t0 in c.Terms.Values.Where(t0 => t0.State == "proposed"))
+                CaseAgreed agreed;
+                if (ctx.Services.Scripted)
                 {
-                    t0.State = "agreed";
+                    foreach (var t0 in c.Terms.Values.Where(t0 => t0.State == "proposed"))
+                    {
+                        t0.State = "agreed";
+                    }
+
+                    var t = c.Limits is { Term: > 0 } lim ? lim.Term : 24;
+                    agreed = new CaseAgreed { Price = CounterPrice(c, ctx, t), Term = t, Cap = CaseRules.HasUplift(ctx) ? 3 : 0, Liab = 18 };
+                }
+                else
+                {
+                    // The agreed position is exactly what the owner confirms: the terms the supplier's replies
+                    // proposed. Price and term must be in writing; nothing is filled in from today's contract.
+                    var proposed = c.Terms.Values.Where(t0 => t0.State == "proposed").ToList();
+                    proposed.ForEach(t0 => t0.State = "agreed");
+                    if (CaseAgreement.FromConfirmedTerms(c, out var missing) is not { } snapshot)
+                    {
+                        proposed.ForEach(t0 => t0.State = "proposed");
+                        c.Ui.Warn = B("The supplier’s replies do not state {what} in writing. Register the reply that confirms it, then confirm the terms.", "Le risposte del fornitore non indicano per iscritto {what}. Registra la risposta che lo conferma, poi conferma le condizioni.", ("what", missing));
+                        break;
+                    }
+
+                    agreed = snapshot;
                 }
 
-                var t = c.Limits is { Term: > 0 } lim ? lim.Term : 24;
-                c.Agreed = new CaseAgreed { Price = CounterPrice(c, ctx, t), Term = t, Cap = CaseRules.HasUplift(ctx) ? 3 : 0, Liab = 18 };
+                q2.State = "done";
+                q2.By = v;
+                c.Agreed = agreed;
                 var auth = c.Ui.Auth;
                 if (!string.IsNullOrEmpty(auth))
                 {
                     c.Agreed.Auth = auth;
-                    Log(c, ctx, v, B("Terms confirmed as agreed (evidence: reply 2) · exception authorized by {auth} (recorded outside Raffa)", "Condizioni confermate come concordate (evidenza: risposta 2) · deroga autorizzata da {auth} (registrata fuori da Raffa)", ("auth", auth)));
+                    Log(c, ctx, v, B("Terms confirmed as agreed (evidence: reply {n}) · exception authorized by {auth} (recorded outside Raffa)", "Condizioni confermate come concordate (evidenza: risposta {n}) · deroga autorizzata da {auth} (registrata fuori da Raffa)", ("n", c.Reps.Count), ("auth", auth)));
                 }
                 else
                 {
-                    Log(c, ctx, v, B("Terms confirmed as agreed (evidence: reply 2)", "Condizioni confermate come concordate (evidenza: risposta 2)"));
+                    Log(c, ctx, v, B("Terms confirmed as agreed (evidence: reply {n})", "Condizioni confermate come concordate (evidenza: risposta {n})", ("n", c.Reps.Count)));
                 }
 
                 c.Phase = CasePhases.DocWait;
@@ -947,7 +1021,8 @@ public static partial class RenewalCaseEngine
                 c.Pipe = ctx.Services.StartExtraction(c, ctx);
                 Log(c, ctx, v, B("Signed document confirmed as final — negotiation completed", "Documento firmato confermato come definitivo — negoziazione completata"));
                 Push(c, ctx, new CaseFeedItem { K = "pipe" });
-                c.Tick = true;
+                // Stages advance only while an extraction is really running.
+                c.Tick = c.Pipe.Stage < 3;
                 break;
             case "tick":
                 if (c.Pipe is null || c.Pipe.Stage >= 3)
@@ -1338,8 +1413,7 @@ public static partial class RenewalCaseEngine
         return c;
     }
 
-    private static bool LiabilityConflict(RenewalCase c) =>
-        c.Goals.Policy && c.Terms.TryGetValue("liab", out var lt) && lt.Val == "18";
+    private static bool LiabilityConflict(RenewalCase c) => CaseAgreement.LiabilityBelowPolicy(c);
 
     private static void SetUi(RenewalCase c, CaseContext ctx, CaseActionPayload p)
     {
@@ -1441,7 +1515,25 @@ public static partial class RenewalCaseEngine
         }
         Push(c, ctx, new CaseFeedItem { K = "ana", Rid = rid });
         c.Phase = CasePhases.Review;
-        if (c.Round == 1)
+        if (c.Round == 1 && !ctx.Services.Scripted)
+        {
+            // A trade-off is put to the owner only when the reply shows one (a lower price tied to 24
+            // months); otherwise the counter-proposal starts from what the supplier actually offered.
+            if (CaseAgreement.OffersTermTradeOff(c))
+            {
+                c.Qs.Add(new CaseQuestion { Did = c.Qs.Count, State = "open" });
+                Push(c, ctx, new CaseFeedItem { K = "dec", Did = c.Qs.Count - 1 });
+            }
+            else
+            {
+                var term = CaseAgreement.OfferedTerm(c, analysis.Benchmark);
+                c.Limits = new CaseLimits { Term = term ?? 0, PriceMax = term is { } t0 ? CaseAgreement.OfferedPrice(c, t0) : null };
+                Say(c, ctx, B("The reply ties no discount to a longer term, so there is no trade-off to decide. I drafted the counter-proposal: what the supplier proposed, then what we ask.", "La risposta non lega sconti a una durata più lunga, quindi non c’è un compromesso da decidere. Ho preparato la controproposta: ciò che ha proposto il fornitore, poi ciò che chiediamo noi."));
+                MakeEmail(c, ctx, "counter");
+                c.Phase = CasePhases.Email;
+            }
+        }
+        else if (c.Round == 1)
         {
             if (c.Goals.Term != "24")
             {
@@ -1512,7 +1604,8 @@ public static partial class RenewalCaseEngine
 
     private static void Validate(RenewalCase c, CaseContext ctx, CasePriceFacts f)
     {
-        if (c.Pipe is null || c.Pipe.Weak.Any(x => x.State == "open") || c.Agreed is null)
+        // Once closed, the contract's facts already carry the new term: validating again would compound it.
+        if (c.Outcome is not null || c.Pipe is null || c.Pipe.Stage < 3 || c.Pipe.Weak.Any(x => x.State == "open") || c.Agreed is null)
         {
             return;
         }
@@ -1521,9 +1614,33 @@ public static partial class RenewalCaseEngine
         c.Pipe.Stage = 4;
         c.Phase = CasePhases.Done;
         var a = c.Agreed;
-        var newSpend = cn.Spend - f.Qty * (f.P0 - a.Price) * f.Mult;
+        double newSpend;
+        double oldSpend;
+        var term = a.Term;
+        var price = a.Price;
+        if (ctx.Services.Scripted)
+        {
+            newSpend = cn.Spend - f.Qty * (f.P0 - a.Price) * f.Mult;
+            oldSpend = cn.Spend;
+        }
+        else
+        {
+            // The values the owner checked against the signed document (accepted or corrected) become the
+            // contract's new terms; the yearly value is the recurring lines at those values, never a delta
+            // on a header figure that may include one-off amounts.
+            double? Checked(string key, Func<string, double?> read) =>
+                c.Pipe.Weak.FirstOrDefault(w => w.N == key) is { } w ? read(w.Val) : null;
+            price = Checked(CaseSignedFields.Price, CaseAgreement.Number) ?? a.Price;
+            term = (int?)Checked(CaseSignedFields.Term, x => CaseAgreement.Months(x)) ?? a.Term;
+            var qty = Checked(CaseSignedFields.Qty, CaseAgreement.Number) ?? a.Qty ?? f.Qty;
+            var computed = CaseAgreement.NewAnnual(ctx, f, price, qty);
+            var annual = c.Pipe.Weak.FirstOrDefault(w => w.N == CaseSignedFields.Annual);
+            newSpend = annual is { State: "corrected" } && CaseAgreement.Number(annual.Val) is { } typed ? typed : computed;
+            oldSpend = CaseAgreement.CurrentRecurringAnnual(ctx);
+        }
+
         var start = cn.End.AddDays(1);
-        var end = CaseFormat.AddMonths(cn.End, a.Term);
+        var end = CaseFormat.AddMonths(cn.End, term);
         var nc = end.AddDays(-cn.Notice);
         c.Outcome = new CaseOutcome
         {
@@ -1533,9 +1650,11 @@ public static partial class RenewalCaseEngine
             Cancel = nc,
             CancelDays = DaysTo(ctx, nc),
             Spend = newSpend,
-            Delta = cn.Spend - newSpend,
-            Price = B("{price} (was {old})", "{price} (era {old})", ("price", CaseRules.Ps(f, a.Price)), ("old", CaseFormat.Js(f.P0))),
+            Delta = oldSpend - newSpend,
+            Price = B("{price} (was {old})", "{price} (era {old})", ("price", CaseRules.Ps(f, price)), ("old", CaseFormat.Js(f.P0))),
             File = c.Signed?.File,
+            PrevStart = cn.Start,
+            PrevEnd = cn.End,
         };
         Push(c, ctx, new CaseFeedItem { K = "out" });
     }

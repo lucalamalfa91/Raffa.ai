@@ -77,7 +77,7 @@ public static class CaseFactsMapper
             Notice = f.Notice,
             Auto = string.Equals(f.Auto, "Yes", StringComparison.OrdinalIgnoreCase) || string.Equals(f.Auto, "true", StringComparison.OrdinalIgnoreCase),
             Uplift = string.IsNullOrWhiteSpace(f.Uplift) ? "0%" : f.Uplift,
-            Products = f.Deep.Products.Select(p => new CaseProduct(p.Name, p.Sku, p.Unit, (double)p.Quantity, (double)p.UnitPrice)).ToList(),
+            Products = f.Deep.Products.Select(p => new CaseProduct(p.Name, p.Sku, p.Unit, (double)p.Quantity, (double)p.UnitPrice, ContractBillingPeriod.IsOneOff(p.BillingPeriod))).ToList(),
             Push = f.Deep.Push.Select(x => new CaseClause(x.Topic, x.Says, x.Proposal, x.Source)).ToList(),
             Raise = f.Deep.Raise.Select(x => new CaseClause(x.Topic, x.Says, x.Proposal, x.Source)).ToList(),
             Terms = f.Deep.Terms.Select(t => new CaseKeyTerm(t.Label, t.Value)).ToList(),

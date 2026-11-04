@@ -190,11 +190,22 @@ public sealed class DocumentReadingService(
         return Result<DocumentReadingView>.Success(await ViewAsync(tenantId, document, cancellationToken).ConfigureAwait(false));
     }
 
+    /// <summary>
+    /// Validates the document and writes the contract's facts in <b>one</b> save: the facts are staged first
+    /// and committed by the same <c>SaveChanges</c> that moves the document to <c>Completed</c>. A document is
+    /// therefore never "validated" without the facts every screen reads it from (Contracts, Contract 360,
+    /// Renewals, Results); when anything fails nothing is committed, the decision call fails and the reading
+    /// stays in review.
+    /// </summary>
     private async Task ValidateAsync(
         TenantId tenantId, Document document, DocumentReadingView view, bool isSample, string actor, CancellationToken cancellationToken)
     {
         var now = clock.UtcNow;
-        var decisions = await DecisionsAsync(tenantId, document.Id, cancellationToken).ConfigureAwait(false);
+        if (document.ContractId is { } contractId)
+        {
+            await StageFactsAsync(tenantId, contractId, document, isSample, now, cancellationToken).ConfigureAwait(false);
+        }
+
         if (isSample)
         {
             document.ProcessingStatus = DocumentProcessingStatus.Completed;
@@ -204,24 +215,26 @@ public sealed class DocumentReadingService(
             var accepted = view.Fields.Select(f => f.Key).ToList();
             var validated = await validationService.ValidateAsync(tenantId, document.Id, accepted, actor, cancellationToken)
                 .ConfigureAwait(false);
-            if (validated is { IsFailure: true })
+            if (validated is null || validated.IsFailure)
             {
-                throw new InvalidOperationException(validated.Error);
+                throw new InvalidOperationException(validated?.Error ?? "The document to validate no longer exists.");
             }
         }
 
-        if (document.ContractId is not { } contractId)
-        {
-            await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            return;
-        }
+        // Commits the sample's status, or anything the validation left unsaved (an already-validated document).
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
 
+    private async Task StageFactsAsync(
+        TenantId tenantId, EntityId contractId, Document document, bool isSample, DateTimeOffset now, CancellationToken cancellationToken)
+    {
         var record = await dbContext.ContractFacts
             .SingleOrDefaultAsync(f => f.TenantId == tenantId && f.ContractId == contractId, cancellationToken)
             .ConfigureAwait(false);
         ContractFacts facts;
         if (record is not null && isSample)
         {
+            var decisions = await DecisionsAsync(tenantId, document.Id, cancellationToken).ConfigureAwait(false);
             facts = System.Text.Json.JsonSerializer.Deserialize<ContractFacts>(record.Facts, ContractFactsReader.Json) ?? new ContractFacts();
             facts = facts with
             {
@@ -255,8 +268,6 @@ public sealed class DocumentReadingService(
             record.ValidatedAt = now;
             record.UpdatedAt = now;
         }
-
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private Task<ContractFacts> BuildFactsAsync(

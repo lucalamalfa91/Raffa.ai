@@ -12,6 +12,8 @@ public sealed class FixtureCaseScriptServices : ICaseScriptServices
 {
     public static FixtureCaseScriptServices Instance { get; } = new();
 
+    public bool Scripted => true;
+
     private static readonly (string Name, double Price, int Term, string Cover, string Mig, string Gap)[] Offers =
     [
         ("Vendor A", 0.82, 24, "4 of 5", "8 weeks", "Support SLA not stated"),
@@ -148,9 +150,9 @@ public sealed class FixtureCaseScriptServices : ICaseScriptServices
         It(B("Quantities", "Quantità"), RenewalCaseEngine.ProductsText(ctx), B("same", "uguali"), "ok", "p.2 §1");
         It(B("Unit price", "Prezzo unitario"), CaseRules.Ps(f, a.Price), CaseRules.Ps(f, a.Price), "ok", "p.3 §2");
         It(B("Term", "Durata"), B("{term} months", "{term} mesi", ("term", a.Term)), B("{term} months", "{term} mesi", ("term", a.Term)), "ok", "p.2 §3");
-        if (a.Cap != 0)
+        if (a.Cap is { } capPct and not 0)
         {
-            It(B("Uplift cap", "Tetto aumento"), CaseFormat.Js(a.Cap) + "%", v1 ? "5%" : CaseFormat.Js(a.Cap) + "%", v1 ? "diff" : "ok", "p.9 §6.2");
+            It(B("Uplift cap", "Tetto aumento"), CaseFormat.Js(capPct) + "%", v1 ? "5%" : CaseFormat.Js(capPct) + "%", v1 ? "diff" : "ok", "p.9 §6.2");
         }
 
         It(B("Payment", "Pagamenti"), B("quarterly in advance", "trimestrale anticipato"),

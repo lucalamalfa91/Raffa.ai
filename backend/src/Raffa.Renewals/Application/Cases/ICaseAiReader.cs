@@ -61,6 +61,8 @@ public sealed class ReadCaseScriptServices(
     IReadOnlyList<CaseDraftRow>? draftRows = null,
     CaseAltOffer? offer = null) : ICaseScriptServices
 {
+    public bool Scripted => inner.Scripted;
+
     public string SampleReply(RenewalCase c, CaseContext ctx, int round) => inner.SampleReply(c, ctx, round);
 
     public CaseReplyAnalysis AnalyzeReply(RenewalCase c, CaseContext ctx, int rid) => reply ?? inner.AnalyzeReply(c, ctx, rid);

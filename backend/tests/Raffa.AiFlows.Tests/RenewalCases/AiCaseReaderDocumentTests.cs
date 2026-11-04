@@ -62,7 +62,7 @@ public sealed class AiCaseReaderDocumentTests
              "terms":[],"price12":0,"price24":47}
             """);
 
-        var reading = await reader.ReadReplyAsync(TenantId.New(), new RenewalCase(), Contract, "offer", 1, "it");
+        var reading = await reader.ReadReplyAsync(TenantId.New(), new RenewalCase(), Contract, "Possiamo offrire CHF 47 con un impegno di 24 mesi.", 1, "it");
 
         Assert.Equal(47, Assert.Single(reading!.Prices!).Value);
     }
@@ -76,13 +76,46 @@ public sealed class AiCaseReaderDocumentTests
              "benchmark":{"discountPct":8,"upliftCapPct":0,"noticeDays":0,"termMonths":24,"paymentTerms":"  quarterly in advance "}}
             """);
 
-        var b = (await reader.ReadReplyAsync(TenantId.New(), new RenewalCase(), Contract, "offer", 1, "it"))!.Benchmark!;
+        var b = (await reader.ReadReplyAsync(TenantId.New(), new RenewalCase(), Contract,
+            "Offriamo CHF 47 per 24 mesi, uno sconto dell'8%, fatturazione trimestrale anticipata.", 1, "it"))!.Benchmark!;
 
         Assert.Equal(8, b.DiscountPct);
         Assert.Null(b.UpliftCapPct);   // 0 means "not stated"
         Assert.Null(b.NoticeDays);
         Assert.Equal(24, b.TermMonths);
         Assert.Equal("quarterly in advance", b.PaymentTerms);
+    }
+
+    [Fact]
+    public async Task A_figure_the_reply_does_not_contain_never_reaches_the_case()
+    {
+        // QA: the supplier offered 12 months at CHF 76.50 per endpoint with no uplift. A reading that brings
+        // in the contract's 4% uplift, a 24-month price or a credit review is not the supplier's.
+        var reader = Reader("""
+            {"rows":[
+              {"label":"Prezzo","said":"CHF 76.50 per endpoint","plan":"-5%","state":"proposed","warn":""},
+              {"label":"Durata","said":"24 mesi richiesti per lo sconto","plan":"12 mesi","state":"conflict","warn":""},
+              {"label":"Aumento","said":"4% annuo","plan":"","state":"proposed","warn":""}],
+             "terms":[
+              {"key":"price","label":"Prezzo","state":"proposed","value":"CHF 76.50 per endpoint"},
+              {"key":"term","label":"Durata","state":"proposed","value":"1 year"},
+              {"key":"term24","label":"Durata","state":"proposed","value":"24"},
+              {"key":"uplift","label":"Aumento","state":"proposed","value":"none"},
+              {"key":"uplift4","label":"Aumento","state":"proposed","value":"4%"}],
+             "price12":76.5,"price24":74,
+             "benchmark":{"discountPct":1.4,"upliftCapPct":4,"noticeDays":0,"termMonths":24,"paymentTerms":""}}
+            """);
+
+        var reading = (await reader.ReadReplyAsync(TenantId.New(), new RenewalCase(), Contract,
+            "Hello, we can offer a 12-month renewal at CHF 76,50 per endpoint, without any uplift.", 1, "en"))!;
+
+        Assert.Equal(["Prezzo"], reading.Rows.Select(r => r.Label.Render()));
+        Assert.Equal(["price", "term", "uplift"], reading.Terms.Select(t => t.Key));
+        Assert.Equal(76.5, Assert.Single(reading.Prices!, p => p.Key == 12).Value);
+        Assert.False(reading.Prices!.ContainsKey(24));
+        Assert.Null(reading.Benchmark!.DiscountPct);
+        Assert.Null(reading.Benchmark.UpliftCapPct);
+        Assert.Null(reading.Benchmark.TermMonths);
     }
 
     private sealed class Gateway(string payloadJson) : IAiGateway
