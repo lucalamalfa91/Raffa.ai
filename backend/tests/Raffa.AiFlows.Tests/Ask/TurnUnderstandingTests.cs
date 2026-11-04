@@ -32,6 +32,42 @@ public sealed class TurnUnderstandingTests
     }
 
     [Fact]
+    public async Task A_request_to_build_content_carries_its_scope_and_acknowledgement_in_the_same_call()
+    {
+        var gateway = new ExtractOnlyGateway("""
+            {"label":"inDomain","intent":"StructuredFact","supplier":"GitLab","unknownSupplier":null,
+             "standaloneQuestion":"Mostrami il contratto GitLab con dei KPI","clarification":null,
+             "wantsArtifact":true,"artifactKind":"kpi","usesPortfolio":false,"usesMarket":true,
+             "acknowledgement":"Ho preparato i KPI di GitLab nel pannello a destra."}
+            """);
+
+        var result = await new TurnUnderstanding(gateway).ResolveAsync("mostramelo con dei kpi", History, Suppliers, false, default);
+
+        Assert.NotNull(result?.Artifact);
+        Assert.Equal("kpi", result.Artifact.Kind);
+        Assert.True(result.Artifact.UsesMarket);
+        Assert.False(result.Artifact.UsesPortfolio);
+        Assert.Equal("Ho preparato i KPI di GitLab nel pannello a destra.", result.Artifact.Acknowledgement);
+        Assert.Single(gateway.Requests);
+    }
+
+    [Fact]
+    public async Task A_clarification_never_builds_content()
+    {
+        var gateway = new ExtractOnlyGateway("""
+            {"label":"inDomain","intent":"StructuredFact","supplier":null,"unknownSupplier":null,
+             "standaloneQuestion":"Fammi una dashboard","clarification":"Di quale contratto?",
+             "wantsArtifact":true,"artifactKind":"dashboard","usesPortfolio":false,"usesMarket":false,"acknowledgement":""}
+            """);
+
+        var result = await new TurnUnderstanding(gateway).ResolveAsync("fammi una dashboard", [], Suppliers, false, default);
+
+        Assert.NotNull(result);
+        Assert.Null(result.Artifact);
+        Assert.Equal("Di quale contratto?", result.Clarification);
+    }
+
+    [Fact]
     public async Task A_supplier_that_is_not_on_the_list_is_never_returned_as_one_of_the_tenants()
     {
         var gateway = new ExtractOnlyGateway("""

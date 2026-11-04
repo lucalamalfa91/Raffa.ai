@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { artifactRequest, buildArtifact, threadItems, type PlacedArtifact } from "../../../src/routes/ask/artifacts";
+import { buildArtifact, threadItems, type PlacedArtifact } from "../../../src/routes/ask/artifacts";
 
 const t = (id: string) => id;
 const placed = (id: string, conversationId: string | null, afterMessageId: string | null): PlacedArtifact => ({
@@ -24,32 +24,3 @@ describe("threadItems", () => {
   });
 });
 
-describe("artifactRequest", () => {
-  it("still reads a request to build something", () => {
-    expect(artifactRequest("Crea una dashboard")).toBe("dashboard");
-    expect(artifactRequest("fammi i KPI")).toBe("kpi");
-    expect(artifactRequest("scrivi un brief")).toBe("document");
-    expect(artifactRequest("When is the Salesforce notice?")).toBeNull();
-  });
-
-  it("reads a change to a KPI or dashboard built in the conversation as a request for its next version", () => {
-    expect(artifactRequest("modifica il KPI", ["kpi"])).toBe("kpi");
-    expect(artifactRequest("visualizza il kpi per anno, voglio capire il trend", ["kpi"])).toBe("kpi");
-    expect(artifactRequest("crea una nuova versione del KPI", ["kpi"])).toBe("kpi");
-    expect(artifactRequest("aggiorna la dashboard", ["dashboard", "kpi"])).toBe("dashboard");
-    expect(artifactRequest("fanne una nuova versione", ["dashboard", "kpi"])).toBe("kpi");
-    expect(artifactRequest("Update the KPIs by year", ["kpi"])).toBe("kpi");
-  });
-
-  it("leaves a change to nothing built, or a question about the content, to Raffa's answer", () => {
-    expect(artifactRequest("modifica il KPI")).toBeNull();
-    expect(artifactRequest("aggiorna la dashboard", ["kpi"])).toBeNull();
-    expect(artifactRequest("Cosa cambia nei KPI se rinnovo Salesforce?", ["kpi"])).toBeNull();
-    expect(artifactRequest("modifica il contratto Salesforce", ["kpi"])).toBeNull();
-  });
-
-  it("numbers a later version", () => {
-    expect(buildArtifact("kpi", [], t, "2026-11-04").version).toBe(1);
-    expect(buildArtifact("kpi", [], t, "2026-11-04", 2).version).toBe(2);
-  });
-});

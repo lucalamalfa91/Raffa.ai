@@ -26,7 +26,29 @@ public sealed record ReplyPayload(
     FeedbackOffer? FeedbackOffer = null,
     FeedbackResult? FeedbackResult = null,
     IReadOnlyList<string>? FollowUps = null,
-    string? CapabilityCheckFor = null);
+    string? CapabilityCheckFor = null,
+    ArtifactPayload? Artifact = null);
+
+/// <summary>A dashboard, KPI set or document the artifact-composer agent wrote for this turn; the client shows it in the side panel.</summary>
+public sealed record ArtifactPayload(
+    string Kind,
+    string Title,
+    string Subtitle,
+    string? FocusSupplier,
+    bool UsedPortfolio,
+    bool UsedMarket,
+    IReadOnlyList<ArtifactTilePayload> Tiles,
+    IReadOnlyList<ArtifactChartPayload> Charts,
+    IReadOnlyList<ArtifactTablePayload> Tables,
+    string Markdown);
+
+public sealed record ArtifactTilePayload(string Label, string Value, string Hint, string Tone);
+
+public sealed record ArtifactBarPayload(string Label, double Value, string Display);
+
+public sealed record ArtifactChartPayload(string Title, IReadOnlyList<ArtifactBarPayload> Items);
+
+public sealed record ArtifactTablePayload(string Title, IReadOnlyList<string> Columns, IReadOnlyList<IReadOnlyList<string>> Rows);
 
 /// <summary>Which gap fired and in which language the deterministic copy was written.</summary>
 /// <param name="Key"><c>Gaps.CapabilityGap.Key</c> — a catalog key, or

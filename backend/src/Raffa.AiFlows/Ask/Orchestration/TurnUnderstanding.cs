@@ -14,13 +14,19 @@ namespace Raffa.AiFlows.Ask.Orchestration;
 /// <param name="UnknownSupplier">A supplier the user names that is NOT in the tenant's list; or null.</param>
 /// <param name="StandaloneQuestion">The message made self-contained (same language, same meaning).</param>
 /// <param name="Clarification">One short question, only when the conversation and the data cannot resolve what is asked; or null.</param>
+/// <param name="Artifact">Set when the message asks for a dashboard, KPI set or document to be built: its kind, whether it
+/// looks across the portfolio and/or the market, and a one-sentence acknowledgement in the user's language.</param>
 public sealed record TurnUnderstandingResult(
     string Label,
     AskIntent? Intent,
     string? SupplierName,
     string? UnknownSupplier,
     string StandaloneQuestion,
-    string? Clarification);
+    string? Clarification,
+    ArtifactAsk? Artifact = null);
+
+/// <param name="Kind">kpi | dashboard | document.</param>
+public sealed record ArtifactAsk(string Kind, bool UsesPortfolio, bool UsesMarket, string Acknowledgement);
 
 /// <summary>
 /// Turn understanding (agent step <c>turn-understanding</c>): the one place that reads what the user means.
@@ -100,6 +106,7 @@ public sealed class TurnUnderstanding(IAiGateway aiGateway, ILogger<TurnUndersta
         sb.AppendLine("supplier: a supplier from the list below, exactly as listed, that the message (or the conversation, for a follow-up) is about; null if none or if it is portfolio-wide.");
         sb.AppendLine("unknownSupplier: a company the user names as the subject that is NOT in the list below; otherwise null.");
         sb.AppendLine("standaloneQuestion: the NEW message rewritten so it needs no conversation to be understood, same language, same meaning, naming the supplier when it is in focus; unchanged if already self-contained. Never add facts or an answer.");
+        sb.AppendLine("wantsArtifact: true only if the message asks for a dashboard, a KPI set, a chart/table view or a written brief/document to be BUILT (any wording, with or without a verb: 'mostramelo con dei kpi', 'rappresentalo con dei grafici'). A question to be answered in words is not. If true: artifactKind = kpi | dashboard | document (dashboard when unsure); usesPortfolio = it looks across several contracts or no contract is in focus; usesMarket = it asks how a contract sits against the market, benchmarks or similar contracts on the market; acknowledgement = one short sentence in the user's language saying what you prepared and that it is in the side panel. If false: artifactKind = dashboard, the two flags false, acknowledgement empty.");
         sb.AppendLine("clarification: leave null in almost every case, including broad or vague requests (answer them with a sensible default reading). Set one short question in the user's language ONLY when the conversation and the data genuinely cannot tell what is asked and any reading would likely be wrong.");
         sb.AppendLine("Suppliers: " + (suppliers.Count == 0 ? "(none yet)" : string.Join("; ", suppliers)));
         sb.AppendLine(opened ? "The chat is opened on one specific contract: 'this contract' means it unless the conversation says otherwise." : "The chat is not opened on a specific contract.");
@@ -126,8 +133,13 @@ public sealed class TurnUnderstanding(IAiGateway aiGateway, ILogger<TurnUndersta
             unknownSupplier = new { type = new[] { "string", "null" } },
             standaloneQuestion = new { type = "string" },
             clarification = new { type = new[] { "string", "null" } },
+            wantsArtifact = new { type = "boolean" },
+            artifactKind = new { type = "string", @enum = new[] { "kpi", "dashboard", "document" } },
+            usesPortfolio = new { type = "boolean" },
+            usesMarket = new { type = "boolean" },
+            acknowledgement = new { type = "string" },
         },
-        required = new[] { "label", "intent", "supplier", "unknownSupplier", "standaloneQuestion", "clarification" },
+        required = new[] { "label", "intent", "supplier", "unknownSupplier", "standaloneQuestion", "clarification", "wantsArtifact", "artifactKind", "usesPortfolio", "usesMarket", "acknowledgement" },
         additionalProperties = false,
     });
 
@@ -152,8 +164,12 @@ public sealed class TurnUnderstanding(IAiGateway aiGateway, ILogger<TurnUndersta
         var supplier = a.Supplier is { Length: > 0 } s ? suppliers.FirstOrDefault(x => string.Equals(x, s, StringComparison.OrdinalIgnoreCase)) : null;
         var unknown = supplier is null && a.UnknownSupplier is { Length: > 0 } u && !suppliers.Contains(u, StringComparer.OrdinalIgnoreCase) ? u.Trim() : null;
         var clarification = string.IsNullOrWhiteSpace(a.Clarification) ? null : a.Clarification.Trim();
-        return new TurnUnderstandingResult(a.Label, intent, supplier, unknown, a.StandaloneQuestion.Trim(), clarification);
+        var artifact = a.WantsArtifact && a.ArtifactKind is "kpi" or "dashboard" or "document" && clarification is null
+            ? new ArtifactAsk(a.ArtifactKind!, a.UsesPortfolio, a.UsesMarket, a.Acknowledgement?.Trim() ?? string.Empty)
+            : null;
+        return new TurnUnderstandingResult(a.Label, intent, supplier, unknown, a.StandaloneQuestion.Trim(), clarification, artifact);
     }
 
-    private sealed record Answer(string? Label, string? Intent, string? Supplier, string? UnknownSupplier, string? StandaloneQuestion, string? Clarification);
+    private sealed record Answer(string? Label, string? Intent, string? Supplier, string? UnknownSupplier, string? StandaloneQuestion, string? Clarification,
+        bool WantsArtifact = false, string? ArtifactKind = null, bool UsesPortfolio = false, bool UsesMarket = false, string? Acknowledgement = null);
 }

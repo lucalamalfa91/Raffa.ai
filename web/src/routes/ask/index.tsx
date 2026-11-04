@@ -23,7 +23,7 @@ import FeedbackCard from "./FeedbackCard";
 import DraftPanel, { ArtifactCard } from "./DraftPanel";
 import { splitEmailDraft, type EmailDraft } from "./draft";
 import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
-import { artifactRequest, buildArtifact, composedToArtifact, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
+import { buildArtifact, payloadToArtifact, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
 import { buildSpendArtifact, revisedIntent } from "./askSpend";
 
 export interface AskRouteProps {
@@ -208,7 +208,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
    * It answers the turn it was asked at: this conversation, right after its last message. Asked again
    * in the same conversation, it is the next version of that content.
    */
-  const createContent = async (kind: ArtifactKind, request: string | null = null, tryAgents = true) => {
+  const createContent = async (kind: ArtifactKind, request: string | null = null) => {
     if (!tenantId || building) return;
     const conversationId = current?.id ?? null;
     const afterMessageId = current?.messages[current.messages.length - 1]?.id ?? null;
@@ -216,24 +216,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setConvError(null);
     const earlier = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === kind);
     const version = earlier.length + 1;
-    let made: Artifact | null = null;
-    // The agents write it from the chat's own context (the open contract, the portfolio, the market RAG).
-    // Only when they cannot deliver a grounded one does the deterministic build below answer instead.
-    if (request && tryAgents) {
-      const composed = await api.composeArtifact(tenantId, {
-        conversationId,
-        contractId: current?.scopeContractId ?? scopeId ?? null,
-        request,
-        lang,
-      });
-      if (composed.data) {
-        made = composedToArtifact(composed.data, version, t);
-        setBuilding(false);
-      }
-    }
-    if (made) {
-      // nothing more to build
-    } else if (apiClient.getSpendReport) {
+    let made: Artifact;
+    if (apiClient.getSpendReport) {
       // Built on Spesa e risparmi's figures: the request's "per anno", "per trimestre", "cassa", a
       // fiscal year or a category change the view, on top of what the earlier versions asked; the
       // page opens on the same filters.
@@ -254,10 +238,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       }
       made = buildArtifact(kind, r.data.rows, t, today, version);
     }
-    if (!made) return;
-    const placed: Artifact = made;
-    setContents((list) => [...list, { artifact: placed, conversationId, afterMessageId, request }]);
-    setPanel({ id: placed.id, artifact: placed });
+    setContents((list) => [...list, { artifact: made, conversationId, afterMessageId, request }]);
+    setPanel({ id: made.id, artifact: made });
   };
 
   const ask = async (
@@ -273,38 +255,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setPendingQuestion(text);
     setPick(null);
     setQ("");
-    // Any other message: the agents first judge whether it asks for a dashboard, KPIs or a brief (any
-    // wording — "mostramelo con dei kpi"), and if so build it on this chat's context. 204 = not one: the chat answers.
-    if (!interviewAnswer && !answerOnly) {
-      const probe = await api.composeArtifact(tenantId, {
-        conversationId: current?.id ?? null,
-        contractId: contractId ?? current?.scopeContractId ?? scopeId ?? null,
-        request: text,
-        lang,
-      });
-      if (probe.data) {
-        setBusy(false);
-        setPendingQuestion(null);
-        const conversationId = current?.id ?? null;
-        const afterMessageId = current?.messages[current.messages.length - 1]?.id ?? null;
-        const earlier = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === probe.data!.kind);
-        const placed: Artifact = composedToArtifact(probe.data, earlier.length + 1, t);
-        setContents((list) => [...list, { artifact: placed, conversationId, afterMessageId, request: text }]);
-        setPanel({ id: placed.id, artifact: placed });
-        return;
-      }
-      // 204: the model judged this is not an artifact request, the chat answers. Anything else (the agents
-      // are down, no grounded draft): the old wording rules still catch an explicit "create a dashboard".
-      if (probe.status !== 204) {
-        const requested = artifactRequest(text, contents.filter((c) => c.conversationId === here).map((c) => c.artifact.kind));
-        if (requested) {
-          setBusy(false);
-          setPendingQuestion(null);
-          void createContent(requested, text, false);
-          return;
-        }
-      }
-    }
     const r = await api.ask(tenantId, {
       conversationId: current?.id ?? null,
       question: text,
@@ -328,6 +278,16 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     const fresh = [...r.data.conversation.messages].reverse().find((m) => m.role === "raffa");
     const drafted = fresh ? (fresh.payload?.draft ?? splitEmailDraft(fresh.markdown).draft) : null;
     if (fresh && drafted) setPanel({ id: fresh.id, draft: drafted });
+    // A dashboard / KPI set / brief the agents wrote for this turn (the model understood the request):
+    // it sits right after that reply and opens in the side panel.
+    if (fresh?.payload?.artifact) {
+      const conversationId = r.data.conversation.id;
+      const kind = fresh.payload.artifact.kind;
+      const version = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === kind).length + 1;
+      const placed = payloadToArtifact(fresh.payload.artifact, version, t);
+      setContents((list) => [...list, { artifact: placed, conversationId, afterMessageId: fresh.id, request: null }]);
+      setPanel({ id: placed.id, artifact: placed });
+    }
     void reloadLists();
     // The capability check may still be looking: its follow-up turn lands in the conversation shortly.
     if (r.data.capabilityCheck === "pending") {

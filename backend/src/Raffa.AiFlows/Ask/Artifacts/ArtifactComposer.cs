@@ -44,6 +44,9 @@ public sealed record ArtifactRequest(
 /// <summary><c>Draft</c> null = the model judged the message is not a request for an artifact (the chat answers it).
 public sealed record ArtifactResult(ArtifactDraft? Draft, string Kind, string? FocusSupplier, bool UsedPortfolio, bool UsedMarket);
 
+/// <summary>The scope the turn-understanding step resolved for an artifact request.</summary>
+public sealed record ArtifactScopeHint(string? Supplier, bool UsesPortfolio, bool UsesMarket, string Kind);
+
 internal sealed record ArtifactScopePlan(bool WantsArtifact, string? Supplier, bool UsesPortfolio, bool UsesMarket, string Kind);
 
 /// <summary>The composer agent's input: the user's request and the fact pack, all the figures it may use.</summary>
@@ -94,7 +97,9 @@ public sealed class ArtifactComposer(
     public static AgentDefinition Definition() =>
         AgentDefinition.ForOutput<ArtifactDraft>(ComposerName, ComposerVersion, ComposerPrompt, TimeSpan.FromSeconds(60), AgentFailurePolicy.Fail);
 
-    public async Task<ArtifactResult?> ComposeAsync(TenantId tenantId, ArtifactRequest request, CancellationToken cancellationToken)
+    /// <param name="hint">What the turn-understanding step already decided (kind, portfolio, market); null = this call plans it.</param>
+    public async Task<ArtifactResult?> ComposeAsync(
+        TenantId tenantId, ArtifactRequest request, CancellationToken cancellationToken, ArtifactScopeHint? hint = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         using var scope = tenantContext.BeginScope(tenantId);
@@ -108,7 +113,9 @@ public sealed class ArtifactComposer(
             : new Dictionary<EntityId, string>();
         string NameOf(PortfolioListItem i) => i.SupplierId is { } id && names.TryGetValue(new EntityId(id), out var n) ? n : "?";
 
-        var plan = await PlanScopeAsync(request, names.Values.Distinct().ToList(), cancellationToken).ConfigureAwait(false);
+        var plan = hint is not null
+            ? new ArtifactScopePlan(true, hint.Supplier is { } given ? names.Values.FirstOrDefault(n => string.Equals(n, given, StringComparison.OrdinalIgnoreCase)) : null, hint.UsesPortfolio, hint.UsesMarket, hint.Kind)
+            : await PlanScopeAsync(request, names.Values.Distinct().ToList(), cancellationToken).ConfigureAwait(false);
         if (plan is null)
         {
             return null;
@@ -306,4 +313,22 @@ internal sealed partial class GroundedFiguresVerifier : IStepVerifier<ArtifactCo
 
     [GeneratedRegex(@"\d+(?:[.,'’]\d+)*")]
     private static partial Regex NumberPattern();
+}
+
+/// <summary>Maps the composer's draft onto the reply payload the conversation stores and the client shows.</summary>
+public static class ArtifactPayloads
+{
+    public static Raffa.Chat.Application.Reply.ArtifactPayload From(ArtifactResult result, ArtifactDraft draft) => new(
+        result.Kind,
+        draft.Title,
+        draft.Subtitle,
+        result.FocusSupplier,
+        result.UsedPortfolio,
+        result.UsedMarket,
+        draft.Tiles.Select(t => new Raffa.Chat.Application.Reply.ArtifactTilePayload(t.Label, t.Value, t.Hint, t.Tone)).ToList(),
+        draft.Charts.Select(c => new Raffa.Chat.Application.Reply.ArtifactChartPayload(
+            c.Title, c.Items.Select(i => new Raffa.Chat.Application.Reply.ArtifactBarPayload(i.Label, i.Value, i.Display)).ToList())).ToList(),
+        draft.Tables.Select(t => new Raffa.Chat.Application.Reply.ArtifactTablePayload(
+            t.Title, t.Columns, t.Rows.Select(r => (IReadOnlyList<string>)r).ToList())).ToList(),
+        draft.Markdown);
 }

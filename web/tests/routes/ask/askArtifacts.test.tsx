@@ -67,7 +67,28 @@ function renderAsk(start: string, withSpend = false) {
       asked.push(body.question);
       const id = body.conversationId ?? "N";
       const before = store.get(id) ?? conversation(id, body.question, []);
-      const after = { ...before, messages: [...before.messages, message("you", body.question), message("raffa", `Answer to: ${body.question}`)] };
+      const wantsKpi = /\b(kpi)\b/i.test(body.question);
+      const wantsBoard = /dashboard/i.test(body.question);
+      const reply: ConversationMessage4 = wantsKpi || wantsBoard
+        ? {
+            ...message("raffa", `Prepared: ${body.question}`),
+            payload: {
+              artifact: {
+                kind: wantsKpi ? ("kpi" as const) : ("dashboard" as const),
+                title: wantsKpi ? "Contract KPIs" : "Contracts dashboard",
+                subtitle: "From the agents",
+                focusSupplier: "Salesforce",
+                usedPortfolio: false,
+                usedMarket: false,
+                tiles: [{ label: "Annual value", value: "CHF 120k", hint: "", tone: "" }],
+                charts: [],
+                tables: [],
+                markdown: "",
+              },
+            },
+          }
+        : message("raffa", `Answer to: ${body.question}`);
+      const after = { ...before, messages: [...before.messages, message("you", body.question), reply] };
       store.set(id, after);
       return json({ conversationId: id, needsContract: false, conversation: after, capabilityCheck: null });
     }
@@ -127,6 +148,7 @@ describe("Ask Raffa: what Raffa builds sits in its own conversation, at its own 
       "You: When is the Salesforce notice?",
       "Raffa.ai: By 1 December 2026.",
       "You: Crea una dashboard",
+      "Raffa.ai: Prepared: Crea una dashboard",
       "Raffa.ai: Contracts dashboardDashboard · Open",
       "You: And the GitLab notice?",
       "Raffa.ai: Answer to: And the GitLab notice?",
@@ -168,50 +190,29 @@ describe("Ask Raffa: what Raffa builds sits in its own conversation, at its own 
     await waitFor(() => expect(cards()).toHaveLength(0));
   });
 
-  it("answers a change to a KPI already built with its next version, not with text", async () => {
+  it("a second request for KPIs in the same conversation is the next version", async () => {
     const { asked } = renderAsk("/ask/A");
     expect(await screen.findByText("By 1 December 2026.")).toBeInTheDocument();
     await send("Fammi i KPI");
     await waitFor(() => expect(cards()).toHaveLength(1));
-
-    await send("visualizza il kpi per anno, voglio capire il trend");
+    await send("mostramelo con dei kpi per anno");
     await waitFor(() => expect(cards()).toHaveLength(2));
-    await send("crea una nuova versione del KPI");
-    await waitFor(() => expect(cards()).toHaveLength(3));
 
-    expect(asked).toEqual([]);
-    expect(thread().slice(-4)).toEqual([
-      "You: visualizza il kpi per anno, voglio capire il trend",
-      "Raffa.ai: Contract KPIsKPIs · Version 2 · Click to open",
-      "You: crea una nuova versione del KPI",
-      "Raffa.ai: Contract KPIsKPIs · Version 3 · Open",
-    ]);
-    expect(screen.getByRole("complementary", { name: "KPIs · Version 3" })).toBeInTheDocument();
+    // Every typed message goes to the server, where the model decides what it asks for.
+    expect(asked).toEqual(["Fammi i KPI", "mostramelo con dei kpi per anno"]);
+    expect(screen.getByRole("complementary", { name: "KPIs · Version 2" })).toBeInTheDocument();
   });
 });
 
 describe("Ask Raffa: KPIs and dashboards come from Spesa e risparmi", () => {
-  it("builds the KPIs on the spend report and a change of view is a real new version, linked to the page", async () => {
-    const { asked } = renderAsk("/ask/A", true);
-    expect(await screen.findByText("By 1 December 2026.")).toBeInTheDocument();
+  it("builds the KPIs of the button on the spend report, linked to the page", async () => {
+    renderAsk("/ask", true);
+    expect(await screen.findByText("What do you want to know or do?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Show the KPIs/ }));
 
-    await send("Fammi i KPI");
     const first = await screen.findByRole("complementary", { name: "KPIs" });
     expect(first.textContent).toContain("Spend FY 2026 · accrual");
     expect(first.textContent).toContain("CHF 190k");
     expect(screen.getByRole("link", { name: "Open in Spend and savings" }).getAttribute("href")).toBe("/savings");
-
-    await send("visualizza i KPI per trimestre, 2027, per cassa");
-    const second = await screen.findByRole("complementary", { name: "KPIs · Version 2" });
-    expect(second.textContent).toContain("Spend and savings by quarter");
-    expect(second.textContent).toContain("Q4 2027");
-    expect(second.textContent).not.toContain("Q4 2026");
-    expect(screen.getByRole("link", { name: "Open in Spend and savings" }).getAttribute("href")).toBe("/savings?view=quarter&year=2027&basis=cash");
-
-    // A change to that version keeps the quarters, the year and the basis it did not mention.
-    await send("modifica il KPI, solo impegnato");
-    await screen.findByRole("complementary", { name: "KPIs · Version 3" });
-    expect(screen.getByRole("link", { name: "Open in Spend and savings" }).getAttribute("href")).toBe("/savings?view=quarter&year=2027&basis=cash&include=committed");
-    expect(asked).toEqual([]);
   });
 });

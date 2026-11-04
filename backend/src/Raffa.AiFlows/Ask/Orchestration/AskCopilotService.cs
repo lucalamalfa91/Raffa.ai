@@ -206,7 +206,8 @@ public sealed class AskCopilotService(
     ITenantContext tenantContext,
     ContractContextReader? turnReads = null,
     TurnUnderstanding? understanding = null,
-    AskTurnOptions? turnOptions = null)
+    AskTurnOptions? turnOptions = null,
+    Raffa.AiFlows.Ask.Artifacts.ArtifactComposer? artifactComposer = null)
 {
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
@@ -327,6 +328,29 @@ public sealed class AskCopilotService(
                 else if (supplier is not null)
                 {
                     gate = gate with { NamedSupplier = supplier };
+                }
+
+                // A request to build a dashboard / KPIs / a brief: the artifact-composer agent writes it
+                // from this same understanding (no second model call to decide scope) and it travels in
+                // the reply payload. If the agents cannot deliver, the turn is answered in words as usual.
+                if (gate.Label == GateLabel.InDomain && understood.Artifact is { } artifactAsk && artifactComposer is not null)
+                {
+                    var composed = await artifactComposer
+                        .ComposeAsync(
+                            tenantId,
+                            new Raffa.AiFlows.Ask.Artifacts.ArtifactRequest(question, recentTurns, scopeContractId, (Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it")),
+                            cancellationToken,
+                            new Raffa.AiFlows.Ask.Artifacts.ArtifactScopeHint(supplier, artifactAsk.UsesPortfolio, artifactAsk.UsesMarket, artifactAsk.Kind))
+                        .ConfigureAwait(false);
+                    if (composed?.Draft is { } draft)
+                    {
+                        var ack = artifactAsk.Acknowledgement.Length > 0 ? artifactAsk.Acknowledgement : draft.Title;
+                        understandingReply = (new CopilotReply(
+                            ReplyKind.Answer, ack, [], [],
+                            new ReplyProvenance([], Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerName, Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerVersion, null),
+                            [],
+                            new ReplyPayload(Artifact: Raffa.AiFlows.Ask.Artifacts.ArtifactPayloads.From(composed, draft))), false, false);
+                    }
                 }
 
                 if (gate.Label == GateLabel.InDomain && understood.Intent is { } plannedIntent)
