@@ -256,7 +256,8 @@ public sealed partial class RenewalCaseService(
         }
 
         CaseQuestionAnswer? answer = null;
-        if (!CommandRegex().IsMatch(q))
+        var isCommand = CommandRegex().IsMatch(q);
+        if (!isCommand)
         {
             using var scope = tenantContext.BeginScope(tenantId);
             var contractId = await db.RenewalCases.Where(x => x.Id == new EntityId(caseId)).Select(x => (Guid?)x.ContractId.Value).FirstOrDefaultAsync(ct).ConfigureAwait(false);
@@ -270,7 +271,9 @@ public sealed partial class RenewalCaseService(
 
         return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (c, ctx, _) =>
         {
-            var list = new List<(string, CaseActionPayload)> { ("say", new CaseActionPayload { Text = CaseText.Of(q) }) };
+            // A command (approva, copia, …) is the engine's "say"; a free question is "ask": shown as
+            // the person's message and answered, never taken as the answer to an open interview question.
+            var list = new List<(string, CaseActionPayload)> { (isCommand ? "say" : "ask", new CaseActionPayload { Text = CaseText.Of(q) }) };
             if (answer is not null)
             {
                 list.Add(("answer", new CaseActionPayload

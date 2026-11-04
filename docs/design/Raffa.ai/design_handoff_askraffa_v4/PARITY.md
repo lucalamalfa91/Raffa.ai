@@ -64,10 +64,21 @@ The app differs from the prototype only by these rules. `web/parity/deviations.t
 
 | # | Rule | Why |
 |---|---|---|
-| D1 | Body text in **Inter** (`--font-body`); headings stay Archivo 800. | Archivo is hard to read at 10–13px. |
+| D1 | ~~Body text in **Inter** (`--font-body`); headings stay Archivo 800.~~ Superseded by D8. | Archivo is hard to read at 10–13px. |
 | D2 | Every font size up to 14px is **one pixel larger** (10→11 … 14→15, root 15px). | Readability, without changing the hierarchy. |
 | D3 | No page **max-width at or above 900px** (1100/1400/900): screens use the whole window, with or without the Guida Raffa panel. Text measures (`ch`) and small blocks (<900px) are kept. | Use the screen width; the layout organises better on large windows. |
 | D4 | A sixth tab, **Impostazioni** (company rules), after Chiedi. | The company writes the rules Raffa follows. The prototype has no such screen: the parity run hides the tab and compares the rest of the nav. |
 | D5 | Oggi shows a case step only when its notice deadline is within the **company's lead time** (default 120 days, set in Impostazioni). | A renewal 522 days away is not "today". The prototype lists every case: the parity run sets the lead time to its maximum (365 days) after each fixture reset, so the app lists the same items. |
 | D6 | At the right end of the nav: the **IT / EN switch** and the **account menu** (user, role, workspace, Workspace & members, Documents, Sign out). | The prototype's demo bar carried the language switch and has no sign-in. A real workspace needs both: the retired rail's footer functions come back here. The parity run hides them. |
 | D7 | The chat has the **right-hand action panel** (Ask: email drafts, dashboards, KPIs, documents; Pratica: the drafted email, with a one-line card in the step) and replies are formatted (headings, lists, source chips). | As in Claude's artifact panel and the chat before the restyle. The prototype shows the draft inline: the parity run keeps the inline copy and hides the card and the panel (`sessionStorage raffa4.parity`). |
+| D8 | One family, **IBM Plex Sans**, for headings and body (`--font-heading`, `--font-body`). Weight 800 becomes **700** for titles of 18px and up (`--weight-heading`) and **600** below (`--weight-title`: row names, tabs, buttons). Figures are tabular. | A more sober, professional face for an enterprise tool; tabular figures keep dates and amounts aligned in columns. `deviations.ts` applies the same font and weight rule to the prototype. |
+| D9 | Layout precision: (a) lists (Contratti, Rinnovi) are **data tables** with one header row and fixed column edges, figures right-aligned, the row action in its own column; (b) the Risultati headline numbers and KPIs are **one tile grid** (3 tiles of 2 columns over 6 of 1) with the same 20px padding; bar rows (per supplier, lever, proof) use fixed label / bar / figure columns; (c) the page's main action sits on the **title line**; (d) amounts from a million up read **CHF 1.2M** on every screen; (e) a contract without a notice date shows **Non indicata**, never "0 g"; (f) Documents and Workspace & members use the same 40px gutters as the other pages. | Columns, values and badges must not move from row to row whatever their content. Product owner's choice among mock-ups (options 1A, 2A, 3A, 4A). This changes the structure of Contratti, Rinnovi and Risultati, which no style rule can reproduce on the prototype: their golden shots no longer compare pixel for pixel and need a new baseline (see below). |
+
+### How the D9 screens are verified
+D9 changes the structure of 7 shots — `09-rinnovi-lista`, `10-contratti-lista`, `13-risultati-senza-obiettivo`, `14-risultati-obiettivo-bozza`, `15-risultati-obiettivo-attivo`, `16-chiedi-conversazioni` (intent tiles with even padding) and `19-rinnovi-con-dati` — so no style rule can make the prototype's pixels describe them. On those shots `app.parity.spec.ts` asserts the rules D9 exists for instead (`parity/alignment.ts`), at every viewport:
+- every cell of a table column starts and ends on the same x (header row included);
+- the KPI tiles of one row put their values, and their notes, on one line;
+- every bar of a bar chart starts and ends on the same x;
+- no text is cut (screen-reader-only labels excepted) and nothing scrolls sideways.
+
+The other 19 shots are still compared with the prototype pixel for pixel (with D2, D3 and D8 applied to it), and the click-path, the `data-screen-label` hooks, the copy and the geometry assertions apply to all 26.

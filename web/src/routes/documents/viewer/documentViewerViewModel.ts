@@ -1,4 +1,9 @@
 import type { Contract360ClauseBody } from "../../../api/client";
+import { translate, type Translate } from "../../../i18n/translate";
+
+/** English by default: the viewer passes its own `t`, so the same ids read in Italian (i18n/it/documents.ts).
+ * The exported copy constants below are message ids too: the viewer renders them with `t()`. */
+const EN: Translate = (id, vars) => translate("en", id, vars);
 
 /** First page of a document. Named so this folder never silently rewrites the asked page. */
 export const FIRST_PAGE = 1;
@@ -41,17 +46,20 @@ export function parsePositivePage(pageParam: string | null): number | null {
   return Number(pageParam);
 }
 
-export function formatBeyondCountCopy(pageCount: number): string {
-  return `This document has ${pageCount} pages.`;
+export function formatBeyondCountCopy(pageCount: number, t: Translate = EN): string {
+  // English reads "pages" for every count; Italian needs its own singular (the ⟦one⟧ note is never shown).
+  return pageCount === 1
+    ? t("This document has {n} pages.⟦one⟧", { n: pageCount })
+    : t("This document has {n} pages.", { n: pageCount });
 }
 
-export function formatPageNav(page: number, pageCount: number | null): string {
-  if (pageCount === null) return PAGE_NAV_TOTAL_UNKNOWN;
-  return `Page ${page} of ${pageCount}`;
+export function formatPageNav(page: number, pageCount: number | null, t: Translate = EN): string {
+  if (pageCount === null) return t(PAGE_NAV_TOTAL_UNKNOWN);
+  return t("Page {page} of {total}", { page, total: pageCount });
 }
 
-export function formatHighlightAffordance(page: number): string {
-  return `Page ${page} — the wording is highlighted below`;
+export function formatHighlightAffordance(page: number, t: Translate = EN): string {
+  return t("Page {page} — the wording is highlighted below", { page });
 }
 
 /**

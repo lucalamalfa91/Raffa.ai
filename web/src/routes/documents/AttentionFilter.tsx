@@ -2,6 +2,7 @@ import type { DocumentCountsBody } from "../../components/shell/useDocumentCount
 import { getFilterHint, type AttentionFilterValue } from "./documentTable";
 import { CopyTip } from "../../components/InfoTip";
 import { buildDocumentsFilterTip } from "../../components/infoTipCopy";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export interface AttentionFilterProps {
   value: AttentionFilterValue;
@@ -23,23 +24,24 @@ export interface AttentionFilterProps {
  * never sit under a chip reading 0).
  */
 export default function AttentionFilter({ value, onChange, counts }: AttentionFilterProps) {
+  const { t } = useI18n();
   return (
     <div className="documents-filter-row">
-      <div className="seg" role="group" aria-label="Filter documents">
+      <div className="seg" role="group" aria-label={t("Filter documents")}>
         <button type="button" aria-pressed={value === "attention"} onClick={() => onChange("attention")}>
-          Needs your attention · {counts.needsAttention}
+          {t("Needs your attention · {n}", { n: counts.needsAttention })}
         </button>
         <button type="button" aria-pressed={value === "all"} onClick={() => onChange("all")}>
-          All documents · {counts.all}
+          {t("All documents · {n}", { n: counts.all })}
         </button>
         {counts.rejected > 0 && (
           <button type="button" aria-pressed={value === "rejected"} onClick={() => onChange("rejected")}>
-            Not added · {counts.rejected}
+            {t("Not added · {n}", { n: counts.rejected })}
           </button>
         )}
       </div>
       <span className="micro-meta">
-        {getFilterHint(value)}
+        {getFilterHint(value, t)}
         <CopyTip tip={buildDocumentsFilterTip(counts.rejected > 0)} />
       </span>
     </div>

@@ -317,6 +317,10 @@ export interface TodayFeed {
   documents: { documentId: string; file: string; fieldsToCheck: number; ownerName: string | null; due: string | null }[];
   /** Informational, not an action: a contract that renewed by itself recently. */
   info?: TodayItem[];
+  /** The caller's own open-case steps beyond the company's lead time (Renewals: "Yours, later"). */
+  later?: TodayItem[];
+  /** Open renewal cases of the workspace (the Renewals board's own count). */
+  openCases?: number;
 }
 
 export interface RenewalsRow {
@@ -342,6 +346,8 @@ export interface RenewalsRow {
   /** The renewal already took effect (false: it will on `renewedOn`, the notice having passed). */
   renewedOnPassed?: boolean;
   end?: string | null;
+  /** The case's next step is beyond the company's lead time: not on Today yet. */
+  later?: boolean;
 }
 
 export interface RenewalsBoard {

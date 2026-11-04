@@ -10,7 +10,7 @@ for (const vp of VIEWPORTS) {
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1, locale: 'it-IT', reducedMotion: 'reduce' });
     const page: Page = await ctx.newPage();
     await page.addInitScript(() => { localStorage.setItem('raffa4.mode', 'zero'); localStorage.setItem('raffa4.lang', 'it'); });
-    await page.addInitScript(APPROVED_DEVIATIONS); // PARITY.md "Approved deviations" D1-D3
+    await page.addInitScript(APPROVED_DEVIATIONS); // PARITY.md "Approved deviations" D2, D3, D8
     await page.goto(URL);
     await stabilise(page);
     for (const s of [...FLOW_ZERO, ...FLOW_FULL]) {

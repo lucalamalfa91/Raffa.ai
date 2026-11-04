@@ -1,4 +1,8 @@
 import { useMemo, useState } from "react";
+import { translate, type Translate } from "../../i18n/translate";
+
+/** English by default; the pager passes the screen's `t`. */
+const EN: Translate = (id, vars) => translate("en", id, vars);
 
 /** Default visible rows on every main list table so the page stays short. */
 export const DEFAULT_TABLE_PAGE_SIZE = 10;
@@ -20,12 +24,17 @@ export function slicePage<T>(items: readonly T[], page: number, pageSize: number
   return items.slice(start, start + pageSize);
 }
 
-export function pagerRangeLabel(page: number, totalItems: number, pageSize: number = DEFAULT_TABLE_PAGE_SIZE): string {
-  if (totalItems <= 0) return "0 items";
+export function pagerRangeLabel(
+  page: number,
+  totalItems: number,
+  pageSize: number = DEFAULT_TABLE_PAGE_SIZE,
+  t: Translate = EN,
+): string {
+  if (totalItems <= 0) return t("0 items");
   const safe = clampPage(page, totalItems, pageSize);
   const start = (safe - 1) * pageSize + 1;
   const end = Math.min(safe * pageSize, totalItems);
-  return `${start}–${end} of ${totalItems}`;
+  return t("{start}–{end} of {total}", { start, end, total: totalItems });
 }
 
 /**

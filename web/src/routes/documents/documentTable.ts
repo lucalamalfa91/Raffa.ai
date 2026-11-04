@@ -1,5 +1,9 @@
 import type { AdmittedDocumentType, DocumentListItemBody, DocumentListPageBody } from "../../api/client";
 import { getStatusTag, type SemanticTag } from "../../styles/semantics";
+import { translate, type Translate } from "../../i18n/translate";
+
+/** English by default: the screens pass their own `t`, so the same ids read in Italian (i18n/it/documents.ts). */
+const EN: Translate = (id, vars) => translate("en", id, vars);
 
 /**
  * Pure view-model for the Documents V2 row grid (`raffa-v2/markup.html`'s `docRows`/`kbSummary`/
@@ -28,8 +32,8 @@ export const DOCUMENT_TYPE_LABEL: Record<AdmittedDocumentType, string> = {
   Other: "Other",
 };
 
-export function getDocumentTypeLabel(type: AdmittedDocumentType): string {
-  return DOCUMENT_TYPE_LABEL[type];
+export function getDocumentTypeLabel(type: AdmittedDocumentType, t: Translate = EN): string {
+  return t(DOCUMENT_TYPE_LABEL[type]);
 }
 
 /** Same fixed locale/UTC formatter V1 established (documentTable.ts's own prior header comment has
@@ -102,8 +106,9 @@ export function getRowStatus(processingStatus: DocumentListItemBody["processingS
  * Every `RowStatus` member is a real `DocumentStatus` value, `"rejected"` included since ADR-019
  * w15 clause 1 (`.tag-outline` "Not added" -- a decision about the file, never `failed`'s accent),
  * so there is no cast here any more and the switch there stays exhaustive under `tsc`. */
-export function getRowStatusTag(status: RowStatus | "not_uploaded"): SemanticTag {
-  return getStatusTag(status);
+export function getRowStatusTag(status: RowStatus | "not_uploaded", t: Translate = EN): SemanticTag {
+  const tag = getStatusTag(status);
+  return { ...tag, label: t(tag.label) };
 }
 
 /** Where a row's filename opens, for every `RowStatus` -- `null` only when there is genuinely
@@ -176,11 +181,11 @@ export function isStuckProcessing(
 
 /** Failed-row hint: the job's own `errorDetail` when the list carries one, otherwise the
  * historical "not linked" sentence. */
-export function getFailedHint(errorDetail: string | null | undefined): string {
+export function getFailedHint(errorDetail: string | null | undefined, t: Translate = EN): string {
   const detail = errorDetail?.trim();
-  if (!detail) return "Not yet linked to a contract";
+  if (!detail) return t("Not yet linked to a contract");
   // Raw payloads (JSON, exception text) are never shown: fall back to a designed sentence.
-  return /^[{[]|Exception|\bat \w+\./.test(detail) ? "Raffa.ai could not process this file. Try again." : detail;
+  return /^[{[]|Exception|\bat \w+\./.test(detail) ? t("Raffa.ai could not process this file. Try again.") : detail;
 }
 
 /**
@@ -191,10 +196,11 @@ export function getFailedHint(errorDetail: string | null | undefined): string {
  */
 export function getStageFailureHint(
   item: Pick<DocumentListItemBody, "processingStatus" | "weakFactCount" | "errorDetail">,
+  t: Translate = EN,
 ): string | null {
   if (getRowStatus(item.processingStatus) !== "needs_review" || item.weakFactCount > 0) return null;
   const detail = item.errorDetail?.trim();
-  return detail ? `One extraction step failed: ${detail}` : null;
+  return detail ? t("One extraction step failed: {detail}", { detail }) : null;
 }
 
 /**
@@ -210,18 +216,19 @@ export function getStageFailureHint(
  */
 export function getRowAction(
   item: Pick<DocumentListItemBody, "processingStatus" | "documentType" | "weakFactCount">,
+  t: Translate = EN,
 ): RowAction | null {
   const status = getRowStatus(item.processingStatus);
 
   if (item.documentType === "Quote" && (status === "completed" || status === "needs_review")) {
-    return { kind: "quote", label: "Open Quote check" };
+    return { kind: "quote", label: t("Open Quote check") };
   }
   if (status === "needs_review") {
     const n = item.weakFactCount;
-    return { kind: "review", label: `Review ${n} field${n === 1 ? "" : "s"}` };
+    return { kind: "review", label: n === 1 ? t("Review {n} field", { n }) : t("Review {n} fields", { n }) };
   }
   if (status === "completed") {
-    return { kind: "ask", label: "Ask about it" };
+    return { kind: "ask", label: t("Ask about it") };
   }
   return null;
 }
@@ -266,21 +273,21 @@ export type DocumentCountsBody = DocumentListPageBody["counts"];
  * contract-level number the shell already carries (`contractCount`), and `Completed` documents
  * counted over one page never were it (ADR-027 §C5). Each segment reads exactly one member; none
  * is computed from another (§C9.1). */
-export function buildKbSummary(counts: DocumentCountsBody): string {
-  const base = `${counts.all} document${counts.all === 1 ? "" : "s"}`;
-  return counts.needsReview > 0 ? `${base} · ${counts.needsReview} waiting for your review` : base;
+export function buildKbSummary(counts: DocumentCountsBody, t: Translate = EN): string {
+  const base = counts.all === 1 ? t("{n} document", { n: counts.all }) : t("{n} documents", { n: counts.all });
+  return counts.needsReview > 0 ? t("{base} · {n} waiting for your review", { base, n: counts.needsReview }) : base;
 }
 
 /** The chip hints. The `attention` hint is `raffa-v2/app.jsx`'s own `filterHint`, verbatim; the
  * `all` hint says what "All documents" counts -- everything Raffa.ai keeps -- and the third chip's
  * says why its rows are nowhere else (ADR-020 w15 §1.5). */
-export function getFilterHint(filter: AttentionFilterValue): string {
+export function getFilterHint(filter: AttentionFilterValue, t: Translate = EN): string {
   switch (filter) {
     case "attention":
-      return "Completed documents are hidden — they are already askable.";
+      return t("Completed documents are hidden — they are already askable.");
     case "all":
-      return "Everything Raffa.ai keeps, including validated documents.";
+      return t("Everything Raffa.ai keeps, including validated documents.");
     case "rejected":
-      return "Files Raffa.ai did not keep — never counted, never askable.";
+      return t("Files Raffa.ai did not keep — never counted, never askable.");
   }
 }

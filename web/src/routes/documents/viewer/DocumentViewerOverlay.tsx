@@ -17,6 +17,7 @@ import {
   parseDocumentViewerHref,
   type DocumentViewerTarget,
 } from "./documentViewerViewModel";
+import { useI18n } from "../../../i18n/I18nProvider";
 
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -93,6 +94,7 @@ function DocumentViewerDialog({
   onPageChange,
   onClose,
 }: DocumentViewerDialogProps) {
+  const { t } = useI18n();
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -147,7 +149,7 @@ function DocumentViewerDialog({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Document viewer"
+        aria-label={t("Document viewer")}
         className="document-viewer-dialog"
         tabIndex={-1}
         data-testid="document-viewer-dialog"
@@ -157,10 +159,10 @@ function DocumentViewerDialog({
             type="button"
             className="btn btn-ghost"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("Close")}
             data-document-viewer-close=""
           >
-            Close
+            {t("Close")}
           </button>
         </div>
         <DocumentViewer

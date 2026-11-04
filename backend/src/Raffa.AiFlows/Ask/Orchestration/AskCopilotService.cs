@@ -337,6 +337,17 @@ public sealed class AskCopilotService(
                 NamedSupplier = scopedSupplierName,
             };
         }
+        else if (scopedContractItem is not null && gate.Label is GateLabel.NeedsDocument)
+        {
+            // The bound contract is on file even when its supplier has no resolved name yet: the
+            // chat must never be told that the contract it was opened from "has not been uploaded".
+            // InDomainTurnPlanner scopes the turn by the contract id, not by the name.
+            gate = gate with
+            {
+                Label = GateLabel.InDomain,
+                Reason = "scoped entry resolved to a visible contract with no supplier name yet; the scope id decides (ADR-024).",
+            };
+        }
 
         // ADR-031 / INV-02: Raffa's own judgement on whether this turn asks for an operation nothing
         // in Raffa performs. It runs beside the answer, never in front of it, and since decision D3

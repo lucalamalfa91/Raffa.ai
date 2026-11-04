@@ -23,7 +23,7 @@
 }
 .o4-zero-head {
   font-family: var(--font-heading);
-  font-weight: 800;
+  font-weight: var(--weight-heading);
   font-size: 28px;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -75,10 +75,10 @@
   text-transform: uppercase;
   color: var(--color-neutral-600);
 }
-.o4-kicker-n { color: var(--color-accent-700); font-weight: 800; }
+.o4-kicker-n { color: var(--color-accent-700); font-weight: var(--weight-title); }
 .o4-supplier {
   font-family: var(--font-heading);
-  font-weight: 800;
+  font-weight: var(--weight-heading);
   font-size: 30px;
   line-height: 1.05;
   letter-spacing: -0.02em;
@@ -127,7 +127,7 @@
   font-size: 14px;
 }
 .o4-row.is-team { color: var(--color-neutral-700); }
-.o4-row-sup { font-family: var(--font-heading); font-weight: 800; font-size: 15px; flex: 0 0 100px; color: var(--color-text); }
+.o4-row-sup { font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 15px; flex: 0 0 100px; color: var(--color-text); }
 .o4-row-title { flex: 1; min-width: 0; text-wrap: pretty; }
 .o4-row-days { font-weight: 600; white-space: nowrap; }
 .o4-row-days.is-urgent { color: var(--color-accent); }
@@ -136,7 +136,7 @@
 
 /* — calm state — */
 .o4-calm { border-top: 2px solid var(--color-text); margin-top: 24px; padding-top: 20px; max-width: 640px; }
-.o4-calm-head { font-family: var(--font-heading); font-weight: 800; font-size: 24px; line-height: 1.15; }
+.o4-calm-head { font-family: var(--font-heading); font-weight: var(--weight-heading); font-size: 24px; line-height: 1.15; }
 .o4-calm-line { font-size: 15px; color: var(--color-neutral-700); margin-top: 8px; text-wrap: pretty; }
 .o4-calm-actions { display: flex; gap: 10px; margin-top: 16px; }
 
@@ -166,3 +166,8 @@
 .o4-info-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .o4-snoozed-row .o4-info-title { color: var(--color-neutral-900); font-weight: 600; }
 .o4-snoozed-row .o4-info-why { color: var(--color-neutral-600); font-size: 13px; line-height: 1.45; }
+
+/* Phone width (D9): the same 16px gutter as the nav. */
+@media (max-width: 700px) {
+  .o4-page { padding-left: 16px; padding-right: 16px; }
+}

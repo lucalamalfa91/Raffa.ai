@@ -5,14 +5,28 @@ using Raffa.Documents.Contracts.Domain;
 using Raffa.Documents.Contracts.Infrastructure;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Contracts;
+using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 
 namespace Raffa.Documents.Contracts.Application.Facts;
 
 /// <summary><see cref="IContractFactsReader"/> over <c>contract_facts</c> (tenant-scoped, RLS). When a
 /// contract has a current <c>contract_term_version</c> (a renewal closed as renewed), its dates,
-/// notice and spend replace the ones read at validation (the prototype's <c>eff(id)</c>).</summary>
-public sealed class ContractFactsReader(DocumentsContractsDbContext dbContext, ITenantContext tenantContext, IClock clock)
+/// notice and spend replace the ones read at validation (the prototype's <c>eff(id)</c>).
+///
+/// <para><b>Which contracts are validated.</b> The one definition the workspace picker, the rail badges
+/// and Ask's retrieval already use (<c>PortfolioQueryService.CountValidatedContractsAsync</c>, README):
+/// a contract with a linked document in <c>Completed</c>. <c>contract_facts</c> is the projection those
+/// contracts are read from, not a second definition: a contract whose document completed without the v4
+/// review (a clean extraction, the nothing-to-review sweep, the legacy "Mark as validated", or before
+/// <c>contract_facts</c> existed) gets its facts projected here and stored; a facts row whose contract no
+/// longer has a completed document is not listed. Contracts, Results, Renewals and the picker then count
+/// the same contracts.</para></summary>
+public sealed class ContractFactsReader(
+    DocumentsContractsDbContext dbContext,
+    ITenantContext tenantContext,
+    IClock clock,
+    ISupplierNameLookup? supplierNameLookup = null)
     : IContractFactsReader
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -21,10 +35,8 @@ public sealed class ContractFactsReader(DocumentsContractsDbContext dbContext, I
         TenantId tenantId, CancellationToken cancellationToken = default)
     {
         using var _ = tenantContext.BeginScope(tenantId);
-        var rows = await dbContext.ContractFacts.AsNoTracking()
-            .Where(f => f.TenantId == tenantId && f.ValidatedAt != null)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+        var validated = await ValidatedContractIdsAsync(tenantId, null, cancellationToken).ConfigureAwait(false);
+        var rows = await EnsureFactsAsync(tenantId, validated, cancellationToken).ConfigureAwait(false);
         var versions = await CurrentVersionsAsync(tenantId, rows.Select(r => r.ContractId).ToList(), cancellationToken)
             .ConfigureAwait(false);
 
@@ -46,6 +58,16 @@ public sealed class ContractFactsReader(DocumentsContractsDbContext dbContext, I
             .Where(f => f.TenantId == tenantId && f.ContractId == contractId)
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
+        if (row is null || row.ValidatedAt is null)
+        {
+            // A contract validated without the v4 review has no facts row yet: project it, so Contract 360
+            // opens for every contract the picker counts.
+            var validated = await ValidatedContractIdsAsync(tenantId, contractId, cancellationToken).ConfigureAwait(false);
+            row = validated.Count == 0
+                ? row
+                : (await EnsureFactsAsync(tenantId, validated, cancellationToken).ConfigureAwait(false)).SingleOrDefault() ?? row;
+        }
+
         if (row is null)
         {
             return null;
@@ -122,6 +144,113 @@ public sealed class ContractFactsReader(DocumentsContractsDbContext dbContext, I
 
     private sealed record CitedField(Guid ContractId, string FieldName, int? SourcePage, string? SourceSpan, DateTimeOffset CreatedAt);
 
+    /// <summary>The contracts with a linked <c>Completed</c> document — the same predicate as
+    /// <c>PortfolioQueryService.CountValidatedContractsAsync</c> — optionally narrowed to one.</summary>
+    private Task<List<EntityId>> ValidatedContractIdsAsync(TenantId tenantId, EntityId? only, CancellationToken cancellationToken)
+    {
+        var contracts = dbContext.Contracts.AsNoTracking().Where(c => c.TenantId == tenantId);
+        if (only is { } id)
+        {
+            contracts = contracts.Where(c => c.Id == id);
+        }
+
+        return contracts
+            .Where(c => dbContext.Documents.Any(d =>
+                d.TenantId == tenantId
+                && d.ContractId.HasValue
+                && d.ContractId.Value == c.Id
+                && d.ProcessingStatus == DocumentProcessingStatus.Completed))
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The validated facts rows of <paramref name="validated"/>, projecting and storing the ones that are
+    /// missing (or were written before validation) from the contract's latest completed document. A row
+    /// another request inserted first wins; the projection is then read back instead of failing.
+    /// </summary>
+    private async Task<List<ContractFactsRecord>> EnsureFactsAsync(
+        TenantId tenantId, IReadOnlyCollection<EntityId> validated, CancellationToken cancellationToken)
+    {
+        if (validated.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = validated.ToList();
+        var rows = await dbContext.ContractFacts.AsNoTracking()
+            .Where(f => f.TenantId == tenantId && ids.Contains(f.ContractId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var missing = ids.Where(id => !rows.Any(r => r.ContractId == id && r.ValidatedAt != null)).ToList();
+        if (missing.Count == 0)
+        {
+            return rows;
+        }
+
+        // Document.ContractId is nullable: the list is too, so both sides use the same converter (the
+        // pattern EmbeddingRetrievalService documents for the identical Npgsql array-converter limit).
+        var missingNullable = missing.ConvertAll(id => (EntityId?)id);
+        var documents = await dbContext.Documents.AsNoTracking()
+            .Where(d => d.TenantId == tenantId && missingNullable.Contains(d.ContractId)
+                && d.ProcessingStatus == DocumentProcessingStatus.Completed)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var projector = new ContractFactsProjector(dbContext, clock, supplierNameLookup);
+        var now = clock.UtcNow;
+        foreach (var contractId in missing)
+        {
+            var document = documents.Where(d => d.ContractId == contractId).OrderByDescending(d => d.CreatedAt).FirstOrDefault();
+            if (document is null)
+            {
+                continue;
+            }
+
+            var existing = await dbContext.ContractFacts
+                .SingleOrDefaultAsync(f => f.TenantId == tenantId && f.ContractId == contractId, cancellationToken)
+                .ConfigureAwait(false);
+            // A fixture contract's curated facts are kept as they are; only their validation is recorded.
+            var stored = existing is null ? null : JsonSerializer.Deserialize<ContractFacts>(existing.Facts, Json);
+            var facts = stored?.FixtureId is not null
+                ? stored
+                : await projector.BuildAsync(tenantId, contractId, document, cancellationToken).ConfigureAwait(false);
+            var json = Serialize(facts with { ValidatedAt = now });
+            if (existing is null)
+            {
+                existing = new ContractFactsRecord { TenantId = tenantId, ContractId = contractId, Facts = json, ValidatedAt = now, UpdatedAt = now };
+                dbContext.ContractFacts.Add(existing);
+            }
+            else
+            {
+                existing.Facts = json;
+                existing.ValidatedAt = now;
+                existing.UpdatedAt = now;
+            }
+
+            try
+            {
+                await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (DbUpdateException)
+            {
+                // Another request projected the same contract first (unique tenant + contract): keep theirs.
+                dbContext.Entry(existing).State = EntityState.Detached;
+                existing = await dbContext.ContractFacts.AsNoTracking()
+                    .SingleOrDefaultAsync(f => f.TenantId == tenantId && f.ContractId == contractId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (existing is null)
+                {
+                    continue;
+                }
+            }
+
+            rows.RemoveAll(r => r.ContractId == contractId);
+            rows.Add(existing);
+        }
+
+        return rows.Where(r => r.ValidatedAt != null).ToList();
+    }
+
     public static string Serialize(ContractFacts facts) => JsonSerializer.Serialize(facts, Json);
 
     /// <summary>"18 Oct 2026" — the display form the facts carry.</summary>
@@ -178,9 +307,9 @@ public sealed class ContractFactsReader(DocumentsContractsDbContext dbContext, I
     /// <summary>The row's own columns win over what the JSON says (one source of truth for the
     /// id and the validation state).</summary>
     private static ContractFacts Deserialize(string json, EntityId contractId, DateTimeOffset? validatedAt) =>
-        (JsonSerializer.Deserialize<ContractFacts>(json, Json) ?? new ContractFacts()) with
+        ContractDisplayName.Normalize((JsonSerializer.Deserialize<ContractFacts>(json, Json) ?? new ContractFacts()) with
         {
             ContractId = contractId.Value,
             ValidatedAt = validatedAt,
-        };
+        });
 }

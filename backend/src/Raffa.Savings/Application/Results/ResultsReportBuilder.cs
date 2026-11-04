@@ -218,7 +218,7 @@ public static class ResultsReportBuilder
             maxBy,
             levers.OrderByDescending(l => l.Amount).Select(l => new ResultsLever(l.Kind, l.Count, l.Amount)).ToList(),
             negotiated.Select(r => new ResultsProof(r.Id, r.Supplier, r.Amount, r.RealizedAmount)).ToList(),
-            open.OrderBy(o => o.Days).ToList(),
+            open.OrderBy(o => o.NoticeDeadline is null).ThenBy(o => o.Days).ToList(), // no notice date: last, not "0 days"
             negotiated.Select(r => new ResultsContractualRow(
                 r.Id, r.SignedOn, r.Supplier, r.Kind, r.Note, r.Baseline, r.Period, r.Method, r.Evidence,
                 r.Amount, r.Proof is not null, r.RealizedAmount, r.Proof)).ToList(),

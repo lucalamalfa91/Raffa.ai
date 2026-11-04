@@ -90,11 +90,14 @@
   /* ---------------------------------------------------------------------
    * Typography
    * ------------------------------------------------------------------- */
-  --font-heading: "Archivo", system-ui, sans-serif;
-  --font-body: "Archivo", system-ui, sans-serif;
+  /* Approved deviation D8 (PARITY.md): one family, IBM Plex Sans, for headings and body;
+     headings 700 (was Archivo 800), small titles/labels/buttons/tabs 600. */
+  --font-heading: "IBM Plex Sans", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, system-ui, sans-serif;
   --weight-body: 400;
   --weight-body-strong: 600;
-  --weight-heading: 800;
+  --weight-heading: 700; /* titles 18px and up, KPI values */
+  --weight-title: 600; /* small titles, row names, tabs, buttons */
   --leading-display: 1.12; /* screen title / KPI / key-fact numbers */
   --leading-label: 1.2; /* buttons, tags, kickers, table headers */
   --leading-body: 1.55; /* reading copy */

@@ -28,7 +28,7 @@
 .st-side { display: flex; flex-direction: column; gap: 24px; }
 .st-card, .st-proposal { border-top: 2px solid var(--color-text); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 .st-proposal { margin-top: 28px; }
-.v4 h3.st-h { font-family: var(--font-heading); font-weight: 800; font-size: 18px; margin: 0; }
+.v4 h3.st-h { font-family: var(--font-heading); font-weight: var(--weight-heading); font-size: 18px; margin: 0; }
 .st-p { margin: 0; font-size: 14px; color: var(--color-neutral-700); text-wrap: pretty; }
 .st-status { font-size: 13px; color: var(--color-neutral-600); margin: 4px 0 14px; }
 .st-label { display: block; font-size: 13px; color: var(--color-neutral-700); margin-bottom: 5px; }
@@ -64,6 +64,9 @@
   overflow-y: auto;
 }
 @media (max-width: 900px) {
-  .st-page { padding: 24px 16px 40px; }
   .st-grid { grid-template-columns: minmax(0, 1fr); }
+}
+/* Phone width (D9): the same 16px gutter as the nav. */
+@media (max-width: 700px) {
+  .st-page { padding: 24px 16px 40px; }
 }

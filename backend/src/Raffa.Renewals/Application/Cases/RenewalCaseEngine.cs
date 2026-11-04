@@ -1276,6 +1276,19 @@ public static partial class RenewalCaseEngine
                 break;
             case "say":
                 return SayAction(c, ctx, p, v);
+            case "ask":
+            {
+                // A free question from the case composer: the person's own message, answered by the
+                // "answer" action that follows it. Never an interview answer and never a command —
+                // those are "say" — so asking about the SLA during the interview cannot become a goal.
+                if (p.Text is { } qt && qt.Render().Trim().Length > 0)
+                {
+                    UserSays(c, ctx, v, qt);
+                }
+
+                break;
+            }
+
             case "note":
             {
                 var nt = (p.Text?.Render() ?? string.Empty).Trim();

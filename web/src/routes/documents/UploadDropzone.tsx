@@ -3,6 +3,7 @@ import { ACCEPTED_EXTENSIONS } from "./uploadPipeline";
 import { SAMPLE_DOCUMENTS, type SampleDocumentKey } from "./sampleDocument";
 import { CopyTip } from "../../components/InfoTip";
 import { TIPS } from "../../components/infoTipCopy";
+import { useI18n } from "../../i18n/I18nProvider";
 
 export interface UploadDropzoneProps {
   /** `"onboarding"` (bigger box, `raffa-v2/markup.html` `docsEmpty`) vs `"list"` (compact inline
@@ -29,6 +30,7 @@ export interface UploadDropzoneProps {
  * wherever the dropzone sits.
  */
 export default function UploadDropzone({ variant, onFilesSelected, onUseSampleFile }: UploadDropzoneProps) {
+  const { t } = useI18n();
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -62,26 +64,26 @@ export default function UploadDropzone({ variant, onFilesSelected, onUseSampleFi
           event.target.value = "";
         }}
         className="upload-dropzone-file-input"
-        aria-label="Choose contract files from your computer"
+        aria-label={t("Choose contract files from your computer")}
       />
       <button type="button" className="btn btn-primary" onClick={() => inputRef.current?.click()}>
-        Upload contracts
+        {t("Upload contracts")}
       </button>
       <span className="upload-dropzone-hint">
-        {variant === "onboarding" ? "or drop files anywhere in this box" : "or drop PDF · DOCX · XLSX · PNG · JPG here — you can leave while they process"}
+        {variant === "onboarding" ? t("or drop files anywhere in this box") : t("or drop PDF · DOCX · XLSX · PNG · JPG here — you can leave while they process")}
         {variant === "list" && <CopyTip tip={TIPS.documentsUpload} />}
       </span>
-      <div className="upload-dropzone-samples" role="group" aria-label="Sample contracts">
-        {variant === "onboarding" && <span className="micro-meta">Or try a sample:</span>}
+      <div className="upload-dropzone-samples" role="group" aria-label={t("Sample contracts")}>
+        {variant === "onboarding" && <span className="micro-meta">{t("Or try a sample:")}</span>}
         {SAMPLE_DOCUMENTS.map((sample) => (
           <button
             key={sample.key}
             type="button"
             className="btn btn-ghost upload-dropzone-sample"
-            title={sample.description}
+            title={t(sample.description)}
             onClick={() => onUseSampleFile(sample.key)}
           >
-            {sample.label}
+            {t(sample.label)}
           </button>
         ))}
       </div>
@@ -97,16 +99,16 @@ export default function UploadDropzone({ variant, onFilesSelected, onUseSampleFi
       {dropTarget}
       <div className="upload-strip">
         <div className="upload-strip-cell">
-          <div className="upload-strip-kicker">Formats</div>
+          <div className="upload-strip-kicker">{t("Formats")}</div>
           <div className="upload-strip-value">PDF · DOCX · XLSX · PNG · JPG</div>
         </div>
         <div className="upload-strip-cell">
-          <div className="upload-strip-kicker">Max size</div>
-          <div className="upload-strip-value">50 MB / file</div>
+          <div className="upload-strip-kicker">{t("Max size")}</div>
+          <div className="upload-strip-value">{t("50 MB / file")}</div>
         </div>
         <div className="upload-strip-cell">
-          <div className="upload-strip-kicker">Up to</div>
-          <div className="upload-strip-value">20 files at once</div>
+          <div className="upload-strip-kicker">{t("Up to")}</div>
+          <div className="upload-strip-value">{t("20 files at once")}</div>
         </div>
       </div>
     </div>

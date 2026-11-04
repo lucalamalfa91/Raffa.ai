@@ -38,6 +38,15 @@ public static partial class ContractFactsAnswerer
         {
             var src = d.Push.FirstOrDefault(x => x.Topic.Contains("renew", StringComparison.OrdinalIgnoreCase))?.Source
                 ?? (en ? "contract" : "contratto");
+            if (c.NoticeDeadline is null && string.IsNullOrWhiteSpace(c.Cancel))
+            {
+                // No notice date was read from the contract: say so, never "0 days left" (CancelDays is 0 by default).
+                var unknown = en
+                    ? $"The validated fields of {c.Supplier} carry no notice deadline. Check the renewal clause in the contract before relying on a date."
+                    : $"Nei campi validati di {c.Supplier} non c’è una scadenza di disdetta. Verifica la clausola di rinnovo nel contratto prima di contare su una data.";
+                return A(unknown, en ? "validated fields" : "campi validati");
+            }
+
             var body = en
                 ? $"Written notice by {c.Cancel} — {c.Notice} days before the end on {c.End}. {cancelDays} days left. " +
                   (c.Auto == "Yes" ? "Without notice it renews for 12 months." : "No auto-renewal.")

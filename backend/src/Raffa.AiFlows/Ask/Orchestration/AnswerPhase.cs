@@ -147,6 +147,30 @@ public sealed class AnswerPhase(
         var proposal = (lead ?? string.Empty) +
             HelpfulFallbackAnswer.Proposal(question, AbstainRecovery.ProposalArea(question, plan.Intent), emptyWorkspace: portfolio.Items.Count == 0);
 
+        // A chat bound to one contract answers from that contract's own sources (ScopedSources). A
+        // pack whose contract sources all belong to other contracts never reaches the model: the
+        // answer would describe another supplier's contract under this contract's label. Only a turn
+        // the planner actually bound to that contract: PortfolioMarketPosition stays portfolio-wide
+        // in a bound chat by design (InDomainTurnPlanner, lock 4) and has no named contract.
+        var scopeContractId = namedContractItem is not null && turn.Scope.ScopeContractId?.Value == namedContractItem.ContractId
+            ? namedContractItem.ContractId
+            : (Guid?)null;
+        async Task<string> ScopedProposalAsync()
+        {
+            var scopedSupplier = namedContractItem is not null
+                ? await context.ResolveDisplayNameAsync(namedContractItem, cancellationToken).ConfigureAwait(false)
+                : null;
+            return ScopedSources.OtherSourcesLead(scopedSupplier, italianQuestion) +
+                HelpfulFallbackAnswer.Proposal(question, AbstainRecovery.ProposalArea(question, plan.Intent), emptyWorkspace: portfolio.Items.Count == 0);
+        }
+
+        if (scopeContractId is { } packScope && boundedPack.Count > 0 && !ScopedSources.PackCanGround(boundedPack, packScope))
+        {
+            return (new CopilotReply(
+                ReplyKind.Abstain, await ScopedProposalAsync().ConfigureAwait(false), [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps),
+                true, false);
+        }
+
         if (boundedPack.Count == 0)
         {
             // ADR-027 §D8 (task E16/F02/US03/T01): no number here. `portfolio.Items.Count` is the
@@ -248,6 +272,23 @@ public sealed class AnswerPhase(
                     new ReplyProvenance([], result.Metadata.ModelId, result.Metadata.PromptVersion, result.Metadata.InputHash),
                     recoveryFollowUps),
                 composed.Value.GuardIntervened,
+                composed.Value.FallbackUsed);
+        }
+
+        // The same rule on what the model actually cited: an answer in a bound chat that rests only
+        // on other suppliers' material (a peer contract, a market note about another product) is
+        // not shown as an answer about this contract.
+        if (scopeContractId is { } citeScope && !ScopedSources.CitationsBelong(result.CitationKeys ?? [], boundedPack, citeScope))
+        {
+            return (
+                new CopilotReply(
+                    ReplyKind.Abstain,
+                    await ScopedProposalAsync().ConfigureAwait(false),
+                    [],
+                    recoveryActions,
+                    new ReplyProvenance([], result.Metadata.ModelId, result.Metadata.PromptVersion, result.Metadata.InputHash),
+                    recoveryFollowUps),
+                true,
                 composed.Value.FallbackUsed);
         }
 

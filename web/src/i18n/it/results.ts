@@ -163,4 +163,5 @@ export const IT_RESULTS: Readonly<Record<string, string>> = {
     "Ogni target fissato in una pratica si somma qui; conta davvero solo alla firma.",
   "Open the first contract": "Apri il primo contratto",
   "notice passed": "disdetta passata",
+  "No notice date": "Disdetta non indicata",
 };

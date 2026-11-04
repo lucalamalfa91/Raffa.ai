@@ -3407,7 +3407,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "'v4' returns the AskRaffa 4.0 Renewals board instead: {viewer, groups[{key,label,items[RenewalsRow]}], openCases, toStart, empty, assignee} (RenewalCasesEndpointExtensions.BoardAsync)."
+            "description": "'v4' returns the AskRaffa 4.0 Renewals board instead: {viewer, groups[{key,label,items[RenewalsRow]}] (keys: mine, mineLater, team, supplier, start, closed, expired; RenewalsRow.later marks a step beyond the company lead time), openCases, toStart, empty, assignee} (RenewalCasesEndpointExtensions.BoardAsync)."
           }
         ],
         "responses": {
@@ -12455,7 +12455,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[]}."
+                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[], info[], later[] (the caller's own case steps beyond the company lead time), openCases}."
                 }
               }
             }
@@ -12510,7 +12510,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[]}."
+                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[], info[], later[] (the caller's own case steps beyond the company lead time), openCases}."
                 }
               }
             }
@@ -12575,7 +12575,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[]}."
+                  "description": "TodayFeed: {viewer{userId,name,title,isApprover,date}, emptyWorkspace, mine[], waiting[], snoozed[] (TodayItem: key, kind, caseId, contractId, quoteId, documentId, supplier, contract, title, why, due, dueDays, dueLabel, stage, stageLabel, who, stalled), nextDeadline{supplier,date,days}, assignee{userId,name}, documents[], info[], later[] (the caller's own case steps beyond the company lead time), openCases}."
                 }
               }
             }

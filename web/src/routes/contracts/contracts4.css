@@ -17,36 +17,17 @@
 .v4 .c4-page h2 { margin: 0; }
 .v4 .c4-page h6 { margin-bottom: 4px; }
 
-/* — Contratti — */
-.c4-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
-.v4 .c4-head h2 { margin: 0 0 4px; }
-.c4-head-sub { font-size: 14px; color: var(--color-neutral-700); }
+/* — Contratti — a data table (D9, ds-modernist.css `.dt`): one header row, fixed column edges — */
+.v4 .c4-head { margin-bottom: 20px; }
 .v4 .btn.c4-upload { font-size: 14px; }
 .c4-banner {
-  margin-top: 16px; border-left: 2px solid var(--color-accent); background: var(--color-accent-100);
+  margin-bottom: 16px; border-left: 2px solid var(--color-accent); background: var(--color-accent-100);
   padding: 10px 14px; font-size: 14px; display: flex; gap: 12px; align-items: center;
 }
 .c4-banner-cta { margin-left: auto; font-weight: 600; color: var(--color-accent-700); }
-.c4-rows { margin-top: 18px; border-top: 2px solid var(--color-text); }
+.c4-rows { --dt-cols: minmax(200px, 3fr) minmax(112px, 1fr) minmax(52px, 0.5fr) minmax(112px, 1fr) minmax(96px, 1fr) minmax(128px, 1fr); }
+.c4-rows.has-actions { --dt-cols: minmax(200px, 3fr) minmax(112px, 1fr) minmax(52px, 0.5fr) minmax(112px, 1fr) minmax(96px, 1fr) minmax(128px, 1fr) 72px; }
 .c4-empty { padding: 24px 0; font-size: 15px; color: var(--color-neutral-700); max-width: 60ch; text-wrap: pretty; }
-.c4-row {
-  display: grid; gap: 12px 24px; align-items: center;
-  grid-template-columns: minmax(0, 1fr) 250px 150px 90px 130px;
-  min-height: 70px; box-sizing: border-box;
-  padding: 22px 8px 14px 0; border-bottom: 1px solid var(--color-divider);
-}
-@media (max-width: 900px) { .c4-row { grid-template-columns: minmax(0, 1fr) 1fr; } }
-.c4-row-main { min-width: 0; }
-.c4-row-name { overflow-wrap: anywhere; }
-.c4-row > .tag { justify-self: end; white-space: nowrap; }
-.c4-row-supplier { font-family: var(--font-heading); font-weight: 800; font-size: 18px; line-height: 1.1; }
-.c4-row-name { font-size: 13px; color: var(--color-neutral-600); margin-top: 2px; }
-.c4-row-notice { min-width: 0; }
-.c4-row-notice-value { font-size: 14px; font-weight: 700; }
-.c4-row-renewed { font-size: 12px; color: var(--color-neutral-600); margin-top: 2px; }
-.c4-row-end { min-width: 0; }
-.c4-row-end-value { font-size: 14px; }
-.c4-row-spend { text-align: right; font-weight: 600; white-space: nowrap; }
 .v4 .tag.c4-tag { padding: 2px 8px; font-size: 11px; }
 
 /* — Contratto — */
@@ -58,9 +39,10 @@
   border-bottom: 1px solid var(--color-divider); margin-top: 18px;
 }
 .c4-date { background: #fff; padding: 16px 20px; display: flex; flex-direction: column; justify-content: flex-start; min-width: 0; }
-.c4-date-value { font-family: var(--font-heading); font-weight: 800; font-size: 19px; line-height: 1.1; margin-top: 4px; }
+.c4-date-value { font-family: var(--font-heading); font-weight: var(--weight-heading); font-size: 19px; line-height: 1.1; margin-top: 4px; }
 .c4-date-sub { font-size: 13px; color: var(--color-neutral-600); margin-top: 3px; text-wrap: pretty; }
 .c4-urgent { color: var(--color-accent); }
+.c4-row-notice-value, .c4-row-end-value { font-size: 15px; }
 .c4-accent-text { color: var(--color-accent-700); }
 
 .c4-decisions { margin-top: 22px; }
@@ -72,7 +54,7 @@
 .c4-situation-head { font-weight: 700; font-size: 15px; margin-top: 2px; }
 .c4-situation-why { font-size: 14px; color: var(--color-neutral-700); margin-top: 4px; line-height: 1.5; text-wrap: pretty; }
 .c4-decisions-head {
-  font-family: var(--font-heading); font-weight: 800; font-size: 16px;
+  font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 16px;
   padding-bottom: 8px; border-bottom: 2px solid var(--color-text);
 }
 .c4-decisions-sub { font-family: var(--font-body); font-weight: 400; font-size: 13px; color: var(--color-neutral-600); }
@@ -136,7 +118,7 @@
   display: flex; flex-direction: column; gap: 12px;
 }
 .c4-field-kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-accent-700); font-weight: 700; }
-.c4-field-label { font-family: var(--font-heading); font-weight: 800; font-size: 22px; }
+.c4-field-label { font-family: var(--font-heading); font-weight: var(--weight-heading); font-size: 22px; }
 .c4-field-read { font-size: 15px; }
 .c4-field-src { color: var(--color-neutral-600); font-size: 13px; }
 .c4-field-why { font-size: 14px; color: var(--color-neutral-700); text-wrap: pretty; max-width: 66ch; }
@@ -149,7 +131,7 @@
 .c4-field-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .v4 .c4-field-actions .btn.btn { min-height: 44px; }
 .c4-done { border-top: 2px solid var(--color-text); margin-top: 20px; padding-top: 16px; }
-.c4-done-title { font-family: var(--font-heading); font-weight: 800; font-size: 22px; }
+.c4-done-title { font-family: var(--font-heading); font-weight: var(--weight-heading); font-size: 22px; }
 .c4-done-text { font-size: 14px; color: var(--color-neutral-700); margin-top: 6px; }
 .c4-done-actions { display: flex; gap: 10px; margin-top: 14px; }
 
@@ -166,8 +148,12 @@
 .c4-bulk-bar { margin-left: auto; flex: 0 0 160px; height: 6px; background: var(--color-neutral-300); display: block; }
 .c4-bulk-bar > span { display: block; height: 100%; background: var(--color-accent); }
 
-/* — delete a contract (Admin): a corner action, outside the row's grid so the columns do not move — */
-.c4-row { position: relative; }
-.c4-del { position: absolute; right: 6px; top: 4px; display: inline-flex; align-items: center; gap: 6px; background: var(--color-bg); }
-.c4-del-ask { font-size: 13px; color: var(--color-neutral-700); }
-.v4 .btn.c4-del-btn { font-size: 12px; min-height: 24px; padding: 0 8px; }
+/* — delete a contract (Admin): its own column; the confirmation opens under the row, across it — */
+.v4 .btn.c4-del-btn { font-size: 13px; min-height: 28px; padding: 0 8px; }
+.c4-del-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; padding-top: 4px; }
+.c4-del-ask { font-size: 14px; color: var(--color-neutral-700); margin-right: 4px; }
+
+/* Phone width (D9): the same 16px gutter as the nav. */
+@media (max-width: 700px) {
+  .c4-page, .c4-page.is-list { padding: 24px 16px 40px; }
+}
