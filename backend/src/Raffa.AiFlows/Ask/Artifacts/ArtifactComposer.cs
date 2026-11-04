@@ -41,13 +41,12 @@ public sealed record ArtifactRequest(
     string Language);
 
 /// <summary>The composed content with the scope it was built on (for the audit trail and the panel's subtitle).</summary>
-/// <summary><c>Draft</c> null = the model judged the message is not a request for an artifact (the chat answers it).
-public sealed record ArtifactResult(ArtifactDraft? Draft, string Kind, string? FocusSupplier, bool UsedPortfolio, bool UsedMarket);
+public sealed record ArtifactResult(ArtifactDraft Draft, string Kind, string? FocusSupplier, bool UsedPortfolio, bool UsedMarket);
 
 /// <summary>The scope the turn-understanding step resolved for an artifact request.</summary>
 public sealed record ArtifactScopeHint(string? Supplier, bool UsesPortfolio, bool UsesMarket, string Kind);
 
-internal sealed record ArtifactScopePlan(bool WantsArtifact, string? Supplier, bool UsesPortfolio, bool UsesMarket, string Kind);
+internal sealed record ArtifactScopePlan(string? Supplier, bool UsesPortfolio, bool UsesMarket, string Kind);
 
 /// <summary>The composer agent's input: the user's request and the fact pack, all the figures it may use.</summary>
 public sealed record ArtifactComposerInput(string Request, string Language, string Kind, string FactsJson);
@@ -77,7 +76,6 @@ public sealed class ArtifactComposer(
     ILogger<ArtifactComposer>? logger = null)
 {
     public const string Flow = "artifact";
-    public const string ScopeStage = "artifact-scope";
     public const string ComposerName = "artifact-composer";
     public const string ComposerVersion = "1";
 
@@ -97,10 +95,11 @@ public sealed class ArtifactComposer(
     public static AgentDefinition Definition() =>
         AgentDefinition.ForOutput<ArtifactDraft>(ComposerName, ComposerVersion, ComposerPrompt, TimeSpan.FromSeconds(60), AgentFailurePolicy.Fail);
 
-    /// <param name="hint">What the turn-understanding step already decided (kind, portfolio, market); null = this call plans it.</param>
+    /// <param name="hint">What the turn-understanding step decided in its one model call: kind, portfolio, market and the supplier in focus.</param>
     public async Task<ArtifactResult?> ComposeAsync(
-        TenantId tenantId, ArtifactRequest request, CancellationToken cancellationToken, ArtifactScopeHint? hint = null)
+        TenantId tenantId, ArtifactRequest request, ArtifactScopeHint hint, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(hint);
         ArgumentNullException.ThrowIfNull(request);
         using var scope = tenantContext.BeginScope(tenantId);
 
@@ -113,18 +112,9 @@ public sealed class ArtifactComposer(
             : new Dictionary<EntityId, string>();
         string NameOf(PortfolioListItem i) => i.SupplierId is { } id && names.TryGetValue(new EntityId(id), out var n) ? n : "?";
 
-        var plan = hint is not null
-            ? new ArtifactScopePlan(true, hint.Supplier is { } given ? names.Values.FirstOrDefault(n => string.Equals(n, given, StringComparison.OrdinalIgnoreCase)) : null, hint.UsesPortfolio, hint.UsesMarket, hint.Kind)
-            : await PlanScopeAsync(request, names.Values.Distinct().ToList(), cancellationToken).ConfigureAwait(false);
-        if (plan is null)
-        {
-            return null;
-        }
-
-        if (!plan.WantsArtifact)
-        {
-            return new ArtifactResult(null, plan.Kind, null, false, false);
-        }
+        var plan = new ArtifactScopePlan(
+            hint.Supplier is { } given ? names.Values.FirstOrDefault(n => string.Equals(n, given, StringComparison.OrdinalIgnoreCase)) : null,
+            hint.UsesPortfolio, hint.UsesMarket, hint.Kind);
 
         // The contract(s) in focus: the supplier the model resolved from the chat, else the contract the chat is opened on.
         var focusItems = plan.Supplier is { } supplier
@@ -169,69 +159,6 @@ public sealed class ArtifactComposer(
 
         return new ArtifactResult(run.Value, plan.Kind, focusSupplier, plan.UsesPortfolio, usedMarket);
     }
-
-    private async Task<ArtifactScopePlan?> PlanScopeAsync(ArtifactRequest request, IReadOnlyCollection<string> suppliers, CancellationToken cancellationToken)
-    {
-        var prompt = new StringBuilder();
-        prompt.AppendLine("A procurement user wrote a message in a chat with Raffa. Decide whether it asks for a dashboard, a KPI set, a chart/table view or a written brief/document to be BUILT (any wording, any language, with or without a verb: 'mostramelo con dei kpi', 'rappresentalo con dei grafici', 'show it as a dashboard'), and if so its scope. A question to be answered in words, a clarification or a follow-up on the text is NOT a request for an artifact. You never build or answer anything.");
-        prompt.AppendLine("wantsArtifact: true only if the message asks for such content to be built.");
-        prompt.AppendLine("supplier: the listed supplier whose contract the request is about, resolving 'this contract', 'questo contratto', 'it' and the like from the conversation (exactly as listed; null if no single contract is in focus or the request is portfolio-wide).");
-        prompt.AppendLine("usesPortfolio: true if the request looks across several contracts (similar contracts, all contracts, rankings, totals) or no contract is in focus.");
-        prompt.AppendLine("usesMarket: true only if the request asks how a contract sits against the market, benchmarks, or similar contracts on the market.");
-        prompt.AppendLine("kind: 'kpi' (indicators), 'dashboard' (several views) or 'document' (a written brief); when unsure, 'dashboard'.");
-        prompt.AppendLine("Suppliers: " + string.Join("; ", suppliers));
-        prompt.AppendLine(request.ScopeContractId is null ? "The chat is not opened on a specific contract." : "The chat is opened on a specific contract (resolve 'this contract' to it when the conversation does not say otherwise).");
-        prompt.AppendLine("Conversation (oldest first):");
-        foreach (var (role, markdown) in request.RecentTurns.TakeLast(6))
-        {
-            prompt.AppendLine($"[{role}] {(markdown.Length > 700 ? markdown[..700] + "…" : markdown)}");
-        }
-
-        prompt.AppendLine("Request:");
-        prompt.AppendLine(request.Request);
-
-        var schema = JsonSerializer.Serialize(new
-        {
-            type = "object",
-            properties = new
-            {
-                wantsArtifact = new { type = "boolean" },
-                supplier = new { type = new[] { "string", "null" } },
-                usesPortfolio = new { type = "boolean" },
-                usesMarket = new { type = "boolean" },
-                kind = new { type = "string", @enum = new[] { "kpi", "dashboard", "document" } },
-            },
-            required = new[] { "wantsArtifact", "supplier", "usesPortfolio", "usesMarket", "kind" },
-            additionalProperties = false,
-        });
-
-        try
-        {
-            var result = await aiGateway.ExtractAsync(new AiExtractionRequest(ScopeStage, prompt.ToString(), schema), cancellationToken).ConfigureAwait(false);
-            if (!result.IsSuccess)
-            {
-                return null;
-            }
-
-            var answer = JsonSerializer.Deserialize<ScopeAnswer>(result.Value.PayloadJson, Json);
-            if (answer is null || answer.Kind is not ("kpi" or "dashboard" or "document"))
-            {
-                return null;
-            }
-
-            var supplier = answer.Supplier is { Length: > 0 } s
-                ? suppliers.FirstOrDefault(x => string.Equals(x, s, StringComparison.OrdinalIgnoreCase))
-                : null;
-            return new ArtifactScopePlan(answer.WantsArtifact, supplier, answer.UsesPortfolio, answer.UsesMarket, answer.Kind);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger?.LogWarning(exception, "Artifact scope planning failed.");
-            return null;
-        }
-    }
-
-    private sealed record ScopeAnswer(bool WantsArtifact, string? Supplier, bool UsesPortfolio, bool UsesMarket, string? Kind);
 
     private static object Row(PortfolioListItem i, string supplier, DateOnly today) => new
     {

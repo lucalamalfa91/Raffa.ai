@@ -339,11 +339,12 @@ public sealed class AskCopilotService(
                         .ComposeAsync(
                             tenantId,
                             new Raffa.AiFlows.Ask.Artifacts.ArtifactRequest(question, recentTurns, scopeContractId, (Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it")),
-                            cancellationToken,
-                            new Raffa.AiFlows.Ask.Artifacts.ArtifactScopeHint(supplier, artifactAsk.UsesPortfolio, artifactAsk.UsesMarket, artifactAsk.Kind))
+                            new Raffa.AiFlows.Ask.Artifacts.ArtifactScopeHint(supplier, artifactAsk.UsesPortfolio, artifactAsk.UsesMarket, artifactAsk.Kind),
+                            cancellationToken)
                         .ConfigureAwait(false);
-                    if (composed?.Draft is { } draft)
+                    if (composed is not null)
                     {
+                        var draft = composed.Draft;
                         var ack = artifactAsk.Acknowledgement.Length > 0 ? artifactAsk.Acknowledgement : draft.Title;
                         understandingReply = (new CopilotReply(
                             ReplyKind.Answer, ack, [], [],

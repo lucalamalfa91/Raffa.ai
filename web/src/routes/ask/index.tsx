@@ -23,7 +23,7 @@ import FeedbackCard from "./FeedbackCard";
 import DraftPanel, { ArtifactCard } from "./DraftPanel";
 import { splitEmailDraft, type EmailDraft } from "./draft";
 import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
-import { buildArtifact, payloadToArtifact, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
+import { buildArtifact, storedArtifacts, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
 import { buildSpendArtifact, revisedIntent } from "./askSpend";
 
 export interface AskRouteProps {
@@ -126,6 +126,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [panel, setPanel] = useState<{ id: string; draft?: EmailDraft; artifact?: Artifact } | null>(null);
   /** Dashboards, KPIs and documents Raffa built, each with its conversation and turn (kept on the page; the panel shows one). */
   const [contents, setContents] = useState<PlacedArtifact[]>([]);
+  // What the agents wrote in this conversation comes back from its stored replies, so reopening it shows them again.
+  const stored = useMemo(() => storedArtifacts(current?.messages ?? [], current?.id ?? null, t), [current, t]);
+  const allContents = useMemo(() => [...contents, ...stored], [contents, stored]);
   const [building, setBuilding] = useState(false);
   const [uploadingOffer, setUploadingOffer] = useState(false);
   const offerInput = useRef<HTMLInputElement>(null);
@@ -186,11 +189,11 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   useEffect(() => {
     const here = current?.id ?? null;
     setPanel((p) =>
-      p && (p.artifact ? contents.some((c) => c.artifact.id === p.id && c.conversationId === here) : current?.messages.some((m) => m.id === p.id))
+      p && (p.artifact ? allContents.some((c) => c.artifact.id === p.id && c.conversationId === here) : current?.messages.some((m) => m.id === p.id))
         ? p
         : null,
     );
-  }, [current, contents]);
+  }, [current, allContents]);
 
   // Contents built before a new conversation was saved belong to it alone: once another conversation
   // is open they are gone (the first answer has already moved them to the conversation it created).
@@ -281,12 +284,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     // A dashboard / KPI set / brief the agents wrote for this turn (the model understood the request):
     // it sits right after that reply and opens in the side panel.
     if (fresh?.payload?.artifact) {
-      const conversationId = r.data.conversation.id;
-      const kind = fresh.payload.artifact.kind;
-      const version = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === kind).length + 1;
-      const placed = payloadToArtifact(fresh.payload.artifact, version, t);
-      setContents((list) => [...list, { artifact: placed, conversationId, afterMessageId: fresh.id, request: null }]);
-      setPanel({ id: placed.id, artifact: placed });
+      const placed = storedArtifacts(r.data.conversation.messages, r.data.conversation.id, t).find((c) => c.afterMessageId === fresh.id);
+      if (placed) setPanel({ id: placed.artifact.id, artifact: placed.artifact });
     }
     void reloadLists();
     // The capability check may still be looking: its follow-up turn lands in the conversation shortly.
@@ -647,7 +646,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 ) : null}
               </div>
             ) : null}
-            {threadItems(current?.messages ?? [], contents, current?.id ?? null).map(({ message: m, content: c }) => {
+            {threadItems(current?.messages ?? [], allContents, current?.id ?? null).map(({ message: m, content: c }) => {
               // Built in this conversation: at the turn that asked for it, the user's words first.
               if (c) {
                 return (

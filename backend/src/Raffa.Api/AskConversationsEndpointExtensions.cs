@@ -20,7 +20,6 @@ public static class AskConversationsEndpointExtensions
         endpoints.MapPost("/api/conversations/{id}/archive", (string id, HttpRequest r, ConversationService s, ICallerContext c, CancellationToken ct) => SetArchivedAsync(id, true, r, s, c, ct));
         endpoints.MapPost("/api/conversations/{id}/unarchive", (string id, HttpRequest r, ConversationService s, ICallerContext c, CancellationToken ct) => SetArchivedAsync(id, false, r, s, c, ct));
         endpoints.MapGet("/api/ask/contracts", ListContractsAsync);
-        endpoints.MapPost("/api/ask/artifact", ComposeArtifactAsync);
         return endpoints;
     }
 
@@ -93,75 +92,6 @@ public static class AskConversationsEndpointExtensions
             needsContract = result.NeedsContract,
             conversation = ToDetail(detail),
         });
-    }
-
-    public sealed record ArtifactRequestBody(string? ConversationId, string? ContractId, string? Request, string? Lang);
-
-    /// <summary>
-    /// `POST /api/ask/artifact`: a dashboard, KPI set or document written by the artifact-composer agent on the
-    /// chat's own context (the conversation, the contract it is on, the portfolio, the market RAG when asked).
-    /// 200 with the content, 204 when the message is not a request for one, or 422 when the agents could not deliver a grounded one — the client then falls
-    /// back to its deterministic build.
-    /// </summary>
-    private static async Task<IResult> ComposeArtifactAsync(
-        ArtifactRequestBody? body,
-        HttpRequest request,
-        ConversationService conversations,
-        Raffa.AiFlows.Ask.Artifacts.ArtifactComposer composer,
-        ICallerContext callerContext,
-        CancellationToken cancellationToken)
-    {
-        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
-        if (caller.Failure is not null)
-        {
-            return caller.Failure;
-        }
-
-        using var callerTenantScope = caller.Scope;
-        if (string.IsNullOrWhiteSpace(body?.Request))
-        {
-            return Results.BadRequest("A non-empty 'request' is required.");
-        }
-
-        if (!TryParseOptionalId(body.ConversationId, out var conversationId) || !TryParseOptionalId(body.ContractId, out var contractId))
-        {
-            return Results.BadRequest("'conversationId' and 'contractId' must be GUIDs when provided.");
-        }
-
-        IReadOnlyList<(string Role, string Markdown)> history = [];
-        var scope = contractId;
-        if (conversationId is { } id)
-        {
-            var conversation = await conversations.GetAsync(caller.TenantId, caller.Identity!, id, cancellationToken).ConfigureAwait(false);
-            if (conversation is null)
-            {
-                return Results.NotFound();
-            }
-
-            history = ConversationsEndpointExtensions.BuildPromptHistory(conversation);
-            scope ??= conversation.ScopeContractId;
-        }
-
-        using var language = Raffa.SharedKernel.Language.ResponseLanguage.Use(body.Lang == "en" ? "en" : "it");
-        var result = await composer
-            .ComposeAsync(caller.TenantId, new Raffa.AiFlows.Ask.Artifacts.ArtifactRequest(body.Request.Trim(), history, scope, body.Lang == "en" ? "en" : "it"), cancellationToken)
-            .ConfigureAwait(false);
-        if (result is { Draft: null })
-        {
-            // The model judged this message is not a request for an artifact: the chat answers it.
-            return Results.NoContent();
-        }
-
-        return result is null
-            ? Results.UnprocessableEntity()
-            : Results.Ok(new
-            {
-                kind = result.Kind,
-                focusSupplier = result.FocusSupplier,
-                usedPortfolio = result.UsedPortfolio,
-                usedMarket = result.UsedMarket,
-                draft = result.Draft,
-            });
     }
 
     private static async Task<IResult> AskAgenticAsync(

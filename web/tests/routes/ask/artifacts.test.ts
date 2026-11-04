@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildArtifact, threadItems, type PlacedArtifact } from "../../../src/routes/ask/artifacts";
+import { buildArtifact, storedArtifacts, threadItems, type PlacedArtifact } from "../../../src/routes/ask/artifacts";
 
 const t = (id: string) => id;
 const placed = (id: string, conversationId: string | null, afterMessageId: string | null): PlacedArtifact => ({
@@ -24,3 +24,28 @@ describe("threadItems", () => {
   });
 });
 
+
+describe("storedArtifacts", () => {
+  const t = (id: string) => id;
+  const artifact = (kind: "kpi" | "dashboard") => ({
+    kind, title: kind, subtitle: "", focusSupplier: "GitLab", usedPortfolio: false, usedMarket: true,
+    tiles: [{ label: "A", value: "1", hint: "", tone: "" }], charts: [], tables: [], markdown: "",
+  });
+
+  it("reads the agents' content back from the stored replies, each after its own reply, numbering versions per kind", () => {
+    const messages = [
+      { id: "m1", payload: null },
+      { id: "m2", payload: { artifact: artifact("kpi") } },
+      { id: "m3", payload: { artifact: artifact("dashboard") } },
+      { id: "m4", payload: { artifact: artifact("kpi") } },
+    ];
+    const out = storedArtifacts(messages, "c1", t);
+    expect(out.map((c) => [c.afterMessageId, c.artifact.id, c.artifact.version])).toEqual([
+      ["m2", "artifact-m2", 1],
+      ["m3", "artifact-m3", 1],
+      ["m4", "artifact-m4", 2],
+    ]);
+    expect(out[0]!.artifact.subtitle).toContain("GitLab");
+    expect(out[0]!.conversationId).toBe("c1");
+  });
+});

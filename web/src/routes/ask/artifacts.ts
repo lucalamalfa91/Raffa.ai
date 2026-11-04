@@ -184,10 +184,10 @@ export function buildArtifact(kind: ArtifactKind, rows: readonly ContractListRow
  * The content the artifact-composer agent wrote for a turn (from the chat's context, the portfolio and, when
  * asked, the market RAG), as the panel's artifact. The server has already checked that every figure is in its fact pack.
  */
-export function payloadToArtifact(p: ArtifactPayloadBody, version: number, t: T): Artifact {
+export function payloadToArtifact(p: ArtifactPayloadBody, version: number, t: T, id = `${p.kind}-${Date.now()}`): Artifact {
   const note = [p.focusSupplier, p.usedPortfolio ? t("all contracts") : null, p.usedMarket ? t("market data") : null].filter(Boolean).join(" · ");
   return {
-    id: `${p.kind}-${Date.now()}`,
+    id,
     kind: p.kind,
     title: p.title,
     subtitle: [p.subtitle, note].filter(Boolean).join(" · "),
@@ -197,6 +197,27 @@ export function payloadToArtifact(p: ArtifactPayloadBody, version: number, t: T)
     markdown: p.markdown,
     version,
   };
+}
+
+/**
+ * The dashboards, KPI sets and briefs the agents wrote in a conversation, read back from its stored replies
+ * (`payload.artifact`), each right after its own reply. Reopening a conversation shows them again.
+ */
+export function storedArtifacts(
+  messages: ReadonlyArray<{ id: string; payload?: { artifact?: ArtifactPayloadBody | null } | null }>,
+  conversationId: string | null,
+  t: T,
+): PlacedArtifact[] {
+  const seen = new Map<ArtifactKind, number>();
+  const out: PlacedArtifact[] = [];
+  for (const m of messages) {
+    const stored = m.payload?.artifact;
+    if (!stored) continue;
+    const version = (seen.get(stored.kind) ?? 0) + 1;
+    seen.set(stored.kind, version);
+    out.push({ artifact: payloadToArtifact(stored, version, t, `artifact-${m.id}`), conversationId, afterMessageId: m.id, request: null });
+  }
+  return out;
 }
 
 /** The artifact as plain markdown: what Copy and Download hand to the user. */
