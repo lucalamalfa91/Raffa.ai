@@ -232,8 +232,12 @@ public static class CaseReaderAgents
           states a fact or constraint that belongs in it ("quantities down to 50 seats", "mention the SLA",
           "less aggressive", "the reduction is 20%", "add that we need an answer by Friday"). Return the full
           updated email with that change made and everything else kept as it is.
-        - "question": anything else (a question about the contract, the market, what to do). Return
-          empty strings for subject, body and note.
+        - "question": only a clearly separate question that is not about the email (about the contract, the
+          market, what to do next). Return empty strings for subject, body and note.
+        While an email draft is open, default to "revise": a complaint, a doubt or a remark about the email
+        ("it says nothing", "too generic", "details missing", "not good") is a request to improve it. When
+        the person gives no new data, improve the wording and structure yourself using only the facts in
+        the input, and say in note which data you still need from them.
 
         Laws (they override everything else):
         1. The email is written in the language of email.body, whatever the language of instruction.
@@ -403,7 +407,18 @@ public sealed class AiCaseReader(IAiGateway aiGateway, ITenantContext tenantCont
         var answer = Parse<EmailAnswer>(await CallAsync(tenantId, CaseReaderAgents.EmailName, CaseReaderAgents.EmailPrompt, input,
             CaseReaderAgents.EmailSchema, CaseReaderAgents.EmailVersion, cancellationToken).ConfigureAwait(false));
         var body = answer?.Body?.Trim();
-        if (answer is null || answer.Intent != "revise" || string.IsNullOrEmpty(body) || body.Length is < 40 or > 6000 || body == email.Body.Trim())
+        if (answer is null)
+        {
+            return null;
+        }
+
+        // The words are a question, not a change to the email: an empty revision tells the caller to answer them.
+        if (answer.Intent == "question" && !compose)
+        {
+            return new CaseEmailRevision(string.Empty, string.Empty, string.Empty);
+        }
+
+        if (answer.Intent != "revise" || string.IsNullOrEmpty(body) || body.Length is < 40 or > 6000 || body == email.Body.Trim())
         {
             return null;
         }

@@ -90,7 +90,7 @@ public sealed class AiCaseReaderTests
     public async Task A_question_or_a_figure_the_case_does_not_hold_leaves_the_draft_alone()
     {
         var question = new AiCaseReader(new AnalyzeOnlyGateway("""{"intent":"question","subject":"","body":"","note":""}"""), new TenantContext());
-        Assert.Null(await question.ReviseEmailAsync(TenantId.New(), new RenewalCase(), Contract, Draft(), "what is the notice period?", "en"));
+        Assert.Empty((await question.ReviseEmailAsync(TenantId.New(), new RenewalCase(), Contract, Draft(), "what is the notice period?", "en"))!.Body);
 
         var invented = new AiCaseReader(
             new AnalyzeOnlyGateway(

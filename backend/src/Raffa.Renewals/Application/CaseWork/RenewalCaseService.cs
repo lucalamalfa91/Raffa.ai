@@ -257,7 +257,8 @@ public sealed partial class RenewalCaseService(
 
         CaseQuestionAnswer? answer = null;
         var isCommand = CommandRegex().IsMatch(q);
-        if (!isCommand && await ProposeEmailRevisionAsync(tenantId, caseId, q, lang, ct).ConfigureAwait(false) is { } proposal)
+        var turn = isCommand ? null : await ProposeEmailRevisionAsync(tenantId, caseId, q, lang, ct).ConfigureAwait(false);
+        if (turn is { Revision.Body.Length: > 0 } proposal)
         {
             // The words change the open email draft: the answer is a new version of it in the action panel,
             // not a chat reply about it.
@@ -267,11 +268,27 @@ public sealed partial class RenewalCaseService(
                 ("reviseEmail", new CaseActionPayload
                 {
                     Eid = proposal.Eid,
-                    Subject = proposal.Revision.Subject,
+                    Subject = proposal.Revision!.Subject,
                     Body = proposal.Revision.Body,
                     Text = CaseText.Of(string.IsNullOrWhiteSpace(proposal.Revision.Note)
                         ? (lang == "en" ? "I updated the email draft: the new version is in the panel." : "Ho aggiornato la bozza: trovi la nuova versione nel pannello.")
                         : proposal.Revision.Note + (lang == "en" ? " The new version is in the panel." : " Trovi la nuova versione nel pannello.")),
+                }),
+            ]).ConfigureAwait(false);
+        }
+
+        if (turn is { Revision: null })
+        {
+            // The words were about the open email but no safe new version came out: say so, never answer them as
+            // a general question about the contract.
+            return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (_, _, _) =>
+            [
+                ("ask", new CaseActionPayload { Text = CaseText.Of(q) }),
+                ("answer", new CaseActionPayload
+                {
+                    Text = CaseText.Of(lang == "en"
+                        ? "I could not prepare a new version of the email from this. Tell me the detail to put in (for example the quantities) and I will redo it; the current draft is unchanged."
+                        : "Non sono riuscita a preparare una nuova versione della mail da questo. Dimmi il dato da inserire (ad esempio le quantità) e la rifaccio; la bozza attuale è invariata."),
                 }),
             ]).ConfigureAwait(false);
         }
@@ -309,10 +326,10 @@ public sealed partial class RenewalCaseService(
     }
 
     /// <summary>The email draft the person's composer words would change, as the model's revision of it.
-    /// Null when no email is open, no model is available, or the words are a question: the Q&amp;A answers.</summary>
-    private async Task<(int Eid, CaseEmailRevision Revision)?> ProposeEmailRevisionAsync(TenantId tenantId, Guid caseId, string text, string? lang, CancellationToken ct)
+    /// Null when no email is open (the Q&amp;A answers). Revision null: no safe new version came out. Revision with an empty body: the words are a question, the Q&amp;A answers.</summary>
+    private async Task<(int Eid, CaseEmailRevision? Revision)?> ProposeEmailRevisionAsync(TenantId tenantId, Guid caseId, string text, string? lang, CancellationToken ct)
     {
-        if (aiReader is null || scriptServices is not ProductionCaseScriptServices)
+        if (aiReader is null or NoCaseAiReader || scriptServices is not ProductionCaseScriptServices)
         {
             return null;
         }
@@ -341,7 +358,7 @@ public sealed partial class RenewalCaseService(
             }
 
             var language = lang == "en" || (lang is null && Raffa.SharedKernel.Language.ResponseLanguage.Current == "en") ? "en" : "it";
-            return await aiReader.ReviseEmailAsync(tenantId, c, cf, open, text, language, ct).ConfigureAwait(false) is { } revision ? (open.Id, revision) : null;
+            return (open.Id, await aiReader.ReviseEmailAsync(tenantId, c, cf, open, text, language, ct).ConfigureAwait(false));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -369,7 +386,7 @@ public sealed partial class RenewalCaseService(
         {
             try
             {
-                if (await aiReader.ReviseEmailAsync(tenantId, next, cf, email, null, lang, ct).ConfigureAwait(false) is { } composed)
+                if (await aiReader.ReviseEmailAsync(tenantId, next, cf, email, null, lang, ct).ConfigureAwait(false) is { Body.Length: > 0 } composed)
                 {
                     email.Subject = composed.Subject;
                     email.Body = composed.Body;

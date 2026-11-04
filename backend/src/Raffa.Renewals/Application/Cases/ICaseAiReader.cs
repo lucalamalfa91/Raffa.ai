@@ -31,8 +31,8 @@ public interface ICaseAiReader
 
     /// <summary>
     /// The email draft written or changed by the model. With an <paramref name="instruction"/> (the person's
-    /// words in the case composer): a revised version when the words ask to change the email, null when they are
-    /// a question about the contract. Without one: the draft made complete and professional. Null also on any
+    /// words in the case composer): a revised version when the words ask to change the email, an empty-bodied revision
+    /// when they are a question about the contract. Without one: the draft made complete and professional. Null also on any
     /// failure or doubt (a figure the model added, nothing changed): the current draft stands.
     /// </summary>
     Task<CaseEmailRevision?> ReviseEmailAsync(
