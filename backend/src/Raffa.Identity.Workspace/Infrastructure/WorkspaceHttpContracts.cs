@@ -29,10 +29,26 @@ public sealed record InviteRequest(string Email, string Role);
 /// optional so a client patches one switch without restating the others; a body naming none is a
 /// 400. Same "lives next to its service, not in the host" reason as <see cref="CreateWorkspaceRequest"/>.
 /// </summary>
-public sealed record UpdateWorkspaceSettingsRequest(bool? WebResearchEnabled = null);
+/// <param name="ReportingCurrency">Spesa e risparmi: ISO 4217 code of the reporting currency.</param>
+/// <param name="FiscalYearStartMonth">Spesa e risparmi: 1-12.</param>
+/// <param name="BudgetRates">Spesa e risparmi: the whole set of budget rates (it replaces the
+/// previous one; an empty object clears it). Units of the reporting currency per unit of each key.</param>
+public sealed record UpdateWorkspaceSettingsRequest(
+    bool? WebResearchEnabled = null,
+    string? ReportingCurrency = null,
+    int? FiscalYearStartMonth = null,
+    IReadOnlyDictionary<string, decimal>? BudgetRates = null);
 
-/// <summary>The settings a workspace member may read and its Admin may change (ADR-030).</summary>
-public sealed record WorkspaceSettingsResult(bool WebResearchEnabled);
+/// <summary>The settings a workspace member may read and its Admin may change (ADR-030; Spesa e risparmi).</summary>
+/// <param name="ReportingCurrency">The currency totals are in: the Admin's choice, else the workspace's own, else CHF.</param>
+/// <param name="ReportingCurrencySet">Whether the Admin chose <paramref name="ReportingCurrency"/>.</param>
+/// <param name="FiscalYearStartMonth">1-12; null when not set (reported as a calendar year).</param>
+public sealed record WorkspaceSettingsResult(
+    bool WebResearchEnabled,
+    string ReportingCurrency = "CHF",
+    bool ReportingCurrencySet = false,
+    int? FiscalYearStartMonth = null,
+    IReadOnlyDictionary<string, decimal>? BudgetRates = null);
 
 /// <summary>Body of `POST /api/admin/invitations` (portal admin): the prospect's address. Lives next to its
 /// service, not in the host, for the same reason as <see cref="CreateWorkspaceRequest"/>.</summary>

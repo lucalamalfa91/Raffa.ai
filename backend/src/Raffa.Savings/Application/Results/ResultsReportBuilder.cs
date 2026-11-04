@@ -21,36 +21,50 @@ public static class ResultsReportBuilder
         _ => PeriodFiscalYear,
     };
 
-    /// <summary><c>SQ.inPeriod(when, period, now)</c>.</summary>
-    public static bool InPeriod(DateOnly when, string period, DateOnly today)
+    /// <summary><c>SQ.inPeriod(when, period, now)</c>, on the workspace's fiscal year (the
+    /// prototype's calendar year when it starts in January).</summary>
+    public static bool InPeriod(DateOnly when, string period, DateOnly today, int fiscalYearStartMonth = 1)
     {
+        var m = fiscalYearStartMonth is >= 1 and <= 12 ? fiscalYearStartMonth : 1;
         switch (NormalizePeriod(period))
         {
             case PeriodFiscalYear:
-                return when.Year == today.Year;
+                return Spend.SpendCalculator.FiscalYearOf(when, m) == Spend.SpendCalculator.FiscalYearOf(today, m);
             case PeriodQuarter:
-                var quarterStart = (today.Month - 1) / 3 * 3;
-                return when.Year == today.Year && when.Month - 1 >= quarterStart && when.Month - 1 < quarterStart + 3;
+                return Spend.SpendCalculator.FiscalYearOf(when, m) == Spend.SpendCalculator.FiscalYearOf(today, m)
+                    && Spend.SpendCalculator.FiscalQuarterOf(when, m) == Spend.SpendCalculator.FiscalQuarterOf(today, m);
             default:
                 var from = today.AddYears(-1);
                 return when > from && when <= today;
         }
     }
 
-    /// <summary><c>SQ.months(period, now)</c>: the bars of "Quando sono stati firmati".</summary>
-    public static IReadOnlyList<(int Year, int Month, bool Future, string Label)> Months(string period, DateOnly today)
+    /// <summary><c>SQ.months(period, now)</c>: the bars of "Quando sono stati firmati", on the
+    /// workspace's fiscal year.</summary>
+    public static IReadOnlyList<(int Year, int Month, bool Future, string Label)> Months(string period, DateOnly today, int fiscalYearStartMonth = 1)
     {
         var buckets = new List<(int Year, int Month, bool Future)>();
         var y = today.Year;
         var m = today.Month - 1;
+        var start = fiscalYearStartMonth is >= 1 and <= 12 ? fiscalYearStartMonth : 1;
+        var thisMonth = new DateOnly(today.Year, today.Month, 1);
+        void From(DateOnly first, int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var d = first.AddMonths(i);
+                buckets.Add((d.Year, d.Month - 1, d > thisMonth));
+            }
+        }
+
         switch (NormalizePeriod(period))
         {
             case PeriodFiscalYear:
-                for (var i = 0; i < 12; i++) buckets.Add((y, i, i > m));
+                From(Spend.SpendCalculator.FiscalYearRange(Spend.SpendCalculator.FiscalYearOf(today, start), start).From, 12);
                 break;
             case PeriodQuarter:
-                var qs = m / 3 * 3;
-                for (var j = qs; j < qs + 3; j++) buckets.Add((y, j, j > m));
+                var fyStart = Spend.SpendCalculator.FiscalYearRange(Spend.SpendCalculator.FiscalYearOf(today, start), start).From;
+                From(fyStart.AddMonths(3 * (Spend.SpendCalculator.FiscalQuarterOf(today, start) - 1)), 3);
                 break;
             default:
                 for (var o = 11; o >= 0; o--)
@@ -89,9 +103,11 @@ public static class ResultsReportBuilder
         IReadOnlyList<ResultsReportItem> results,
         IReadOnlyList<ResultsContract> validated,
         IReadOnlyList<Raffa.SharedKernel.Savings.CaseObjectiveInfo> caseObjectives,
-        string currency = "CHF")
+        string currency = "CHF",
+        int fiscalYearStartMonth = 1)
     {
         var p = NormalizePeriod(period);
+        var fyStart = fiscalYearStartMonth is >= 1 and <= 12 ? fiscalYearStartMonth : 1;
 
         // Cases: the latest row per contract decides (open with or without an objective, or closed).
         var caseByContract = caseObjectives
@@ -117,14 +133,14 @@ public static class ResultsReportBuilder
                     c.Spend,
                     cc?.Kind,
                     pct,
-                    pct > 0 ? PercentOf(c.Spend, pct) : null,
+                    pct > 0 && c.HasRate ? PercentOf(c.Spend, pct) : null,
                     cc is not null);
             })
             .ToList();
 
         // SQ.report(): filter by period, newest first.
         var inPeriod = results
-            .Where(r => InPeriod(r.SignedOn, p, today))
+            .Where(r => InPeriod(r.SignedOn, p, today, fyStart))
             .OrderByDescending(r => r.SignedOn)
             .ToList();
         var negotiated = inPeriod.Where(r => r.Kind != "volume").ToList();
@@ -136,7 +152,7 @@ public static class ResultsReportBuilder
         var objectives = open.Sum(o => o.TargetAmount ?? 0m);
         var withoutObjective = open.Count(o => o.TargetAmount is null);
 
-        var months = Months(p, today)
+        var months = Months(p, today, fyStart)
             .Select(b =>
             {
                 var items = negotiated.Where(r => r.SignedOn.Year == b.Year && r.SignedOn.Month - 1 == b.Month).ToList();
@@ -209,7 +225,7 @@ public static class ResultsReportBuilder
         return new ResultsReport(
             p,
             today,
-            today.Year,
+            Spend.SpendCalculator.FiscalYearOf(today, fyStart),
             new ResultsHeadline(contractual, realized, volumeAmount, negotiated.Count, volume.Count, currency),
             kpis,
             months,

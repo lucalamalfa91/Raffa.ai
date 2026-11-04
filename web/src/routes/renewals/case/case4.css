@@ -97,10 +97,17 @@
 .p4-k { color: var(--color-neutral-600); }
 .p4-v { text-wrap: pretty; }
 .p4-msg { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; font-size: 15px; }
-.p4-msg-by { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-600); padding-top: 3px; }
+.p4-msg-by {
+  font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-600); padding-top: 3px;
+  /* A long name (an email when the member has no display name) wraps in its column, never into the message. */
+  min-width: 0; overflow-wrap: anywhere;
+}
 .p4-msg-by.is-raffa { color: var(--color-accent); }
 .p4-msg-text { white-space: pre-line; text-wrap: pretty; font-weight: 400; }
-.p4-msg-text.is-person { font-weight: 700; }
+.p4-msg-text.is-person { font-weight: 700; overflow-wrap: anywhere; }
+.p4-msg-reply { white-space: normal; min-width: 0; }
+.p4-msg-reply .reply-markdown { line-height: 1.55; }
+.p4-msg-source { margin-top: 8px; font-size: 13px; color: var(--color-neutral-600); }
 .p4-asking { display: flex; flex-direction: column; gap: 10px; }
 .p4-msg-pending { color: var(--color-neutral-600); font-style: italic; }
 

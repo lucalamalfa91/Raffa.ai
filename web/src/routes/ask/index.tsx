@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   askOfferApi,
@@ -23,7 +23,8 @@ import FeedbackCard from "./FeedbackCard";
 import DraftPanel, { ArtifactCard } from "./DraftPanel";
 import { splitEmailDraft, type EmailDraft } from "./draft";
 import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
-import { artifactRequest, buildArtifact, type Artifact, type ArtifactKind } from "./artifacts";
+import { artifactRequest, buildArtifact, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
+import { buildSpendArtifact, revisedIntent } from "./askSpend";
 
 export interface AskRouteProps {
   apiClient: ApiClient;
@@ -123,8 +124,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const thinkingRef = useRef<HTMLDivElement>(null);
   /** The email draft open in the right-hand panel (the artifact beside the conversation). */
   const [panel, setPanel] = useState<{ id: string; draft?: EmailDraft; artifact?: Artifact } | null>(null);
-  /** Dashboards, KPIs and documents Raffa built in this conversation (kept on the page; the panel shows one). */
-  const [contents, setContents] = useState<Artifact[]>([]);
+  /** Dashboards, KPIs and documents Raffa built, each with its conversation and turn (kept on the page; the panel shows one). */
+  const [contents, setContents] = useState<PlacedArtifact[]>([]);
   const [building, setBuilding] = useState(false);
   const [uploadingOffer, setUploadingOffer] = useState(false);
   const offerInput = useRef<HTMLInputElement>(null);
@@ -181,29 +182,63 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panel]);
 
-  // Switching to another conversation closes the panel.
+  // Switching to another conversation closes the panel: its draft or content belongs to the one left.
   useEffect(() => {
-    setPanel((p) => (p && (p.artifact || current?.messages.some((m) => m.id === p.id)) ? p : null));
-  }, [current]);
+    const here = current?.id ?? null;
+    setPanel((p) =>
+      p && (p.artifact ? contents.some((c) => c.artifact.id === p.id && c.conversationId === here) : current?.messages.some((m) => m.id === p.id))
+        ? p
+        : null,
+    );
+  }, [current, contents]);
+
+  // Contents built before a new conversation was saved belong to it alone: once another conversation
+  // is open they are gone (the first answer has already moved them to the conversation it created).
+  useEffect(() => {
+    if (conversationId) setContents((list) => (list.some((c) => c.conversationId === null) ? list.filter((c) => c.conversationId !== null) : list));
+  }, [conversationId]);
 
   // Keep the question and the thinking row in view while Raffa works.
   useEffect(() => {
     if (pendingQuestion !== null) thinkingRef.current?.scrollIntoView?.({ block: "end" });
   }, [pendingQuestion]);
 
-  /** Builds a dashboard, KPIs or a document from the validated contracts and opens it in the side panel. */
-  const createContent = async (kind: ArtifactKind) => {
+  /**
+   * Builds a dashboard, KPIs or a document from the validated contracts and opens it in the side panel.
+   * It answers the turn it was asked at: this conversation, right after its last message. Asked again
+   * in the same conversation, it is the next version of that content.
+   */
+  const createContent = async (kind: ArtifactKind, request: string | null = null) => {
     if (!tenantId || building) return;
+    const conversationId = current?.id ?? null;
+    const afterMessageId = current?.messages[current.messages.length - 1]?.id ?? null;
     setBuilding(true);
     setConvError(null);
-    const r = await apiClient.listContractsV4(tenantId);
-    setBuilding(false);
-    if (!r.ok || !r.data) {
-      setConvError(t("The contracts could not be loaded."));
-      return;
+    const earlier = contents.filter((c) => c.conversationId === conversationId && c.artifact.kind === kind);
+    const version = earlier.length + 1;
+    let made: Artifact;
+    if (apiClient.getSpendReport) {
+      // Built on Spesa e risparmi's figures: the request's "per anno", "per trimestre", "cassa", a
+      // fiscal year or a category change the view, on top of what the earlier versions asked; the
+      // page opens on the same filters.
+      const intent = revisedIntent(earlier.map((c) => c.request), request ?? "");
+      const r = await apiClient.getSpendReport(tenantId, { basis: intent.basis });
+      setBuilding(false);
+      if (!r.ok || !r.data) {
+        setConvError(t("Spend and savings could not be loaded."));
+        return;
+      }
+      made = buildSpendArtifact(kind, r.data, intent, t, version);
+    } else {
+      const r = await apiClient.listContractsV4(tenantId);
+      setBuilding(false);
+      if (!r.ok || !r.data) {
+        setConvError(t("The contracts could not be loaded."));
+        return;
+      }
+      made = buildArtifact(kind, r.data.rows, t, today, version);
     }
-    const made = buildArtifact(kind, r.data.rows, t, today);
-    setContents((list) => [...list, made]);
+    setContents((list) => [...list, { artifact: made, conversationId, afterMessageId, request }]);
     setPanel({ id: made.id, artifact: made });
   };
 
@@ -215,11 +250,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   ) => {
     const text = question.trim();
     if (!text || busy) return;
-    // "Create a dashboard / KPIs / a brief": built from the contracts, shown in the panel.
-    const requested = artifactRequest(text);
+    // "Create a dashboard / KPIs / a brief", or a change to one built here: built from the contracts, shown in the panel.
+    const here = current?.id ?? null;
+    const requested = artifactRequest(text, contents.filter((c) => c.conversationId === here).map((c) => c.artifact.kind));
     if (requested) {
       setQ("");
-      void createContent(requested);
+      void createContent(requested, text);
       return;
     }
     setBusy(true);
@@ -241,6 +277,9 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     if (!r.data) return;
     setQ("");
     setPick(r.data.needsContract ? { kind: "q", text } : null);
+    // The first answer saves a new conversation: what was built before it belongs to that conversation.
+    const created = r.data.conversation.id;
+    if (here === null) setContents((list) => list.map((c) => (c.conversationId === null ? { ...c, conversationId: created } : c)));
     show(r.data.conversation);
     // An email Raffa just drafted opens in the side panel by itself (the user can close it).
     const fresh = [...r.data.conversation.messages].reverse().find((m) => m.role === "raffa");
@@ -332,6 +371,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     setQ("");
     setCurrent(null);
     setScopeId(null);
+    // A new conversation starts empty: nothing built in another one comes along.
+    setContents((list) => list.filter((c) => c.conversationId !== null));
     navigate("/ask");
   };
 
@@ -603,7 +644,33 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 ) : null}
               </div>
             ) : null}
-            {(current?.messages ?? []).map((m, _i, all) => {
+            {threadItems(current?.messages ?? [], contents, current?.id ?? null).map(({ message: m, content: c }) => {
+              // Built in this conversation: at the turn that asked for it, the user's words first.
+              if (c) {
+                return (
+                  <Fragment key={c.artifact.id}>
+                    {c.request ? (
+                      <div className="k6-qa">
+                        <span className="k6-qa-by">{t("You⟦ask⟧")}</span>
+                        <div className="k6-qa-body">
+                          <div className="k6-qa-text">{c.request}</div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="k6-qa is-raffa">
+                      <span className="k6-qa-by">Raffa.ai</span>
+                      <div className="k6-qa-body">
+                        <ContentCard
+                          artifact={c.artifact}
+                          active={panel?.id === c.artifact.id}
+                          onOpen={() => setPanel(panel?.id === c.artifact.id ? null : { id: c.artifact.id, artifact: c.artifact })}
+                        />
+                      </div>
+                    </div>
+                  </Fragment>
+                );
+              }
+              const all = current?.messages ?? [];
               const lastRaffaId = [...all].reverse().find((x) => x.role === "raffa")?.id;
               const raffa = m.role === "raffa";
               const cta = raffa ? ctaOf(m) : null;
@@ -672,14 +739,6 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                 </div>
               );
             })}
-            {contents.map((c) => (
-              <div key={c.id} className="k6-qa is-raffa">
-                <span className="k6-qa-by">Raffa.ai</span>
-                <div className="k6-qa-body">
-                  <ContentCard artifact={c} active={panel?.id === c.id} onOpen={() => setPanel(panel?.id === c.id ? null : { id: c.id, artifact: c })} />
-                </div>
-              </div>
-            ))}
             {pendingQuestion !== null ? (
               <>
                 <div className="k6-qa">

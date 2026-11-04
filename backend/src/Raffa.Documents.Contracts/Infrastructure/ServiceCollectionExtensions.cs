@@ -191,6 +191,8 @@ public static class ServiceCollectionExtensions
 
         // AskRaffa 4.0: the one way other modules read a contract (IMPLEMENTATION-PLAN.md §2).
         services.AddScoped<Raffa.SharedKernel.Contracts.IContractFactsReader, Application.Facts.ContractFactsReader>();
+        // Spesa e risparmi: the documented terms (contract, then recorded renewals) a contract's value is spread over.
+        services.AddScoped<Raffa.SharedKernel.Contracts.IContractTermHistoryReader, Application.Facts.ContractTermHistoryReader>();
 
         // AskRaffa 4.0 slice 4: renewed terms writer, Contratti/Contratto read models, decision
         // points and the Revisione reading. The case status reader defaults to "no case" until

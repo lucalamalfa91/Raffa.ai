@@ -506,9 +506,7 @@
     ],
     "more": [
      "Evaluate alternatives [startAlt]",
-     "+ Add policy [policy]",
-     "Prepare the non-renewal notice [startNotice]",
-     "Evaluate alternatives [startAlt]"
+     "+ Add policy [policy]"
     ],
     "note": "",
     "bullets": [],
@@ -12786,9 +12784,7 @@
     ],
     "more": [
      "Evaluate alternatives [startAlt]",
-     "+ Add policy [policy]",
-     "Prepare the non-renewal notice [startNotice]",
-     "Evaluate alternatives [startAlt]"
+     "+ Add policy [policy]"
     ],
     "note": "",
     "bullets": [],
@@ -15759,8 +15755,6 @@
      "Prepare non-renewal notice [startNotice]"
     ],
     "more": [
-     "Evaluate alternatives [startAlt]",
-     "Prepare the non-renewal notice [startNotice]",
      "Evaluate alternatives [startAlt]"
     ],
     "note": "",
@@ -24257,8 +24251,7 @@
      "*Prepare non-renewal notice [startNotice]"
     ],
     "more": [
-     "+ Paste reply [openReply]",
-     "Prepare the non-renewal notice [startNotice]"
+     "+ Paste reply [openReply]"
     ],
     "note": "",
     "bullets": [],
@@ -29950,9 +29943,7 @@
     ],
     "more": [
      "Evaluate alternatives [startAlt]",
-     "+ Add policy [policy]",
-     "Prepare the non-renewal notice [startNotice]",
-     "Evaluate alternatives [startAlt]"
+     "+ Add policy [policy]"
     ],
     "note": "",
     "bullets": [],
@@ -30577,9 +30568,7 @@
     ],
     "more": [
      "Evaluate alternatives [startAlt]",
-     "+ Add policy [policy]",
-     "Prepare the non-renewal notice [startNotice]",
-     "Evaluate alternatives [startAlt]"
+     "+ Add policy [policy]"
     ],
     "note": "",
     "bullets": [],

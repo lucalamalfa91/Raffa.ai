@@ -382,3 +382,42 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261104123224_AddWorkspaceFinanceSettings') THEN
+    ALTER TABLE workspace ADD budget_rates jsonb;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261104123224_AddWorkspaceFinanceSettings') THEN
+    ALTER TABLE workspace ADD fiscal_year_start_month integer;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261104123224_AddWorkspaceFinanceSettings') THEN
+    ALTER TABLE workspace ADD reporting_currency character varying(3);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261104123224_AddWorkspaceFinanceSettings') THEN
+    ALTER TABLE workspace ADD CONSTRAINT ck_workspace_fiscal_year_start_month CHECK (fiscal_year_start_month IS NULL OR fiscal_year_start_month BETWEEN 1 AND 12);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261104123224_AddWorkspaceFinanceSettings') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261104123224_AddWorkspaceFinanceSettings', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

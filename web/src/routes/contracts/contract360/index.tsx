@@ -5,7 +5,7 @@ import NegotiationPoints, { useNegotiationPoints } from "../../../components/ask
 import type { ApiClient, ContractV4Body, DecisionPointBody, DecisionPointChoice } from "../../../api/client";
 import { useGuide } from "../../../components/shell/guide";
 import { useI18n } from "../../../i18n/I18nProvider";
-import { announceContractsChanged, chfK, enNumber, tx, URGENT_NOTICE_DAYS, useTenantId } from "../contracts4";
+import { announceContractsChanged, enNumber, moneyK, tx, URGENT_NOTICE_DAYS, useTenantId } from "../contracts4";
 import "../contracts4.css";
 
 export interface Contract360RouteProps {
@@ -128,7 +128,7 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
   const meta = t("{type} · version {version} · validated · {value} / year", {
     type: contract.type,
     version: contract.version,
-    value: chfK(contract.annualValue),
+    value: moneyK(contract.annualValue, contract.currency),
   });
   // A term that rolled over by itself is shown on its effective dates, labelled as such; a passed
   // deadline never shows a negative count.
@@ -264,8 +264,8 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
                   <span className="c4-product-unit">{p.unit}</span>
                 </span>
                 <span className="c4-num">{p.quantity > 1 ? enNumber(p.quantity) : "1"}</span>
-                <span className="c4-num">CHF {enNumber(p.unitPrice)}</span>
-                <span className="c4-num is-strong">CHF {enNumber(p.annual)}</span>
+                <span className="c4-num">{contract.currency || "CHF"} {enNumber(p.unitPrice)}</span>
+                <span className="c4-num is-strong">{contract.currency || "CHF"} {enNumber(p.annual)}</span>
               </div>
             ))}
           </div>

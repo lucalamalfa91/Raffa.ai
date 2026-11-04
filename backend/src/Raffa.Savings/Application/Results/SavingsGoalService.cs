@@ -28,7 +28,8 @@ public sealed class SavingsGoalService(
     ResultsQueryService results,
     ICaseObjectiveSource caseObjectives,
     ISavingsGoalParser parser,
-    IClock clock)
+    IClock clock,
+    Spend.SpendReportQueryService? spendReports = null)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -36,7 +37,9 @@ public sealed class SavingsGoalService(
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         var validated = await results.ListValidatedAsync(tenantId, cancellationToken).ConfigureAwait(false);
-        return await parser.ParseAsync(text.Trim(), validated, results.Today, cancellationToken).ConfigureAwait(false);
+        var settings = await results.SettingsAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        var draft = await parser.ParseAsync(text.Trim(), validated, results.Today, cancellationToken).ConfigureAwait(false);
+        return draft is null ? null : DeterministicSavingsGoalParser.OnFiscalYear(draft, results.Today, settings.FiscalYearStartMonth);
     }
 
     public async Task<ConfirmSavingsGoalOutcome> ConfirmAsync(TenantId tenantId, string userId, ConfirmSavingsGoalRequest request, CancellationToken cancellationToken = default)
@@ -63,7 +66,10 @@ public sealed class SavingsGoalService(
             pct = request.Pct;
             annual = request.Annual;
             scope = request.Scope ?? new SavingsGoalScope(null, null, []);
-            period = string.IsNullOrWhiteSpace(request.Period) ? "FY " + results.Today.Year : request.Period.Trim();
+            var settings = await results.SettingsAsync(tenantId, cancellationToken).ConfigureAwait(false);
+            period = string.IsNullOrWhiteSpace(request.Period)
+                ? "FY " + Spend.SpendCalculator.FiscalYearOf(results.Today, settings.FiscalYearStartMonth is >= 1 and <= 12 ? settings.FiscalYearStartMonth : 1)
+                : request.Period.Trim();
             if (period.Length > 40) return new ConfirmSavingsGoalOutcome(null, null, "period is too long.");
             label = request.Label ?? (scope.Supplier is { } s
                 ? ResultsMsg.Of("{supplier}", ("supplier", s))
@@ -91,17 +97,19 @@ public sealed class SavingsGoalService(
         };
         dbContext.SavingsGoals.Add(goal);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return new ConfirmSavingsGoalOutcome(ToView(goal), null, null);
+        var month = (await results.SettingsAsync(tenantId, cancellationToken).ConfigureAwait(false)).FiscalYearStartMonth;
+        return new ConfirmSavingsGoalOutcome(ToView(goal, month), null, null);
     }
 
     public async Task<SavingsGoalView?> GetActiveAsync(TenantId tenantId, string userId, CancellationToken cancellationToken = default)
     {
+        var month = (await results.SettingsAsync(tenantId, cancellationToken).ConfigureAwait(false)).FiscalYearStartMonth;
         using var _ = tenantContext.BeginScope(tenantId);
         var goal = await dbContext.SavingsGoals.AsNoTracking()
             .Where(g => g.TenantId == tenantId && g.UserId == userId && g.Active)
             .OrderByDescending(g => g.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-        return goal is null ? null : ToView(goal);
+        return goal is null ? null : ToView(goal, month);
     }
 
     /// <returns>True when an active goal was removed.</returns>
@@ -121,16 +129,30 @@ public sealed class SavingsGoalService(
         var goal = await GetActiveAsync(tenantId, userId, cancellationToken).ConfigureAwait(false);
         if (goal is null) return null;
         var validated = await results.ListValidatedAsync(tenantId, cancellationToken).ConfigureAwait(false);
-        var signed = await results.ListResultsAsync(tenantId, cancellationToken).ConfigureAwait(false);
         var objectives = await caseObjectives.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        if (spendReports is not null)
+        {
+            // On the goal's own fiscal year (or this fiscal quarter), the same periods as Spesa e risparmi.
+            var settings = await results.SettingsAsync(tenantId, cancellationToken).ConfigureAwait(false);
+            var month = settings.FiscalYearStartMonth is >= 1 and <= 12 ? settings.FiscalYearStartMonth : 1;
+            var current = Spend.SpendCalculator.FiscalYearOf(results.Today, month);
+            var year = DeterministicSavingsGoalParser.FiscalYearOf(goal.Period) is { } y && y is >= 1990 and <= 2100 ? y : current;
+            IReadOnlyList<int> quarters = DeterministicSavingsGoalParser.FiscalYearOf(goal.Period) is null
+                ? [Spend.SpendCalculator.FiscalQuarterOf(results.Today, month) - 1]
+                : [0, 1, 2, 3];
+            var spend = await spendReports.GetAsync(tenantId, year, year, Spend.SpendBasis.Accrual, cancellationToken).ConfigureAwait(false);
+            return SavingsGoalProgressBuilder.FromSpend(goal, spend, quarters, validated, objectives);
+        }
+
+        var signed = await results.ListResultsAsync(tenantId, cancellationToken).ConfigureAwait(false);
         return SavingsGoalProgressBuilder.Build(goal, results.Today, validated, signed, objectives);
     }
 
-    private static SavingsGoalView ToView(SavingsGoal goal)
+    private static SavingsGoalView ToView(SavingsGoal goal, int fiscalYearStartMonth = 1)
     {
         var stored = JsonSerializer.Deserialize<StoredScope>(goal.ScopeJson, Json) ?? new StoredScope(null, null, [], null);
         var label = stored.Label ?? ResultsMsg.Of(DeterministicSavingsGoalParser.IdAllContracts);
-        var periodLabel = DeterministicSavingsGoalParser.PeriodLabelOf(goal.Period);
+        var periodLabel = DeterministicSavingsGoalParser.PeriodLabelOf(goal.Period, fiscalYearStartMonth);
         return new SavingsGoalView(
             goal.Id.Value,
             goal.SourceText,

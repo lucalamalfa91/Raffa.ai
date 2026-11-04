@@ -96,6 +96,13 @@ public static class ServiceCollectionExtensions
         // (ISavingsGoalParser) is registered by AddAiFlows (LLM-backed) or by fixture mode
         // (deterministic). TryAdd: a module that owns cases may register its own objective source.
         services.AddScoped<ResultsQueryService>();
+        // Spesa e risparmi: the contracts' value per fiscal quarter (IContractTermHistoryReader comes
+        // from Documents.Contracts, IWorkspaceFinanceSettingsReader from the host).
+        services.TryAddScoped<Application.Spend.ISavingsLedgerSource, Application.Spend.SavingsLedgerReader>();
+        services.AddScoped<Application.Spend.SpendReportQueryService>();
+        // A host without the Identity module (the worker, module tests) reports in CHF on a calendar
+        // year with no budget rates; the API host registers the workspace's own settings.
+        services.TryAddScoped<Raffa.SharedKernel.Savings.IWorkspaceFinanceSettingsReader, DefaultWorkspaceFinanceSettingsReader>();
         services.AddScoped<SavingsGoalService>();
         services.TryAddScoped<CaseObjectiveTableStore>();
         services.TryAddScoped<ICaseObjectiveSource>(sp => sp.GetRequiredService<CaseObjectiveTableStore>());

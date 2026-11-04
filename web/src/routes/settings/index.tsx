@@ -13,6 +13,7 @@ import {
 import { useTenantId } from "../../routes/contracts/contracts4";
 import { useI18n } from "../../i18n/I18nProvider";
 import { notifyTodayChanged } from "../today/loadToday";
+import ReportingSettings from "./ReportingSettings";
 import "./settings.css";
 
 export interface SettingsRouteProps {
@@ -338,6 +339,8 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
           </aside>
         ) : null}
       </div>
+
+      {tenantId ? <ReportingSettings apiClient={apiClient} tenantId={tenantId} /> : null}
 
       {proposal ? (
         <section className="st-proposal" aria-labelledby="st-proposal-h">

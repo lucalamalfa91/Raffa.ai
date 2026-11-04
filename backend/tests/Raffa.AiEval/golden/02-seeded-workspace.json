@@ -886,12 +886,12 @@
     "question": "Export my contracts to Excel",
     "expectedKind": "redirect",
     "expectedMarkdownContains": [
-      "I can't export files from Raffa.ai yet"
+      "I can't export an answer, a Word document or an Excel workbook from Raffa.ai yet"
     ],
     "expectNoCitations": true,
     "expectAtLeastOneAction": true,
     "expectNoGatewayCall": true,
-    "notes": "ADR-030: an export is an operation Raffa cannot perform; Portfolio already shows the same data as a filterable table."
+    "notes": "ADR-030: an export from the chat or to Word/Excel is an operation Raffa cannot perform; Spend and savings exports its contracts table as CSV (gap-catalogue-3)."
   },
   {
     "id": "seeded-capability_gap-discovered-report-it",

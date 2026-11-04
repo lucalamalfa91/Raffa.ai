@@ -395,6 +395,7 @@ button.artifact-card:hover {
 /* — digital content in the panel: KPI tiles, bar charts, tables, documents — */
 .content-doc { display: flex; flex-direction: column; gap: 22px; padding: 4px 4px 24px; }
 .content-sub { margin: 0; font-size: 13px; color: var(--chat-muted); }
+.v4 .btn.content-link { align-self: flex-start; margin-top: 8px; text-decoration: none; }
 .content-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
 .content-tile { padding: 14px 16px; border: 1px solid var(--chat-hairline); border-radius: var(--chat-radius-card); background: var(--chat-paper); display: flex; flex-direction: column; gap: 4px; }
 .content-tile-label { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--chat-muted); }

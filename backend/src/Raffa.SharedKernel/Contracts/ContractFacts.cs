@@ -27,6 +27,11 @@ public sealed record ContractFacts
     public string Type { get; init; } = "";
     public string File { get; init; } = "";
     public decimal Spend { get; init; }
+
+    /// <summary>ISO 4217 code <see cref="Spend"/> is in: the contract row's, or the current renewed
+    /// terms' (<see cref="IContractFactsReader"/> sets it on every read). "" only on facts built
+    /// outside the reader.</summary>
+    public string Currency { get; init; } = "";
     public string Start { get; init; } = "";
     public string End { get; init; } = "";
     public int Days { get; init; }

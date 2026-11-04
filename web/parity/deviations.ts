@@ -8,6 +8,8 @@
  *   D3  no max-width at or above 900px: screens use the window    → inline styles + stylesheet rules
  *   D8  IBM Plex Sans for headings and body; weight 800 becomes   → --font-heading / --font-body, and
  *       700 at 18px and up, 600 below (as the app's tokens)          inline styles + stylesheet rules
+ *   D10 the Risultati tab is Spesa e risparmi (EN Spend and      → the nav tab's label
+ *       savings)
  * D9 (data tables, KPI tile grid, page header, CHF format) changes the screens' structure, which no
  * style rule can reproduce on the prototype: see PARITY.md for how those screens are compared.
  * Runs in the page (addInitScript) and keeps re-applying as the prototype re-renders.
@@ -32,6 +34,18 @@ export const APPROVED_DEVIATIONS = `(() => {
     const mw = /^(\\d+)px$/.exec(style.getPropertyValue('max-width').trim());
     if (mw && parseInt(mw[1], 10) >= 900) style.setProperty('max-width', 'none', style.getPropertyPriority('max-width'));
   };
+  // D10: the nav tab (a button with a 3px bottom bar: its label, then the badge) is renamed; the
+  // screen's own heading is not touched (Risultati is a D9 screen, compared by its layout rules).
+  const RENAMED = { 'Risultati': 'Spesa e risparmi', 'Results': 'Spend and savings' };
+  const renameTabs = () => {
+    document.querySelectorAll('button').forEach((b) => {
+      if (b.style.borderBottomWidth !== '3px' || !b.firstChild) return;
+      const first = b.firstChild;
+      const text = first.nodeType === 3 ? first : first.childNodes.length === 1 && first.firstChild.nodeType === 3 ? first.firstChild : null;
+      const next = text && RENAMED[text.data.trim()];
+      if (next) text.data = next;
+    });
+  };
   const marks = new WeakMap();
   const markOf = (k) => { let m = marks.get(k); if (!m) { m = {}; marks.set(k, m); } return m; };
   const doneSheets = new WeakSet();
@@ -47,6 +61,7 @@ export const APPROVED_DEVIATIONS = `(() => {
       if (m.fw && el.style.fontWeight === '800') m.fw = undefined;
       fix(el.style, m);
     });
+    renameTabs();
   };
   const start = () => {
     const st = document.createElement('style');
@@ -54,7 +69,7 @@ export const APPROVED_DEVIATIONS = `(() => {
     document.head.appendChild(st);
     let queued = false;
     new MutationObserver(() => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; apply(); }); } })
-      .observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'] });
+      .observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] });
     apply();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();

@@ -201,21 +201,51 @@ public sealed class DeterministicSavingsGoalParser : ISavingsGoalParser
 
     /// <summary>Stored period code and its message: <c>FY yyyy</c> (current or next fiscal year) or
     /// <c>this quarter</c>.</summary>
-    public static (string Code, ResultsMsg Label) PeriodOf(string period, DateOnly today)
+    public static (string Code, ResultsMsg Label) PeriodOf(string period, DateOnly today, int fiscalYearStartMonth = 1)
     {
         if (period == "quarter") return ("this quarter", ResultsMsg.Of("this quarter"));
-        var year = period == "next" ? today.Year + 1 : today.Year;
-        return ("FY " + year.ToString(System.Globalization.CultureInfo.InvariantCulture), FiscalYear(year));
+        var current = Spend.SpendCalculator.FiscalYearOf(today, Month(fiscalYearStartMonth));
+        var year = period == "next" ? current + 1 : current;
+        return ("FY " + year.ToString(System.Globalization.CultureInfo.InvariantCulture), FiscalYear(year, fiscalYearStartMonth));
     }
 
-    /// <summary>The message of a stored period code.</summary>
-    public static ResultsMsg PeriodLabelOf(string code) =>
+    /// <summary>The fiscal year a stored period code names ("FY 2026" → 2026, named by the year it starts in); null for "this quarter".</summary>
+    public static int? FiscalYearOf(string code) =>
         code.StartsWith("FY ", StringComparison.Ordinal) && int.TryParse(code.AsSpan(3), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var year)
-            ? FiscalYear(year)
-            : ResultsMsg.Of(code);
+            ? year
+            : null;
 
-    private static ResultsMsg FiscalYear(int year) =>
-        ResultsMsg.Of("FY {year}", ("year", year.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    /// <summary>The message of a stored period code ("FY 2026", or "FY 2026/27" for a fiscal year that starts after January).</summary>
+    public static ResultsMsg PeriodLabelOf(string code, int fiscalYearStartMonth = 1) =>
+        FiscalYearOf(code) is { } year ? FiscalYear(year, fiscalYearStartMonth) : ResultsMsg.Of(code);
+
+    /// <summary>A draft read on the workspace's fiscal year: a parser names years on the calendar
+    /// ("next year" = today's year + 1); with a fiscal year starting after January the current one may
+    /// be named by last calendar year, so the code, its label and the title follow the fiscal year.</summary>
+    public static SavingsGoalDraft OnFiscalYear(SavingsGoalDraft draft, DateOnly today, int fiscalYearStartMonth)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        var m = Month(fiscalYearStartMonth);
+        if (m == 1 || FiscalYearOf(draft.Period) is not { } year)
+        {
+            return draft; // a calendar fiscal year is what the parser already read
+        }
+
+        var shift = Spend.SpendCalculator.FiscalYearOf(today, m) - today.Year;
+        var fiscal = year + shift;
+        var label = FiscalYear(fiscal, m);
+        return draft with
+        {
+            Period = "FY " + fiscal.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            PeriodLabel = label,
+            Title = draft.Ok ? Title(draft.Pct, draft.Annual, draft.Label, label) : draft.Title,
+        };
+    }
+
+    private static int Month(int m) => m is >= 1 and <= 12 ? m : 1;
+
+    private static ResultsMsg FiscalYear(int year, int fiscalYearStartMonth = 1) =>
+        ResultsMsg.Of("FY {year}", ("year", Spend.SpendCalculator.YearLabel(year, Month(fiscalYearStartMonth))));
 
     private static string LabelFor(IReadOnlyList<string> cats) =>
         cats.Count == 1

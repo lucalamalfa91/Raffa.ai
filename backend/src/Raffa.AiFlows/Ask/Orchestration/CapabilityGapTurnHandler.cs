@@ -117,7 +117,7 @@ public sealed class CapabilityGapTurnHandler(
     }
 
     /// <summary>Reminder → Renewals (with <c>?select=</c> when a contract resolved), export →
-    /// Portfolio, purchase order → Contract 360 (or Portfolio when no contract resolved).
+    /// Spend and savings (its CSV), purchase order → Contract 360 (or Portfolio when no contract resolved).
     /// <see cref="CapabilityRouting.ResolveActions"/> already swaps a greyed capability for the
     /// Documents upload action on an empty portfolio (R-SYS-04).</summary>
     private CopilotReply BuildAlternativeRedirect(
@@ -127,6 +127,7 @@ public sealed class CapabilityGapTurnHandler(
         {
             GapAlternative.Renewals => CapabilityCatalog.RenewalsKey,
             GapAlternative.Portfolio => CapabilityCatalog.PortfolioKey,
+            GapAlternative.SpendAndSavings => CapabilityCatalog.SavingsKey,
             GapAlternative.ContractDetail => namedContractItem is null ? CapabilityCatalog.PortfolioKey : CapabilityCatalog.ContractDetailKey,
             _ => CapabilityCatalog.AskKey,
         };

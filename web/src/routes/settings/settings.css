@@ -70,3 +70,15 @@
 @media (max-width: 700px) {
   .st-page { padding: 24px 16px 40px; }
 }
+
+/* Spesa e risparmi: reporting currency, fiscal year start, budget rates. */
+.st-reporting { margin-top: 32px; max-width: 760px; }
+.st-reporting-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 28px; }
+.st-rates { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.st-rate { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.st-rate-one, .st-rate-eq, .st-rate-cur { font-size: 14px; color: var(--color-neutral-700); font-variant-numeric: tabular-nums; }
+/* Beats `.v4 .input { width: 100% }` so a rate reads on one line: 1 EUR = 0.95 CHF. */
+.v4 .st-rate > .input { flex: 0 0 auto; }
+.v4 .st-rate > .input.st-rate-code { width: 110px; }
+.v4 .st-rate > .input.st-rate-value { width: 130px; }
+.st-rate-add { align-self: flex-start; }

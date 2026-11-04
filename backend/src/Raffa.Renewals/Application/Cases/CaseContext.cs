@@ -35,8 +35,15 @@ public sealed record CaseContractFacts
     /// <summary>Contract file name, attached to outgoing emails.</summary>
     public string File { get; init; } = string.Empty;
 
-    /// <summary>Annual spend (CHF).</summary>
+    /// <summary>Annual spend, in <see cref="Currency"/>.</summary>
     public double Spend { get; init; }
+
+    /// <summary>ISO 4217 code of the contract's money (the renewed terms and the signed result are
+    /// recorded in it); "" when the facts did not carry one.</summary>
+    public string Currency { get; init; } = string.Empty;
+
+    /// <summary>The contract's currency, CHF when the facts carried none (the prototype's single currency).</summary>
+    public string CurrencyOrDefault => string.IsNullOrWhiteSpace(Currency) ? "CHF" : Currency.Trim().ToUpperInvariant();
 
     public DateOnly Start { get; init; }
 

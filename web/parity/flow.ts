@@ -57,7 +57,8 @@ export const FLOW_ZERO: Step[] = [
   { shot: '10-contratti-lista', run: async p => { await tab(p, 'Contratti').click(); } },
   { shot: '11-contratto-decisioni', run: async p => { await p.locator('[data-screen-label="Contratti"] .r-row, [data-screen-label="Contratti"] a').first().click(); } },
   { shot: '12-contratto-completo', run: async p => { await btn(p, /^Tutto il contratto/).click(); } },
-  { shot: '13-risultati-senza-obiettivo', run: async p => { await tab(p, 'Risultati').click(); } },
+  // Approved deviation D10 (PARITY.md): the Risultati tab is Spesa e risparmi, on the prototype too (deviations.ts).
+  { shot: '13-risultati-senza-obiettivo', run: async p => { await tab(p, 'Spesa e risparmi').click(); } },
   { shot: '14-risultati-obiettivo-bozza', run: async p => { await btn(p, /Imposta un obiettivo/).click(); await btn(p, /^Voglio risparmiare il 20%/).click(); } },
   { shot: '15-risultati-obiettivo-attivo', run: async p => { await btn(p, /Sì, è questo/).click(); } },
   { shot: '16-chiedi-conversazioni', run: async p => { await tab(p, 'Chiedi').click(); } },

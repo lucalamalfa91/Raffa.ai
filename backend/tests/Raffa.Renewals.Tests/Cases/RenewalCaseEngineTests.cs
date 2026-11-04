@@ -333,6 +333,48 @@ public sealed class RenewalCaseEngineTests
         Assert.Equal("{\"id\":\"Decision: {label} · {by}\",\"vars\":{\"label\":{\"id\":\"Stay at 12 months — decline the discount tied to 24\"},\"by\":\"Marta Keller\"}}", json);
     }
 
+    [Fact]
+    public void The_plan_card_offers_each_secondary_path_once()
+    {
+        var c = RenewalCaseEngine.Create(1, Ctx(1, Luca), owner: Marta);
+        c = Act(c, Marta, "ans", new() { Q = 0, Val = "keep" });
+        c = Act(c, Marta, "ans", new() { Q = 1, Val = "12" });
+        c = Act(c, Marta, "ans", new() { Q = 2, Val = "p10" });
+        c = Act(c, Marta, "q3done");
+
+        var card = Current(c, Marta);
+        var acts = card.Buttons.Concat(card.More).Select(b => b.Act).ToList();
+
+        Assert.Single(acts, a => a == "startNotice");
+        Assert.Single(acts, a => a == "startAlt");
+    }
+
+    [Fact]
+    public void A_member_known_only_by_email_is_shown_by_the_local_part_in_the_chat()
+    {
+        const string member = "pietro.nasuti@example.com";
+        var c = RenewalCaseEngine.Create(1, Ctx(1, member), owner: member);
+        c = Act(c, member, "ask", new() { Text = CaseText.Of("ricordami le date del contratto") });
+
+        var bubble = RenewalCaseEngine.View(c, Ctx(1, member)).Page.Msgs[^1];
+
+        Assert.False(bubble.Raffa);
+        Assert.Equal("pietro.nasuti", bubble.By);
+        Assert.Equal("Marta", RenewalCaseEngine.View(Act(c, Marta, "ask", new() { Text = CaseText.Of("e il preavviso?") }), Ctx(1, Marta)).Page.Msgs[^1].By);
+    }
+
+    [Fact]
+    public void The_case_keeps_the_contracts_currency_so_renewed_terms_and_results_are_recorded_in_it()
+    {
+        var facts = new Raffa.SharedKernel.Contracts.ContractFacts { Supplier = "Euro", Name = "Euro MSA", Currency = "EUR", Spend = 100_000m };
+
+        var cf = Raffa.Renewals.Application.CaseWork.CaseFactsMapper.ToCaseFacts(facts);
+
+        Assert.Equal("EUR", cf.Currency);
+        Assert.Equal("EUR", cf.CurrencyOrDefault);
+        Assert.Equal("CHF", (cf with { Currency = "" }).CurrencyOrDefault);
+    }
+
     private sealed class NoExampleAddressServices : ICaseScriptServices
     {
         private static readonly FixtureCaseScriptServices Inner = FixtureCaseScriptServices.Instance;

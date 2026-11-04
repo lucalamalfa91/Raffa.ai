@@ -2661,6 +2661,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       getActiveSavingsGoal: () => client.getActiveSavingsGoal!("tenant-1"),
       clearSavingsGoal: () => client.clearSavingsGoal!("tenant-1"),
       getSavingsGoalProgress: () => client.getSavingsGoalProgress!("tenant-1"),
+      getSpendReport: () => client.getSpendReport!("tenant-1", { from: 2025, to: 2027, basis: "cash" }),
       listConversations: () => client.listConversations("tenant-1"),
       createConversation: () => client.createConversation("tenant-1"),
       getConversation: () => client.getConversation("tenant-1", "conv-1"),

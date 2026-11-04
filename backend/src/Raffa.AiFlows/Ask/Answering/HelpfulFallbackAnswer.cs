@@ -112,12 +112,12 @@ public static class HelpfulFallbackAnswer
         {
             CapabilityCatalog.SavingsKey => italian
                 ? "Ecco da dove partire per risparmiare:\n\n" +
-                  "- **Scegli il contratto giusto**: in Savings trovi le opportunità già calcolate, in Renewals le scadenze che ti lasciano tempo per negoziare.\n" +
+                  "- **Scegli il contratto giusto**: in Spesa e risparmi vedi quanto pesa ogni contratto e quali decisioni si avvicinano, in Renewals le scadenze che ti lasciano tempo per negoziare.\n" +
                   "- **Prepara le leve**: dimmi il fornitore e ti preparo leve, richieste da fare e una bozza di email.\n" +
                   "- **Rafforza la tua posizione**: un preventivo concorrente o l'ultimo report d'uso in Quote check rendono ogni richiesta più solida.\n\n" +
                   "Dimmi su quale fornitore vuoi lavorare e ti preparo il piano completo."
                 : "Here's where to start saving:\n\n" +
-                  "- **Pick the right contract**: Savings lists the opportunities already calculated, Renewals the deadlines that leave you time to negotiate.\n" +
+                  "- **Pick the right contract**: Spend and savings shows what each contract weighs and which decisions are coming up, Renewals the deadlines that leave you time to negotiate.\n" +
                   "- **Prepare the levers**: name the supplier and I'll prepare the levers, the asks and a draft email.\n" +
                   "- **Strengthen your position**: a competing quote or the latest usage report in Quote check makes every ask more solid.\n\n" +
                   "Tell me which supplier to work on and I'll build the full plan.",

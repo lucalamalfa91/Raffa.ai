@@ -14,7 +14,8 @@ public sealed class GapCatalogueDataTests
     {
         ["send-supplier"] = "DB48312DCAB538531814F465E3819D911A4E3DB3860017CC6E63CE49EC470B20",
         ["email-draft"] = "E736F34F1C57F344936E529D7D08A684303FF270C2A17471224C6497FBD9C02E",
-        ["reminder"] = "ADCB10EC9954830071F2066C6E08E135B8DDBBB8085459EFD82E09BF5BC799FD",
+        // gap-catalogue-2: recall questions ("ricordami le date", "remind me of the notice period") no longer match.
+        ["reminder"] = "C1441C758C84382E32D56AC9F6E8E595707606E43FC673AC1F848FE928EC688C",
         ["export-file"] = "D5966715F79768E53380FA6A85754BA61A23D59DD54A1232425989D0C149CE69",
         ["purchase-order"] = "CB8346D01A33064CE8774AAE3444A044CD83450ADBDECD310178F8DD188310A6",
     };
@@ -52,7 +53,10 @@ public sealed class GapCatalogueDataTests
         Assert.Equal("inviare un'email al fornitore", send.OperationIt);
         Assert.Equal(GapAlternative.DraftEmail, send.Alternative);
         Assert.Equal(GapAlternative.Renewals, CapabilityGapCatalog.Find(CapabilityGapCatalog.ReminderKey)!.Alternative);
-        Assert.Equal(GapAlternative.Portfolio, CapabilityGapCatalog.Find(CapabilityGapCatalog.ExportFileKey)!.Alternative);
+        // gap-catalogue-3: the export points at Spend and savings' CSV, not Portfolio's table.
+        var export = CapabilityGapCatalog.Find(CapabilityGapCatalog.ExportFileKey)!;
+        Assert.Equal(GapAlternative.SpendAndSavings, export.Alternative);
+        Assert.Equal("export an answer, a Word document or an Excel workbook", export.OperationEn);
         Assert.Equal(GapAlternative.ContractDetail, CapabilityGapCatalog.Find(CapabilityGapCatalog.PurchaseOrderKey)!.Alternative);
     }
 

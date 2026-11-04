@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AskShortcuts from "../../components/ask/AskShortcuts";
 import type {
   ApiClient,
   SavingsGoalBody,
   SavingsGoalDraftBody,
   SavingsGoalProgressBody,
-  SavingsResultsBody,
 } from "../../api/client";
+import type { SpendReport } from "../../api/spend";
 import { useGuide } from "../../components/shell/guide";
 import { useShellContext } from "../../components/shell/shellContext";
 import { loadCurrentWorkspace } from "../signin/workspaceStore";
 import { useI18n } from "../../i18n/I18nProvider";
-import { buildGoalView, buildResultsView, GOAL_EXAMPLES, tm, type ApiMsg } from "./resultsViewModel";
+import { buildGoalView, GOAL_EXAMPLES, tm, type ApiMsg } from "./resultsViewModel";
+import { ExcludedNote, SpendBudget, SpendFiltersBar, SpendLedger, SpendOverview, SpendPivot, SpendSectionNav } from "./SpendSections";
+import { readFilters, writeFilters, type SpendFilters } from "./spendViewModel";
 import "./results4.css";
+import "./spend4.css";
 
 export interface SavingsRouteProps {
   apiClient: ApiClient;
@@ -22,9 +25,12 @@ export interface SavingsRouteProps {
 type Load<T> = { phase: "loading" } | { phase: "ready"; data: T } | { phase: "error"; message: string };
 
 /**
- * Risultati (AskRaffa V4.dc.html lines 206-255): verifiable figures only — contractual results
- * (signed), realized (invoices), quantity reductions apart, open objectives (the user's targets).
- * The goal bar is collapsed by default; with a goal the page adds "Verso il tuo obiettivo".
+ * Spesa e risparmi (formerly Risultati): what the contracts cost in the periods they run, what is
+ * committed, what renews by itself, what is still to decide -- and, on the same periods, what the
+ * signed results save (contractual, proven by invoices, quantity reductions apart, the cases'
+ * objectives). One page, one set of filters (in the URL), every figure from
+ * `GET /api/savings/spend`; the goal bar and "Verso il tuo obiettivo" are the user's own target.
+ * Verifiable figures only: nothing is estimated.
  */
 export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
   const { t } = useI18n();
@@ -32,7 +38,13 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
   const shell = useShellContext();
   const tenantId = shell?.workspaceId ?? loadCurrentWorkspace()?.id ?? "";
 
-  const [report, setReport] = useState<Load<SavingsResultsBody>>({ phase: "loading" });
+  const [params, setParams] = useSearchParams();
+  const filters = useMemo(() => readFilters(params), [params]);
+  const change = useCallback(
+    (next: Partial<SpendFilters>) => setParams(writeFilters({ ...filters, ...next }), { replace: true }),
+    [filters, setParams],
+  );
+  const [report, setReport] = useState<Load<SpendReport>>({ phase: "loading" });
   const [goal, setGoal] = useState<SavingsGoalBody | null>(null);
   const [progress, setProgress] = useState<SavingsGoalProgressBody | null>(null);
   const [goalOpen, setGoalOpen] = useState(false);
@@ -44,16 +56,16 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
   useEffect(() => {
     let live = true;
     void (async () => {
-      if (!apiClient.getSavingsResults) {
-        setReport({ phase: "error", message: t("Results are not available right now.") });
+      if (!apiClient.getSpendReport) {
+        setReport({ phase: "error", message: t("Spend and savings are not available right now.") });
         return;
       }
-      const [results, active] = await Promise.all([
-        apiClient.getSavingsResults(tenantId, "fy"),
+      const [spend, active] = await Promise.all([
+        apiClient.getSpendReport(tenantId, { basis: filters.basis }),
         apiClient.getActiveSavingsGoal ? apiClient.getActiveSavingsGoal(tenantId) : Promise.resolve(null),
       ]);
       if (!live) return;
-      setReport(results.ok && results.data ? { phase: "ready", data: results.data } : { phase: "error", message: t("Results are not available right now.") });
+      setReport(spend.ok && spend.data ? { phase: "ready", data: spend.data } : { phase: "error", message: t("Spend and savings are not available right now.") });
       const current = active?.ok ? active.data : null;
       setGoal(current);
       if (current && apiClient.getSavingsGoalProgress) {
@@ -66,10 +78,12 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
     return () => {
       live = false;
     };
-  }, [apiClient, tenantId, reloadKey, t]);
+  }, [apiClient, tenantId, reloadKey, t, filters.basis]);
 
-  const rs = useMemo(() => (report.phase === "ready" ? buildResultsView(report.data, t) : null), [report, t]);
-  const gl = useMemo(() => (goal && progress ? buildGoalView(progress, t) : null), [goal, progress, t]);
+  const gl = useMemo(
+    () => (goal && progress ? buildGoalView(progress, t, report.phase === "ready" ? report.data.currency : "CHF") : null),
+    [goal, progress, t, report],
+  );
 
   const ask = useCallback(
     async (text: string) => {
@@ -130,11 +144,11 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
 
   const firstRow = gl?.rows[0];
   useGuide({
-    where: t("Results⟦guide⟧"),
+    where: t("Spend and savings⟦guide⟧"),
     now: goal
       ? t("Open the first contract under “Contracts you can act on” and set the target in the case.")
-      : t("Write your goal in your own words, then read what is signed and what is missing."),
-    why: t("Raffa never estimates: a figure exists only with a signed contract or an invoice. The goal is yours and the page adapts to it."),
+      : t("Pick the fiscal year, then read what is committed, what renews by itself and what you can still decide."),
+    why: t("Raffa never estimates: spend comes from the documented terms and the renewal clause, a saving exists only with a signed contract or an invoice. The goal is yours and the page adapts to it."),
     next: goal
       ? t("Every target set in a case adds up here; it truly counts only at signature.")
       : t("With the goal set you see how much is covered and which renewals can close it."),
@@ -151,9 +165,11 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
   };
 
   return (
-    <div data-screen-label="Risultati" className="s4-page">
-      <h2>{t("Results⟦page⟧")}</h2>
-      <div className="s4-subtitle">{t("Verifiable figures only. Raffa never estimates a saving. The goal is yours, in your own words.")}</div>
+    <div data-screen-label="Spesa e risparmi" className="s4-page">
+      <h2>{t("Spend and savings")}</h2>
+      <div className="s4-subtitle">
+        {t("What every contract is worth in the periods it runs, and what you saved, from the contracts you uploaded. Verifiable figures only: Raffa never estimates a saving. The goal is yours, in your own words.")}
+      </div>
 
       <AskShortcuts
         items={[
@@ -161,6 +177,7 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
           { label: t("Which renewals first?"), question: t("Which renewals should we start first, and why?") },
         ]}
       />
+      {report.phase === "ready" ? <SpendSectionNav report={report.data} filters={filters} hasGoal={!!goal} /> : null}
       <div data-screen-label="Obiettivo" className="s4-goal">
         <div className="s4-goal-head">
           <span className="s4-goal-mark" />
@@ -237,6 +254,8 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
         )}
       </div>
 
+      {report.phase === "ready" ? <SpendFiltersBar report={report.data} filters={filters} onChange={change} /> : null}
+
       {actionError && (
         <div className="s4-error" role="alert">
           <span>{actionError}</span>
@@ -246,8 +265,21 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
         </div>
       )}
 
+      {report.phase === "error" && (
+        <div className="s4-error" role="alert">
+          <span>{report.message}</span>
+          <button type="button" className="btn btn-secondary" onClick={() => { setReport({ phase: "loading" }); setReloadKey((n) => n + 1); }}>
+            {t("Retry")}
+          </button>
+        </div>
+      )}
+
+      {report.phase === "ready" && (
+        <>
+          <ExcludedNote report={report.data} />
+          <SpendOverview report={report.data} filters={filters} onChange={change} />
       {gl && (
-        <div data-screen-label="Verso l’obiettivo" className="s4-gl">
+        <div id="goal" data-screen-label="Verso l’obiettivo" className="s4-gl">
           <div className="s4-gl-title">
             {gl.title} <span>· {gl.scope}</span>
           </div>
@@ -300,156 +332,9 @@ export default function SavingsRoute({ apiClient }: SavingsRouteProps) {
         </div>
       )}
 
-      {report.phase === "error" && (
-        <div className="s4-error" role="alert">
-          <span>{report.message}</span>
-          <button type="button" className="btn btn-secondary" onClick={() => { setReport({ phase: "loading" }); setReloadKey((n) => n + 1); }}>
-            {t("Retry")}
-          </button>
-        </div>
-      )}
-
-      {rs && (
-        <>
-          <div className="s4-nums">
-            {rs.nums.map((n) => (
-              <div key={n.k} className="s4-num">
-                <div className="s4-k">{n.k}</div>
-                <div className="s4-num-v" style={{ color: n.fg }}>{n.v}</div>
-                <div className="s4-sub">{n.sub}</div>
-              </div>
-            ))}
-          </div>
-          <div data-screen-label="Risultati · KPI" className="s4-kpis">
-            {rs.kpis.map((n) => (
-              <div key={n.k} className="s4-kpi">
-                <div className="s4-kpi-k">{n.k}</div>
-                <div className="s4-kpi-v" style={{ color: n.fg }}>{n.v}</div>
-                <div className="s4-kpi-sub">{n.sub}</div>
-              </div>
-            ))}
-          </div>
-          <div data-screen-label="Risultati · grafici" className="s4-charts">
-            <div className="s4-chart">
-              <div className="s4-section-k">{t("When they were signed · CHF / year")}</div>
-              <div className="s4-months">
-                {rs.months.map((m, i) => (
-                  <div key={i} className="s4-month" title={m.title}>
-                    <span className="s4-month-txt">{m.txt}</span>
-                    <span className="s4-month-bar" style={{ height: m.h, background: m.bg }} />
-                  </div>
-                ))}
-              </div>
-              <div className="s4-month-labels">
-                {rs.months.map((m, i) => (
-                  <span key={i}>{m.label}</span>
-                ))}
-              </div>
-            </div>
-            <div className="s4-chart">
-              <div className="s4-section-k">{t("By supplier · signed, proven, objective")}</div>
-              {rs.by.map((b) => (
-                <div key={b.label} className="s4-by">
-                  <strong>{b.label}</strong>
-                  <span className="s4-stack">
-                    <span style={{ width: b.wReal, background: "var(--color-text)" }} />
-                    <span style={{ width: b.wSig, background: "var(--color-accent)" }} />
-                    <span style={{ width: b.wObj, background: "var(--color-accent-100)" }} />
-                  </span>
-                  <span className="s4-by-txt">{b.txt}</span>
-                </div>
-              ))}
-              <div className="s4-legend">
-                <span>
-                  <span className="s4-sw" style={{ background: "var(--color-text)" }} />
-                  {t("proven by invoices")}
-                </span>
-                <span>
-                  <span className="s4-sw" style={{ background: "var(--color-accent)" }} />
-                  {t("signed, not yet proven")}
-                </span>
-                <span>
-                  <span className="s4-sw" style={{ background: "var(--color-accent-100)", border: "1px solid var(--color-accent-300)", boxSizing: "border-box" }} />
-                  {t("your objective")}
-                </span>
-              </div>
-            </div>
-            <div className="s4-chart">
-              <div className="s4-section-k">{t("By lever · signed results")}</div>
-              {rs.levers.map((l) => (
-                <div key={l.label} className="s4-lever">
-                  <span>
-                    {l.label}
-                    <span className="s4-lever-n">{l.n}</span>
-                  </span>
-                  <span className="s4-bar">
-                    <span style={{ width: l.w, background: "var(--color-accent)" }} />
-                  </span>
-                  <span className="s4-lever-txt">{l.txt}</span>
-                </div>
-              ))}
-              <div className="s4-chart-note">{t("Quantity reductions are not included: they are shown apart.")}</div>
-            </div>
-            <div className="s4-chart">
-              <div className="s4-section-k">{t("Proven by invoices · per signed result")}</div>
-              {rs.proof.map((p, i) => (
-                <div key={i} className="s4-proof">
-                  <strong>{p.label}</strong>
-                  <span className="s4-bar">
-                    <span style={{ width: p.w, background: "var(--color-text)" }} />
-                  </span>
-                  <span className="s4-proof-txt">{p.txt}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="s4-lists">
-            <div className="s4-list">
-              <div className="s4-list-title">
-                {t("Open objectives")} <span>{t("· yours, from the renewal chat")}</span>
-              </div>
-              {rs.open.map((o) => (
-                <div
-                  key={o.key}
-                  className="r-row s4-open"
-                  onClick={() => navigate(o.caseId ? `/renewals/${o.caseId}` : `/contracts/${o.contractId}`)}
-                >
-                  <strong>{o.supplier}</strong>
-                  <span className="s4-open-est">{o.est}</span>
-                  <span className={`tag ${o.tag}`}>{o.status}</span>
-                  <span className="s4-open-days" style={{ color: o.fg }}>{o.days}</span>
-                </div>
-              ))}
-            </div>
-            <div className="s4-list">
-              <div className="s4-list-title">
-                {t("Contractual results · FY {year}", { year: rs.fiscalYear })} <span>{t("· baseline · period · method · evidence")}</span>
-              </div>
-              {rs.recent.map((r) => (
-                <div key={r.key} className="s4-recent">
-                  <span className="s4-recent-when">{r.when}</span>
-                  <span>
-                    <strong>{r.supplier}</strong> · {r.note}
-                    <span className="s4-recent-meta">
-                      {r.baseline} · {r.period} · {r.method} · {r.evidence}
-                    </span>
-                    <span className="s4-recent-real" style={{ color: r.realFg }}>{r.realized}</span>
-                  </span>
-                  <span className="s4-recent-amount">{r.amount}</span>
-                </div>
-              ))}
-              {rs.volume.map((r) => (
-                <div key={r.key} className="s4-recent s4-volume">
-                  <span className="s4-recent-when">{r.when}</span>
-                  <span>
-                    <strong>{r.supplier}</strong> · {r.note}
-                    <span className="s4-recent-meta">{t("Quantity reduction — not a negotiation result")}</span>
-                  </span>
-                  <span className="s4-recent-amount">{r.amount}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <SpendPivot report={report.data} filters={filters} onChange={change} onOpenCase={(id, caseId) => void openContract(id, caseId)} />
+          <SpendBudget report={report.data} filters={filters} onChange={change} onOpenCase={(id, caseId) => void openContract(id, caseId)} />
+          <SpendLedger report={report.data} filters={filters} />
         </>
       )}
     </div>

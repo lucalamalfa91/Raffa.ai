@@ -43,8 +43,8 @@ public static class CapabilityGapCopy
                 ? "in Renewals trovi già ogni scadenza di preavviso e l'azione da fare"
                 : "Renewals already lists every notice deadline and the action to take",
             CapabilityCatalog.SavingsKey => italian
-                ? "in Savings trovi già i risparmi individuati e le opportunità da cui nascono"
-                : "Savings already shows the savings identified and the opportunities behind them",
+                ? "in Spesa e risparmi trovi già la spesa per anno e trimestre, l'incidenza di ogni contratto e i risparmi"
+                : "Spend and savings already shows the spend per year and quarter, each contract's share and the savings",
             CapabilityCatalog.ContractDetailKey => italian
                 ? "in Contract 360 trovi già tutti i dati di un contratto"
                 : "Contract 360 already holds every fact of a contract",

@@ -98,14 +98,20 @@ public static class WorkspaceSettingsEndpointExtensions
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
-        if (request?.WebResearchEnabled is not { } webResearchEnabled)
+        if (request is null || (request.WebResearchEnabled is null && request.ReportingCurrency is null
+                && request.FiscalYearStartMonth is null && request.BudgetRates is null))
         {
-            return Results.BadRequest("The body must name at least one setting ('webResearchEnabled').");
+            return Results.BadRequest(
+                "The body must name at least one setting ('webResearchEnabled', 'reportingCurrency', 'fiscalYearStartMonth', 'budgetRates').");
         }
 
-        var settings = await settingsService
-            .SetWebResearchEnabledAsync(routeTenantId, webResearchEnabled, identity, cancellationToken)
+        var (settings, error) = await settingsService
+            .UpdateAsync(routeTenantId, request, identity, cancellationToken)
             .ConfigureAwait(false);
+        if (error is not null)
+        {
+            return Results.BadRequest(error);
+        }
 
         return settings is null ? Results.NotFound() : Results.Ok(ToJson(settings, callerRole.Value, webResearchOptions));
     }
@@ -117,6 +123,14 @@ public static class WorkspaceSettingsEndpointExtensions
         // The client shows the toggle only to a caller who can flip it; the role is the caller's
         // own membership, never a header.
         canEdit = callerRole == WorkspaceRoleName.Admin,
+        // Spesa e risparmi: what every total is in, when the fiscal year starts (null: not set,
+        // reported as a calendar year) and the Admin's budget rates (units of the reporting currency
+        // per unit of each key); the currencies offered are the product's closed list.
+        reportingCurrency = settings.ReportingCurrency,
+        reportingCurrencySet = settings.ReportingCurrencySet,
+        fiscalYearStartMonth = settings.FiscalYearStartMonth,
+        budgetRates = settings.BudgetRates ?? new Dictionary<string, decimal>(),
+        supportedCurrencies = WorkspaceProvisioningService.SupportedCurrencies.Order(StringComparer.Ordinal).ToList(),
     };
 
     private static async Task<WorkspaceRoleName?> ResolveMembershipRoleAsync(

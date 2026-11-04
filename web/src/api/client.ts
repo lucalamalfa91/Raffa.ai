@@ -54,6 +54,7 @@ import { createCoalescingFetch, type CoalescingFetch } from "./coalescingFetch";
 import { getActiveLang, LANG_HEADER } from "../i18n/activeLang";
 import type { CaseActionPayload, CaseCallResult, CaseEnvelope, RenewalsBoard, TodayFeed } from "./renewalCases";
 import type { CompanyRulesBody, PolicyProposal, RuleInterviewReply, RuleTurn } from "./companyRules";
+import type { SpendReport, SpendReportQuery } from "./spend";
 
 /** See this file's own header comment ("Task E18/F01/US02/T01", NW-05). Returns a bearer access
  * token scoped to `appConfig.oidcApiScopes` (acquired via `acquireTokenSilent`, falling back to
@@ -241,8 +242,15 @@ export interface GetWorkspaceSettingsResult {
   error: string | null;
 }
 
+/** Every field optional: a client patches one setting without restating the others. */
 export interface UpdateWorkspaceSettingsRequest {
-  webResearchEnabled: boolean;
+  webResearchEnabled?: boolean;
+  /** Spesa e risparmi: one of `supportedCurrencies`; changing it clears rates the same request does not set. */
+  reportingCurrency?: string;
+  /** Spesa e risparmi: 1-12. */
+  fiscalYearStartMonth?: number;
+  /** Spesa e risparmi: the whole set of budget rates (units of the reporting currency per unit); `{}` clears it. */
+  budgetRates?: Record<string, number>;
 }
 
 export type UpdateWorkspaceSettingsResult = GetWorkspaceSettingsResult;
@@ -1968,6 +1976,8 @@ export interface ApiClient {
   clearSavingsGoal?(tenantId: string): Promise<ApiCallResult<null>>;
   /** `GET /api/savings/goals/active/progress` -- "Verso il tuo obiettivo"; 404 when no goal. */
   getSavingsGoalProgress?(tenantId: string): Promise<ApiCallResult<SavingsGoalProgressBody>>;
+  /** `GET /api/savings/spend` (Spesa e risparmi): the contracts' value and savings per fiscal quarter. */
+  getSpendReport?(tenantId: string, query?: SpendReportQuery): Promise<ApiCallResult<SpendReport>>;
   // AskRaffa 4.0 slices 2+3 (backend/src/Raffa.Api/RenewalCasesEndpointExtensions.cs): Oggi, Rinnovi,
   // Pratica. Never throw; an error result keeps the current case the server returned with it (409 stale
   // version / duplicate reply, 403 no right) so the screen re-renders from it. Optional on the
@@ -4372,6 +4382,16 @@ export function createApiClient(
 
     async getSavingsGoalProgress(tenantId) {
       return callJson<SavingsGoalProgressBody>(new URL("/api/savings/goals/active/progress", baseUrl), { method: "GET", tenantId });
+    },
+
+    async getSpendReport(tenantId, query) {
+      const url = new URL("/api/savings/spend", baseUrl);
+      if (query?.from !== undefined && query.to !== undefined) {
+        url.searchParams.set("from", String(query.from));
+        url.searchParams.set("to", String(query.to));
+      }
+      if (query?.basis) url.searchParams.set("basis", query.basis);
+      return callJson<SpendReport>(url, { method: "GET", tenantId });
     },
 
 

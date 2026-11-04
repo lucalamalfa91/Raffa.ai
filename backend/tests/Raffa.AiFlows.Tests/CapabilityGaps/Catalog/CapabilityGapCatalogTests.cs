@@ -21,6 +21,14 @@ public sealed class CapabilityGapCatalogTests
     [InlineData("mettimi un promemoria per la disdetta DocuSign", CapabilityGapCatalog.ReminderKey)]
     [InlineData("Remind me two weeks before the Salesforce notice deadline", CapabilityGapCatalog.ReminderKey)]
     [InlineData("Add the renewal to my calendar", CapabilityGapCatalog.ReminderKey)]
+    [InlineData("Remind me to check the Salesforce renewal", CapabilityGapCatalog.ReminderKey)]
+    [InlineData("remind me when the DocuSign notice deadline approaches", CapabilityGapCatalog.ReminderKey)]
+    [InlineData("ricordami di controllare il rinnovo Salesforce", CapabilityGapCatalog.ReminderKey)]
+    [InlineData("ricordamelo una settimana prima della scadenza", CapabilityGapCatalog.ReminderKey)]
+    [InlineData("ricordami 30 giorni prima della disdetta Salesforce", CapabilityGapCatalog.ReminderKey)]
+    [InlineData("ricordami quando si avvicina la disdetta Salesforce", CapabilityGapCatalog.ReminderKey)]
+    [InlineData("segna la scadenza DocuSign in agenda", CapabilityGapCatalog.ReminderKey)]
+    [InlineData("mettilo nel calendario", CapabilityGapCatalog.ReminderKey)]
     [InlineData("Export my contracts to Excel", CapabilityGapCatalog.ExportFileKey)]
     [InlineData("esporta il portafoglio in un foglio di calcolo", CapabilityGapCatalog.ExportFileKey)]
     [InlineData("raise a PO for the Microsoft renewal", CapabilityGapCatalog.PurchaseOrderKey)]
@@ -45,6 +53,17 @@ public sealed class CapabilityGapCatalogTests
     [InlineData("How do I upload a PDF?")]
     [InlineData("posso risparmiare un po' sul rinnovo?")]
     [InlineData("what is the SAP contract worth?")]
+    // gap-catalogue-2: "ricordami / remind me" as "tell me again" is a fact question, not a reminder.
+    [InlineData("ricordami le date del contratto")]
+    [InlineData("ricordami le scadenze di questo contratto")]
+    [InlineData("ricordami quando scade il contratto Salesforce")]
+    [InlineData("ricordami tra quanto scade il preavviso")]
+    [InlineData("ricordami di quanto è il preavviso")]
+    [InlineData("ricordami prima di tutto il valore annuo")]
+    [InlineData("Remind me of the contract dates")]
+    [InlineData("remind me what the notice period is for Salesforce")]
+    [InlineData("cosa ho in agenda questo mese?")]
+    [InlineData("quali scadenze ho in calendario?")]
     public void Does_not_match_ordinary_questions(string question)
     {
         Assert.Null(CapabilityGapCatalog.Match(question));

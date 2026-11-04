@@ -208,17 +208,18 @@ public static class CapabilityCatalog
             ]),
         new Capability(
             SavingsKey,
-            "Savings",
+            "Spend and savings",
             "/savings",
-            "Savings KPIs and the opportunities behind them — contracts analyzed, upcoming " +
-            "renewals, savings identified — reached from an action, not the rail.",
+            "What the validated contracts cost per fiscal year and quarter, by accrual or by cash, " +
+            "with each contract's share, the savings signed and proven by invoices, next year's " +
+            "budget and the decisions due — filterable, and the table exports as CSV.",
             ["Where can we save?", "What is the largest saving right now?"],
             CapabilityRoleGate.Any,
             CapabilityAvailability.NeedsValidatedContract,
             [
-                "Open Savings from an Ask action, a Renewals row or Contract 360.",
-                "Review the KPIs and the opportunities table.",
-                "Open a row for the contract behind that opportunity.",
+                "Open Spend and savings from the top bar or from a KPI or dashboard built in Ask.",
+                "Pick the fiscal year, years or quarters, accrual or cash, and a category.",
+                "Open a contract for its share, timeline and savings, or export the table as CSV.",
             ]),
         new Capability(
             QuoteCheckKey,

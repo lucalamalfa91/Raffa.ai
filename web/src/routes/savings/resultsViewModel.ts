@@ -17,9 +17,9 @@ export interface ApiMsg {
 
 export const tm = (t: Translate, m: ApiMsg | null | undefined): string => (m ? t(m.id, (m.vars ?? undefined) as Vars | undefined) : "");
 
-/** `SQ.k(n)`: "CHF 128k", "CHF 2.4M". */
-export function k(n: number): string {
-  return n >= 1e6 ? `CHF ${(n / 1e6).toFixed(1)}M` : `CHF ${Math.round(n / 1000)}k`;
+/** `SQ.k(n)`: "CHF 128k", "CHF 2.4M" -- in the workspace's reporting currency when given. */
+export function k(n: number, currency = "CHF"): string {
+  return n >= 1e6 ? `${currency} ${(n / 1e6).toFixed(1)}M` : `${currency} ${Math.round(n / 1000)}k`;
 }
 
 /** The prototype's `kk`: "42k". */
@@ -221,12 +221,12 @@ export interface GoalView {
   none: boolean;
 }
 
-export function buildGoalView(p: SavingsGoalProgressBody, t: Translate): GoalView {
+export function buildGoalView(p: SavingsGoalProgressBody, t: Translate, currency = "CHF"): GoalView {
   const g = p.goal;
   const label = tm(t, g.label as ApiMsg);
   const period = tm(t, g.periodLabel as ApiMsg);
   const pct = p.pct;
-  const titleParts = [pct ? `${pct}%` : "", p.target ? t("{amount} a year", { amount: k(p.target) }) : "", period].filter(Boolean);
+  const titleParts = [pct ? `${pct}%` : "", p.target ? t("{amount} a year", { amount: k(p.target, currency) }) : "", period].filter(Boolean);
   const rows: GoalRowView[] = p.rows.map((r) => {
     const objective =
       r.objectiveKind == null
@@ -234,7 +234,7 @@ export function buildGoalView(p: SavingsGoalProgressBody, t: Translate): GoalVie
         : r.objectiveKind === "none"
           ? t("none⟦objective⟧")
           : r.objectivePercent
-            ? `−${r.objectivePercent}% (${k(r.objectiveAmount)})`
+            ? `−${r.objectivePercent}% (${k(r.objectiveAmount, currency)})`
             : t("custom⟦objective⟧");
     const parts = [
       r.hasCase ? t("Case open · objective {objective}", { objective }) : t("Renewal to start"),
@@ -246,9 +246,9 @@ export function buildGoalView(p: SavingsGoalProgressBody, t: Translate): GoalVie
       contractId: r.contractId,
       caseId: r.caseId ?? null,
       supplier: r.supplier,
-      spend: k(r.spend),
+      spend: k(r.spend, currency),
       line: parts.join(" · "),
-      ifHit: t("{amount} / year", { amount: k(r.ifHit) }),
+      ifHit: t("{amount} / year", { amount: k(r.ifHit, currency) }),
       days: !r.noticeDeadline ? "" : r.days >= 0 ? String(r.days) : "—",
       fg: r.noticeDeadline && r.days >= 0 && r.days <= 45 ? ACCENT : INHERIT,
       cta: r.hasCase ? t("Open the case") : t("Start the renewal"),
@@ -262,40 +262,40 @@ export function buildGoalView(p: SavingsGoalProgressBody, t: Translate): GoalVie
         ? t("If the targets set in the cases are signed, the goal is covered. It counts only when the contract is signed.")
         : t(
             "To cover {gap} you need higher targets in the upcoming renewals: {pct}% on each contract below is worth {amount} a year. The target of each case is set at question 3 of the interview.",
-            { gap: k(p.gap), pct, amount: k(p.ifAllHit) },
+            { gap: k(p.gap, currency), pct, amount: k(p.ifAllHit, currency) },
           );
   return {
     title: t("Towards your goal: {parts}", { parts: titleParts.join(" · ") }),
-    scope: t("{label} · {spend} of annual spend on {n} contracts", { label, spend: k(p.spend), n: p.contractCount }),
+    scope: t("{label} · {spend} of annual spend on {n} contracts", { label, spend: k(p.spend, currency), n: p.contractCount }),
     pct: `${pct}%`,
     kpis: [
       {
         k: t("Objective"),
-        v: k(p.target),
-        sub: pct ? t("{pct}% of {spend} · {label}", { pct, spend: k(p.spend), label }) : t("{spend} · {label}", { spend: k(p.spend), label }),
+        v: k(p.target, currency),
+        sub: pct ? t("{pct}% of {spend} · {label}", { pct, spend: k(p.spend, currency), label }) : t("{spend} · {label}", { spend: k(p.spend, currency), label }),
         fg: INHERIT,
       },
       {
         k: t("Signed so far"),
-        v: k(p.signed),
+        v: k(p.signed, currency),
         sub: p.signed
           ? t("{pct}% of the goal · signed price vs previous", { pct: p.target ? Math.round((p.signed / p.target) * 100) : 0 })
           : t("no contract signed in this scope"),
         fg: ACCENT,
       },
-      { k: t("Objectives in the cases"), v: k(p.objectives), sub: t("targets you set in open renewals — not estimates"), fg: INHERIT },
+      { k: t("Objectives in the cases"), v: k(p.objectives, currency), sub: t("targets you set in open renewals — not estimates"), fg: INHERIT },
       {
         k: t("Still to cover"),
-        v: k(p.gap),
+        v: k(p.gap, currency),
         sub: p.gap ? t("with the renewals coming up below") : t("covered, if the targets are reached"),
         fg: p.gap ? ACCENT_700 : INHERIT,
       },
     ],
     wSigned: `${p.signedWidth.toFixed(1)}%`,
     wObj: `${p.objectivesWidth.toFixed(1)}%`,
-    signedTxt: k(p.signed),
-    objTxt: k(p.objectives),
-    gapTxt: p.gap ? t("missing {amount}", { amount: k(p.gap) }) : t("goal covered by the targets"),
+    signedTxt: k(p.signed, currency),
+    objTxt: k(p.objectives, currency),
+    gapTxt: p.gap ? t("missing {amount}", { amount: k(p.gap, currency) }) : t("goal covered by the targets"),
     verdict,
     rows,
     n: String(rows.length),

@@ -24,7 +24,13 @@ export function tx(t: Translate, text: ServerText | unknown): string {
  * resultsViewModel.ts), so one amount reads the same on every screen (D9, PARITY.md).
  */
 export function chfK(value: number): string {
-  return value >= 1e6 ? `CHF ${(value / 1e6).toFixed(1)}M` : `CHF ${Math.round(value / 1000)}k`;
+  return moneyK(value, "CHF");
+}
+
+/** The same compact amount in the contract's own currency ("EUR 245k"); CHF when the row carries none. */
+export function moneyK(value: number, currency: string | null | undefined): string {
+  const code = currency && currency.trim() ? currency.trim().toUpperCase() : "CHF";
+  return value >= 1e6 ? `${code} ${(value / 1e6).toFixed(1)}M` : `${code} ${Math.round(value / 1000)}k`;
 }
 
 /** "1,500" — the prototype's `toLocaleString('en-US')` for contract quantities and prices. */

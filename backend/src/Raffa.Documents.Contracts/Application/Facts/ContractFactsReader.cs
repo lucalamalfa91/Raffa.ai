@@ -40,11 +40,12 @@ public sealed class ContractFactsReader(
         using var _ = tenantContext.BeginScope(tenantId);
         var validated = await ValidatedContractIdsAsync(tenantId, null, cancellationToken).ConfigureAwait(false);
         var rows = await EnsureFactsAsync(tenantId, validated, cancellationToken).ConfigureAwait(false);
-        var versions = await CurrentVersionsAsync(tenantId, rows.Select(r => r.ContractId).ToList(), cancellationToken)
-            .ConfigureAwait(false);
+        var ids = rows.Select(r => r.ContractId).ToList();
+        var versions = await CurrentVersionsAsync(tenantId, ids, cancellationToken).ConfigureAwait(false);
+        var currencies = await CurrenciesAsync(tenantId, ids, cancellationToken).ConfigureAwait(false);
 
         var list = rows
-            .Select(r => Apply(Deserialize(r.Facts, r.ContractId, r.ValidatedAt), versions.GetValueOrDefault(r.ContractId)))
+            .Select(r => Apply(WithCurrency(Deserialize(r.Facts, r.ContractId, r.ValidatedAt), currencies), versions.GetValueOrDefault(r.ContractId)))
             .ToList();
         list = await EnrichAsync(tenantId, list, cancellationToken).ConfigureAwait(false);
         return list
@@ -77,7 +78,8 @@ public sealed class ContractFactsReader(
         }
 
         var versions = await CurrentVersionsAsync(tenantId, [row.ContractId], cancellationToken).ConfigureAwait(false);
-        var facts = Apply(Deserialize(row.Facts, row.ContractId, row.ValidatedAt), versions.GetValueOrDefault(row.ContractId));
+        var currencies = await CurrenciesAsync(tenantId, [row.ContractId], cancellationToken).ConfigureAwait(false);
+        var facts = Apply(WithCurrency(Deserialize(row.Facts, row.ContractId, row.ValidatedAt), currencies), versions.GetValueOrDefault(row.ContractId));
         return (await EnrichAsync(tenantId, [facts], cancellationToken).ConfigureAwait(false))[0];
     }
 
@@ -344,12 +346,36 @@ public sealed class ContractFactsReader(
             CancelDays = deadline.DayNumber - today.DayNumber,
             Notice = notice,
             Spend = version.AnnualValue ?? facts.Spend,
+            Currency = string.IsNullOrWhiteSpace(version.Currency) ? facts.Currency : version.Currency.Trim().ToUpperInvariant(),
             Auto = version.AutoRenew is { } auto ? (auto ? "Yes" : "No") : facts.Auto,
             Uplift = version.UpliftPct is { } uplift
                 ? uplift.ToString("0.##", CultureInfo.InvariantCulture) + "%"
                 : facts.Uplift,
         };
     }
+
+    /// <summary>Each contract's currency, from its own row: the one source of truth (the facts JSON
+    /// may predate the field, and a fixture's curated JSON never carried it).</summary>
+    private async Task<Dictionary<Guid, string>> CurrenciesAsync(
+        TenantId tenantId, IReadOnlyCollection<EntityId> contractIds, CancellationToken cancellationToken)
+    {
+        if (contractIds.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = contractIds.ToList();
+        return await dbContext.Contracts.AsNoTracking()
+            .Where(c => c.TenantId == tenantId && ids.Contains(c.Id))
+            .Select(c => new { c.Id, c.Currency })
+            .ToDictionaryAsync(c => c.Id.Value, c => c.Currency, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static ContractFacts WithCurrency(ContractFacts facts, IReadOnlyDictionary<Guid, string> currencies) =>
+        currencies.TryGetValue(facts.ContractId, out var code) && !string.IsNullOrWhiteSpace(code)
+            ? facts with { Currency = code.Trim().ToUpperInvariant() }
+            : facts;
 
     private async Task<Dictionary<EntityId, ContractTermVersion>> CurrentVersionsAsync(
         TenantId tenantId, IReadOnlyCollection<EntityId> contractIds, CancellationToken cancellationToken)

@@ -109,7 +109,14 @@ public sealed record ResultsReport(
     IReadOnlyList<ResultsProof> Proof,
     IReadOnlyList<ResultsOpenObjective> OpenObjectives,
     IReadOnlyList<ResultsContractualRow> Contractual,
-    IReadOnlyList<ResultsVolumeRow> Volume);
+    IReadOnlyList<ResultsVolumeRow> Volume)
+{
+    /// <summary>The month (1-12) the fiscal year starts in; <see cref="FiscalYear"/> is named by the year it starts in.</summary>
+    public int FiscalYearStartMonth { get; init; } = 1;
+
+    /// <summary>Currencies of results or contracts left out of every sum: the admin set no budget rate for them.</summary>
+    public IReadOnlyList<string> ExcludedCurrencies { get; init; } = [];
+}
 
 /// <summary>A validated contract as Risultati needs it (from <c>IContractFactsReader</c>).</summary>
 public sealed record ResultsContract(
@@ -121,4 +128,5 @@ public sealed record ResultsContract(
     int Days,
     string Uplift,
     bool AutoRenewal,
-    string TermStatus = "active");
+    string TermStatus = "active",
+    bool HasRate = true);

@@ -5,7 +5,7 @@ import { useGuide } from "../../components/shell/guide";
 import { useShellContext } from "../../components/shell/shellContext";
 import { notifyTodayChanged } from "../today/loadToday";
 import { useI18n } from "../../i18n/I18nProvider";
-import { announceContractsChanged, chfK, CONTRACTS_CHANGED_EVENT, URGENT_NOTICE_DAYS, useTenantId } from "./contracts4";
+import { announceContractsChanged, CONTRACTS_CHANGED_EVENT, moneyK, URGENT_NOTICE_DAYS, useTenantId } from "./contracts4";
 import { reviewPath, useContractUpload } from "./useContractUpload";
 import "./contracts4.css";
 
@@ -242,7 +242,7 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
               </div>
               <div className="dt-cell dt-num dt-strong c4-row-spend">
                 <span className="dt-label">{t("Annual value")}</span>
-                {chfK(row.annualValue)}
+                {moneyK(row.annualValue, row.currency)}
               </div>
               <div className="dt-cell">
                 <span className="dt-label">{t("Status")}</span>

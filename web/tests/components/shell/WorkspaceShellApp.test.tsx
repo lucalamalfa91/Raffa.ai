@@ -204,7 +204,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: /^Today/ })).toHaveAttribute("aria-current", "page");
-    for (const name of ["Renewals", "Contracts", "Results", "Ask"]) {
+    for (const name of ["Renewals", "Contracts", "Spend and savings", "Ask"]) {
       expect(screen.getByRole("link", { name })).toHaveAttribute("href", expect.stringMatching(/^\//));
     }
     expect(screen.getByRole("complementary", { name: "Raffa guide" })).toBeInTheDocument();
@@ -351,7 +351,7 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
     await waitFor(() => expect(document.querySelector('[data-screen-label="Pratica"]')).not.toBeNull());
   });
 
-  it("renders Risultati at /savings (AskRaffa 4.0 slice 5)", async () => {
+  it("renders Spesa e risparmi (formerly Risultati) at /savings", async () => {
     window.sessionStorage.setItem(
       "raffa.signin.currentWorkspace",
       JSON.stringify({ id: "11111111-1111-1111-1111-111111111111", name: "Acme Procurement" }),
@@ -359,10 +359,10 @@ describe("ShellRoutes (V2 route table, ADR-024 amendment; task E13/F09/US01/T01,
 
     renderShell("admin", "/savings");
 
-    // The shared mockApiClient() has no Risultati calls: the page still renders its frame, the
+    // The shared mockApiClient() has no spend report: the page still renders its frame, the
     // collapsed goal bar and the honest inline error (DESIGN-GAPS A3).
-    expect(await screen.findByRole("heading", { name: "Results" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Spend and savings" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Set a goal" })).toBeInTheDocument();
-    expect(await screen.findByText("Results are not available right now.")).toBeInTheDocument();
+    expect(await screen.findByText("Spend and savings are not available right now.")).toBeInTheDocument();
   });
 });

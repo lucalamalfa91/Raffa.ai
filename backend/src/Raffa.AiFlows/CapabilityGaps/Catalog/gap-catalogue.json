@@ -1,7 +1,9 @@
 {
-  "version": "gap-catalogue-1",
+  "version": "gap-catalogue-3",
   "changelog": [
-    "1: the five fixed entries moved out of CapabilityGapCatalog.cs unchanged (INV-07); include/exclude are .NET regex, matched IgnoreCase|CultureInvariant."
+    "1: the five fixed entries moved out of CapabilityGapCatalog.cs unchanged (INV-07); include/exclude are .NET regex, matched IgnoreCase|CultureInvariant.",
+    "2: reminder — 'ricordami/remind me' and 'in agenda/calendario' alone no longer match: a recall question (\"ricordami le date del contratto\", \"remind me of the notice period\", \"cosa ho in agenda?\") is a fact question, so the verb now needs a scheduling cue (di + verb, tra/fra, N giorni prima, quando … si avvicina; to/before/in N days) and agenda/calendario a placing verb (metti, aggiungi, segna …).",
+    "3: export-file — texts and alternative only, lexicon unchanged: Spend and savings now exports its contracts table as CSV, so the operation Raffa cannot perform is an answer, a Word document or an Excel workbook, and the alternative is that CSV (SpendAndSavings) instead of Portfolio's table."
   ],
   "entries": [
     {
@@ -42,19 +44,19 @@
       "descriptionEn": "Remind me before a notice deadline by email or calendar",
       "descriptionIt": "Ricordarmi una scadenza di preavviso via email o calendario",
       "alternative": "Renewals",
-      "include": "\\b(reminders?|remind\\s+(me|us)|alert\\s+(me|us)|set\\s+an?\\s+alert|add\\s+[^.?!]{0,40}?\\bto\\s+(my\\s+|the\\s+|our\\s+)?calendar|calendar\\s+(invite|entry|event|reminder)|promemoria|ricordamel[oa]|ricordami|ricordaci|avvisami|avvisaci|avvertimi|mettimi\\s+un|segna(mi|lo|la)?\\s+in\\s+agenda|in\\s+agenda|(sul|nel|in)\\s+calendario|invito\\s+(in\\s+)?calendario)\\b"
+      "include": "\\b(reminders?|remind\\s+(me|us)\\s+(to\\s+(?!whom\\b)\\w+|in\\s+(a|an|\\d+)\\b|on\\s+(the\\s+)?\\d+|before\\b|ahead\\s+of\\b|later\\b|tomorrow\\b|(\\d+|a|an|one|two|three|four|five|six|a\\s+few|few)\\s+(day|week|month)s?\\b|when\\s+[^.?!]{0,40}?\\b(approach(es|ing)?|is\\s+near|gets\\s+close|comes\\s+up)\\b)|alert\\s+(me|us)|set\\s+an?\\s+alert|add\\s+[^.?!]{0,40}?\\bto\\s+(my\\s+|the\\s+|our\\s+)?calendar|calendar\\s+(invite|entry|event|reminder)|promemoria|(ricordami|ricordaci|ricordamel[oa]|ricordacel[oa])\\s+(di\\s+(?!(cosa|che|quale|quali|quanto|quando|come|chi|dove)\\b)\\w+|(tra|fra)\\s+(?!quanto\\b)\\w+|prima\\b(?!\\s+di\\s+tutto)|più\\s+avanti|domani\\b|il\\s+giorno\\s+prima|(\\d+|un|una|uno|due|tre|quattro|cinque|sei|qualche)\\s+(giorn|settiman|mes)\\w*\\s+prima|quando\\s+[^.?!]{0,40}?\\b(si\\s+avvicin\\w*|sta\\s+per|stanno\\s+per|manca|mancano)\\b)|avvisami|avvisaci|avvertimi|mettimi\\s+un|segna(mi|lo|la)?\\s+in\\s+agenda|(mett|aggiung|inser|segn|fiss|salv|cre)\\w*\\s+[^.?!]{0,40}?\\b(in|nel|sul|nella|sulla)\\s+(mia\\s+|nostra\\s+)?(agenda|calendario)|invito\\s+(in\\s+)?calendario)\\b"
     },
     {
       "key": "export-file",
       "titleEn": "Export to Excel or Word",
       "titleIt": "Esportare in Excel o Word",
-      "operationEn": "export files",
-      "operationIt": "esportare file",
-      "alternativeEn": "Portfolio shows the same data in a table you can filter",
-      "alternativeIt": "in Portfolio trovi gli stessi dati in una tabella filtrabile",
+      "operationEn": "export an answer, a Word document or an Excel workbook",
+      "operationIt": "esportare una risposta, un documento Word o una cartella Excel",
+      "alternativeEn": "Spend and savings exports as CSV, which Excel opens, the contracts with their value per year or quarter, their share and the date to decide by",
+      "alternativeIt": "in Spesa e risparmi esporti in CSV, apribile in Excel, i contratti con il valore per anno o trimestre, l'incidenza e la data entro cui decidere",
       "descriptionEn": "Export the portfolio or an answer to Excel/Word",
       "descriptionIt": "Esportare il portafoglio o una risposta in Excel/Word",
-      "alternative": "Portfolio",
+      "alternative": "SpendAndSavings",
       "include": "\\b(export\\w*|esport\\w*|excel|xlsx|csv|spreadsheet|foglio\\s+(di\\s+calcolo|excel)|(to|into|as|in)\\s+(a\\s+)?(word|docx)\\b|word\\s+document|documento\\s+word|(genera|generate|create|crea|produce|produci)\\w*\\s+(a\\s+|un\\s+|il\\s+|the\\s+)?(report|pdf)\\b)"
     },
     {
