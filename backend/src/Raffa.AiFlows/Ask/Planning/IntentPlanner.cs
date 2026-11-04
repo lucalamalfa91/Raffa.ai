@@ -189,6 +189,17 @@ public sealed class IntentPlanner
         @"k(ue|[uü])ndigungs(frist|termin)\w*|nichtverl[aä]ngerung\w*|nicht[\s-]verl[aä]ngerung\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // "Summarize the contract X" / "riassumi il contratto" (the Contract 360 "Ask Raffa" launch): a
+    // summary of one contract is its validated facts and clause quotes (StructuredFact), not clause
+    // RAG. Without it the phrasing fell to the legacy router's Semantic default and became a Clause
+    // turn, which abstains when no clause matches "summary" -- or, before peers were confined to the
+    // contract's own evidence, described another supplier's contract.
+    private static readonly Regex ContractSummaryPattern = new(
+        @"\b(summari[sz]e|summary\s+of|overview\s+of|riassum\w*|riassunto|sintesi|panoramica|" +
+        // fr/es/de (LANG-03)
+        @"résum[eé]|résumer|resumen|zusammenfass\w*)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// Whether <paramref name="question"/> speaks the notice lexicon (notice / preavviso / disdetta /
     /// cancellation deadline). The one definition of that lexicon: this planner uses it to steer the
@@ -314,6 +325,11 @@ public sealed class IntentPlanner
         }
 
         if (NoticePattern.IsMatch(trimmed))
+        {
+            Add(AskIntent.StructuredFact);
+        }
+
+        if (ContractSummaryPattern.IsMatch(trimmed))
         {
             Add(AskIntent.StructuredFact);
         }
@@ -454,6 +470,15 @@ public sealed class IntentPlanner
                 AskIntent.StructuredFact,
                 "matched the notice lexicon ('notice'/'preavviso'/'disdetta'/'cancellation " +
                 "deadline') — a validated-contract structured fact, not clause RAG (NW-91).",
+                namedSupplier, goal);
+        }
+
+        if (ContractSummaryPattern.IsMatch(trimmed))
+        {
+            return new IntentPlanResult(
+                AskIntent.StructuredFact,
+                "matched the contract-summary lexicon ('summarize'/'riassumi'/'sintesi') — the contract's " +
+                "validated facts and clause quotes, not clause RAG.",
                 namedSupplier, goal);
         }
 

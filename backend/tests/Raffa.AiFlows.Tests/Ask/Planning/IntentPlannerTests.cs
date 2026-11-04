@@ -107,6 +107,24 @@ public sealed class IntentPlannerTests
         Assert.Equal(AskIntent.Clause, result.Intent);
     }
 
+    // The Contract 360 "Ask Raffa" launch ("Summarize the contract GitLab"): a summary of one contract
+    // is its validated facts and clause quotes, never clause RAG over chunks that may not match.
+    [Theory]
+    [InlineData("Summarize the contract GitLab")]
+    [InlineData("Give me a summary of the GitLab contract")]
+    [InlineData("Riassumi il contratto GitLab")]
+    [InlineData("Fammi una sintesi del contratto GitLab")]
+    public void A_contract_summary_plans_to_structured_fact_not_clause(string question)
+    {
+        Assert.Equal(AskIntent.StructuredFact, _planner.Plan(question, namedSupplier: "GitLab").Intent);
+    }
+
+    [Fact]
+    public void A_clause_question_about_one_contract_still_plans_to_clause()
+    {
+        Assert.Equal(AskIntent.Clause, _planner.Plan("What liability do we have with GitLab?", namedSupplier: "GitLab").Intent);
+    }
+
     [Fact]
     public void A_validated_field_question_falls_through_to_the_legacy_structured_router_and_plans_to_structured_fact()
     {

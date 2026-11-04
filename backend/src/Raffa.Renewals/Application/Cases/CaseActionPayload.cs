@@ -117,7 +117,7 @@ public static class CaseActions
         "openReply", "closeReply", "sampleReply", "reply", "decide", "agreeOk", "addDoc", "fixEmail", "markAnnex", "signDeclared",
         "sigOk", "tick", "acceptF", "correctF", "validate", "startNotice", "nStart", "nReceipt", "nOut", "startAlt", "altReqs",
         "altReqToggle", "altFeatAdd", "remPick", "recapYes", "recapWait", "recapNo", "altAdd", "altEx", "altRfq", "thread",
-        "altOffer", "altSel", "altNew", "delegate", "delegateClose", "transfer", "say", "note", "answer", "collab",
+        "altOffer", "altSel", "altNew", "delegate", "delegateClose", "transfer", "say", "ask", "note", "answer", "collab",
         "conflictRecover", "conflictDismiss",
     ];
 
