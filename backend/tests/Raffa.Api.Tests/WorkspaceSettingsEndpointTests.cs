@@ -137,6 +137,111 @@ public sealed class WorkspaceSettingsEndpointTests : IClassFixture<RaffaApiFacto
         Assert.Single(audit.Entries, e => e.Action == WorkspaceSettingsService.AuditWebResearchEnabledAction);
     }
 
+    [Fact]
+    public async Task An_admin_sets_currency_fiscal_year_and_budget_rates_each_audited_and_any_member_reads_them()
+    {
+        var audit = new RecordingAuditWriter();
+        var factory = WithInMemoryIdentity(audit);
+        var client = factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        await SeedWorkspaceAsync(factory, tenantId);
+        await SeedMemberAsync(factory, tenantId, "admin@acme.example", WorkspaceRoleName.Admin);
+        await SeedMemberAsync(factory, tenantId, "buyer@acme.example", WorkspaceRoleName.Procurement);
+
+        var before = await SendAsync(client, HttpMethod.Get, tenantId, "buyer@acme.example");
+        using (var body = JsonDocument.Parse(await before.Content.ReadAsStringAsync()))
+        {
+            Assert.Equal("CHF", body.RootElement.GetProperty("reportingCurrency").GetString());
+            Assert.False(body.RootElement.GetProperty("reportingCurrencySet").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("fiscalYearStartMonth").ValueKind);
+            Assert.Contains("EUR", body.RootElement.GetProperty("supportedCurrencies").EnumerateArray().Select(c => c.GetString()));
+        }
+
+        var forbidden = await SendAsync(client, HttpMethod.Patch, tenantId, "buyer@acme.example", new { fiscalYearStartMonth = 4 });
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        var set = await SendAsync(client, HttpMethod.Patch, tenantId, "admin@acme.example", new
+        {
+            reportingCurrency = "chf",
+            fiscalYearStartMonth = 4,
+            budgetRates = new Dictionary<string, decimal> { ["eur"] = 0.95m, ["GBP"] = 1.12m, ["CHF"] = 1m },
+        });
+        Assert.Equal(HttpStatusCode.OK, set.StatusCode);
+
+        var read = await SendAsync(client, HttpMethod.Get, tenantId, "buyer@acme.example");
+        using (var body = JsonDocument.Parse(await read.Content.ReadAsStringAsync()))
+        {
+            Assert.Equal("CHF", body.RootElement.GetProperty("reportingCurrency").GetString());
+            Assert.True(body.RootElement.GetProperty("reportingCurrencySet").GetBoolean());
+            Assert.Equal(4, body.RootElement.GetProperty("fiscalYearStartMonth").GetInt32());
+            var rates = body.RootElement.GetProperty("budgetRates");
+            Assert.Equal(0.95m, rates.GetProperty("EUR").GetDecimal());
+            Assert.Equal(1.12m, rates.GetProperty("GBP").GetDecimal());
+            Assert.False(rates.TryGetProperty("CHF", out _)); // no rate for the reporting currency itself
+        }
+
+        Assert.Single(audit.Entries, e => e.Action == WorkspaceSettingsService.AuditReportingCurrencyAction && e.Detail == "currency=CHF");
+        Assert.Single(audit.Entries, e => e.Action == WorkspaceSettingsService.AuditFiscalYearStartMonthAction && e.Detail == "month=4");
+        Assert.Single(audit.Entries, e => e.Action == WorkspaceSettingsService.AuditBudgetRatesAction && e.Detail == "rates=EUR:0.95,GBP:1.12");
+
+        // Spesa e risparmi reads the same settings.
+        using var scope = factory.Services.CreateScope();
+        var finance = await scope.ServiceProvider.GetRequiredService<Raffa.SharedKernel.Savings.IWorkspaceFinanceSettingsReader>()
+            .GetAsync(new TenantId(tenantId));
+        Assert.Equal("CHF", finance.ReportingCurrency);
+        Assert.Equal(4, finance.FiscalYearStartMonth);
+        Assert.Equal(0.95m, finance.RateFor("EUR"));
+        Assert.Null(finance.RateFor("USD"));
+    }
+
+    [Theory]
+    [InlineData("""{"fiscalYearStartMonth":13}""")]
+    [InlineData("""{"fiscalYearStartMonth":0}""")]
+    [InlineData("""{"reportingCurrency":"XYZ"}""")]
+    [InlineData("""{"budgetRates":{"EUR":0}}""")]
+    [InlineData("""{"budgetRates":{"EUR":-1}}""")]
+    [InlineData("""{"budgetRates":{"XYZ":1.1}}""")]
+    [InlineData("""{"budgetRates":{"EUR":1.1,"eur":1.2}}""")]
+    public async Task An_invalid_finance_setting_is_400_and_changes_nothing(string json)
+    {
+        var audit = new RecordingAuditWriter();
+        var factory = WithInMemoryIdentity(audit);
+        var client = factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        await SeedWorkspaceAsync(factory, tenantId);
+        await SeedMemberAsync(factory, tenantId, "admin@acme.example", WorkspaceRoleName.Admin);
+
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/workspaces/{tenantId}/settings")
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Add("X-User-Id", "admin@acme.example");
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.DoesNotContain(audit.Entries, e => e.Action.StartsWith("workspace.settings.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Changing_the_reporting_currency_clears_rates_that_were_relative_to_the_old_one()
+    {
+        var audit = new RecordingAuditWriter();
+        var factory = WithInMemoryIdentity(audit);
+        var client = factory.CreateClient();
+        var tenantId = Guid.NewGuid();
+        await SeedWorkspaceAsync(factory, tenantId);
+        await SeedMemberAsync(factory, tenantId, "admin@acme.example", WorkspaceRoleName.Admin);
+
+        await SendAsync(client, HttpMethod.Patch, tenantId, "admin@acme.example", new { budgetRates = new Dictionary<string, decimal> { ["EUR"] = 0.95m } });
+        var changed = await SendAsync(client, HttpMethod.Patch, tenantId, "admin@acme.example", new { reportingCurrency = "EUR" });
+
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        using var body = JsonDocument.Parse(await changed.Content.ReadAsStringAsync());
+        Assert.Equal("EUR", body.RootElement.GetProperty("reportingCurrency").GetString());
+        Assert.Empty(body.RootElement.GetProperty("budgetRates").EnumerateObject());
+        Assert.Single(audit.Entries, e => e.Action == WorkspaceSettingsService.AuditBudgetRatesAction && (e.Detail ?? "").Contains("cleared", StringComparison.Ordinal));
+    }
+
     // ----- helpers -----
 
     private static RecordingAiGateway NewGateway() => new(

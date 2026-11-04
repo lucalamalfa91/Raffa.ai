@@ -163,6 +163,10 @@ namespace Raffa.Identity.Workspace.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("BudgetRatesJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("budget_rates");
+
                     b.Property<string>("Country")
                         .HasMaxLength(2)
                         .HasColumnType("character varying(2)")
@@ -177,6 +181,10 @@ namespace Raffa.Identity.Workspace.Migrations
                         .HasColumnType("character varying(3)")
                         .HasColumnName("currency");
 
+                    b.Property<int?>("FiscalYearStartMonth")
+                        .HasColumnType("integer")
+                        .HasColumnName("fiscal_year_start_month");
+
                     b.Property<string>("Industry")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)")
@@ -187,6 +195,11 @@ namespace Raffa.Identity.Workspace.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
+
+                    b.Property<string>("ReportingCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("reporting_currency");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -205,7 +218,10 @@ namespace Raffa.Identity.Workspace.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_workspace_tenant_id");
 
-                    b.ToTable("workspace", (string)null);
+                    b.ToTable("workspace", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_workspace_fiscal_year_start_month", "fiscal_year_start_month IS NULL OR fiscal_year_start_month BETWEEN 1 AND 12");
+                        });
                 });
 
             modelBuilder.Entity("Raffa.Identity.Workspace.Domain.WorkspaceUser", b =>

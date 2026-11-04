@@ -10664,6 +10664,35 @@
                     "canEdit": {
                       "type": "boolean",
                       "description": "True when the caller's own membership in this workspace is Admin -- the only role PATCH accepts."
+                    },
+                    "reportingCurrency": {
+                      "type": "string",
+                      "description": "Spesa e risparmi: the ISO 4217 currency every total is in -- the Admin's choice, else the workspace's own currency, else CHF."
+                    },
+                    "reportingCurrencySet": {
+                      "type": "boolean",
+                      "description": "True when the Admin chose reportingCurrency (false: it is the workspace's default)."
+                    },
+                    "fiscalYearStartMonth": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "Spesa e risparmi: the month (1-12) the fiscal year starts in; null when not set (reported as a calendar year)."
+                    },
+                    "budgetRates": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      },
+                      "description": "Spesa e risparmi: the Admin's budget rates, units of reportingCurrency per one unit of each keyed ISO 4217 currency. A currency without a rate is never converted."
+                    },
+                    "supportedCurrencies": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "The closed list of ISO 4217 codes a workspace can report in or set a budget rate for."
                     }
                   }
                 }
@@ -10702,6 +10731,23 @@
                 "properties": {
                   "webResearchEnabled": {
                     "type": "boolean"
+                  },
+                  "reportingCurrency": {
+                    "type": "string",
+                    "description": "One of supportedCurrencies. Changing it clears budget rates the same request does not set (they were relative to the old currency)."
+                  },
+                  "fiscalYearStartMonth": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 12
+                  },
+                  "budgetRates": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "description": "The whole set (replaces the previous one; {} clears it). A rate for the reporting currency itself is dropped."
                   }
                 }
               }

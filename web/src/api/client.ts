@@ -241,8 +241,15 @@ export interface GetWorkspaceSettingsResult {
   error: string | null;
 }
 
+/** Every field optional: a client patches one setting without restating the others. */
 export interface UpdateWorkspaceSettingsRequest {
-  webResearchEnabled: boolean;
+  webResearchEnabled?: boolean;
+  /** Spesa e risparmi: one of `supportedCurrencies`; changing it clears rates the same request does not set. */
+  reportingCurrency?: string;
+  /** Spesa e risparmi: 1-12. */
+  fiscalYearStartMonth?: number;
+  /** Spesa e risparmi: the whole set of budget rates (units of the reporting currency per unit); `{}` clears it. */
+  budgetRates?: Record<string, number>;
 }
 
 export type UpdateWorkspaceSettingsResult = GetWorkspaceSettingsResult;

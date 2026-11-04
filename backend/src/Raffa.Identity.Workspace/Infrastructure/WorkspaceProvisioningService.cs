@@ -107,6 +107,9 @@ public sealed class WorkspaceProvisioningService(
             ["US"] = "USD",
         };
 
+    /// <summary>The currencies of that closed list: the ones a workspace can report in or set a budget rate for.</summary>
+    public static IReadOnlySet<string> SupportedCurrencies { get; } = new HashSet<string>(CurrencyByCountry.Values, StringComparer.Ordinal);
+
     /// <summary>Mirrors <see cref="WorkspaceTenant.Industry"/>'s own <c>HasMaxLength(120)</c>
     /// (<c>WorkspaceTenantConfiguration.cs:25</c>) — validated here so an over-long value is this
     /// task's own clean <see cref="Result{T}"/> 400, never a raw Postgres length error, the same

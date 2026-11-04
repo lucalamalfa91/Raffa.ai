@@ -62,4 +62,24 @@ public sealed class WorkspaceTenant : TenantScopedEntity
     /// <c>PATCH /api/workspaces/{tenantId}/settings</c> (Admin) flips it, with an audit row.
     /// </summary>
     public bool WebResearchEnabled { get; set; }
+
+    /// <summary>
+    /// Spesa e risparmi: the ISO 4217 code every total is reported in, chosen by the Admin. Null:
+    /// not chosen, the workspace's own <see cref="Currency"/> is used.
+    /// </summary>
+    public string? ReportingCurrency { get; set; }
+
+    /// <summary>
+    /// Spesa e risparmi: the month (1-12) the fiscal year starts in, set by the Admin. Null: not set,
+    /// reported as a calendar year (never a guessed company fact).
+    /// </summary>
+    public int? FiscalYearStartMonth { get; set; }
+
+    /// <summary>
+    /// Spesa e risparmi: the Admin's budget rates as JSON (<c>{"EUR":0.95}</c>: units of the
+    /// reporting currency per unit of the keyed currency). Null: none, so a contract in another
+    /// currency stays out of the totals. Always relative to the reporting currency in force: changing
+    /// that currency clears them.
+    /// </summary>
+    public string? BudgetRatesJson { get; set; }
 }
