@@ -45,6 +45,7 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<DomainGate>();
         services.AddScoped<IntentPlanner>();
         services.AddScoped<AnswerComposer>();
+        services.AddScoped<ConversationFocusResolver>();
 
         // ADR-030: the interview (kill switch + bounds).
         services.TryAddSingleton(new InterviewOptions());

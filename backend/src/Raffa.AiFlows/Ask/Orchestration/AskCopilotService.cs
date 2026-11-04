@@ -204,7 +204,8 @@ public sealed class AskCopilotService(
     InDomainReplyPipeline inDomain,
     CapabilityCheckCoordinator capabilityChecks,
     ITenantContext tenantContext,
-    ContractContextReader? turnReads = null)
+    ContractContextReader? turnReads = null,
+    ConversationFocusResolver? focusResolver = null)
 {
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
@@ -282,6 +283,37 @@ public sealed class AskCopilotService(
             .ToList();
 
         var gate = domainGate.Classify(question, knownSuppliers);
+
+        // Conversation focus (model-resolved): a follow-up that names no supplier ("mostramelo con
+        // dei kpi", "questo contratto") keeps the contract the chat is about instead of falling to
+        // the portfolio. Runs only when the turn has history, no persisted scope, no interview
+        // resolution and the gate found no supplier of its own; any failure leaves the turn as is.
+        if (focusResolver is not null
+            && scopeContractId is null
+            && recentTurns.Count > 0
+            && turnHints.ForcedSupplierName is null
+            && turnHints.ForcedContractId is null
+            && gate.NamedSupplier is null
+            && gate.Label is GateLabel.InDomain or GateLabel.NeedsDocument)
+        {
+            var focus = await focusResolver
+                .ResolveAsync(question, recentTurns, supplierNames.Values.Distinct().ToList(), cancellationToken)
+                .ConfigureAwait(false);
+            if (focus is not null)
+            {
+                question = focus.StandaloneQuestion;
+                gate = domainGate.Classify(question, knownSuppliers);
+                if (focus.SupplierName is { } focusSupplier && gate.Label is GateLabel.InDomain or GateLabel.NeedsDocument && gate.NamedSupplier is null)
+                {
+                    gate = gate with
+                    {
+                        Label = GateLabel.InDomain,
+                        Reason = $"follow-up resolved from the conversation to known supplier '{focusSupplier}'.",
+                        NamedSupplier = focusSupplier,
+                    };
+                }
+            }
+        }
 
         // ADR-030: an interview option that named a supplier is a known supplier by construction
         // (the planner built it from this tenant's own portfolio), so it wins over the gate's own
