@@ -81,12 +81,39 @@ describe("Contratti", () => {
     // D9: a table — notice date and days in their own columns, the column headers once at the top.
     expect(screen.getByText("18 Oct 2026")).toHaveClass("dt-urgent");
     expect(screen.getByText("40")).toHaveClass("dt-urgent");
-    expect(screen.getAllByText("Fine contratto")[0]).toHaveClass("dt-th");
-    expect(screen.getAllByText("Giorni")[0]).toHaveClass("dt-th");
+    expect(screen.getAllByText("Fine contratto")[0].closest(".dt-th")).not.toBeNull();
+    expect(screen.getAllByText("Giorni")[0].closest(".dt-th")).not.toBeNull();
     expect(screen.getByText("CHF 640k")).toBeInTheDocument();
-    expect(screen.getByText("Pratica aperta")).toHaveClass("tag-accent");
+    expect(screen.getAllByText("Pratica aperta").find((e) => e.classList.contains("tag"))).toHaveClass("tag-accent");
     expect(screen.getByText(/2 campi da verificare prima dell’uso/)).toBeInTheDocument();
     expect(api.listContractsV4).toHaveBeenCalledWith(TENANT);
+    expect(missing).toEqual([]);
+  });
+
+  it("numbers, sorts and filters the rows", async () => {
+    const mk = (id: string, supplier: string, days: number, value: number, status: ContractListV4Body["rows"][number]["status"]) => ({
+      ...list.rows[0], contractId: id, supplier, noticeDays: days, annualValue: value, status, caseId: null,
+    });
+    const data: ContractListV4Body = { rows: [mk("1", "Coupa", 72, 281000, "caseOpen"), mk("2", "Zscaler", 133, 258000, "validated"), mk("3", "Microsoft", 139, 220000, "validated")], document: null };
+    const api = client({ listContractsV4: vi.fn().mockResolvedValue(ok(data)) });
+    renderAt("/contracts", <Route path="/contracts" element={<ContractsRoute apiClient={api} />} />);
+    await screen.findByText("Coupa");
+    const order = () => screen.getAllByRole("link").map((r) => r.querySelector(".c4-row-supplier")?.textContent).filter(Boolean);
+    expect(order()).toEqual(["Coupa", "Zscaler", "Microsoft"]);
+    expect(screen.getAllByLabelText(/^N\. \d$/).map((n) => n.textContent)).toEqual(["1", "2", "3"]);
+    expect(screen.getByText("3 di 3")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Fornitore · documento/ }));
+    expect(order()).toEqual(["Coupa", "Microsoft", "Zscaler"]);
+    await userEvent.click(screen.getByRole("button", { name: /Fornitore · documento/ }));
+    expect(order()).toEqual(["Zscaler", "Microsoft", "Coupa"]);
+
+    await userEvent.selectOptions(screen.getByLabelText("Stato"), "validated");
+    expect(order()).toEqual(["Zscaler", "Microsoft"]);
+    expect(screen.getByText("2 di 3")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Azzera filtri" }));
+    await userEvent.type(screen.getByRole("searchbox"), "zzz");
+    expect(screen.getByText("Nessun contratto corrisponde ai filtri.")).toBeInTheDocument();
     expect(missing).toEqual([]);
   });
 

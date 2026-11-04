@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ApiClient, ContractListRowV4Body, ContractListV4Body } from "../../api/client";
 import { useGuide } from "../../components/shell/guide";
@@ -7,6 +7,18 @@ import { notifyTodayChanged } from "../today/loadToday";
 import { useI18n } from "../../i18n/I18nProvider";
 import { announceContractsChanged, CONTRACTS_CHANGED_EVENT, moneyK, URGENT_NOTICE_DAYS, useTenantId } from "./contracts4";
 import { reviewPath, useContractUpload } from "./useContractUpload";
+import {
+  currenciesOf,
+  DEFAULT_SORT,
+  filterContracts,
+  isFiltered,
+  nextSort,
+  NO_FILTERS,
+  sortContracts,
+  type ContractFilters,
+  type ContractSort,
+  type ContractSortKey,
+} from "./contractsListView";
 import "./contracts4.css";
 
 export interface ContractsRouteProps {
@@ -41,6 +53,8 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [list, setList] = useState<ContractListV4Body | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ContractFilters>(NO_FILTERS);
+  const [sort, setSort] = useState<ContractSort>(DEFAULT_SORT);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -79,8 +93,25 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
     cta: { label: t("Upload a contract"), onClick: upload.start },
   });
 
-  const rows = list?.rows ?? [];
+  const allRows = list?.rows ?? [];
+  const currencies = useMemo(() => currenciesOf(allRows), [allRows]);
+  const rows = useMemo(
+    () => sortContracts(filterContracts(allRows, filters), sort, (s) => t(STATUS_LABEL[s])),
+    [allRows, filters, sort, t],
+  );
+  const filtered = isFiltered(filters);
   const doc = list?.document ?? null;
+  const sortHeader = (key: ContractSortKey, label: string, num = false) => {
+    const active = sort.key === key;
+    return (
+      <span className={num ? "dt-th dt-num" : "dt-th"} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+        <button type="button" className="c4-sort" onClick={() => setSort(nextSort(sort, key))}>
+          {label}
+          <span className="c4-sort-arrow" aria-hidden="true">{active ? (sort.dir === "asc" ? "↑" : "↓") : "↕"}</span>
+        </button>
+      </span>
+    );
+  };
   const open = (row: ContractListRowV4Body) => navigate(`/contracts/${encodeURIComponent(row.contractId)}`);
   /** Delete a contract for good (Admin): it, its documents, its renewal case and chats. */
   const removeContract = async (contractId: string) => {
@@ -113,7 +144,7 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
             {t("Upload a contract")}
           </button>
         </div>
-        <div className="ph-sub c4-head-sub">{list ? t("{n} validated contracts · sorted by notice deadline", { n: rows.length }) : "\u00a0"}</div>
+        <div className="ph-sub c4-head-sub">{list ? t("{n} validated contracts · sorted by notice deadline", { n: allRows.length }) : "\u00a0"}</div>
       </div>
 
       {upload.bulk ? (
@@ -185,23 +216,75 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
         </div>
       ) : null}
 
+      {list && allRows.length > 0 ? (
+        <div className="c4-toolbar" role="search">
+          <input
+            type="search"
+            className="c4-filter c4-filter-q"
+            aria-label={t("Search supplier or document")}
+            placeholder={t("Search supplier or document")}
+            value={filters.query}
+            onChange={(e) => setFilters({ ...filters, query: e.target.value })}
+          />
+          <select
+            className="c4-filter"
+            aria-label={t("Status")}
+            value={filters.status}
+            onChange={(e) => setFilters({ ...filters, status: e.target.value as ContractFilters["status"] })}
+          >
+            <option value="">{t("All statuses")}</option>
+            {(Object.keys(STATUS_LABEL) as ContractListRowV4Body["status"][])
+              .filter((s) => allRows.some((r) => r.status === s))
+              .map((s) => (
+                <option key={s} value={s}>
+                  {t(STATUS_LABEL[s])}
+                </option>
+              ))}
+          </select>
+          {currencies.length > 1 ? (
+            <select
+              className="c4-filter"
+              aria-label={t("Currency")}
+              value={filters.currency}
+              onChange={(e) => setFilters({ ...filters, currency: e.target.value })}
+            >
+              <option value="">{t("All currencies")}</option>
+              {currencies.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <span className="c4-count" role="status" aria-live="polite">
+            {t("Showing {shown} of {total}", { shown: rows.length, total: allRows.length })}
+          </span>
+          {filtered ? (
+            <button type="button" className="btn btn-ghost c4-del-btn" onClick={() => setFilters(NO_FILTERS)}>
+              {t("Clear filters")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className={canDelete ? "dt c4-rows has-actions" : "dt c4-rows"}>
-        {list && rows.length === 0 ? (
+        {list && allRows.length === 0 ? (
           <div className="c4-empty">
             {t("No validated contract. Upload the first: after the reading and the check of doubtful fields it shows up here and in Today.")}
           </div>
         ) : (
-          <div className="dt-row dt-head" aria-hidden="true">
-            <span className="dt-th">{t("Supplier · document")}</span>
-            <span className="dt-th">{t("Notice by")}</span>
-            <span className="dt-th dt-num">{t("Days")}</span>
-            <span className="dt-th">{t("Contract end")}</span>
-            <span className="dt-th dt-num">{t("Annual value")}</span>
-            <span className="dt-th">{t("Status")}</span>
+          <div className="dt-row dt-head">
+            {sortHeader("supplier", t("Supplier · document"))}
+            {sortHeader("notice", t("Notice by"))}
+            {sortHeader("days", t("Days"), true)}
+            {sortHeader("end", t("Contract end"))}
+            {sortHeader("value", t("Annual value"), true)}
+            {sortHeader("status", t("Status"))}
             {canDelete ? <span className="dt-end" /> : null}
           </div>
         )}
-        {rows.map((row) => {
+        {list && allRows.length > 0 && rows.length === 0 ? <div className="c4-empty">{t("No contract matches the filters.")}</div> : null}
+        {rows.map((row, index) => {
           const stated = row.noticeDeadline.trim() !== "";
           const urgent = stated && row.noticeDays >= 0 && row.noticeDays <= URGENT_NOTICE_DAYS;
           const noticeLabel =
@@ -216,9 +299,12 @@ export default function ContractsRoute({ apiClient }: ContractsRouteProps) {
               onKeyDown={(e) => onKey(e, () => open(row))}
             >
               <div className="dt-cell c4-row-main">
-                <div className="dt-title c4-row-supplier">{row.supplier}</div>
-                <div className="dt-sub c4-row-name" title={row.name}>
-                  {row.name}
+                <span className="c4-row-num" aria-label={t("No. {n}", { n: index + 1 })}>{index + 1}</span>
+                <div className="c4-row-text">
+                  <div className="dt-title c4-row-supplier">{row.supplier}</div>
+                  <div className="dt-sub c4-row-name" title={row.name}>
+                    {row.name}
+                  </div>
                 </div>
               </div>
               <div className="dt-cell c4-row-notice">

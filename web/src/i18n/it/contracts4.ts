@@ -30,6 +30,13 @@ export const IT_CONTRACTS4: Readonly<Record<string, string>> = {
   "Days": "Giorni",
   "Annual value": "Valore annuo",
   "Not stated": "Non indicata",
+  "Search supplier or document": "Cerca fornitore o documento",
+  "All statuses": "Tutti gli stati",
+  "All currencies": "Tutte le valute",
+  "Showing {shown} of {total}": "{shown} di {total}",
+  "Clear filters": "Azzera filtri",
+  "No contract matches the filters.": "Nessun contratto corrisponde ai filtri.",
+  "No. {n}": "N. {n}",
 
   // Contratto
   "The contract could not be loaded.": "Non riesco a caricare il contratto.",
