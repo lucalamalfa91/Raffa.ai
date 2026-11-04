@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom";
 import MembersRoute from "../../../../src/routes/workspace/members";
+import GuidePanel from "../../../../src/components/shell/GuidePanel";
+import { GuideProvider } from "../../../../src/components/shell/guide";
+import { I18nProvider, useI18n } from "../../../../src/i18n/I18nProvider";
+import { trackMissingItalian, translator } from "../../../../src/i18n/translate";
 import type { WorkspaceRole } from "../../../../src/components/shell/navItems";
 import type { ShellOutletContext } from "../../../../src/components/shell/shellContext";
 import type { ApiClient, GetWorkspaceMembersResult, InviteWorkspaceMemberResult, WorkspaceMemberBody } from "../../../../src/api/client";
@@ -552,5 +556,107 @@ describe("MembersRoute workspace settings (ADR-030 gate 2)", () => {
 
     await screen.findByText(USER_LABEL);
     expect(screen.queryByRole("checkbox", { name: /Allow Ask Raffa/ })).toBeNull();
+  });
+});
+
+describe("MembersRoute in Italian, with Guida Raffa", () => {
+  // Expected copy comes from the catalogue itself: these tests check that the screen is translated
+  // (and that no id it shows is missing), not the exact Italian wording.
+  const tIt = translator("it");
+  const missing: string[] = [];
+  beforeEach(() => {
+    missing.length = 0;
+    trackMissingItalian((id) => missing.push(id));
+  });
+  afterEach(() => {
+    trackMissingItalian(null);
+    window.localStorage.clear();
+  });
+
+  /** Switches the language from inside the providers, the way the account menu does. */
+  function LangSwitch() {
+    const { setLang } = useI18n();
+    return (
+      <button type="button" onClick={() => setLang("en")}>
+        switch-to-en
+      </button>
+    );
+  }
+
+  function renderItalian(apiClient: ApiClient, role: WorkspaceRole) {
+    const shell: ShellOutletContext = { kbReady: false, validatedContractCount: 0 };
+    return render(
+      <MemoryRouter initialEntries={["/workspace/members?lang=it"]}>
+        <I18nProvider>
+          <GuideProvider>
+            <Routes>
+              <Route element={<Outlet context={shell} />}>
+                <Route
+                  path="/workspace/members"
+                  element={<MembersRoute apiClient={apiClient} userLabel={USER_LABEL} workspaceId={WORKSPACE_ID} workspaceName="Acme" role={role} />}
+                />
+              </Route>
+            </Routes>
+            <GuidePanel />
+            <LangSwitch />
+          </GuideProvider>
+        </I18nProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  const settingsOk = { ok: true, statusCode: 200, settings: { webResearchEnabled: false, canEdit: true }, error: null };
+
+  it("renders the Admin screen, its tips and an invite outcome with no missing Italian, and states its own guide instead of Ask's", async () => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember(), activeMember({ id: "admin-2", membershipId: "m-2", email: "other@acme.example" }), invitedMember()]));
+    const inviteWorkspaceMember = vi.fn().mockResolvedValue(invited({ deliveryOutcome: "sent", identityProvisioned: true }));
+    const { container } = renderItalian(
+      mockApiClient({ getWorkspaceMembers, inviteWorkspaceMember, getWorkspaceSettings: vi.fn().mockResolvedValue(settingsOk) }),
+      "admin",
+    );
+
+    const table = await screen.findByRole("table");
+    expect(screen.getByRole("heading", { level: 2, name: tIt("Workspace & members") })).toBeInTheDocument();
+    expect(tIt("Workspace & members")).not.toBe("Workspace & members");
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([tIt("Member"), tIt("Role"), tIt("Status"), tIt("Actions")]);
+    expect(await screen.findByRole("checkbox", { name: new RegExp(tIt("Allow Ask Raffa to search the public web")) })).toBeInTheDocument();
+
+    const otherRow = within(table).getByText("other@acme.example").closest("tr");
+    if (!otherRow) throw new Error("other row not found");
+    fireEvent.click(within(otherRow).getByRole("button", { name: tIt("Remove") }));
+    fireEvent.click(within(otherRow).getByRole("button", { name: tIt("Cancel") }));
+
+    const pane = screen.getByRole("complementary", { name: tIt("Invite a colleague") });
+    fireEvent.change(within(pane).getByLabelText(tIt("Work email")), { target: { value: "buyer@acme.example" } });
+    fireEvent.click(within(pane).getByRole("button", { name: tIt("Send invitation") }));
+    await waitFor(() => expect(inviteWorkspaceMember).toHaveBeenCalled());
+    expect(await screen.findByLabelText(tIt("Invitation link"))).toBeInTheDocument();
+
+    expect(container.querySelector(".v4-guide-where")).toHaveTextContent(tIt("Workspace & members"));
+    expect(container.querySelector(".v4-guide-where")).not.toHaveTextContent(tIt("Ask Raffa"));
+    expect(missing).toEqual([]);
+  });
+
+  it("renders the read-only Procurement variant with no missing Italian", async () => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember({ id: "admin-1", email: "boss@acme.example" }), activeMember({ id: "self-1", email: USER_LABEL, role: "Procurement" })]));
+    const { container } = renderItalian(mockApiClient({ getWorkspaceMembers }), "procurement");
+
+    await screen.findByRole("table");
+    expect(screen.queryByRole("complementary", { name: tIt("Invite a colleague") })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: tIt("Request access") }).getAttribute("href")).toContain("mailto:boss@acme.example");
+    expect(container.querySelector(".v4-guide-where")).toHaveTextContent(tIt("Workspace & members"));
+    expect(missing).toEqual([]);
+  });
+
+  it("does not re-read the roster when the language changes", async () => {
+    const getWorkspaceMembers = vi.fn().mockResolvedValue(membersOk([activeMember()]));
+    renderItalian(mockApiClient({ getWorkspaceMembers }), "admin");
+
+    await screen.findByRole("table");
+    expect(getWorkspaceMembers).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "switch-to-en" }));
+    expect(await screen.findByRole("heading", { level: 2, name: "Workspace & members" })).toBeInTheDocument();
+    expect(getWorkspaceMembers).toHaveBeenCalledTimes(1);
   });
 });

@@ -45,7 +45,7 @@ export interface MembersRouteProps {
 
 type RosterState =
   | { phase: "loading" }
-  | { phase: "error"; statusCode: number | null; message: string }
+  | { phase: "error"; statusCode: number | null; message: string | null }
   | { phase: "ready"; members: readonly WorkspaceMemberBody[] };
 
 /** ADR-030 gate 2: the workspace's web-research opt-in. `hidden` when the settings could not be
@@ -151,13 +151,15 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
         setRoster({
           phase: "error",
           statusCode: result.statusCode,
-          message: result.error ?? t("The roster could not be loaded."),
+          message: result.error,
         });
         return;
       }
       setRoster({ phase: "ready", members: result.members });
     });
-  }, [apiClient, workspaceId, t]);
+    // `t` stays out of the deps: a language switch must not re-read the roster (the fallback
+    // message is translated where it renders).
+  }, [apiClient, workspaceId]);
 
   useEffect(() => {
     loadRoster();
@@ -323,7 +325,7 @@ export default function MembersRoute({ apiClient, userLabel, workspaceId, worksp
             <div className="error-state" role="alert">
               <h4>{t("Members unavailable")}</h4>
               <p className="micro-meta">
-                {roster.message}
+                {roster.message ?? t("The roster could not be loaded.")}
                 {roster.statusCode !== null && ` (HTTP ${roster.statusCode})`}
               </p>
               <button type="button" className="btn btn-secondary" onClick={loadRoster}>
