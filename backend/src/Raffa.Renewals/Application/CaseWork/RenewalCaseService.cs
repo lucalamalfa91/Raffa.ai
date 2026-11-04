@@ -354,31 +354,35 @@ public sealed partial class RenewalCaseService(
         }
     }
 
-    /// <summary>The first email the engine drafts is a skeleton of facts; the model makes it a complete email.
-    /// Any failure or doubt leaves the skeleton.</summary>
-    private async Task ComposeFirstEmailAsync(TenantId tenantId, RenewalCase next, CaseContractFacts cf, CancellationToken ct)
+    /// <summary>Every email the engine drafts is a skeleton of facts; the model makes each new one a complete
+    /// email. The legal notice of non-renewal keeps its fixed wording. Any failure or doubt leaves the skeleton.</summary>
+    private async Task ComposeNewEmailsAsync(TenantId tenantId, RenewalCase next, CaseContractFacts cf, int from, CancellationToken ct)
     {
-        if (aiReader is null || scriptServices is not ProductionCaseScriptServices || next.Emails.LastOrDefault() is not { Kind: "first" } email)
+        if (aiReader is null || scriptServices is not ProductionCaseScriptServices)
         {
             return;
         }
 
-        try
+        var lang = Raffa.SharedKernel.Language.ResponseLanguage.Current == "en" ? "en" : "it";
+        var fresh = next.Emails.Skip(from).Where(e => e.Kind != "notice").ToList();
+        await Task.WhenAll(fresh.Select(async email =>
         {
-            var lang = Raffa.SharedKernel.Language.ResponseLanguage.Current == "en" ? "en" : "it";
-            if (await aiReader.ReviseEmailAsync(tenantId, next, cf, email, null, lang, ct).ConfigureAwait(false) is { } composed)
+            try
             {
-                email.Subject = composed.Subject;
-                email.Body = composed.Body;
+                if (await aiReader.ReviseEmailAsync(tenantId, next, cf, email, null, lang, ct).ConfigureAwait(false) is { } composed)
+                {
+                    email.Subject = composed.Subject;
+                    email.Body = composed.Body;
+                }
             }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            if (logger is not null)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "First email composition failed; the drafted skeleton stands.");
+                if (logger is not null)
+                {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Composition of a {Kind} email failed; the drafted skeleton stands.", email.Kind);
+                }
             }
-        }
+        })).ConfigureAwait(false);
     }
 
     // The model's reading of the supplier reply of this request: the case uses it, and so does the market benchmark.
@@ -580,9 +584,9 @@ public sealed partial class RenewalCaseService(
             var (stepCtx, afterStep) = await ReadBeforeStepAsync(tenantId, c, cf, type, p, ctx, ct).ConfigureAwait(false);
             var next = RenewalCaseEngine.Act(c, type, p, stepCtx);
             afterStep?.Invoke(next);
-            if (type == "confirmPlan" && next.Emails.Count > c.Emails.Count)
+            if (next.Emails.Count > c.Emails.Count)
             {
-                await ComposeFirstEmailAsync(tenantId, next, cf, ct).ConfigureAwait(false);
+                await ComposeNewEmailsAsync(tenantId, next, cf, c.Emails.Count, ct).ConfigureAwait(false);
             }
 
             if (RenewalCaseEngine.IsPermissionDenial(next))

@@ -212,6 +212,12 @@ public static class CaseReaderAgents
         (the team's goals), contract (supplier, products with unit prices, dates, notice, uplift, annual
         spend, key terms, clauses to push or raise), language.
 
+        email.kind is its purpose: first (opens the renewal), followup (chases a missing reply), counter
+        (answers the supplier's proposal: keep what is attributed to the supplier and what is ours exactly
+        as labelled), docreq (asks for the contract draft reflecting what was agreed), fix (lists the points
+        of the received draft that differ), rfq (asks an alternative vendor for an offer, by functions, not
+        product names). Keep the purpose and the structure of the points; improve the writing.
+
         mode "compose": rewrite email as the complete, professional email an experienced procurement lead
         would send: a precise subject; an opening that names the agreement, its end date and the notice
         date; one short, concrete paragraph or bullet per ask, each with its business reason taken from the
