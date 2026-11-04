@@ -98,6 +98,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ResultsQueryService>();
         // Spesa e risparmi: the contracts' value per fiscal quarter (IContractTermHistoryReader comes
         // from Documents.Contracts, IWorkspaceFinanceSettingsReader from the host).
+        services.TryAddScoped<Application.Spend.ISavingsLedgerSource, Application.Spend.SavingsLedgerReader>();
         services.AddScoped<Application.Spend.SpendReportQueryService>();
         // A host without the Identity module (the worker, module tests) reports in CHF on a calendar
         // year with no budget rates; the API host registers the workspace's own settings.

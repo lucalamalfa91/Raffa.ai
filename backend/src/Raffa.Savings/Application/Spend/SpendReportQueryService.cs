@@ -14,7 +14,9 @@ public sealed class SpendReportQueryService(
     IContractFactsReader contractFacts,
     IContractTermHistoryReader termHistory,
     IWorkspaceFinanceSettingsReader financeSettings,
-    IClock clock)
+    IClock clock,
+    ISavingsLedgerSource? savingsLedger = null,
+    ICaseObjectiveSource? caseObjectives = null)
 {
     /// <summary>Default span: two fiscal years back, the current one, two ahead.</summary>
     public const int DefaultYearsAround = 2;
@@ -51,6 +53,11 @@ public sealed class SpendReportQueryService(
                 history?.BillingPeriod);
         }).ToList();
 
-        return SpendCalculator.Build(inputs, settings, today, from, to, basis);
+        var report = SpendCalculator.Build(inputs, settings, today, from, to, basis);
+
+        // The savings layer, on the same periods: results with their invoice proof, and the open cases' objectives.
+        var savings = savingsLedger is null ? [] : await savingsLedger.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        var objectives = caseObjectives is null ? [] : await caseObjectives.ListAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        return SavingsAllocator.Apply(report, savings, objectives, settings);
     }
 }

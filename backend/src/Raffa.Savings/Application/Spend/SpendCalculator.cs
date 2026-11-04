@@ -129,7 +129,20 @@ public static class SpendCalculator
             excluded);
     }
 
-    private static string YearLabel(int fiscalYear, int startMonth) =>
+    /// <summary>The value of the days from <paramref name="from"/> to <paramref name="to"/> of an
+    /// <paramref name="annual"/> value whose contract years start on <paramref name="anchor"/> (each
+    /// year by its own length, so a full year is exactly <paramref name="annual"/>).</summary>
+    public static decimal AnnualAccrual(DateOnly anchor, decimal annual, DateOnly from, DateOnly to) =>
+        Amount(new Price(anchor, annual, null, 1m), from, to);
+
+    /// <summary>The index of the period <paramref name="day"/> falls in, or -1.</summary>
+    public static int PeriodOf(IReadOnlyList<SpendPeriod> periods, DateOnly day) => PeriodIndex(periods, day);
+
+    /// <summary>The fiscal quarter (1-4) <paramref name="day"/> falls in.</summary>
+    public static int FiscalQuarterOf(DateOnly day, int startMonth) => (((day.Month - startMonth) % 12 + 12) % 12 / 3) + 1;
+
+    /// <summary>"2026" for a calendar fiscal year, "2026/27" otherwise (what follows "FY ").</summary>
+    public static string YearLabel(int fiscalYear, int startMonth) =>
         startMonth == 1
             ? fiscalYear.ToString(CultureInfo.InvariantCulture)
             : string.Create(CultureInfo.InvariantCulture, $"{fiscalYear}/{(fiscalYear + 1) % 100:00}");

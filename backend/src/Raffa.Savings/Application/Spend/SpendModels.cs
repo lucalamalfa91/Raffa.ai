@@ -113,7 +113,108 @@ public sealed record SpendContractRow(
     IReadOnlyList<decimal> ToDecide,
     IReadOnlyList<SpendSegment> Segments,
     SpendDecision Decision,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes)
+{
+    /// <summary>Signed results (negotiated, not quantity reductions) of the contract, per period:
+    /// their annual value over the days of their period.</summary>
+    public IReadOnlyList<decimal> SavingsContractual { get; init; } = [];
+
+    /// <summary>What invoices prove of those results, in the period of the invoiced month.</summary>
+    public IReadOnlyList<decimal> SavingsRealized { get; init; } = [];
+
+    /// <summary>Spend no longer paid because quantities were cut: shown apart, never a saving.</summary>
+    public IReadOnlyList<decimal> QuantityReduction { get; init; } = [];
+
+    /// <summary>The objective of the contract's open case (a user target, not signed), over the term it negotiates.</summary>
+    public IReadOnlyList<decimal> Objective { get; init; } = [];
+}
+
+/// <summary>Why a saving or an objective is in the list but not in the per-period figures.</summary>
+public static class SavingExclusionReason
+{
+    /// <summary>In a currency the admin set no budget rate for.</summary>
+    public const string NoRate = "noRate";
+
+    /// <summary>The result states no period, so its value cannot be put in time.</summary>
+    public const string NoPeriod = "noPeriod";
+
+    /// <summary>The objective's contract has no stated annual value, or its term end is unknown.</summary>
+    public const string NoBase = "noBase";
+}
+
+/// <summary>
+/// A recorded result (<c>saving_result</c>), as the register shows it: what it is, its base, period,
+/// method and evidence, and what invoices proved. Amounts in the reporting currency (null with
+/// <see cref="Excluded"/> = <see cref="SavingExclusionReason.NoRate"/>).
+/// </summary>
+/// <param name="CountsAsNegotiation">False for a quantity reduction (shown apart).</param>
+/// <param name="ProvenTo">The last day of the last invoiced month that proves it.</param>
+public sealed record SpendSavingEntry(
+    Guid Id,
+    Guid? ContractId,
+    string Supplier,
+    string Contract,
+    string Kind,
+    bool CountsAsNegotiation,
+    decimal AmountAnnual,
+    string Currency,
+    decimal? AmountAnnualReporting,
+    DateOnly? From,
+    DateOnly? To,
+    DateOnly SignedOn,
+    string Note,
+    string Baseline,
+    string Period,
+    string Method,
+    string Evidence,
+    decimal RealizedReporting,
+    DateOnly? ProvenTo,
+    int InvoiceCount,
+    string? Excluded);
+
+/// <summary>The objective of an open renewal case, in the reporting currency, over the term it negotiates.</summary>
+/// <param name="AssumedTermMonths">True when the renewal term was not read and 12 months are used.</param>
+public sealed record SpendObjectiveEntry(
+    Guid ContractId,
+    Guid CaseId,
+    string Supplier,
+    string? Kind,
+    decimal? Pct,
+    decimal? AnnualTarget,
+    DateOnly? From,
+    DateOnly? To,
+    string? Owner,
+    bool AssumedTermMonths,
+    string? Excluded);
+
+/// <summary>Savings of results whose contract is not among the validated ones, per period.</summary>
+public sealed record SpendOtherSavings(
+    IReadOnlyList<decimal> SavingsContractual,
+    IReadOnlyList<decimal> SavingsRealized,
+    IReadOnlyList<decimal> QuantityReduction);
+
+/// <summary>A saving result as the allocator reads it (from <c>saving_result</c> and its realizations).</summary>
+public sealed record SavingInput(
+    Guid Id,
+    Guid? ContractId,
+    string Supplier,
+    string Contract,
+    string Kind,
+    bool CountsAsNegotiation,
+    decimal AmountAnnual,
+    string Currency,
+    DateOnly? PeriodFrom,
+    DateOnly? PeriodTo,
+    DateOnly SignedOn,
+    string Note,
+    string Baseline,
+    string Period,
+    string Method,
+    string Evidence,
+    IReadOnlyList<SavingRealizationInput> Realizations);
+
+/// <summary>The part of a result one invoice proves, and the invoiced month (its first day).</summary>
+public sealed record SavingRealizationInput(DateOnly InvoiceMonth, decimal Amount);
 
 /// <summary>A contract left out of the totals, and why.</summary>
 public sealed record SpendExclusion(Guid ContractId, string Supplier, string Name, string Reason, string Currency);
@@ -128,4 +229,14 @@ public sealed record SpendReport(
     IReadOnlyList<SpendPeriod> Periods,
     IReadOnlyList<SpendFiscalYear> FiscalYears,
     IReadOnlyList<SpendContractRow> Contracts,
-    IReadOnlyList<SpendExclusion> Excluded);
+    IReadOnlyList<SpendExclusion> Excluded)
+{
+    /// <summary>The recorded results (contractual and quantity reductions), newest first.</summary>
+    public IReadOnlyList<SpendSavingEntry> Savings { get; init; } = [];
+
+    /// <summary>The objectives of the open renewal cases.</summary>
+    public IReadOnlyList<SpendObjectiveEntry> Objectives { get; init; } = [];
+
+    /// <summary>Savings of results not tied to a validated contract, per period.</summary>
+    public SpendOtherSavings? OtherSavings { get; init; }
+}

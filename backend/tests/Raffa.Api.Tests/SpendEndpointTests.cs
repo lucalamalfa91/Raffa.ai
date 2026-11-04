@@ -32,6 +32,10 @@ public sealed class SpendEndpointTests : IClassFixture<RaffaApiFactory>
             services.AddSingleton<IContractFactsReader, FakeFacts>();
             services.AddSingleton<IContractTermHistoryReader, FakeHistory>();
             services.AddSingleton<IWorkspaceFinanceSettingsReader, FakeSettings>();
+            services.RemoveAll<Raffa.Savings.Application.Spend.ISavingsLedgerSource>();
+            services.RemoveAll<ICaseObjectiveSource>();
+            services.AddSingleton<Raffa.Savings.Application.Spend.ISavingsLedgerSource, FakeLedger>();
+            services.AddSingleton<ICaseObjectiveSource, NoObjectives>();
         }));
     }
 
@@ -65,6 +69,13 @@ public sealed class SpendEndpointTests : IClassFixture<RaffaApiFactory>
         Assert.Equal(Chf, row.GetProperty("contractId").GetGuid());
         // 2024 is a leap year: 366 days of a 366'000 contract year, all of it in the past.
         Assert.Equal(366_000m, row.GetProperty("actual").EnumerateArray().Sum(v => v.GetDecimal()));
+
+        // The savings layer on the same quarters: 36'600 a year over 2024's 366 days, 18'300 proven in Q1.
+        Assert.Equal(36_600m, row.GetProperty("savingsContractual").EnumerateArray().Sum(v => v.GetDecimal()));
+        Assert.Equal(18_300m, row.GetProperty("savingsRealized")[0].GetDecimal());
+        var saving = Assert.Single(root.GetProperty("savings").EnumerateArray());
+        Assert.Equal(36_600m, saving.GetProperty("amountAnnualReporting").GetDecimal());
+        Assert.Equal(new DateOnly(2024, 3, 31), DateOnly.Parse(saving.GetProperty("provenTo").GetString()!));
 
         var excluded = Assert.Single(root.GetProperty("excluded").EnumerateArray());
         Assert.Equal(Eur, excluded.GetProperty("contractId").GetGuid());
@@ -105,6 +116,25 @@ public sealed class SpendEndpointTests : IClassFixture<RaffaApiFactory>
                 [Eur] = new(Eur, [Term(100_000m, "EUR")], null),
             });
         }
+    }
+
+    private sealed class FakeLedger : Raffa.Savings.Application.Spend.ISavingsLedgerSource
+    {
+        // A price result on the CHF contract for 2024, half of it proven by a March invoice.
+        public Task<IReadOnlyList<Raffa.Savings.Application.Spend.SavingInput>> ListAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Raffa.Savings.Application.Spend.SavingInput>>(
+            [
+                new(Guid.NewGuid(), Chf, "Acme", "Acme MSA", "price", true, 36_600m, "CHF",
+                    new DateOnly(2024, 1, 1), new DateOnly(2024, 12, 31), new DateOnly(2023, 12, 1),
+                    "-10% unit price", "2023 prices", "12 months", "signed vs previous", "acme-2024.pdf",
+                    [new(new DateOnly(2024, 3, 1), 18_300m)]),
+            ]);
+    }
+
+    private sealed class NoObjectives : ICaseObjectiveSource
+    {
+        public Task<IReadOnlyList<CaseObjectiveInfo>> ListAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<CaseObjectiveInfo>>([]);
     }
 
     private sealed class FakeSettings : IWorkspaceFinanceSettingsReader
