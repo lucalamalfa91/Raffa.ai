@@ -206,6 +206,22 @@ public sealed class RenewalCaseEngineTests
     }
 
     [Fact]
+    public void A_revision_proposed_from_the_composer_is_a_new_draft_version_and_invalidates_the_approval()
+    {
+        var c = AtFirstEmail();
+        c = Act(c, Marta, "ui", new() { K = "to:0", V = "anna@salesforce.example" });
+        c = Act(c, Marta, "requestAppr", new() { Eid = 0 });
+        c = Act(c, Luca, "approve", new() { Eid = 0 });
+        c = Act(c, Marta, "reviseEmail", new() { Eid = 0, Subject = "New subject", Body = "Dear team,\n\nReduce to 50 seats.\n\nKind regards,\nMarta", Text = CaseText.Of("Done.") });
+        var e = c.Emails[0];
+        Assert.Equal(("draft", 2), (e.State, e.Ver));
+        Assert.Equal("New subject", e.Subject);
+        Assert.Contains("50 seats", e.Body, StringComparison.Ordinal);
+        Assert.Null(e.ApprovedVer);
+        Assert.Equal("Done.", c.Feed[^1].Text?.Render());
+    }
+
+    [Fact]
     public void Copy_never_marks_sent_and_sending_needs_an_explicit_confirmation()
     {
         var c = AtFirstEmail();

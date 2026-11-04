@@ -64,6 +64,41 @@ public sealed class AiCaseReaderTests
         Assert.Equal(2, features.Items.Count);
     }
 
+    private static CaseEmail Draft() => new()
+    {
+        Kind = "first",
+        Subject = "Acme Suite — renewal discussion",
+        Body = "Dear Acme team,\n\nOur agreement ends on 21 Oct 2026. Please send a revised proposal by 14 Nov 2026.\n\nKind regards,\nPietro",
+    };
+
+    [Fact]
+    public async Task A_composer_instruction_that_changes_the_email_returns_a_new_version_with_its_figure()
+    {
+        var reader = new AiCaseReader(
+            new AnalyzeOnlyGateway(
+                """{"intent":"revise","subject":"","body":"Dear Acme team,\n\nOur agreement ends on 21 Oct 2026. We plan to reduce to 50 seats. Please send a revised proposal by 14 Nov 2026.\n\nKind regards,\nPietro","note":"Ho indicato 50 postazioni."}"""),
+            new TenantContext());
+
+        var revision = await reader.ReviseEmailAsync(TenantId.New(), new RenewalCase(), Contract, Draft(), "riduzione a 50 seats", "it");
+
+        Assert.NotNull(revision);
+        Assert.Contains("50 seats", revision!.Body, StringComparison.Ordinal);
+        Assert.Equal("Acme Suite — renewal discussion", revision.Subject);
+    }
+
+    [Fact]
+    public async Task A_question_or_a_figure_the_case_does_not_hold_leaves_the_draft_alone()
+    {
+        var question = new AiCaseReader(new AnalyzeOnlyGateway("""{"intent":"question","subject":"","body":"","note":""}"""), new TenantContext());
+        Assert.Null(await question.ReviseEmailAsync(TenantId.New(), new RenewalCase(), Contract, Draft(), "what is the notice period?", "en"));
+
+        var invented = new AiCaseReader(
+            new AnalyzeOnlyGateway(
+                """{"intent":"revise","subject":"","body":"Dear Acme team,\n\nOur agreement ends on 21 Oct 2026. Competitors offer 31% less. Please send a revised proposal by 14 Nov 2026.\n\nKind regards,\nPietro","note":"x"}"""),
+            new TenantContext());
+        Assert.Null(await invented.ReviseEmailAsync(TenantId.New(), new RenewalCase(), Contract, Draft(), "make it firmer", "en"));
+    }
+
     private sealed class AnalyzeOnlyGateway(string payloadJson) : IAiGateway
     {
         public List<AiAnalysisRequest> Requests { get; } = [];

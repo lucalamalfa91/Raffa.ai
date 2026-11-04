@@ -261,7 +261,9 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
   useEffect(() => {
     if (!asking && !showAnswer.current) return;
     showAnswer.current = false;
-    askView.current?.scrollIntoView?.({ block: "nearest" });
+    // The exchange is read from its start: the question on top, the (possibly long) answer below it.
+    // "nearest" aligned the bottom of the last bubble and cut the answer's opening off the window.
+    askView.current?.scrollIntoView?.({ block: "start" });
   }, [asking, env]);
 
   // A4: after a step change, focus moves to the new step's heading.
@@ -309,6 +311,13 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
     if (!hasEmail) setEmailPanel(false);
     hadEmail.current = hasEmail;
   }, [hasEmail]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A new version of the draft (Raffa revised it from the composer) reopens the panel on it.
+  const emailBody = cd?.email?.body ?? null;
+  const lastBody = useRef<string | null>(null);
+  useEffect(() => {
+    if (emailBody && lastBody.current && emailBody !== lastBody.current && !parityRun()) setEmailPanel(true);
+    lastBody.current = emailBody;
+  }, [emailBody]);
   useEffect(() => {
     if (emailPanel && guide.open) {
       guideYielded.current = true;
@@ -341,6 +350,8 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
     ...v.hdr.people.map((p) => ({ label: p.name, state: tr(p.role), tone: "muted" as Tone })),
   ];
   const em = cd.email;
+  // The last message the person wrote: where a composer exchange starts.
+  const lastPersonMsg = page.msgs.reduce((last, m, i) => (m.raffa ? last : i), page.msgs.length - 1);
 
   const input = (i: CaseInput) => {
     const value = draft<unknown>(i.ui, i.value);
@@ -572,7 +583,7 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
           ) : null}
 
           {page.msgs.map((m, i) => (
-            <div key={i} className="p4-msg" ref={!asking && i === page.msgs.length - 1 ? askView : undefined}>
+            <div key={i} className="p4-msg" ref={!asking && i === lastPersonMsg ? askView : undefined}>
               <span className={m.raffa ? "p4-msg-by is-raffa" : "p4-msg-by"} title={m.by}>
                 {m.by}
               </span>

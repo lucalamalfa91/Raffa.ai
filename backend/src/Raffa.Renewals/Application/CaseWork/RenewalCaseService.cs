@@ -257,6 +257,25 @@ public sealed partial class RenewalCaseService(
 
         CaseQuestionAnswer? answer = null;
         var isCommand = CommandRegex().IsMatch(q);
+        if (!isCommand && await ProposeEmailRevisionAsync(tenantId, caseId, q, lang, ct).ConfigureAwait(false) is { } proposal)
+        {
+            // The words change the open email draft: the answer is a new version of it in the action panel,
+            // not a chat reply about it.
+            return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (_, _, _) =>
+            [
+                ("ask", new CaseActionPayload { Text = CaseText.Of(q) }),
+                ("reviseEmail", new CaseActionPayload
+                {
+                    Eid = proposal.Eid,
+                    Subject = proposal.Revision.Subject,
+                    Body = proposal.Revision.Body,
+                    Text = CaseText.Of(string.IsNullOrWhiteSpace(proposal.Revision.Note)
+                        ? (lang == "en" ? "I updated the email draft: the new version is in the panel." : "Ho aggiornato la bozza: trovi la nuova versione nel pannello.")
+                        : proposal.Revision.Note + (lang == "en" ? " The new version is in the panel." : " Trovi la nuova versione nel pannello.")),
+                }),
+            ]).ConfigureAwait(false);
+        }
+
         if (!isCommand)
         {
             using var scope = tenantContext.BeginScope(tenantId);
@@ -287,6 +306,79 @@ public sealed partial class RenewalCaseService(
 
             return list;
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>The email draft the person's composer words would change, as the model's revision of it.
+    /// Null when no email is open, no model is available, or the words are a question: the Q&amp;A answers.</summary>
+    private async Task<(int Eid, CaseEmailRevision Revision)?> ProposeEmailRevisionAsync(TenantId tenantId, Guid caseId, string text, string? lang, CancellationToken ct)
+    {
+        if (aiReader is null || scriptServices is not ProductionCaseScriptServices)
+        {
+            return null;
+        }
+
+        try
+        {
+            RenewalCase c;
+            CaseContractFacts? cf;
+            using (tenantContext.BeginScope(tenantId))
+            {
+                var record = await db.RenewalCases.AsNoTracking().FirstOrDefaultAsync(x => x.Id == new EntityId(caseId), ct).ConfigureAwait(false);
+                if (record is null)
+                {
+                    return null;
+                }
+
+                c = RenewalCaseJson.Deserialize(record.State);
+                cf = await FactsAsync(tenantId, record, ct).ConfigureAwait(false);
+            }
+
+            // The draft on the table: the latest email not yet copied or sent.
+            var open = c.Emails.LastOrDefault(e => e.State is EmailStates.Draft or EmailStates.ToApprove or EmailStates.Approved);
+            if (open is null || cf is null)
+            {
+                return null;
+            }
+
+            var language = lang == "en" || (lang is null && Raffa.SharedKernel.Language.ResponseLanguage.Current == "en") ? "en" : "it";
+            return await aiReader.ReviseEmailAsync(tenantId, c, cf, open, text, language, ct).ConfigureAwait(false) is { } revision ? (open.Id, revision) : null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (logger is not null)
+            {
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Email revision from the composer failed; the question is answered instead.");
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>The first email the engine drafts is a skeleton of facts; the model makes it a complete email.
+    /// Any failure or doubt leaves the skeleton.</summary>
+    private async Task ComposeFirstEmailAsync(TenantId tenantId, RenewalCase next, CaseContractFacts cf, CancellationToken ct)
+    {
+        if (aiReader is null || scriptServices is not ProductionCaseScriptServices || next.Emails.LastOrDefault() is not { Kind: "first" } email)
+        {
+            return;
+        }
+
+        try
+        {
+            var lang = Raffa.SharedKernel.Language.ResponseLanguage.Current == "en" ? "en" : "it";
+            if (await aiReader.ReviseEmailAsync(tenantId, next, cf, email, null, lang, ct).ConfigureAwait(false) is { } composed)
+            {
+                email.Subject = composed.Subject;
+                email.Body = composed.Body;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (logger is not null)
+            {
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "First email composition failed; the drafted skeleton stands.");
+            }
+        }
     }
 
     // The model's reading of the supplier reply of this request: the case uses it, and so does the market benchmark.
@@ -488,6 +580,11 @@ public sealed partial class RenewalCaseService(
             var (stepCtx, afterStep) = await ReadBeforeStepAsync(tenantId, c, cf, type, p, ctx, ct).ConfigureAwait(false);
             var next = RenewalCaseEngine.Act(c, type, p, stepCtx);
             afterStep?.Invoke(next);
+            if (type == "confirmPlan" && next.Emails.Count > c.Emails.Count)
+            {
+                await ComposeFirstEmailAsync(tenantId, next, cf, ct).ConfigureAwait(false);
+            }
+
             if (RenewalCaseEngine.IsPermissionDenial(next))
             {
                 return new CaseResult(CaseResultKind.Forbidden, Envelope(record, next, cf, caller.Name), next.Ui.Warn?.Render());
@@ -524,7 +621,7 @@ public sealed partial class RenewalCaseService(
         var tick = c.Tick;
         foreach (var (type, p, eid) in events.Where(e => !CaseActions.Passive.Contains(e.Type)))
         {
-            var invalidated = type == "saveEdit" && eid is { } i && i < before.Emails.Count && before.Emails[i].State != EmailStates.Draft;
+            var invalidated = type is "saveEdit" or "reviseEmail" && eid is { } i && i < before.Emails.Count && before.Emails[i].State != EmailStates.Draft;
             await AppendEventAsync(tenantId, record, caller.Name, invalidated ? "email_edited_invalidated" : type, p, eid, ct).ConfigureAwait(false);
         }
 
