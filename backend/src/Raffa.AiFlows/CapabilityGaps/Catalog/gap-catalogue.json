@@ -1,7 +1,8 @@
 {
-  "version": "gap-catalogue-1",
+  "version": "gap-catalogue-2",
   "changelog": [
-    "1: the five fixed entries moved out of CapabilityGapCatalog.cs unchanged (INV-07); include/exclude are .NET regex, matched IgnoreCase|CultureInvariant."
+    "1: the five fixed entries moved out of CapabilityGapCatalog.cs unchanged (INV-07); include/exclude are .NET regex, matched IgnoreCase|CultureInvariant.",
+    "2: reminder — 'ricordami/remind me' and 'in agenda/calendario' alone no longer match: a recall question (\"ricordami le date del contratto\", \"remind me of the notice period\", \"cosa ho in agenda?\") is a fact question, so the verb now needs a scheduling cue (di + verb, tra/fra, N giorni prima, quando … si avvicina; to/before/in N days) and agenda/calendario a placing verb (metti, aggiungi, segna …)."
   ],
   "entries": [
     {
@@ -42,7 +43,7 @@
       "descriptionEn": "Remind me before a notice deadline by email or calendar",
       "descriptionIt": "Ricordarmi una scadenza di preavviso via email o calendario",
       "alternative": "Renewals",
-      "include": "\\b(reminders?|remind\\s+(me|us)|alert\\s+(me|us)|set\\s+an?\\s+alert|add\\s+[^.?!]{0,40}?\\bto\\s+(my\\s+|the\\s+|our\\s+)?calendar|calendar\\s+(invite|entry|event|reminder)|promemoria|ricordamel[oa]|ricordami|ricordaci|avvisami|avvisaci|avvertimi|mettimi\\s+un|segna(mi|lo|la)?\\s+in\\s+agenda|in\\s+agenda|(sul|nel|in)\\s+calendario|invito\\s+(in\\s+)?calendario)\\b"
+      "include": "\\b(reminders?|remind\\s+(me|us)\\s+(to\\s+(?!whom\\b)\\w+|in\\s+(a|an|\\d+)\\b|on\\s+(the\\s+)?\\d+|before\\b|ahead\\s+of\\b|later\\b|tomorrow\\b|(\\d+|a|an|one|two|three|four|five|six|a\\s+few|few)\\s+(day|week|month)s?\\b|when\\s+[^.?!]{0,40}?\\b(approach(es|ing)?|is\\s+near|gets\\s+close|comes\\s+up)\\b)|alert\\s+(me|us)|set\\s+an?\\s+alert|add\\s+[^.?!]{0,40}?\\bto\\s+(my\\s+|the\\s+|our\\s+)?calendar|calendar\\s+(invite|entry|event|reminder)|promemoria|(ricordami|ricordaci|ricordamel[oa]|ricordacel[oa])\\s+(di\\s+(?!(cosa|che|quale|quali|quanto|quando|come|chi|dove)\\b)\\w+|(tra|fra)\\s+(?!quanto\\b)\\w+|prima\\b(?!\\s+di\\s+tutto)|più\\s+avanti|domani\\b|il\\s+giorno\\s+prima|(\\d+|un|una|uno|due|tre|quattro|cinque|sei|qualche)\\s+(giorn|settiman|mes)\\w*\\s+prima|quando\\s+[^.?!]{0,40}?\\b(si\\s+avvicin\\w*|sta\\s+per|stanno\\s+per|manca|mancano)\\b)|avvisami|avvisaci|avvertimi|mettimi\\s+un|segna(mi|lo|la)?\\s+in\\s+agenda|(mett|aggiung|inser|segn|fiss|salv|cre)\\w*\\s+[^.?!]{0,40}?\\b(in|nel|sul|nella|sulla)\\s+(mia\\s+|nostra\\s+)?(agenda|calendario)|invito\\s+(in\\s+)?calendario)\\b"
     },
     {
       "key": "export-file",

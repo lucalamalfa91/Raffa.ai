@@ -5,6 +5,7 @@ import type { ApiClient } from "../../../api/client";
 import type { CaseActionPayload, CaseButton, CaseCardStep, CaseEnvelope, CaseInput, CaseRow, Tone } from "../../../api/renewalCases";
 import { useGuide, useGuideState } from "../../../components/shell/guide";
 import ArtifactPanel from "../../ask/ArtifactPanel";
+import ReplyBody from "../../ask/ReplyBody";
 import { MailIcon } from "../../ask/DraftPanel";
 import "../../ask/chat.css";
 import { useTenantId } from "../../../routes/contracts/contracts4";
@@ -50,6 +51,25 @@ const demoLabel = (b: CaseButton): boolean => {
 const isDocButton = (b: CaseButton): boolean => b.act === "addDoc";
 
 const isEmpty = (x: Text | null | undefined): boolean => x == null || (typeof x === "string" && x.length === 0);
+
+/** The source line the server appends to a composer answer: "(Source: …)" / "(Fonte: …)". */
+const SOURCE_LINE = /\n\((?:Source|Fonte): ([^\n]+)\)\s*$/;
+
+/**
+ * A Raffa bubble in the case chat: the answer's markdown rendered as in Ask (paragraphs, bold, lists,
+ * `[n]` markers) and its source on its own muted line, never the raw `**…**` text.
+ */
+export function RaffaBubble({ text }: { text: string }) {
+  const { t } = useI18n();
+  const m = SOURCE_LINE.exec(text);
+  const body = m ? text.slice(0, m.index) : text;
+  return (
+    <div className="p4-msg-text p4-msg-reply">
+      <ReplyBody text={body} sources={[]} />
+      {m ? <div className="p4-msg-source">{`${t("Source:")} ${m[1]!.trim()}`}</div> : null}
+    </div>
+  );
+}
 
 /**
  * Pratica (AskRaffa V4.dc.html lines 119-175): the guided renewal case. The server's engine composes
@@ -553,8 +573,10 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
 
           {page.msgs.map((m, i) => (
             <div key={i} className="p4-msg" ref={!asking && i === page.msgs.length - 1 ? askView : undefined}>
-              <span className={m.raffa ? "p4-msg-by is-raffa" : "p4-msg-by"}>{m.by}</span>
-              <div className={m.raffa ? "p4-msg-text" : "p4-msg-text is-person"}>{tr(m.text)}</div>
+              <span className={m.raffa ? "p4-msg-by is-raffa" : "p4-msg-by"} title={m.by}>
+                {m.by}
+              </span>
+              {m.raffa ? <RaffaBubble text={tr(m.text)} /> : <div className="p4-msg-text is-person">{tr(m.text)}</div>}
             </div>
           ))}
           {asking ? (

@@ -233,6 +233,32 @@ describe("Pratica", () => {
     expect(missing).toEqual([]);
   });
 
+  it("renders Raffa's answer as formatted text with its source apart, and a long author name kept in its column", async () => {
+    const withAnswer = {
+      ...envelope,
+      view: {
+        ...envelope.view,
+        page: {
+          ...envelope.view.page,
+          msgs: [
+            { by: "pietronasuti", raffa: false, text: "dimmi le scadenze di questo contratto" },
+            { by: "Raffa", raffa: true, text: "Le scadenze sono:\n\n- **Initial Term End:** 15 April 2026 [1]\n- **Preavviso:** 90 giorni [1]\n(Source: Document excerpt p.1)" },
+          ],
+        },
+      },
+    } as unknown as CaseEnvelope;
+    renderAt("/renewals/case-1", { getRenewalCase: vi.fn().mockResolvedValue(ok(withAnswer)) });
+
+    const item = await screen.findByText("15 April 2026", { exact: false });
+    const bubble = item.closest(".p4-msg-reply") as HTMLElement;
+    expect(within(bubble).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(bubble).getByText("Initial Term End:").tagName).toBe("STRONG");
+    expect(bubble.textContent).not.toContain("**");
+    expect(within(bubble).getByText("Fonte: Document excerpt p.1")).toHaveClass("p4-msg-source");
+    expect(screen.getByText("pietronasuti")).toHaveAttribute("title", "pietronasuti");
+    expect(missing).toEqual([]);
+  });
+
   it("keeps the question and says so when the answer fails, so it can be asked again", async () => {
     const askRenewalCase = vi.fn().mockResolvedValue({ ok: false, statusCode: 500, body: null, error: "HTTP 500", code: null, current: null });
     renderAt("/renewals/case-1", { getRenewalCase: vi.fn().mockResolvedValue(ok(envelope)), askRenewalCase });

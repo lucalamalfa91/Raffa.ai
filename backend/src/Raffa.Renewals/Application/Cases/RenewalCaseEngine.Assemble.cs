@@ -314,6 +314,17 @@ public static partial class RenewalCaseEngine
     }
 
     /// <summary><c>C.name.split(' — ')[0]</c>.</summary>
+    /// <summary>
+    /// The author label of a chat bubble: the first name ("Luca" for "Luca Lamalfa"). A member without
+    /// a display name is known by their email; the bubble then shows its local part, never the address.
+    /// </summary>
+    internal static string BubbleName(string by)
+    {
+        var first = by.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? by;
+        var at = first.IndexOf('@', StringComparison.Ordinal);
+        return at > 0 ? first[..at] : first;
+    }
+
     private static string ShortName(string name)
     {
         var i = name.IndexOf(" — ", StringComparison.Ordinal);
@@ -407,7 +418,7 @@ public static partial class RenewalCaseEngine
             x.Steps,
             x.Chips)).ToList();
         var msgs = cards.Skip(curI + 1).Where(x => x.Plain).TakeLast(4)
-            .Select(x => new CaseBubble(x.By == CaseRules.Raffa ? CaseRules.Raffa : x.By.Split(' ')[0], x.By == CaseRules.Raffa, x.Text)).ToList();
+            .Select(x => new CaseBubble(x.By == CaseRules.Raffa ? CaseRules.Raffa : BubbleName(x.By), x.By == CaseRules.Raffa, x.Text)).ToList();
 
         var buttons = cur.Buttons.ToList();
         var ph0 = c.Phase;
@@ -444,12 +455,15 @@ public static partial class RenewalCaseEngine
         var visible = ordered.Take(3).ToList();
         var more = ordered.Skip(3).ToList();
         more.AddRange(actions.Select(a => new CaseButton(N("+ {label}", ("label", a.Label)), a.Act, a.P)));
-        if (c.Notice is null)
+        // The secondary paths join "More" only when the card does not offer them already (the plan card
+        // has both): the prototype listed them twice there ("Valuta alternative" under Altro twice,
+        // "Prepara disdetta" visible and again as "Prepara la disdetta").
+        if (c.Notice is null && !Has("startNotice"))
         {
             more.Add(new CaseButton(B("Prepare the non-renewal notice", "Prepara la disdetta"), "startNotice", CaseActionPayload.None));
         }
 
-        if (c.Alt is null)
+        if (c.Alt is null && !Has("startAlt"))
         {
             more.Add(new CaseButton(B("Evaluate alternatives", "Valuta alternative"), "startAlt", CaseActionPayload.None));
         }
