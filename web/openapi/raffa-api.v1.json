@@ -16941,6 +16941,137 @@
           }
         }
       }
+    },
+    "/api/savings/spend": {
+      "get": {
+        "operationId": "getSpendReport",
+        "summary": "Spesa e risparmi: the validated contracts' value and savings per fiscal quarter",
+        "description": "Per fiscal quarter and per validated contract, in the workspace's reporting currency: actual, committed, autoRenewal, toDecide (spend) and savingsContractual, savingsRealized, quantityReduction, objective (savings), with the timeline segments, the next decision, the savings register and the open cases' objectives. Nothing is estimated: contracts without dates, value, budget rate or (cash) billing period are listed in `excluded`. The full shape is web/src/api/spend.ts (hand-written; the generator does not describe per-period maps).",
+        "parameters": [
+          {
+            "name": "X-Tenant-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "First fiscal year (named by the year it starts in); with `to`."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Last fiscal year; at most 10 years from `from`."
+          },
+          {
+            "name": "basis",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "accrual",
+                "cash"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "currency",
+                    "basis",
+                    "periods",
+                    "fiscalYears",
+                    "contracts",
+                    "excluded"
+                  ],
+                  "properties": {
+                    "currency": {
+                      "type": "string"
+                    },
+                    "basis": {
+                      "type": "string"
+                    },
+                    "fiscalYearStartMonth": {
+                      "type": "integer"
+                    },
+                    "currentFiscalYear": {
+                      "type": "integer"
+                    },
+                    "today": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "periods": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "fiscalYears": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "contracts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "excluded": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "savings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "objectives": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "otherSavings": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An invalid basis or fiscal year span."
+          }
+        }
+      }
     }
   }
 }

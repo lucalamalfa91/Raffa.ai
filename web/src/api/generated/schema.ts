@@ -1928,6 +1928,19 @@ export interface operations {
       };
     };
   };
+  getSpendReport: {
+    responses: {
+      200: {
+        content: {
+          "application/json": { currency: string; basis: string; fiscalYearStartMonth?: number; currentFiscalYear?: number; today?: string; periods: (unknown)[]; fiscalYears: (unknown)[]; contracts: (unknown)[]; excluded: (unknown)[]; savings?: (unknown)[]; objectives?: (unknown)[]; otherSavings?: unknown | null };
+        };
+      };
+      400: {
+        content: {
+        };
+      };
+    };
+  };
 }
 
 export interface paths {
@@ -2203,5 +2216,8 @@ export interface paths {
   };
   "/api/company-rules/policy": {
     post: operations["uploadCompanyPolicy"];
+  };
+  "/api/savings/spend": {
+    get: operations["getSpendReport"];
   };
 }

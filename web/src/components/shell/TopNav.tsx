@@ -13,7 +13,7 @@ const TABS: ReadonlyArray<{ id: string; label: string; to: string; active: (path
     to: "/contracts",
     active: (p) => p.startsWith("/contracts") || p.startsWith("/documents"),
   },
-  { id: "results", label: "Results⟦nav⟧", to: "/savings", active: (p) => p.startsWith("/savings") },
+  { id: "results", label: "Spend and savings⟦nav⟧", to: "/savings", active: (p) => p.startsWith("/savings") },
   { id: "ask", label: "Ask⟦nav⟧", to: "/ask", active: (p) => p.startsWith("/ask") || p.startsWith("/quotes") },
   { id: "settings", label: "Settings", to: "/settings", active: (p) => p.startsWith("/settings") },
 ];

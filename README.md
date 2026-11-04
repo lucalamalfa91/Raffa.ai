@@ -21,13 +21,13 @@ Sign-in lands on **Ask Raffa** (`/ask`). The rail is two-tier:
 | Primary | Documents | `/documents` |
 | From your contracts | Portfolio | `/contracts` |
 | From your contracts | Renewals | `/renewals` |
-| From your contracts | Savings | `/savings` |
+| From your contracts | Spend and savings (Spesa e risparmi) | `/savings` |
 | From your contracts | Quote check (new proposals, optional) | `/quotes` |
 
 There is no Home item. Review is a state of Documents (`?review=`), not a rail
 destination. Workspace & members lives in the rail footer (Admin). Portfolio,
 Renewals, and Quote check stay dim until the workspace has at least one
-**validated** contract (a linked document in `Completed`). Savings is always
+**validated** contract (a linked document in `Completed`). Spend and savings is always
 reachable.
 
 ## Pannello admin (Raffa staff)
@@ -86,15 +86,21 @@ Upload in Documents → Worker processes → Review weak facts → Validated con
    adds Start / Auto / Risk); Renewals defaults to **Ready**, with **To
    review** and **All** one click away.
 
-**Savings** is a dashboard: verified money leads (with its share of spend),
-then identified, in progress and savings potential; a portfolio-context strip
-links into Portfolio and Renewals; the identified → in progress → verified
-pipeline, "When you saved" (verified money per month, this year / last 90 days /
-last verified saving), where the savings are (by supplier or lever) and the open
-savings whose notice deadline is ahead. Pipeline stages and supplier bars filter
-the opportunities table; each row offers Renewals (`?select=`) and a scoped Ask.
-`/savings?contract=<id>` focuses one contract (Contract 360 "Track it in
-Savings").
+**Spend and savings** (`/savings`, formerly Risultati) is one report, one set of
+filters kept in the URL (`?view=year|quarter&year=&basis=accrual|cash&include=committed|auto|all&cat=&sort=&contract=`):
+what every validated contract is worth in the fiscal quarters it runs, from its
+documented terms (the contract, then recorded renewals) and its renewal clause
+-- actual, committed, renewing by itself unless notice is given, to decide (at
+the current price) -- and, on the same periods, what signed results save
+(proven by invoices, signed, quantity reductions apart, the cases' objectives).
+Then the goal ("Verso il tuo obiettivo", read on its own fiscal year), a table
+by category and contract (incidence, savings, decide-by; CSV export) with a
+contract's detail (terms over time, quarters, its savings), next year's budget
+with the contracts you can still act on, and the register of results (base,
+period, method, evidence). Nothing is estimated: no history is reconstructed,
+another currency is converted only at the admin's budget rate (Settings), and a
+contract without dates, value or rate is listed apart. Amounts are in the
+reporting currency; the fiscal year starts in the month Settings says.
 
 **Renewals** opens on a KPI strip (notice in 30 / 90 days, spend renewing inside
 90 days, not started / in negotiation / closed — each a filter), a search and
