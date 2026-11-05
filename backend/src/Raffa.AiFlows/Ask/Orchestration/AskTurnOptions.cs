@@ -48,6 +48,14 @@ public sealed class AskTurnOptions
     /// an emergency rollback; artifacts and persisted state remain readable.</summary>
     public bool ReliableRetrievalPolicy { get; set; } = true;
 
+    /// <summary><c>Chat:AskTurn:Agentic</c> (ADR-024 amendment 2026-11-05): the orchestrator runs the
+    /// turn -- the `agent` role chooses which tools to call -- instead of the gate/planner/handler
+    /// router. Off by default; a turn the role cannot serve falls back to the router.</summary>
+    public bool Agentic { get; set; }
+
+    /// <summary>The most tool calls one agentic turn may make before the model must answer.</summary>
+    public int AgenticMaxToolCalls { get; set; } = 8;
+
     /// <summary>A-05: backstop deadline of one answer-composer step when <see cref="AnswerOnRunner"/> is on;
     /// far above the gateway's own timeout, so it bounds a hung call and changes no normal turn.</summary>
     public TimeSpan AnswerStepDeadline { get; set; } = TimeSpan.FromMinutes(10);

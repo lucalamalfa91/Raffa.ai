@@ -49,7 +49,16 @@ internal static class AiEvalOptions
 
     /// <summary>Where <c>GoldenSetReport</c> writes the per-case markdown artefact the task asks
     /// for (<c>backend/tests/Raffa.AiEval/reports/last-run.md</c>, git-ignored).</summary>
-    public static string ReportPath => Path.Combine(ProjectDirectory, "reports", "last-run.md");
+    /// <summary><c>AiEval__Agentic=true</c>: the same set through the orchestrator (Chat:AskTurn:Agentic,
+    /// ADR-024 amendment 2026-11-05) over the fixture gateway's deterministic agent double. The
+    /// invariants are enforced as always; the per-case kind/corpus/number expectations, which describe
+    /// the router's replies, are advisory in this mode and land in the report.</summary>
+    public const string AgenticVariable = "AiEval__Agentic";
+
+    public static bool Agentic =>
+        bool.TryParse(Environment.GetEnvironmentVariable(AgenticVariable), out var value) && value;
+
+    public static string ReportPath => Path.Combine(ProjectDirectory, "reports", Agentic ? "last-run-agentic.md" : "last-run.md");
 
     /// <summary>The checked-in <c>golden/</c> directory in the source tree.</summary>
     public static string GoldenDirectory => Path.Combine(ProjectDirectory, "golden");
@@ -87,8 +96,9 @@ internal static class AiEvalOptions
     /// <summary>Human-readable one-liner naming which mode this run used, printed at the top of
     /// the report so a reader never has to guess whether the numbers came from the fixture or from
     /// a live model.</summary>
-    public static string DescribeMode() => UseFoundry
+    public static string DescribeMode() => (UseFoundry
         ? "Foundry (manual run — " + UseFoundryVariable + "=true; verbatim-number checks are advisory)"
         : "fixture gateway (deterministic; no network, no Foundry endpoint), clock pinned to " +
-          EvaluationInstant.ToString("u", CultureInfo.InvariantCulture);
+          EvaluationInstant.ToString("u", CultureInfo.InvariantCulture))
+        + (Agentic ? "; orchestrator on (" + AgenticVariable + "=true; kind/corpus/number expectations are advisory)" : string.Empty);
 }

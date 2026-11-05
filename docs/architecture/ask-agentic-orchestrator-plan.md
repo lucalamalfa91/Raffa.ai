@@ -110,6 +110,22 @@ poi si rimuovono.
   `AiGatewayModelOptions.Agent` (fallback `Answer`: dev `gpt-5.4-nano-dev`, demo `gpt-6-astra-demo`),
   `IFixtureAgentScript` per il fixture, riga di audit `conversed` per step. ADR-004 e ADR-024 emendati.
 
+- PR 2+3 (strumenti + orchestratore): fatto — `Raffa.AiFlows.Ask.Agentic`: `IAskTool` e 12 tool
+  (`list_portfolio`, `get_contract`, `search_clauses`, `get_renewal_strategy`, `get_market_benchmark`,
+  `get_savings`, `run_negotiation_council`, `get_document_status`, `compose_artifact`, `open_artifact`,
+  `navigate`, `web_research`), `AgenticAskTurn` (loop, max 8 call, deadline, guard + rigenerazione, audit
+  `agentic=true stepsRun=…`), prompt `Prompts/agent/v1.md`, flag `Chat:AskTurn:Agentic` (off), fallback al
+  router se il ruolo non risponde. `AskAgentFixtureScript` per i test senza rete. `draft_email` rinviato: la
+  persona scrive già le mail con i fatti dei tool.
+
+- PR 4 (verifica e rollout): fatto — `AskAgenticConversationTests` riproduce la trascrizione Coupa sul
+  fixture host (riassunto → report con mercato su Coupa → KPI su Coupa, mai Zscaler → domanda di mercato
+  risposta, mai rifiutata; nessun follow-up "non posso generare un report" dopo averlo generato); il golden
+  set gira anche con `AiEval__Agentic=true` (job CI "AI eval (agentic mode)"): invarianti obbligatorie
+  (una riga di audit con turnId e stepsRun, zero guard, nessun chrome, route reali, zero tool su
+  greeting/off-domain/legal), aspettative per caso advisory nel report `reports/last-run-agentic.md`.
+  `Chat__AskTurn__Agentic=true` in `infra/environments/dev` (demo resta sul router).
+
 ## Altri usi dell'AI trovati nell'app (da aggiungere, in ordine di valore)
 
 Tutti riusano il ruolo `agent` e gli stessi tool, quindi costano poco una volta fatto l'orchestratore.

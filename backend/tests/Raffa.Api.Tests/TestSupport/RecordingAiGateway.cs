@@ -148,6 +148,13 @@ internal sealed class RecordingAiGateway(IAiGateway inner) : IAiGateway
         return inner.OcrAsync(request, cancellationToken);
     }
 
+    public Task<Result<AiConversationResult>> ConverseAsync(
+        AiConversationRequest request, CancellationToken cancellationToken = default)
+    {
+        Record(nameof(ConverseAsync));
+        return inner.ConverseAsync(request, cancellationToken);
+    }
+
     public Task<Result<AiAnalysisResult>> AnalyzeAsync(
         AiAnalysisRequest request, CancellationToken cancellationToken = default)
     {

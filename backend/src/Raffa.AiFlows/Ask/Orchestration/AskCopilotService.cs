@@ -210,7 +210,8 @@ public sealed class AskCopilotService(
     TurnUnderstanding? understanding = null,
     AskTurnOptions? turnOptions = null,
     Raffa.AiFlows.Ask.Artifacts.ArtifactComposer? artifactComposer = null,
-    ILogger<AskCopilotService>? logger = null)
+    ILogger<AskCopilotService>? logger = null,
+    Raffa.AiFlows.Ask.Agentic.AgenticAskTurn? agenticTurn = null)
 {
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
@@ -296,11 +297,47 @@ public sealed class AskCopilotService(
 
         var gate = domainGate.Classify(question, knownSuppliers);
 
+        // ADR-024 amendment 2026-11-05 (Chat:AskTurn:Agentic): the orchestrator runs a fresh typed
+        // turn -- the model chooses the tools -- and the router below is its fallback. A turn
+        // resolved by key (an interview option, a web consent) continues a flow the router owns.
+        var understandingReply = default((CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)?);
+        Raffa.AiFlows.Ask.Agentic.AgenticTurnResult? agentic = null;
+        var scopedForAgent = scopeContractId is { } agentScopeId
+            ? portfolio.Items.FirstOrDefault(item => item.ContractId == agentScopeId.Value)
+            : null;
+        if (turnOptions?.Agentic == true
+            && agenticTurn is not null
+            && turnHints.ForcedIntent is null
+            && turnHints.ForcedSupplierName is null
+            && turnHints.ForcedContractId is null
+            && turnHints.AuthorizedWebResearch is null
+            && !turnHints.DeclinedWebResearch
+            && !turnHints.WebMode
+            && (scopeContractId is null || scopedForAgent is not null))
+        {
+            var language = Raffa.SharedKernel.Language.ResponseLanguage.Current ?? (HelpfulFallbackAnswer.IsItalian(question) ? "it" : "en");
+            var toolContext = new Raffa.AiFlows.Ask.Agentic.AskToolContext(
+                tenantId, actor, question, language, recentTurns, portfolio, supplierNames, scopeContractId, scopedForAgent, turnHints);
+            agentic = await agenticTurn.RunAsync(toolContext, cancellationToken).ConfigureAwait(false);
+            if (agentic is not null)
+            {
+                understandingReply = (agentic.Reply, agentic.GuardIntervened, agentic.FallbackUsed);
+                gate = gate with
+                {
+                    Label = GateLabel.InDomain,
+                    Reason = "answered by the orchestrator (Chat:AskTurn:Agentic).",
+                    NamedSupplier = agentic.FocusSupplier ?? gate.NamedSupplier,
+                };
+            }
+        }
+
         // Create/open are application commands, not document questions. Resolve the simple forms
         // deterministically before the model understanding step so a provider failure can never
         // turn "crealo" or "aprilo" into broad contract retrieval.
-        var artifactCommand = Raffa.AiFlows.Ask.Artifacts.ArtifactCommandResolver.Resolve(
-            question, recentTurns, turnHints.CurrentArtifact, supplierNames.Values.Distinct().ToList(), turnHints.ConversationState);
+        var artifactCommand = understandingReply is not null
+            ? new Raffa.AiFlows.Ask.Artifacts.ArtifactCommand(Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.None, "dashboard", null)
+            : Raffa.AiFlows.Ask.Artifacts.ArtifactCommandResolver.Resolve(
+                question, recentTurns, turnHints.CurrentArtifact, supplierNames.Values.Distinct().ToList(), turnHints.ConversationState);
         if (artifactCommand.Command != Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.None)
         {
             logger?.LogInformation(
@@ -312,7 +349,6 @@ public sealed class AskCopilotService(
             RunContext.AddTurnDetail(
                 $"artifactCommand={artifactCommand.Command} artifactKind={artifactCommand.Kind} retrieval=none");
         }
-        var understandingReply = default((CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)?);
         if (artifactCommand.Command == Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.Open
             && turnHints.CurrentArtifact is { } currentArtifact)
         {
@@ -585,9 +621,14 @@ public sealed class AskCopilotService(
         var turnTrace = new InDomainTurnTrace();
         // One id per turn, shared with the run telemetry (RunContext) so every audit row of the turn agrees.
         var turnId = RunContext.Current?.TurnId ?? RunContext.NewId();
+        // An orchestrator turn that built or opened something (an artifact, a UI action) performed the
+        // operation the investigator would otherwise report as a gap ("I cannot generate a report"
+        // right after the report was built): no follow-up is persisted for it.
+        var agentPerformedOperation = agentic?.Reply.Payload is { } agentPayload
+            && (agentPayload.Artifact is not null || agentPayload.UiActions is { Count: > 0 });
         var check = capabilityChecks.Begin(
             tenantId, question, gate, portfolio, supplierNames, scopedContractItem, recentTurns,
-            actor, turnHints, capabilityCheck, turnId);
+            actor, turnHints, agentPerformedOperation ? null : capabilityCheck, turnId);
 
         // AC-7 / R-ASK-09: the audit row must distinguish "guard caught a violation and downgraded
         // to abstain" from every other abstain path (empty pack, gateway call failed) — so every
@@ -631,6 +672,11 @@ public sealed class AskCopilotService(
             };
 
         capabilityChecks.Complete(check, turnTrace, question, reply, guardIntervened, fallbackUsed);
+
+        if (agentic is not null && turnTrace.Plan is null)
+        {
+            turnTrace.Plan = new IntentPlanResult(agentic.Intent, "orchestrator", agentic.FocusSupplier, SavingsGoalParser.Parse(question), IntentPlanBasis.Forced);
+        }
 
         var reducedState = ConversationStateReducer.Reduce(
             turnHints.ConversationState, question, turnTrace.Plan, gate.NamedSupplier,

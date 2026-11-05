@@ -146,6 +146,9 @@ public static class ServiceCollectionExtensions
         // Fixture path (unchanged): still registered so a FixtureAiGateway singleton exists to
         // wrap whenever AiGateway:Endpoint is unset (local dev, CI, every existing fixture test).
         services.TryAddSingleton<FixtureAiGateway>();
+        // The orchestrator's deterministic double (ADR-004 amendment 2026-11-05): what the fixture
+        // gateway's agent role does. TryAdd: a test registers its own script first when it needs one.
+        services.TryAddSingleton<IFixtureAgentScript, AskAgentFixtureScript>();
 
         // Foundry path. Constructing DefaultAzureCredential does no I/O by itself (only a later
         // GetTokenAsync call does — see FoundryTokenProvider), and nothing below ever resolves

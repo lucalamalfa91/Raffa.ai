@@ -222,20 +222,24 @@ internal static class GoldenSetReport
             return;
         }
 
+        // In agentic mode (AiEval__Agentic=true) an expectation mismatch is advisory and carries no
+        // declared gap: those cases are grouped under one heading with the mismatches themselves.
         foreach (var group in gapped
-            .GroupBy(o => o.Case.KnownGap!.Id, StringComparer.Ordinal)
+            .GroupBy(o => o.Case.KnownGap?.Id ?? "agentic-advisory", StringComparer.Ordinal)
             .OrderBy(g => g.Key, StringComparer.Ordinal))
         {
             report.AppendLine($"### `{group.Key}`");
             report.AppendLine();
-            report.AppendLine(group.First().Case.KnownGap!.Note ?? "(no note)");
+            report.AppendLine(group.First().Case.KnownGap?.Note
+                ?? "The orchestrator's reply differs from the router's expectation (advisory in agentic mode; the invariants held).");
             report.AppendLine();
 
             foreach (var outcome in group)
             {
                 report.AppendLine(
                     $"- `{outcome.Case.Id}` — {Escape(outcome.Case.Question)} → expected " +
-                    $"`{outcome.Case.ExpectedKind}`, observed `{outcome.ObservedKind}`");
+                    $"`{outcome.Case.ExpectedKind}`, observed `{outcome.ObservedKind}`" +
+                    (outcome.Case.KnownGap is null && outcome.GapNotes.Count > 0 ? ": " + Escape(string.Join("; ", outcome.GapNotes)) : string.Empty));
             }
 
             report.AppendLine();

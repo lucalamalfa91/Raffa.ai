@@ -144,7 +144,9 @@ internal sealed class AskEvalHost : IAsyncDisposable
                 new FixtureAiGateway(
                     new AiGatewayModelOptions(),
                     new FixedClock(AiEvalOptions.EvaluationInstant),
-                    new AiGatewayOcrOptions()));
+                    new AiGatewayOcrOptions(),
+                    // The orchestrator's deterministic double, used only when AiEval__Agentic=true.
+                    new AskAgentFixtureScript()));
 
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
@@ -180,7 +182,8 @@ internal sealed class AskEvalHost : IAsyncDisposable
                 // greeting/off-domain/legal/capability turns, R-ASK-01/02); the model's turn
                 // understanding (Chat:AskTurn:AiUnderstanding, on in production) has its own tests.
                 services.RemoveAll<AskTurnOptions>();
-                services.AddSingleton(new AskTurnOptions());
+                // AiEval__Agentic=true runs the same set through the orchestrator (Chat:AskTurn:Agentic).
+                services.AddSingleton(new AskTurnOptions { Agentic = AiEvalOptions.Agentic });
 
                 if (gateway is not null)
                 {

@@ -90,7 +90,11 @@ variable "ai_flows_env" {
     # F6 quote extraction header stage.
     QuoteExtraction__HeaderStageEnabled = "true"
 
-    # F1 Ask turn (Chat:AskTurn).
+    # F1 Ask turn (Chat:AskTurn). Agentic (ADR-024 amendment 2026-11-05): the
+    # orchestrator -- the model chooses the tools -- runs every fresh typed Ask
+    # turn in dev; the router is its fallback. Off in demo until the golden set
+    # and the transcripts are compared.
+    Chat__AskTurn__Agentic                    = "true"
     Chat__AskTurn__BudgetBeforeAgents         = "true"
     Chat__AskTurn__AgentPackReserveTokens     = "1500"
     Chat__AskTurn__RevalidatePlaysAfterBudget = "true"
