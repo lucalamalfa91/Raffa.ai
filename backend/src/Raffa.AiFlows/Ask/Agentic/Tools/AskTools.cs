@@ -444,27 +444,39 @@ internal sealed class NavigateTool(CapabilityRouting routing) : IAskTool
     }
 }
 
-/// <summary>The public web, only through ADR-030's gates: the tool ends the turn with the consent
-/// question (or says which gate is closed); the authorised research runs on the next turn.</summary>
+/// <summary>The public web, only through ADR-030's gates: the tool ends the turn with the model's
+/// answer so far plus the consent question (or says which gate is closed); the authorised research
+/// runs on the next turn, on the user's yes.</summary>
 internal sealed class WebResearchTool(WebResearchFlow web, AbstainRecovery abstainRecovery) : IAskTool
 {
     public string Name => "web_research";
 
     public string Description =>
-        "Offers the user a search of the public web on a procurement topic (market practice, supplier news, public benchmark ranges, negotiation tactics). " +
-        "The user must consent first, so this tool ends your turn with the consent question: call it ONLY when the user explicitly asks to search the web " +
-        "or the internet, never on your own initiative.";
+        "Searches the public web on a procurement topic (market practice, supplier news, public price lists and benchmark ranges, negotiation tactics, " +
+        "regulation) when the workspace's contracts and the market knowledge base do not hold what the question needs -- an empty benchmark, a supplier " +
+        "with no contract on file, a public fact. Call it AFTER the other tools, as the last call of the turn, and put in answerSoFar everything you can " +
+        "already say from the data you read: the user sees that answer and is asked for consent (only the query words go to the web, nothing from the " +
+        "contracts); the search runs on their yes. Also call it when the user explicitly asks to search the web.";
 
-    public string ParametersSchemaJson => Schema(("query", "string", "What to search, in the user's words.", false));
+    public string ParametersSchemaJson => Schema(
+        ("query", "string", "What to search, precise and in the user's words: supplier names allowed, never an amount, a date or a clause from the contracts.", false),
+        ("answerSoFar", "string", "Your answer from the data already read (markdown, with [n] markers and citationKeys you will return), ending with one sentence saying what the web could add. Empty only when nothing was read.", false));
 
     public async Task<AskToolResult> ExecuteAsync(JsonElement arguments, AskToolContext context, CancellationToken cancellationToken)
     {
         var query = GetString(arguments, "query") ?? context.Question;
+        var answerSoFar = GetString(arguments, "answerSoFar");
         var reply = await web.BuildEntryReplyAsync(
                 context.TenantId, query, context.Portfolio, context.RoutingContext(), context.Actor, abstainRecovery.Resolver, cancellationToken)
             .ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(answerSoFar))
+        {
+            // The model's reading of the data comes first; the consent question (or the closed gate) follows it.
+            reply = reply with { AnswerMarkdown = AnswerFormatter.Format(answerSoFar, context.Language) + "\n\n" + reply.AnswerMarkdown };
+        }
+
         return new AskToolResult(
-            JsonSerializer.Serialize(new { items = Array.Empty<object>(), summary = new { endsTurn = true, kind = reply.Kind.ToString() } }),
+            JsonSerializer.Serialize(new { items = Array.Empty<object>(), summary = new { endsTurn = true, kind = reply.Kind.ToString(), consentAsked = reply.Kind == ReplyKind.Interview } }),
             [],
             EndTurnReply: reply);
     }

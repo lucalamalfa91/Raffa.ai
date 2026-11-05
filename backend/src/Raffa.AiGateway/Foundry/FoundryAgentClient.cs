@@ -100,8 +100,10 @@ public sealed class FoundryAgentClient(
             Model: route.ModelInBody ? model.ModelId : null,
             Messages: messages,
             Tools: hasTools ? tools : null,
-            ToolChoice: hasTools ? "auto" : null,
-            ParallelToolCalls: hasTools ? true : null,
+            // tool_choice and parallel_tool_calls are left at the provider's defaults (auto, on): an
+            // explicit value is one more parameter a reasoning deployment can reject.
+            ToolChoice: null,
+            ParallelToolCalls: null,
             ResponseFormat: new ChatResponseFormat(
                 "json_schema", new ChatJsonSchema("raffa_agent_" + SanitizeSchemaName(request.AgentName), Strict: true, finalSchema.Value)),
             MaxCompletionTokens: model.MaxCompletionTokens,

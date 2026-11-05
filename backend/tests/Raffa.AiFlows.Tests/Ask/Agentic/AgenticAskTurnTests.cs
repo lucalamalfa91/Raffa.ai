@@ -123,22 +123,43 @@ public sealed class AgenticAskTurnTests
     {
         var gateway = new ScriptedGateway(_ => Result<AiConversationResult>.Failure("no deployment"));
 
+        using var turn = RunContext.BeginTurn();
         var result = await Turn(gateway, new FakeTool("get_contract", (_, _) => AskToolResult.FromPack([]))).RunAsync(Context(), CancellationToken.None);
 
         Assert.Null(result);
+        Assert.Contains("agenticFallback=provider-error", RunContext.TurnDetail);
     }
 
     [Fact]
-    public async Task A_figure_the_pack_does_not_hold_is_regenerated_once_with_the_violation_named()
+    public async Task A_figure_outside_the_pack_is_shown_as_the_model_wrote_it_and_marked_unverified_without_a_second_call()
     {
         var gateway = new ScriptedGateway(
             _ => ToolCall("get_contract", """{"supplier":"Coupa"}"""),
-            _ => Final("Coupa · OrderForm termina il 15 April 2026 e costa CHF 999999 [1].", "fact:coupa:end"),
+            _ => Final("Coupa · OrderForm termina il 15 April 2026 [1]: mancano 161 giorni e il triennio vale CHF 843000.", "fact:coupa:end"));
+
+        var result = await Turn(gateway, new FakeTool("get_contract", (_, _) => AskToolResult.FromPack([CoupaEnd]))).RunAsync(Context(), CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(ReplyKind.Answer, result.Reply.Kind);
+        // Shown as written, in the interface language's format (the context is Italian).
+        Assert.Contains("CHF 843.000", result.Reply.AnswerMarkdown);
+        Assert.True(result.Reply.Provenance.Unverified);
+        Assert.True(result.GuardIntervened);
+        Assert.False(result.FallbackUsed);
+        Assert.Equal(2, gateway.Requests.Count);
+    }
+
+    [Fact]
+    public async Task A_citation_that_names_no_tool_result_is_regenerated_once_with_the_violation_named()
+    {
+        var gateway = new ScriptedGateway(
+            _ => ToolCall("get_contract", """{"supplier":"Coupa"}"""),
+            _ => Final("Coupa · OrderForm termina il 15 April 2026 [1].", "fact:coupa:invented"),
             request =>
             {
                 Assert.True(request.ForceFinal);
                 Assert.Equal(AiConversationMessage.UserRole, request.Messages[^1].Role);
-                Assert.Contains("999999", request.Messages[^1].Content);
+                Assert.Contains("invented", request.Messages[^1].Content);
                 return Final("Coupa · OrderForm termina il 15 April 2026 [1].", "fact:coupa:end");
             });
 
@@ -147,7 +168,27 @@ public sealed class AgenticAskTurnTests
         Assert.NotNull(result);
         Assert.Equal(ReplyKind.Answer, result.Reply.Kind);
         Assert.True(result.GuardIntervened);
-        Assert.DoesNotContain("999999", result.Reply.AnswerMarkdown);
+        Assert.False(result.Reply.Provenance.Unverified);
+        Assert.Single(result.Reply.Citations);
+        Assert.Equal(3, gateway.Requests.Count);
+    }
+
+    [Fact]
+    public async Task An_agent_step_that_fails_after_the_tools_is_asked_once_more_for_the_final_answer()
+    {
+        var gateway = new ScriptedGateway(
+            _ => ToolCall("get_contract", """{"supplier":"Coupa"}"""),
+            _ => Result<AiConversationResult>.Failure("Foundry request failed with 500"),
+            request =>
+            {
+                Assert.True(request.ForceFinal);
+                return Final("Coupa · OrderForm termina il 15 April 2026 [1].", "fact:coupa:end");
+            });
+
+        var result = await Turn(gateway, new FakeTool("get_contract", (_, _) => AskToolResult.FromPack([CoupaEnd]))).RunAsync(Context(), CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(ReplyKind.Answer, result.Reply.Kind);
         Assert.Equal(3, gateway.Requests.Count);
     }
 
@@ -228,13 +269,13 @@ public sealed class AgenticAskTurnTests
     public void The_system_prompt_is_exactly_the_reviewed_markdown()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.md")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.3.md")))
         {
             directory = directory.Parent;
         }
 
         Assert.NotNull(directory);
-        var body = File.ReadAllText(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.md"));
+        var body = File.ReadAllText(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.3.md"));
         var start = body.IndexOf("\n\n", StringComparison.Ordinal) + 2;
         var end = body.LastIndexOf("\nBump the version", StringComparison.Ordinal);
         var expected = body[start..end].TrimEnd();

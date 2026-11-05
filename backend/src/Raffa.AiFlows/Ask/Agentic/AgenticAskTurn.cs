@@ -81,8 +81,8 @@ public sealed class AgenticAskTurn(
     private readonly AskTurnOptions settings = turnOptions ?? new AskTurnOptions();
     private readonly IReadOnlyList<IAskTool> toolList = tools.ToList();
 
-    private const int MaxHistoryTurns = 12;
-    private const int MaxTurnChars = 2500;
+    private const int MaxHistoryTurns = 20;
+    private const int MaxTurnChars = 4000;
     private const int MaxToolResultChars = 24000;
 
     internal async Task<AgenticTurnResult?> RunAsync(AskToolContext context, CancellationToken cancellationToken)
@@ -103,6 +103,8 @@ public sealed class AgenticAskTurn(
         var uiActions = new List<UiActionPayload>();
         var toolActions = new List<CopilotAction>();
         var calls = 0;
+        var forceFinalNext = false;
+        var retriedAfterTools = false;
         AiConversationResult? final = null;
         AiCallMetadata? metadata = null;
 
@@ -113,17 +115,32 @@ public sealed class AgenticAskTurn(
         {
             while (true)
             {
-                var forceFinal = calls >= settings.AgenticMaxToolCalls;
+                var forceFinal = forceFinalNext || calls >= settings.AgenticMaxToolCalls;
                 var request = new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, AgentPrompt.Version, forceFinal);
                 var step = await aiGateway.ConverseAsync(request, token).ConfigureAwait(false);
+                if (step.IsFailure && calls > 0 && !request.ForceFinal && !retriedAfterTools)
+                {
+                    // One more try for the final answer (no more tools) before giving up on the model.
+                    retriedAfterTools = true;
+                    logger?.LogWarning("Agent step failed after {Steps} tool call(s); asking once more for the final answer: {Error}", calls, step.Error);
+                    forceFinalNext = true;
+                    continue;
+                }
+
                 if (step.IsFailure)
                 {
                     if (calls == 0 && stepsRun.Count == 0)
                     {
-                        logger?.LogWarning("Agent role unavailable, falling back to the deterministic path: {Error}", step.Error);
+                        // Visible in the turn's audit row (a class of failure, never the provider's text)
+                        // and in the host log: a silent fallback would look like the router's reply.
+                        logger?.LogError("Agent role unavailable, falling back to the deterministic path: {Error}", step.Error);
+                        RunContext.AddTurnDetail("agenticFallback=" + FailureClass(step.Error));
                         return null;
                     }
 
+                    // After tools ran the turn still ends in a grounded answer or an honest abstain, but the
+                    // reason must be in the host log: from the chat it looks like a plain fallback.
+                    logger?.LogWarning("Agent step failed after {Steps} tool call(s); answering from the pack: {Error}", calls, step.Error);
                     failures.Add("agent: " + step.Error);
                     break;
                 }
@@ -190,15 +207,8 @@ public sealed class AgenticAskTurn(
 
         if (final is null)
         {
-            // The loop ended without an answer (a failed step, the deadline): the pack already read
-            // still makes a grounded answer when it can; otherwise the honest "service busy".
-            var busyMetadata = metadata ?? new AiCallMetadata("agent-unavailable", "1", AgentPrompt.Version, DateTimeOffset.UtcNow, string.Empty);
-            var grounded = pack.Count > 0 ? GroundedFallbackAnswer.Compose(context.Question, pack, busyMetadata) : null;
-            if (grounded is not null && Validate(grounded, pack).Passed)
-            {
-                return Finish(context, grounded, pack, toolActions, recoveryActions, recoveryFollowUps, artifact, uiActions, routingContext, intent, stepsRun, true, true);
-            }
-
+            // The loop ended without an answer (a failed step twice, the deadline): the honest "service
+            // busy" with the recovery actions -- never a deterministic digest in the model's place.
             return new AgenticTurnResult(
                 new CopilotReply(ReplyKind.Abstain, HelpfulFallbackAnswer.ServiceBusy(context.Question), [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps),
                 false, true, context.FocusSupplier, Ref(context), intent, stepsRun);
@@ -208,6 +218,7 @@ public sealed class AgenticAskTurn(
         var focusFromModel = parsedFinal?.Focus;
         if (parsedFinal is null)
         {
+            logger?.LogWarning("Agent final answer was not the expected JSON ({Length} chars); abstaining.", final.FinalJson?.Length ?? 0);
             failures.Add("agent: final answer was not the expected JSON");
             return new AgenticTurnResult(
                 new CopilotReply(ReplyKind.Abstain, HelpfulFallbackAnswer.ServiceBusy(context.Question), [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps),
@@ -217,40 +228,64 @@ public sealed class AgenticAskTurn(
         var result = parsedFinal.Value.Result;
         var guardIntervened = false;
         var fallbackUsed = false;
-        var verdict = Validate(result, pack);
-        if (!verdict.Passed)
+        var unverified = false;
+        var grounding = GroundingGuard.Validate(result, pack, allowUncitedGuidance: true);
+        var verdict = grounding.Passed ? NumericGuard.Validate(result.AnswerMarkdown, pack, result.CitationKeys) : grounding;
+        if (!verdict.Passed && grounding.Passed)
         {
-            // R-ASK-06: regenerate once with the violation named, no more tools; then downgrade.
+            // R-ASK-06 as a detector, not a censor. A figure the pack does not hold verbatim (a computed
+            // day count, a total, a locale-formatted amount) is the consultant's reasoning, not a reason
+            // to hide the answer: it is shown as the model wrote it and the turn is marked unverified
+            // (audit agentUnverified=true) so the figure can be reviewed. No regeneration: it costs a
+            // full call and mostly reproduces the same, legitimate arithmetic.
             guardIntervened = true;
+            unverified = true;
+            logger?.LogInformation("Agent answer carries a figure outside the pack; shown as unverified: {Violation}", verdict.Violation);
+            RunContext.AddTurnDetail("agentUnverified=true");
+        }
+        else if (!verdict.Passed)
+        {
+            // A citation that names no tool result is a hallucinated source: one regeneration with the
+            // violation named (no more tools); if that still fails, the answer is shown with the unknown
+            // citations dropped and the turn marked unverified -- never a deterministic digest.
+            guardIntervened = true;
+            logger?.LogWarning("Agent answer cited a source outside the pack, regenerating once: {Violation}", verdict.Violation);
             messages.Add(AiConversationMessage.Assistant(final.FinalJson!));
             messages.Add(AiConversationMessage.User(RegenerateOnce.BuildRetryInstruction(verdict.Violation!)));
             var retry = await aiGateway.ConverseAsync(
                     new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, AgentPrompt.Version, ForceFinal: true), cancellationToken)
                 .ConfigureAwait(false);
             var retried = retry.IsSuccess && retry.Value.IsFinal ? Parse(retry.Value.FinalJson!, retry.Value.Metadata) : null;
-            if (retried is not null && Validate(retried.Value.Result, pack).Passed)
+            var retryVerdict = retried is null ? null : Validate(retried.Value.Result, pack);
+            if (retried is not null && retryVerdict!.Passed)
             {
                 result = retried.Value.Result;
                 focusFromModel = retried.Value.Focus ?? focusFromModel;
             }
             else
             {
-                var grounded = GroundedFallbackAnswer.Compose(context.Question, pack, result.Metadata);
-                result = grounded is not null && Validate(grounded, pack).Passed
-                    ? grounded
-                    : RegenerateOnce.DowngradeToAbstain(result.Metadata, pack, verdict.Violation!);
-                fallbackUsed = grounded is not null;
+                logger?.LogWarning(
+                    "Agent regeneration did not pass; showing the model's answer as unverified: {Reason}",
+                    retry.IsFailure ? retry.Error : retried is null ? "not the expected JSON" : retryVerdict!.Violation);
+                RunContext.AddTurnDetail("agentUnverified=true");
+                if (retried is not null && retried.Value.Result.CanDetermine)
+                {
+                    result = retried.Value.Result;
+                    focusFromModel = retried.Value.Focus ?? focusFromModel;
+                }
+
+                unverified = true;
             }
         }
 
-        return Finish(context, result, pack, toolActions, recoveryActions, recoveryFollowUps, artifact, uiActions, routingContext, intent, stepsRun, guardIntervened, fallbackUsed, focusFromModel);
+        return Finish(context, result, pack, toolActions, recoveryActions, recoveryFollowUps, artifact, uiActions, routingContext, intent, stepsRun, guardIntervened, fallbackUsed, focusFromModel, unverified);
     }
 
     private AgenticTurnResult Finish(
         AskToolContext context, AiAnswerResult result, List<PackItem> pack, List<CopilotAction> toolActions,
         IReadOnlyList<CopilotAction> recoveryActions, IReadOnlyList<string> recoveryFollowUps, ArtifactPayload? artifact,
         List<UiActionPayload> uiActions, RoutingContext routingContext, AskIntent intent, List<string> stepsRun, bool guardIntervened, bool fallbackUsed,
-        string? focusFromModel = null)
+        string? focusFromModel = null, bool unverified = false)
     {
         var actionKeys = ActionKeyNormalizer.Routable(ActionKeyNormalizer.Normalize(result.ActionKeys), routingContext);
         var resolved = actionKeys.Count > 0
@@ -259,6 +294,13 @@ public sealed class AgenticAskTurn(
         var actions = toolActions.Concat(resolved).Distinct().ToList();
 
         var reply = CopilotReplyBuilder.FromGuardedResult(result, pack, actions, recoveryActions, recoveryFollowUps);
+        // Dates, amounts and percentages in the interface language, whatever form the model used.
+        reply = reply with { AnswerMarkdown = AnswerFormatter.Format(reply.AnswerMarkdown, context.Language) };
+        if (unverified)
+        {
+            reply = reply with { Provenance = reply.Provenance with { Unverified = true } };
+        }
+
         if (artifact is not null || uiActions.Count > 0)
         {
             reply = reply with
@@ -311,6 +353,23 @@ public sealed class AgenticAskTurn(
             logger?.LogWarning(ex, "Ask tool {Tool} failed; the turn continues without it.", tool.Name);
             return AskToolResult.Error($"The tool failed: {ex.GetType().Name}. Answer from what the other tools returned.");
         }
+    }
+
+    /// <summary>A short, text-free class of a gateway failure for the audit row.</summary>
+    private static string FailureClass(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error)) return "unknown";
+        var e = error.ToLowerInvariant();
+        if (e.Contains("does not implement") || e.Contains("no ifixtureagentscript")) return "role-unavailable";
+        if (e.Contains("schema")) return "schema-rejected";
+        if (e.Contains("400") || e.Contains("bad request") || e.Contains("unsupported") || e.Contains("invalid")) return "request-rejected";
+        if (e.Contains("401") || e.Contains("403")) return "unauthorized";
+        if (e.Contains("404")) return "deployment-not-found";
+        if (e.Contains("429") || e.Contains("quota")) return "throttled";
+        if (e.Contains("timeout") || e.Contains("timed out") || e.Contains("canceled")) return "timeout";
+        if (e.Contains("content filter")) return "content-filter";
+        if (e.Contains("refused")) return "model-refusal";
+        return "provider-error";
     }
 
     private static void WriteDetail(List<string> stepsRun, List<string> failures, int marketQueries, Stopwatch stopwatch)

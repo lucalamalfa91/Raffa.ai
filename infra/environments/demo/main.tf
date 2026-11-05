@@ -274,6 +274,10 @@ module "foundry" {
   extra_gateway_env = merge(
     var.ai_gateway_extra_env,
     { Chat__WebResearch__Enabled = var.web_research_enabled ? "true" : "false" },
+    # ADR-024 amendment 2026-11-05: the Ask orchestrator (the model chooses the
+    # tools; the router is its fallback), on in demo as in dev. Flip to "false"
+    # to return demo to the router without a code change.
+    { Chat__AskTurn__Agentic = "true" },
   )
 
   model_deployments = {

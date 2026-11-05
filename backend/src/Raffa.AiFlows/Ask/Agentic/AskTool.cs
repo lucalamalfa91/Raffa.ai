@@ -155,7 +155,8 @@ public sealed record AskToolResult(
                 page = i.Page,
                 section = i.Section,
                 provenance = i.Provenance,
-                values = i.Values.Select(v => new { v.Key, v.Value, v.Kind, v.Currency }),
+                // display: the value in the user's language and the contract's currency, for the model to copy.
+                values = i.Values.Select(v => new { v.Key, v.Value, v.Kind, v.Currency, Display = AnswerFormatter.Display(v, Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it") }),
             }),
             summary,
         }, Json);
