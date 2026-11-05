@@ -46,7 +46,11 @@ public sealed record AskAnswerCta(string Kind, EntityId? ContractId);
 /// <summary>AskRaffa 4.0 switches read by the answer services (<c>/api/capabilities</c> flags).</summary>
 public sealed class AskAnswerOptions
 {
-    /// <summary><c>askraffa4.noBenchmark</c>: market / benchmark questions get the declared-limit
-    /// refusal and no market pack is ever consulted.</summary>
-    public bool NoBenchmark { get; set; } = true;
+    /// <summary><c>AskRaffa4:NoBenchmark</c>: market / benchmark questions get the declared-limit
+    /// refusal and no market pack is ever consulted. Off by default since the Ask engine carries
+    /// market intelligence (the market researcher, <c>MarketCompare</c>/<c>PortfolioMarketPosition</c>):
+    /// with it on, "a che punto è questo contratto rispetto al mercato" was answered "non ho un
+    /// benchmark di mercato" while the next turn quoted a 438-deal Coupa sample. The engine itself
+    /// abstains when the market pack is empty, so the kill switch is only for a host with no market data.</summary>
+    public bool NoBenchmark { get; set; }
 }

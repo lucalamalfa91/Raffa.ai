@@ -123,3 +123,17 @@ memory maintenance from being misclassified as a user-visible `chat.*` turn metr
 The table has PostgreSQL row-level security on `tenant_id`; application queries additionally bind
 both tenant and authenticated user. Recent supplier labels are returned only through an explicitly
 authorized supplier allowlist (the public inspection endpoint currently omits them).
+
+# Incident 2026-11-05: the Coupa chat
+
+A conversation opened with "Riassumi il contratto Coupa" went wrong on every turn after the summary.
+What the transcript showed, the cause in code, and the fix:
+
+| Turn | Observed | Cause | Fix |
+| --- | --- | --- | --- |
+| "crea un report ... con i dati di mercato", "perché non hai un benchmark di mercato?" | "Non ho un benchmark di mercato affidabile in questo rilascio" — while two turns later the engine quoted a 438-deal Coupa market sample | `AskAnswerOptions.NoBenchmark` defaulted to `true`; `POST /api/ask` short-circuited every question matching `mercato\|benchmark\|market\|concorren` to the AskRaffa 4.0 declared-limit refusal before the agentic engine ever saw it | `NoBenchmark` is off by default and bound from `AskRaffa4:NoBenchmark`; the engine's own market pack (and its honest abstain when empty) answers |
+| "crea un kpi" | KPI built on **Zscaler** | `ArtifactCommandResolver` ignored the server-owned `ConversationState.PrimarySupplier` and scanned the last six turns — including Raffa's own portfolio answer, whose first supplier was Zscaler | supplier = named in the message → `PrimarySupplier` → current artifact's focus → a supplier named in the **user's** turns only; Raffa's replies are never scanned |
+| "ma il contratto era coupa" | a clause dump plus market rows | the correction was read as a new contract question | a short message naming a different known supplier with a correction lead ("era X", "intendevo X", "I meant X", "wrong …, it's X") rebuilds the current artifact on that supplier |
+| "crea un report ..." | not read as an artifact request | `report`/`relazione`/`riepilogo`/`summary` were not in the document lexicon; the market scope was always `false` | lexicon extended; the command carries `UsesMarket`/`UsesPortfolio` into the composer's scope hint |
+
+`ArtifactCommandResolverFocusTests` pins each row.
