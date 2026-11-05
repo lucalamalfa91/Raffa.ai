@@ -127,6 +127,9 @@ public sealed class AgenticAskTurn(
                         return null;
                     }
 
+                    // After tools ran the turn still ends in a grounded answer or an honest abstain, but the
+                    // reason must be in the host log: from the chat it looks like a plain fallback.
+                    logger?.LogWarning("Agent step failed after {Steps} tool call(s); answering from the pack: {Error}", calls, step.Error);
                     failures.Add("agent: " + step.Error);
                     break;
                 }
@@ -211,6 +214,7 @@ public sealed class AgenticAskTurn(
         var focusFromModel = parsedFinal?.Focus;
         if (parsedFinal is null)
         {
+            logger?.LogWarning("Agent final answer was not the expected JSON ({Length} chars); abstaining.", final.FinalJson?.Length ?? 0);
             failures.Add("agent: final answer was not the expected JSON");
             return new AgenticTurnResult(
                 new CopilotReply(ReplyKind.Abstain, HelpfulFallbackAnswer.ServiceBusy(context.Question), [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps),
@@ -225,19 +229,25 @@ public sealed class AgenticAskTurn(
         {
             // R-ASK-06: regenerate once with the violation named, no more tools; then downgrade.
             guardIntervened = true;
+            logger?.LogWarning("Agent answer failed a guard, regenerating once: {Violation}", verdict.Violation);
             messages.Add(AiConversationMessage.Assistant(final.FinalJson!));
             messages.Add(AiConversationMessage.User(RegenerateOnce.BuildRetryInstruction(verdict.Violation!)));
             var retry = await aiGateway.ConverseAsync(
                     new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, AgentPrompt.Version, ForceFinal: true), cancellationToken)
                 .ConfigureAwait(false);
             var retried = retry.IsSuccess && retry.Value.IsFinal ? Parse(retry.Value.FinalJson!, retry.Value.Metadata) : null;
-            if (retried is not null && Validate(retried.Value.Result, pack).Passed)
+            var retryVerdict = retried is null ? null : Validate(retried.Value.Result, pack);
+            if (retried is not null && retryVerdict!.Passed)
             {
                 result = retried.Value.Result;
                 focusFromModel = retried.Value.Focus ?? focusFromModel;
             }
             else
             {
+                logger?.LogWarning(
+                    "Agent regeneration did not pass; using the grounded fallback: {Reason}",
+                    retry.IsFailure ? retry.Error : retried is null ? "not the expected JSON" : retryVerdict!.Violation);
+                RunContext.AddTurnDetail("agentGuardFallback=true");
                 var grounded = GroundedFallbackAnswer.Compose(context.Question, pack, result.Metadata);
                 result = grounded is not null && Validate(grounded, pack).Passed
                     ? grounded
