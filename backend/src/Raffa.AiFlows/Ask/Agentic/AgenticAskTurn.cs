@@ -294,6 +294,8 @@ public sealed class AgenticAskTurn(
         var actions = toolActions.Concat(resolved).Distinct().ToList();
 
         var reply = CopilotReplyBuilder.FromGuardedResult(result, pack, actions, recoveryActions, recoveryFollowUps);
+        // Dates, amounts and percentages in the interface language, whatever form the model used.
+        reply = reply with { AnswerMarkdown = AnswerFormatter.Format(reply.AnswerMarkdown, context.Language) };
         if (unverified)
         {
             reply = reply with { Provenance = reply.Provenance with { Unverified = true } };
