@@ -113,7 +113,7 @@ public sealed partial class RenewalCaseService(
     /* ---------------- open / read ---------------- */
 
     /// <summary><c>POST /api/renewals</c>: idempotent — an open case of the contract is returned (and visited), never a second one.</summary>
-    public async Task<CaseResult> OpenAsync(TenantId tenantId, string? callerIdentity, Guid contractId, string? branch, Guid? ownerUserId, CancellationToken ct = default)
+    public async Task<CaseResult> OpenAsync(TenantId tenantId, string? callerIdentity, Guid contractId, string? branch, Guid? ownerUserId, string? brief = null, CancellationToken ct = default)
     {
         using var scope = tenantContext.BeginScope(tenantId);
         var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
@@ -144,6 +144,7 @@ public sealed partial class RenewalCaseService(
             }
 
             c0 = RenewalCaseEngine.Act(c0, "visit", CaseActionPayload.None, ctx0);
+            RenewalCaseEngine.AttachBrief(c0, ctx0, brief);
             await SaveStateAsync(existing, c0, cf, members, ct).ConfigureAwait(false);
             return CaseResult.Ok(Envelope(existing, c0, cf, caller.Name));
         }
@@ -155,7 +156,7 @@ public sealed partial class RenewalCaseService(
         }
 
         var approver = Approver(members) ?? caller.Name;
-        var c = RenewalCaseEngine.Create(cf.Id, Ctx(cf, caller.Name), branch, owner?.Name ?? caller.Name, approver, members.Select(m => m.Name).ToList());
+        var c = RenewalCaseEngine.Create(cf.Id, Ctx(cf, caller.Name), branch, owner?.Name ?? caller.Name, approver, members.Select(m => m.Name).ToList(), brief);
         var record = await InsertAsync(tenantId, contractId, c, cf, members, caller.Name, ct).ConfigureAwait(false);
         // An open case is an objective "to set" in Risultati from the moment it exists.
         await UpsertObjectiveAsync(tenantId, record, c, ct).ConfigureAwait(false);

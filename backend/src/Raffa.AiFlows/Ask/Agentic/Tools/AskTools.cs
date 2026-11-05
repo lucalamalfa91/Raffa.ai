@@ -510,8 +510,8 @@ internal sealed class ProposeStartRenewalTool : IAskTool
 
         var name = supplier ?? "?";
         var text = context.Italian
-            ? $"Posso avviare il rinnovo di **{name}**: imposto il contratto come in rinnovo e apro la pratica con la sua chat, come da Rinnovi. Non invio nulla al fornitore. Confermi?"
-            : $"I can start the renewal of **{name}**: I mark the contract as in renewal and open the case with its own chat, as from Renewals. Nothing is sent to the supplier. Confirm?";
+            ? $"Posso avviare il rinnovo di **{name}**: imposto il contratto come in rinnovo e apro la pratica portando con me le leve che abbiamo individuato in questa chat: le uso per le domande e per la mail. Non invio nulla al fornitore. Confermi?"
+            : $"I can start the renewal of **{name}**: I mark the contract as in renewal and open the case carrying over the levers we found in this chat: I use them for the questions and the email. Nothing is sent to the supplier. Confirm?";
         var reply = new CopilotReply(
             ReplyKind.Answer, text, [], [], ReplyProvenance.NoModelCall([]), [],
             new ReplyPayload(ActionProposal: new ActionProposalPayload(ActionProposalPayload.StartRenewal, item.ContractId.ToString(), name)));

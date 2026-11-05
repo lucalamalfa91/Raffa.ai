@@ -598,6 +598,41 @@ public sealed class ConversationService(
         return string.Join(' ', customTitle.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
+    /// <summary>
+    /// Ties the caller's own conversation to the renewal case it led to, so the case composer continues
+    /// that conversation (its history and the levers worked out in it) instead of starting from nothing.
+    /// <see langword="false"/> when it is not the caller's conversation in this tenant, or already belongs to a case.
+    /// </summary>
+    public async Task<bool> AttachToCaseAsync(
+        TenantId tenantId,
+        string userId,
+        EntityId conversationId,
+        EntityId caseId,
+        EntityId contractId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("A user id is required.", nameof(userId));
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var conversation = await dbContext.Conversations
+            .SingleOrDefaultAsync(
+                c => c.TenantId == tenantId && c.UserId == userId && c.Id == conversationId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (conversation is null || conversation.CaseId is not null)
+        {
+            return false;
+        }
+
+        conversation.CaseId = caseId;
+        conversation.ScopeContractId ??= contractId;
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     /// <summary>Deletes the caller's own conversation and its messages. Returns
     /// <see langword="false"/> under the identical "not this user's conversation in this tenant"
     /// rule <see cref="GetAsync"/> documents — the endpoint turns that into 404, never 403.</summary>

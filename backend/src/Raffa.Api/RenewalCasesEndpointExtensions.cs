@@ -1,6 +1,8 @@
 using Raffa.Api.Infrastructure;
+using Raffa.Chat.Application.Conversations;
 using Raffa.Renewals.Application.CaseWork;
 using Raffa.Renewals.Application.Cases;
+using Raffa.SharedKernel;
 using Raffa.SharedKernel.Text;
 
 namespace Raffa.Api;
@@ -15,7 +17,8 @@ namespace Raffa.Api;
 /// </summary>
 public static class RenewalCasesEndpointExtensions
 {
-    public sealed record OpenCaseRequest(Guid ContractId, string? Branch, Guid? OwnerUserId);
+    /// <param name="ConversationId">The chat the renewal was started from: its levers travel into the case and the case continues that conversation.</param>
+    public sealed record OpenCaseRequest(Guid ContractId, string? Branch, Guid? OwnerUserId, Guid? ConversationId = null);
 
     public sealed record CaseActionRequest(string Type, CaseActionPayload? Payload, int? Version);
 
@@ -110,7 +113,7 @@ public static class RenewalCasesEndpointExtensions
         return await run(caller).ConfigureAwait(false);
     }
 
-    private static Task<IResult> OpenAsync(OpenCaseRequest body, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>
+    private static Task<IResult> OpenAsync(OpenCaseRequest body, HttpRequest request, RenewalCaseService service, ConversationService conversations, ICallerContext callerContext, CancellationToken ct) =>
         WithCaller(request, callerContext, ct, async caller =>
         {
             if (body.ContractId == Guid.Empty)
@@ -123,7 +126,23 @@ public static class RenewalCasesEndpointExtensions
                 return Results.BadRequest(new CaseErrorBody("bad_request", "branch must be renew or notice.", null, null));
             }
 
-            return Map(await service.OpenAsync(caller.TenantId, caller.Identity, body.ContractId, body.Branch == "renew" ? null : body.Branch, body.OwnerUserId, ct).ConfigureAwait(false));
+            // Started from a chat: what was worked out there (the levers) goes into the case, read from the stored conversation.
+            ConversationDetailResult? chat = null;
+            if (body.ConversationId is { } chatId && chatId != Guid.Empty && !string.IsNullOrWhiteSpace(caller.Identity))
+            {
+                chat = await conversations.GetAsync(caller.TenantId, caller.Identity!, new EntityId(chatId), ct).ConfigureAwait(false);
+            }
+
+            var result = await service.OpenAsync(
+                caller.TenantId, caller.Identity, body.ContractId, body.Branch == "renew" ? null : body.Branch, body.OwnerUserId,
+                chat is null ? null : ChatBrief.From(chat), ct).ConfigureAwait(false);
+            if (chat is not null && result.Envelope is { } opened)
+            {
+                // The case composer continues this conversation, so it never asks again what the chat already settled.
+                await conversations.AttachToCaseAsync(caller.TenantId, caller.Identity!, chat.ConversationId, new EntityId(opened.CaseId), new EntityId(body.ContractId), ct).ConfigureAwait(false);
+            }
+
+            return Map(result);
         });
 
     private static Task<IResult> GetAsync(Guid caseId, bool? visit, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>

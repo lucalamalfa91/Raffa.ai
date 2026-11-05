@@ -2080,6 +2080,8 @@ export interface OpenRenewalCaseRequest {
   contractId: string;
   branch?: string | null;
   ownerUserId?: string | null;
+  /** The chat the renewal starts from: its levers travel into the case, which continues that conversation. */
+  conversationId?: string | null;
 }
 export type OpenRenewalCaseBody = paths["/api/renewals"]["post"]["responses"][200]["content"]["application/json"];
 

@@ -349,7 +349,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       const board = apiClient.getRenewalsBoard ? await apiClient.getRenewalsBoard(tenantId) : null;
       const viewer = board?.ok ? board.body.viewer : null;
       const ownerUserId = viewer ? (viewer.isApprover ? (board?.ok ? (board.body.assignee?.userId ?? viewer.userId) : viewer.userId) : viewer.userId) : null;
-      const r = await apiClient.openRenewalCase(tenantId, { contractId: proposal.contractId, ownerUserId });
+      const r = await apiClient.openRenewalCase(tenantId, { contractId: proposal.contractId, ownerUserId, conversationId: current?.id ?? null });
       const caseId = (r.data as { caseId?: string } | null)?.caseId;
       if (r.ok && caseId) {
         setProposal(message.id, { status: "done" });

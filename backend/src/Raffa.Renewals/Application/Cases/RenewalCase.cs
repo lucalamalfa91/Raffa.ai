@@ -35,6 +35,10 @@ public sealed class RenewalCase
     /// <summary>interview | plan | email | waiting_rem | waiting | waiting_due | review | agree | doc_wait | doc_check | sign_wait | sign_declared | sign_confirm | pipeline | done | notice_out.</summary>
     public string Phase { get; set; } = CasePhases.Interview;
 
+    /// <summary>The levers and strategy Raffa and the person worked out in chat before the case was opened (plain text,
+    /// from the stored conversation): shown as the first card, used to shape the questions and the emails. Null = none.</summary>
+    public string? Brief { get; set; }
+
     /// <summary>Index of the open interview question (0–3).</summary>
     public int Q { get; set; }
 

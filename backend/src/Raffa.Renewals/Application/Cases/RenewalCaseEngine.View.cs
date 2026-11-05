@@ -280,6 +280,11 @@ public static partial class RenewalCaseEngine
                     d.Kicker = B("Question {n} / 4", "Domanda {n} / 4", ("n", qi + 1));
                     d.Title = q.Text;
                     d.Lines = [q.Hint];
+                    if (BriefHint(c.Brief, qi) is { } fromChat)
+                    {
+                        d.Lines.Add(fromChat);
+                    }
+
                     if (cur)
                     {
                         d.Chips = q.Opts.Select(o => new CaseChip(

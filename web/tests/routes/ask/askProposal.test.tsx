@@ -74,8 +74,8 @@ describe("Ask Raffa asks before acting", () => {
     fireEvent.change(input, { target: { value: "sì" } });
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     expect(await screen.findByText("Case page")).toBeInTheDocument();
-    // The CPO's case goes to the colleague set up for it, as "Start & assign" does.
-    expect(client.openRenewalCase).toHaveBeenCalledWith("t1", { contractId: "c-splunk", ownerUserId: "u-marta" });
+    // The CPO's case goes to the colleague set up for it, as "Start & assign" does, and carries this chat's levers.
+    expect(client.openRenewalCase).toHaveBeenCalledWith("t1", { contractId: "c-splunk", ownerUserId: "u-marta", conversationId: "A" });
     expect(asked).toEqual([]);
   });
 
