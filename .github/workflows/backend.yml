@@ -84,6 +84,18 @@ jobs:
         working-directory: backend
         run: dotnet test Raffa.slnx --configuration Release --no-build
 
+      # The Ask golden set once more through the orchestrator (ADR-024 amendment 2026-11-05,
+      # Chat:AskTurn:Agentic) over the fixture gateway's deterministic agent double: the invariants
+      # (one audit row with turnId and the tool steps, zero guard interventions, no engineer chrome,
+      # real action routes, no tool on a greeting/off-domain/legal turn) must hold; the per-case
+      # kind/corpus/number expectations are advisory in this mode (they describe the router's
+      # replies and the double is naive) and land in reports/last-run-agentic.md.
+      - name: AI eval (agentic mode)
+        working-directory: backend
+        env:
+          AiEval__Agentic: "true"
+        run: dotnet test tests/Raffa.AiEval/Raffa.AiEval.csproj --configuration Release --no-build
+
   # Deploys on merge to main (AC-2) or when reused by the demo promotion
   # workflow. Rebuilds+pushes both container images then rolls each
   # Container App to the new tag; a future promotion redesign could instead

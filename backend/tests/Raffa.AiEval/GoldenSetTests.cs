@@ -125,7 +125,15 @@ public sealed class GoldenSetTests(GoldenSetRunner runner)
             .ToList();
 
         Assert.NotEmpty(agentic);
-        Assert.Contains(agentic, o => o.AuditDetail.Contains("lever-strategist", StringComparison.Ordinal));
+        if (!AiEvalOptions.Agentic)
+        {
+            Assert.Contains(agentic, o => o.AuditDetail.Contains("lever-strategist", StringComparison.Ordinal));
+        }
+        else
+        {
+            // The orchestrator's steps are its tools, and a contract question reads the contract.
+            Assert.Contains(agentic, o => o.AuditDetail.Contains("get-contract", StringComparison.Ordinal));
+        }
 
         foreach (var outcome in agentic)
         {

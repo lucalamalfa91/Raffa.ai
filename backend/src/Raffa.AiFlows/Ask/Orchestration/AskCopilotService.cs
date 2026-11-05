@@ -621,9 +621,14 @@ public sealed class AskCopilotService(
         var turnTrace = new InDomainTurnTrace();
         // One id per turn, shared with the run telemetry (RunContext) so every audit row of the turn agrees.
         var turnId = RunContext.Current?.TurnId ?? RunContext.NewId();
+        // An orchestrator turn that built or opened something (an artifact, a UI action) performed the
+        // operation the investigator would otherwise report as a gap ("I cannot generate a report"
+        // right after the report was built): no follow-up is persisted for it.
+        var agentPerformedOperation = agentic?.Reply.Payload is { } agentPayload
+            && (agentPayload.Artifact is not null || agentPayload.UiActions is { Count: > 0 });
         var check = capabilityChecks.Begin(
             tenantId, question, gate, portfolio, supplierNames, scopedContractItem, recentTurns,
-            actor, turnHints, capabilityCheck, turnId);
+            actor, turnHints, agentPerformedOperation ? null : capabilityCheck, turnId);
 
         // AC-7 / R-ASK-09: the audit row must distinguish "guard caught a violation and downgraded
         // to abstain" from every other abstain path (empty pack, gateway call failed) — so every
