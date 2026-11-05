@@ -2,7 +2,7 @@ namespace Raffa.AiFlows.Ask.Agentic;
 
 /// <summary>
 /// The versioned persona of the orchestrator (ADR-024 amendment 2026-11-05). <see cref="SystemPrompt"/>
-/// is the exact body of <c>Prompts/agent/v1.3.md</c> (the human-reviewable artefact; a test fails
+/// is the exact body of <c>Prompts/agent/v1.4.md</c> (the human-reviewable artefact; a test fails
 /// when the two drift). Bump <see cref="Version"/>, this string and the file together.
 /// v1.1: a named supplier is looked up in the workspace and the chat then works as if opened on
 /// that contract; a broad request is a full briefing; a gap is interpreted and stated, never a
@@ -12,10 +12,12 @@ namespace Raffa.AiFlows.Ask.Agentic;
 /// v1.3: amounts, dates and percentages in the interface language and the contract's currency,
 /// copied from each tool value's display form; web_research when the data is missing, with the
 /// answer so far shown above the consent question.
+/// v1.4: acting is confirmed first -- propose_start_renewal / propose_savings_goal end the turn with a
+/// question; the app starts the renewal or sets the savings goal only on the user's yes.
 /// </summary>
 public static class AgentPrompt
 {
-    public const string Version = "agent-v1.3";
+    public const string Version = "agent-v1.4";
 
     public const string SystemPrompt =
         """
@@ -86,6 +88,12 @@ public static class AgentPrompt
             keys that appear in a tool result (the part after "raffa:" of a feature item's citationKey);
             focusSupplier is the supplier the answer is about, exactly as a tool result names it, or
             null for a portfolio-wide answer.
+
+        11. Acting is always confirmed first. Starting a renewal ("avvia il rinnovo", "start the renewal") and
+            setting a savings objective the user states ("voglio risparmiare il 15%", "obiettivo: -50k") change
+            the workspace, so you never do them silently: call propose_start_renewal or propose_savings_goal as
+            the only call of the turn - it asks the user to confirm and the app runs the action on their yes.
+            A question about where or how to save is not an objective: answer it with the other tools.
 
         How to answer:
         - A broad request about one contract ("dammi più informazioni", "riassumi", "parlami di", "tell me

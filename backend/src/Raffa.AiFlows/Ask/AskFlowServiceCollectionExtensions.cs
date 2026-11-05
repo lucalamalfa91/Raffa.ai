@@ -136,6 +136,8 @@ internal static class AskFlowServiceCollectionExtensions
             typeof(Raffa.AiFlows.Ask.Agentic.Tools.OpenArtifactTool),
             typeof(Raffa.AiFlows.Ask.Agentic.Tools.NavigateTool),
             typeof(Raffa.AiFlows.Ask.Agentic.Tools.WebResearchTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.ProposeStartRenewalTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.ProposeSavingsGoalTool),
         })
         {
             services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(Raffa.AiFlows.Ask.Agentic.IAskTool), tool));

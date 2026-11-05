@@ -25,6 +25,8 @@ import { splitEmailDraft, type EmailDraft } from "./draft";
 import ArtifactViewPanel, { ContentCard } from "./ArtifactView";
 import { buildArtifact, storedArtifacts, threadItems, type Artifact, type ArtifactKind, type PlacedArtifact } from "./artifacts";
 import { buildSpendArtifact, revisedIntent } from "./askSpend";
+import ActionProposalCard, { type ProposalState } from "./ActionProposalCard";
+import { pendingProposal, proposalAnswer } from "./proposal";
 
 export interface AskRouteProps {
   apiClient: ApiClient;
@@ -135,6 +137,8 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [convError, setConvError] = useState<string | null>(null);
+  /** What became of each proposal Raffa made (by message id): nothing runs before the user's yes. */
+  const [proposals, setProposals] = useState<Record<string, ProposalState>>({});
 
   const reloadLists = useCallback(async () => {
     const [r, a] = await Promise.all([api.listConversations(tenantId, "recent"), api.listConversations(tenantId, "archived")]);
@@ -253,6 +257,16 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
   ) => {
     const text = question.trim();
     if (!text || busy) return;
+    // A plain yes / no answers the proposal Raffa just made (start the renewal, set the goal): it runs
+    // the action, it is not a new question.
+    const waiting = pendingProposal(current?.messages ?? []);
+    const answer = waiting && !interviewAnswer ? proposalAnswer(text) : null;
+    if (waiting && answer) {
+      setQ("");
+      if (answer === "yes") void confirmProposal(waiting);
+      else declineProposal(waiting);
+      return;
+    }
     const here = current?.id ?? null;
     setBusy(true);
     setPendingQuestion(text);
@@ -319,6 +333,41 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
     const r = await api.openRenewalCase(tenantId, contractId);
     navigate(r.data?.caseId ? `/renewals/${encodeURIComponent(r.data.caseId)}` : "/renewals");
   };
+
+  const setProposal = (messageId: string, state: ProposalState) => setProposals((p) => ({ ...p, [messageId]: state }));
+
+  /**
+   * The user said yes: the same action as the Renewals / Savings screens. A renewal marks the contract as in
+   * renewal and opens its case (with the case's own chat); a savings goal is set on Spend and savings.
+   */
+  const confirmProposal = async (message: ConversationMessage4) => {
+    const proposal = message.payload?.actionProposal;
+    if (!proposal || proposals[message.id]?.status === "running" || proposals[message.id]?.status === "done") return;
+    setProposal(message.id, { status: "running" });
+    if (proposal.kind === "start_renewal" && proposal.contractId) {
+      // As "Start renewal" in Renewals: a CPO assigns it to the colleague set up for it, otherwise it is the user's own.
+      const board = apiClient.getRenewalsBoard ? await apiClient.getRenewalsBoard(tenantId) : null;
+      const viewer = board?.ok ? board.body.viewer : null;
+      const ownerUserId = viewer ? (viewer.isApprover ? (board?.ok ? (board.body.assignee?.userId ?? viewer.userId) : viewer.userId) : viewer.userId) : null;
+      const r = await apiClient.openRenewalCase(tenantId, { contractId: proposal.contractId, ownerUserId });
+      const caseId = (r.data as { caseId?: string } | null)?.caseId;
+      if (r.ok && caseId) {
+        setProposal(message.id, { status: "done" });
+        void reloadLists();
+        navigate(`/renewals/${encodeURIComponent(caseId)}`);
+      } else {
+        setProposal(message.id, { status: "error", message: r.error ?? t("The renewal could not be started.") });
+      }
+    } else if (proposal.kind === "set_savings_goal" && proposal.goalText && apiClient.confirmSavingsGoal) {
+      const r = await apiClient.confirmSavingsGoal(tenantId, { text: proposal.goalText });
+      if (r.ok) setProposal(message.id, { status: "done", savings: true });
+      else setProposal(message.id, { status: "error", message: r.error ?? t("The savings goal could not be set.") });
+    } else {
+      setProposal(message.id, { status: "error", message: t("This action is not available here.") });
+    }
+  };
+
+  const declineProposal = (message: ConversationMessage4) => setProposal(message.id, { status: "declined" });
 
   const choose = (kind: PickKind, contract: AskContract) => {
     setPick(null);
@@ -729,6 +778,16 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
                                   }}
                                 />
                               </span>
+                            ) : null}
+                            {m.payload?.actionProposal ? (
+                              <ActionProposalCard
+                                proposal={m.payload.actionProposal}
+                                state={proposals[m.id]}
+                                active={m.id === lastRaffaId && all[all.length - 1]?.id === m.id}
+                                onConfirm={() => void confirmProposal(m)}
+                                onDecline={() => declineProposal(m)}
+                                onOpenSavings={() => navigate("/savings")}
+                              />
                             ) : null}
                             <AgentExtras
                               message={m}
