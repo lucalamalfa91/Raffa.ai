@@ -154,6 +154,25 @@ public sealed class AgenticAskTurnTests
     }
 
     [Fact]
+    public async Task A_figure_still_unverified_after_the_regeneration_is_shown_and_marked_not_hidden()
+    {
+        var gateway = new ScriptedGateway(
+            _ => ToolCall("get_contract", """{"supplier":"Coupa"}"""),
+            _ => Final("Coupa · OrderForm termina il 15 April 2026 [1] e costa CHF 999999.", "fact:coupa:end"),
+            _ => Final("Coupa · OrderForm termina il 15 April 2026 [1]; il costo è CHF 999999.", "fact:coupa:end"));
+
+        var result = await Turn(gateway, new FakeTool("get_contract", (_, _) => AskToolResult.FromPack([CoupaEnd]))).RunAsync(Context(), CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(ReplyKind.Answer, result.Reply.Kind);
+        Assert.Contains("999999", result.Reply.AnswerMarkdown);
+        Assert.True(result.Reply.Provenance.Unverified);
+        Assert.True(result.GuardIntervened);
+        Assert.False(result.FallbackUsed);
+        Assert.Single(result.Reply.Citations);
+    }
+
+    [Fact]
     public async Task A_tool_that_ends_the_turn_returns_its_reply_without_a_final_call()
     {
         var consent = new CopilotReply(ReplyKind.Interview, "Posso cercare sul web?", [], [], ReplyProvenance.NoModelCall([]), []);

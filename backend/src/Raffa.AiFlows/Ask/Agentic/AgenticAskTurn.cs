@@ -224,10 +224,14 @@ public sealed class AgenticAskTurn(
         var result = parsedFinal.Value.Result;
         var guardIntervened = false;
         var fallbackUsed = false;
+        var unverified = false;
         var verdict = Validate(result, pack);
         if (!verdict.Passed)
         {
-            // R-ASK-06: regenerate once with the violation named, no more tools; then downgrade.
+            // R-ASK-06 as a detector, not a censor: one regeneration with the violation named (no more
+            // tools); if that still does not pass, the model's own answer is shown with its provenance
+            // marked unverified -- never replaced by a deterministic digest. A figure the pack does not
+            // hold is a flag for the reader, not a reason to hide the reasoning.
             guardIntervened = true;
             logger?.LogWarning("Agent answer failed a guard, regenerating once: {Violation}", verdict.Violation);
             messages.Add(AiConversationMessage.Assistant(final.FinalJson!));
@@ -245,25 +249,27 @@ public sealed class AgenticAskTurn(
             else
             {
                 logger?.LogWarning(
-                    "Agent regeneration did not pass; using the grounded fallback: {Reason}",
+                    "Agent regeneration did not pass; showing the model's answer as unverified: {Reason}",
                     retry.IsFailure ? retry.Error : retried is null ? "not the expected JSON" : retryVerdict!.Violation);
-                RunContext.AddTurnDetail("agentGuardFallback=true");
-                var grounded = GroundedFallbackAnswer.Compose(context.Question, pack, result.Metadata);
-                result = grounded is not null && Validate(grounded, pack).Passed
-                    ? grounded
-                    : RegenerateOnce.DowngradeToAbstain(result.Metadata, pack, verdict.Violation!);
-                fallbackUsed = grounded is not null;
+                RunContext.AddTurnDetail("agentUnverified=true");
+                if (retried is not null && retried.Value.Result.CanDetermine)
+                {
+                    result = retried.Value.Result;
+                    focusFromModel = retried.Value.Focus ?? focusFromModel;
+                }
+
+                unverified = true;
             }
         }
 
-        return Finish(context, result, pack, toolActions, recoveryActions, recoveryFollowUps, artifact, uiActions, routingContext, intent, stepsRun, guardIntervened, fallbackUsed, focusFromModel);
+        return Finish(context, result, pack, toolActions, recoveryActions, recoveryFollowUps, artifact, uiActions, routingContext, intent, stepsRun, guardIntervened, fallbackUsed, focusFromModel, unverified);
     }
 
     private AgenticTurnResult Finish(
         AskToolContext context, AiAnswerResult result, List<PackItem> pack, List<CopilotAction> toolActions,
         IReadOnlyList<CopilotAction> recoveryActions, IReadOnlyList<string> recoveryFollowUps, ArtifactPayload? artifact,
         List<UiActionPayload> uiActions, RoutingContext routingContext, AskIntent intent, List<string> stepsRun, bool guardIntervened, bool fallbackUsed,
-        string? focusFromModel = null)
+        string? focusFromModel = null, bool unverified = false)
     {
         var actionKeys = ActionKeyNormalizer.Routable(ActionKeyNormalizer.Normalize(result.ActionKeys), routingContext);
         var resolved = actionKeys.Count > 0
@@ -272,6 +278,11 @@ public sealed class AgenticAskTurn(
         var actions = toolActions.Concat(resolved).Distinct().ToList();
 
         var reply = CopilotReplyBuilder.FromGuardedResult(result, pack, actions, recoveryActions, recoveryFollowUps);
+        if (unverified)
+        {
+            reply = reply with { Provenance = reply.Provenance with { Unverified = true } };
+        }
+
         if (artifact is not null || uiActions.Count > 0)
         {
             reply = reply with
