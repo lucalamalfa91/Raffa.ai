@@ -64,6 +64,39 @@ public sealed class AiCaseReaderTests
         Assert.Equal(2, features.Items.Count);
     }
 
+    [Fact]
+    public async Task The_interview_is_worded_for_the_contract_and_the_levers_and_keeps_the_answers_fixed()
+    {
+        var reader = new AiCaseReader(
+            new AnalyzeOnlyGateway(
+                """
+                {"questions":[
+                  {"index":0,"text":"Acme Suite: confermi le 100 postazioni o vuoi ridurle?","hint":"In chat abbiamo visto la riduzione dei volumi.",
+                   "options":[{"key":"keep","label":"Mantieni le 100 postazioni di Acme Suite"},{"key":"reduce","label":"Riduci le postazioni"},{"key":"bogus","label":"Altro"}]},
+                  {"index":1,"text":"Durata: le leve si basano su 36 mesi, confermi?","hint":"","options":[]},
+                  {"index":2,"text":"Obiettivo economico: punti a uno sconto del 99%?","hint":"","options":[]},
+                  {"index":7,"text":"Fuori indice, da ignorare","hint":"","options":[]}]}
+                """),
+            new TenantContext());
+
+        var tailoring = await reader.ReadInterviewAsync(TenantId.New(), Contract, "Pluriennale: 36 mesi contro riduzione dei volumi.", "it");
+
+        Assert.NotNull(tailoring);
+        // The invented 99% never reaches the person, nor does an index the interview does not have.
+        Assert.Equal([0, 1], tailoring!.Questions.Select(q => q.Index).Order().ToArray());
+        var products = tailoring.Questions.Single(q => q.Index == 0);
+        Assert.Equal(["keep", "reduce"], products.Options!.Keys.Order().ToArray());
+        Assert.Null(tailoring.Questions.Single(q => q.Index == 1).Hint);
+    }
+
+    [Fact]
+    public async Task An_off_schema_interview_answer_leaves_the_standard_questions()
+    {
+        var reader = new AiCaseReader(new AnalyzeOnlyGateway("""{"verdict":"x"}"""), new TenantContext());
+
+        Assert.Null(await reader.ReadInterviewAsync(TenantId.New(), Contract, null, "en"));
+    }
+
     private static CaseEmail Draft() => new()
     {
         Kind = "first",

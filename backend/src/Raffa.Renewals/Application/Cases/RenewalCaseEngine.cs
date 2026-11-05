@@ -30,7 +30,7 @@ public static partial class RenewalCaseEngine
     /// non-renewal track; anything else starts the interview. <paramref name="owner"/> defaults to the viewer.
     /// The approver is the workspace CPO (the prototype's Luca Lamalfa) unless <paramref name="approver"/> is given.
     /// </summary>
-    public static RenewalCase Create(int cid, CaseContext ctx, string? branch = null, string? owner = null, string? approver = null, IReadOnlyList<string>? members = null, string? brief = null)
+    public static RenewalCase Create(int cid, CaseContext ctx, string? branch = null, string? owner = null, string? approver = null, IReadOnlyList<string>? members = null, string? brief = null, CaseInterviewTailoring? tailoring = null)
     {
         var who = owner ?? ctx.Viewer;
         var c = new RenewalCase
@@ -41,6 +41,7 @@ public static partial class RenewalCaseEngine
             Updated = ctx.Today,
             Members = members?.ToList() ?? [Luca, Marta],
             Phase = CasePhases.Interview,
+            Interview = tailoring is { Questions.Count: > 0 } ? tailoring : null,
             History = [new CaseOwnerChange { Who = who, At = ctx.Today }],
         };
         Push(c, ctx, new CaseFeedItem { K = "ov" });
@@ -176,7 +177,26 @@ public static partial class RenewalCaseEngine
 
     private sealed record QuestionDef(CaseText Text, CaseText Hint, IReadOnlyList<(string Key, CaseText Label)> Opts, bool Multi);
 
-    private static QuestionDef QDef(int i, CaseContext ctx)
+    /// <summary>The question as this case words it: the standard text, with the model's wording for this contract and chat where it wrote one.</summary>
+    private static QuestionDef QDef(int i, CaseContext ctx, RenewalCase? c)
+    {
+        var def = StandardQuestion(i, ctx);
+        if (c?.Interview?.Questions.FirstOrDefault(x => x.Index == i) is not { } t)
+        {
+            return def;
+        }
+
+        return def with
+        {
+            Text = string.IsNullOrWhiteSpace(t.Text) ? def.Text : CaseText.Of(t.Text.Trim()),
+            Hint = string.IsNullOrWhiteSpace(t.Hint) ? def.Hint : CaseText.Of(t.Hint.Trim()),
+            Opts = t.Options is { Count: > 0 } labels
+                ? def.Opts.Select(o => (o.Key, labels.TryGetValue(o.Key, out var label) && !string.IsNullOrWhiteSpace(label) ? CaseText.Of(label.Trim()) : o.Label)).ToList()
+                : def.Opts,
+        };
+    }
+
+    private static QuestionDef StandardQuestion(int i, CaseContext ctx)
     {
         var f = CaseRules.Price(ctx);
         var cn = ctx.Contract;
@@ -235,7 +255,7 @@ public static partial class RenewalCaseEngine
             return CaseText.Of(text);
         }
 
-        foreach (var o in QDef(i, ctx).Opts)
+        foreach (var o in QDef(i, ctx, c).Opts)
         {
             if (o.Key == v)
             {

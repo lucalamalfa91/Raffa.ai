@@ -66,4 +66,35 @@ public sealed class RenewalCaseBriefTests
         Assert.True(c.Brief!.Length <= RenewalCaseEngine.BriefMaxChars + 1);
         Assert.Equal(1, c.Feed.Count(f => f.K == "say" && f.Text is { Plain: { } p } && p.StartsWith('x')));
     }
+
+    [Fact]
+    public void The_interview_wording_written_for_the_contract_replaces_the_standard_text_but_not_the_answers()
+    {
+        var tailoring = new CaseInterviewTailoring
+        {
+            Questions =
+            [
+                new CaseQuestionTailoring
+                {
+                    Index = 0,
+                    Text = "Falcon: confermi le quantità o le riduci?",
+                    Hint = "Dalla chat: riduzione dei volumi.",
+                    Options = new Dictionary<string, string> { ["keep"] = "Mantieni Falcon come oggi" },
+                },
+            ],
+        };
+        var c = RenewalCaseEngine.Create(1, Ctx(1, Luca), owner: Marta, brief: Levers, tailoring: tailoring);
+
+        var card = RenewalCaseEngine.View(c, Ctx(1, Luca)).Cards.First(x => x.K == "q");
+        Assert.Equal("Falcon: confermi le quantità o le riduci?", card.Title.Render());
+        Assert.Contains(card.Lines, l => l.Render() == "Dalla chat: riduzione dei volumi.");
+        Assert.Contains(card.Chips, chip => chip.Label.Render() == "Mantieni Falcon come oggi" && chip.P.Val == "keep");
+        // The other options keep their standard label and key.
+        Assert.Contains(card.Chips, chip => chip.P.Val == "reduce" && chip.Label.Render() == "Reduce quantities");
+
+        // The later questions have no tailoring: the standard text stands.
+        c = RenewalCaseEngine.Act(c, "ans", new CaseActionPayload { Q = 0, Val = "keep" }, Ctx(1, Marta));
+        var term = RenewalCaseEngine.View(c, Ctx(1, Marta)).Cards.Where(x => x.K == "q").Last();
+        Assert.Equal("Term: how long should the renewed contract run?", term.Title.Render());
+    }
 }

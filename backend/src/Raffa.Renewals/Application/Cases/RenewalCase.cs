@@ -39,6 +39,9 @@ public sealed class RenewalCase
     /// from the stored conversation): shown as the first card, used to shape the questions and the emails. Null = none.</summary>
     public string? Brief { get; set; }
 
+    /// <summary>The interview questions written for this contract and chat (null = the standard wording).</summary>
+    public CaseInterviewTailoring? Interview { get; set; }
+
     /// <summary>Index of the open interview question (0–3).</summary>
     public int Q { get; set; }
 
@@ -181,6 +184,28 @@ public sealed class CaseFeedItem
     public List<CaseText>? Bullets { get; set; }
 
     public CaseText? Note { get; set; }
+}
+
+/// <summary>
+/// The interview wording the model wrote for one case, from the contract's own content and the levers worked out in
+/// chat: the question, the hint under it and (for the products question) the option labels. Keys and meanings never change.
+/// </summary>
+public sealed class CaseInterviewTailoring
+{
+    public List<CaseQuestionTailoring> Questions { get; set; } = [];
+}
+
+public sealed class CaseQuestionTailoring
+{
+    /// <summary>0 products, 1 term, 2 economic goal, 3 clauses.</summary>
+    public int Index { get; set; }
+
+    public string? Text { get; set; }
+
+    public string? Hint { get; set; }
+
+    /// <summary>Option key → label (only for the products question).</summary>
+    public Dictionary<string, string>? Options { get; set; }
 }
 
 public sealed class CaseGoals

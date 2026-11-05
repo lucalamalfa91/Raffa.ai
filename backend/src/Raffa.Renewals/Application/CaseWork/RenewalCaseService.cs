@@ -156,7 +156,8 @@ public sealed partial class RenewalCaseService(
         }
 
         var approver = Approver(members) ?? caller.Name;
-        var c = RenewalCaseEngine.Create(cf.Id, Ctx(cf, caller.Name), branch, owner?.Name ?? caller.Name, approver, members.Select(m => m.Name).ToList(), brief);
+        var c = RenewalCaseEngine.Create(cf.Id, Ctx(cf, caller.Name), branch, owner?.Name ?? caller.Name, approver, members.Select(m => m.Name).ToList(), brief,
+            await TailorInterviewAsync(tenantId, cf, brief, ct).ConfigureAwait(false));
         var record = await InsertAsync(tenantId, contractId, c, cf, members, caller.Name, ct).ConfigureAwait(false);
         // An open case is an objective "to set" in Risultati from the moment it exists.
         await UpsertObjectiveAsync(tenantId, record, c, ct).ConfigureAwait(false);
@@ -366,6 +367,30 @@ public sealed partial class RenewalCaseService(
             if (logger is not null)
             {
                 Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Email revision from the composer failed; the question is answered instead.");
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>The interview worded for this contract and for the levers worked out in chat; any failure leaves the standard questions.</summary>
+    private async Task<CaseInterviewTailoring?> TailorInterviewAsync(TenantId tenantId, CaseContractFacts cf, string? brief, CancellationToken ct)
+    {
+        if (aiReader is null or NoCaseAiReader || scriptServices is not ProductionCaseScriptServices)
+        {
+            return null;
+        }
+
+        try
+        {
+            var lang = Raffa.SharedKernel.Language.ResponseLanguage.Current == "en" ? "en" : "it";
+            return await aiReader.ReadInterviewAsync(tenantId, cf, brief, lang, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (logger is not null)
+            {
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Interview tailoring failed; the standard questions stand.");
             }
 
             return null;
