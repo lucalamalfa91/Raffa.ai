@@ -65,4 +65,8 @@ public sealed class JevAiGateway(IAiGateway inner, JevClassifyClient classifyCli
     public Task<Result<AiResearchResult>> ResearchAsync(
         AiResearchRequest request, CancellationToken cancellationToken = default) =>
         inner.ResearchAsync(request, cancellationToken);
+
+    public Task<Result<AiConversationResult>> ConverseAsync(
+        AiConversationRequest request, CancellationToken cancellationToken = default) =>
+        inner.ConverseAsync(request, cancellationToken);
 }

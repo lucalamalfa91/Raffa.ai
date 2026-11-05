@@ -26,7 +26,8 @@ public sealed class FoundryAiGateway(
     FoundryAnswerClient answerClient,
     FoundryOcrClient ocrClient,
     FoundryAnalyzeClient analyzeClient,
-    FoundryResearchClient researchClient) : IAiGateway
+    FoundryResearchClient researchClient,
+    FoundryAgentClient agentClient) : IAiGateway
 {
     /// <inheritdoc/>
     public Task<Result<AiClassificationResult>> ClassifyAsync(
@@ -65,4 +66,8 @@ public sealed class FoundryAiGateway(
     public Task<Result<AiResearchResult>> ResearchAsync(
         AiResearchRequest request, CancellationToken cancellationToken = default) =>
         researchClient.ResearchAsync(request, cancellationToken);
+
+    public Task<Result<AiConversationResult>> ConverseAsync(
+        AiConversationRequest request, CancellationToken cancellationToken = default) =>
+        agentClient.ConverseAsync(request, cancellationToken);
 }

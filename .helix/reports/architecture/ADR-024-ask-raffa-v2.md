@@ -560,3 +560,54 @@ server-authored only. **Clause 5.** The feedback loop (`POST
 /api/conversations/{id}/feedback`, `feature_request`, the GitHub publisher) is
 ADR-030 D5's; this ADR's conversation store only gains the column and the
 table. The body above and every earlier footer are untouched.
+
+## Amendment (2026-11-05 — the engine becomes an orchestrator with tools; the `answer` role's no-tools rule stays)
+
+### 1. What is wrong with the router
+
+The engine of §Engine (gate → planner with fixed intents → pack → `answer`) makes the model
+classify and write, never decide. A message the lexicons do not foresee ("crea un report … con i
+dati di mercato", "ma il contratto era coupa") is routed by regex to the wrong place, and the
+specialists (ADR-030 council, market researcher, artifact composer) only run where the C#
+`switch` put them. The 2026-11-05 Coupa transcript is the record
+(`docs/architecture/conversational-artifact-reliability.md`, "Incident 2026-11-05").
+
+### 2. Decision
+
+Behind `Chat:AskTurn:Agentic` (default off, kill switch at runtime), one Ask turn is: the
+`agent` role (ADR-004 amendment 2026-11-05) reads the conversation, the server-owned
+`ConversationState`, the user's memory profile and the tool catalog, and runs a bounded loop
+(at most 8 tool calls, the phase deadline of A-04) over **tools that wrap what the engine already
+has**: `list_portfolio`, `get_contract` (Contract 360 + structured-fact pack), `search_clauses`,
+`get_renewal_notice`, `get_market_benchmark` (market data check + market RAG),
+`run_negotiation_council`, `get_savings`, `get_document_status`, `compose_artifact`,
+`update_artifact` / `open_artifact`, `navigate`, `web_research` (consent gate of ADR-030 B
+unchanged), `draft_email`. Each tool resolves ids by supplier name inside the tenant's own
+portfolio and returns pack items with citation keys; **no tool accepts an id from the model's
+text** (R-ASK-08). The final answer is the same structured JSON as the `answer` role's and passes
+the same guards (every citation key in the collected pack, every number verbatim, actions from
+the catalog; regenerate once, then abstain). Audit stays one row per turn with `turnId`, `runId`,
+`stepsRun=` (the tool names) — names and counts, never text. `CopilotReply` and the web client do
+not change.
+
+What the flag turns off as decision makers: `DomainGate`, `TurnUnderstanding`,
+`ArtifactCommandResolver`, `IntentPlanner`, `IIntentHandler`, `IntentPolicy`. They remain as the
+legacy path until the flag is the default, then they are removed.
+
+### 3. Superseded, recorded here because `inputs/**` is never edited
+
+- **R-AI-03** "requests carry no tool / grounding configuration" is read as: no web tool and no
+  provider-side grounding on any role; the `answer` request carries no `tools` key (the compliance
+  test stands). The `agent` role carries function tools over the tenant's own data. Rationale in
+  ADR-004 amendment 2026-11-05.
+- **R-ASK-02** "planner (fixed intents)" is superseded on the agentic path: the intent is the
+  tool the model chose, recorded in the audit row, not a value from a closed list.
+- The council agents' law "You have no tools" stays true of the specialists themselves (they
+  remain pure JSON-in/JSON-out steps); it never described the orchestrator, which did not exist.
+
+### 4. What a decomposer must carry out of this footer
+
+Four PRs, in `docs/architecture/ask-agentic-orchestrator-plan.md`: gateway role (done with this
+amendment), tool layer, orchestrator behind the flag, verification (the Coupa transcript turn by
+turn as an API test; the golden set in agentic mode with the same invariants: zero guard
+interventions, zero gateway calls on off-domain, real citations, `turnId` on every audit row).

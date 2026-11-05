@@ -177,6 +177,17 @@ public sealed class LoggingAiGateway : IAiGateway
                  $"queryHash={(_queryHasher?.Compute(request.Query) ?? KeyedQueryHasher.Unkeyed(request.Query))}",
             cancellationToken);
 
+    /// <summary>One <c>ai_call</c> row per agent step: how many tool calls the model asked for and
+    /// whether the step was final -- names and counts, never the arguments or the answer.</summary>
+    public Task<Result<AiConversationResult>> ConverseAsync(
+        AiConversationRequest request, CancellationToken cancellationToken = default) =>
+        InvokeAsync(
+            "conversed", "chat", request.AgentName, fallbackStep: request.AgentName,
+            () => _inner.ConverseAsync(request, cancellationToken),
+            r => r.Metadata,
+            r => $"toolCalls={r.ToolCalls.Count} final={r.IsFinal} toolsOffered={request.Tools.Count} messages={request.Messages.Count}",
+            cancellationToken);
+
     public Task<Result<AiOcrResult>> OcrAsync(
         AiOcrRequest request, CancellationToken cancellationToken = default) =>
         // ADR-017: "Per-page OCR usage MUST be logged (page count, model id, cost attribution)" --

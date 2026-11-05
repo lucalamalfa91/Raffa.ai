@@ -138,4 +138,17 @@ public interface IAiGateway
         AiResearchRequest request, CancellationToken cancellationToken = default) =>
         Task.FromResult(Result<AiResearchResult>.Failure(
             $"{GetType().Name} does not implement the research role."));
+
+    /// <summary>
+    /// The `agent` role (ADR-004 amendment 2026-11-05, see <see cref="AiConversationRequest"/>): one
+    /// step of a tool-using conversation over Raffa's own data and flows. The model either asks for
+    /// function tool calls (the caller runs them and calls again) or writes the final strict-JSON
+    /// answer. Function tools over tenant data are not what R-AI-03 forbids (web grounding and
+    /// training); the hosted web tool stays on <see cref="ResearchAsync"/>. Default: unavailable, so
+    /// a caller falls back to the deterministic path.
+    /// </summary>
+    Task<Result<AiConversationResult>> ConverseAsync(
+        AiConversationRequest request, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Result<AiConversationResult>.Failure(
+            $"{GetType().Name} does not implement the agent role."));
 }
