@@ -28,8 +28,29 @@ namespace Raffa.AiGateway.Fixtures;
 /// IAiGateway").
 /// </summary>
 public sealed class FixtureAiGateway(
-    AiGatewayModelOptions modelOptions, IClock clock, AiGatewayOcrOptions? ocrOptions = null) : IAiGateway
+    AiGatewayModelOptions modelOptions, IClock clock, AiGatewayOcrOptions? ocrOptions = null, IFixtureAgentScript? agentScript = null) : IAiGateway
 {
+    /// <summary>
+    /// The `agent` role's double: whatever <see cref="IFixtureAgentScript"/> the host registered
+    /// decides (tool calls or a final answer); with none the role is unavailable, exactly as a
+    /// gateway that predates it. Metadata is built like every other fixture role's.
+    /// </summary>
+    public Task<Result<AiConversationResult>> ConverseAsync(
+        AiConversationRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (agentScript is null)
+        {
+            return Task.FromResult(Result<AiConversationResult>.Failure(
+                "FixtureAiGateway has no IFixtureAgentScript registered: the agent role is unavailable."));
+        }
+
+        var metadata = BuildMetadata(
+            modelOptions.Agent ?? modelOptions.Answer,
+            request.AgentName + " " + string.Join("\n", request.Messages.Select(m => m.Role + ":" + m.Content))) with { PromptVersion = request.PromptVersion };
+        return Task.FromResult(agentScript.Next(request, metadata));
+    }
+
     /// <summary>
     /// Not a real Foundry prompt version — there is no live prompt behind this fixture. Recorded
     /// so every <see cref="AiCallMetadata"/> is fully populated and callers/tests can assert on

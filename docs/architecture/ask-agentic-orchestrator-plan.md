@@ -103,3 +103,31 @@ nessun tool accetta un GUID dal modello.
 `DomainGate`, `TurnUnderstanding`, `ArtifactCommandResolver`, `IntentPlanner`, `IIntentHandler`,
 `IntentPolicy` come decisori. Restano come codice del percorso legacy finché il flag non diventa default,
 poi si rimuovono.
+
+## Stato
+
+- PR 1 (ruolo `agent` nel gateway): fatto — `IAiGateway.ConverseAsync`, `FoundryAgentClient`,
+  `AiGatewayModelOptions.Agent` (fallback `Answer`: dev `gpt-5.4-nano-dev`, demo `gpt-6-astra-demo`),
+  `IFixtureAgentScript` per il fixture, riga di audit `conversed` per step. ADR-004 e ADR-024 emendati.
+
+## Altri usi dell'AI trovati nell'app (da aggiungere, in ordine di valore)
+
+Tutti riusano il ruolo `agent` e gli stessi tool, quindi costano poco una volta fatto l'orchestratore.
+
+1. **Brief di rinnovo proattivo** (Renewals): per ogni contratto con preavviso entro 90 giorni, un
+   brief scritto dall'agente (situazione, leve del council, benchmark, azione consigliata), rigenerato
+   quando cambiano i fatti. Oggi la schermata mostra dati e il `contract-situation-assessor` scrive
+   solo la headline.
+2. **"Cosa è cambiato"** (Documents): all'upload di una nuova versione di un contratto già validato,
+   un confronto in linguaggio naturale clausola per clausola (prezzo, preavviso, SLA, responsabilità)
+   con le citazioni. Oggi l'utente confronta a mano.
+3. **Spiegazione del rischio in Contract 360**: su una clausola segnalata, "perché è un rischio e cosa
+   chiedere al fornitore", dal pack delle clausole + market practice. Oggi c'è solo il flag.
+4. **Quote check narrativo** (Quotes): oltre ai numeri dell'estrazione, una raccomandazione scritta
+   (accetta / negozia su X / rifiuta) ancorata a contratto corrente e benchmark.
+5. **Ricerca in linguaggio naturale nei documenti** (Documents): "trova tutti i contratti con
+   auto-rinnovo e preavviso < 60 giorni" → lista con citazioni, stessa `search_clauses` + `list_portfolio`.
+6. **Triage dei feedback** (ADR-030): il `capability-investigator` già classifica i gap; l'agente può
+   proporre il testo dell'issue e raggruppare i duplicati prima della pubblicazione su GitHub.
+7. **Titoli e riassunti delle conversazioni**: titolo generato e un riassunto di 2 righe nella lista
+   "Recenti", oggi è la prima domanda troncata.

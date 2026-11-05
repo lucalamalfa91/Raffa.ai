@@ -63,4 +63,10 @@ public sealed class AiGatewayModelOptions
     /// <see cref="Analyst"/> it never falls back to <see cref="Answer"/> -- a web tool on the answer
     /// deployment is exactly what R-AI-03 forbids.</summary>
     public AiModelSelection? Research { get; init; }
+
+    /// <summary>ADR-004 amendment 2026-11-05: the `agent` role behind Ask Raffa's orchestrator
+    /// (<c>AiGateway:Models:Agent:*</c>) -- chat completions with function tools over Raffa's own
+    /// data. Optional: when unset, <see cref="Answer"/>'s deployment is used (dev: gpt-5.4-nano,
+    /// demo: gpt-6-astra), so no infrastructure change is needed to turn the orchestrator on.</summary>
+    public AiModelSelection? Agent { get; init; }
 }

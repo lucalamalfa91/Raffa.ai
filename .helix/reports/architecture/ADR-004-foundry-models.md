@@ -253,3 +253,43 @@ be throttled by a large batch. Remedy if it bites: request more quota for
 that SKU, or bind `extract` to `gpt-5.5` (separate quota). The manual
 `gpt-6-astra-test` (50K) must be deleted before the apply or it holds half
 the quota.
+
+## Amendment (2026-11-05): a sixth chat role, `agent` — function tools over Raffa's own data
+
+**Why.** Ask Raffa's engine is a router: a deterministic gate, one schema-constrained
+classification call (`turn-understanding`), a closed intent list, one handler per intent, then
+the `answer` role writes the text. The model never decides what to do; C# predicts the phrasing.
+Every wording the lexicons do not cover lands on the wrong handler (the 2026-11-05 Coupa
+transcript: a market question refused by a stale `NoBenchmark` flag, a KPI built on the wrong
+supplier, a correction read as a new question). The specialists that exist (`market-researcher`,
+the council, `artifact-composer`, `contract-situation-assessor`) run in a fixed order and, by
+their own prompt, "have no tools".
+
+**Decision.** The AI Gateway gains a sixth chat role, **`agent`**
+(`IAiGateway.ConverseAsync`, `FoundryAgentClient`, `AiGateway:Models:Agent:*`): one chat
+completion that carries **function tools** (`tools: [{type: "function", strict: true}]`,
+`tool_choice: auto`, `parallel_tool_calls`) and a strict JSON schema for the final answer. The
+model either asks for tool calls or writes the answer; the loop that runs the tools lives in
+`Raffa.AiFlows.Ask.Agentic` (ADR-024 amendment of the same date), never in the gateway. The tools
+are Raffa's own readers and flows (portfolio, Contract 360, clauses, renewals, the market pack,
+the council, the artifact composer, navigation) — **never the hosted web tool**, which stays on
+the `research` role and its Responses request (ADR-030). `FoundryAgentClientTests` asserts the
+request shape (every tool `type: "function"`, no `web_search`, no `data_sources`), the inverse of
+`FoundryAnswerClientTests`, which is unchanged: the `answer` request still has no `tools` key.
+
+**R-AI-03 reading.** "Requests carry no tool / grounding configuration" was written against web
+grounding and provider-side data sources on a no-training endpoint. A function tool that the
+gateway merely *describes* and the caller *executes against the tenant's own database* adds no
+grounding on the deployment and sends the provider nothing the pack did not already send; the
+no-training, residency and audit properties (ADR-011) are untouched. The compliance test moves
+from "no `tools` anywhere" to "no web tool anywhere, and no `tools` on `answer`".
+
+**Deployment.** `Agent` is optional and falls back to `Answer` (dev `gpt-5.4-nano-dev`, demo
+`gpt-6-astra-demo` per the 2026-11-02 amendment), both of which support function calling. A
+dedicated deployment is a configuration change, as for every other role. The fixture gateway
+serves the role through a registered `IFixtureAgentScript` (deterministic tool-call sequence),
+so the golden set and the API tests run it without a network.
+
+| Role | Candidate | Requirement | Notes |
+| --- | --- | --- | --- |
+| Agent (orchestrator) | Same deployment as `answer`, or one tier up if tool selection is poor | Function calling + strict structured output | Reads the whole conversation; chooses which Raffa tools to call; final answer passes the same citation and numeric guards as `answer`. |
