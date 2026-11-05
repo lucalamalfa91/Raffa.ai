@@ -119,6 +119,28 @@ internal static class AskFlowServiceCollectionExtensions
         services.AddScoped<IntentHandlerRegistry>();
         services.AddScoped<InDomainReplyPipeline>();
 
+        // The orchestrator and its tools (ADR-024 amendment 2026-11-05; Chat:AskTurn:Agentic). TryAddEnumerable:
+        // a host calling AddAiFlows twice registers each tool once.
+        services.AddScoped<Raffa.AiFlows.Ask.Agentic.AgenticAskTurn>();
+        foreach (var tool in new[]
+        {
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.ListPortfolioTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.GetContractTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.SearchClausesTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.GetRenewalStrategyTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.GetMarketBenchmarkTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.GetSavingsTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.RunNegotiationCouncilTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.GetDocumentStatusTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.ComposeArtifactTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.OpenArtifactTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.NavigateTool),
+            typeof(Raffa.AiFlows.Ask.Agentic.Tools.WebResearchTool),
+        })
+        {
+            services.TryAddEnumerable(ServiceDescriptor.Scoped(typeof(Raffa.AiFlows.Ask.Agentic.IAskTool), tool));
+        }
+
         // The (supplier name, geography) key a BenchmarkQuery requires: resolved once per request
         // and shared by Ask's priced-line bands and the renewals/strategy endpoints. Scoped: reads
         // IdentityWorkspaceDbContext (Scoped) and ISupplierNameLookup (Singleton).
