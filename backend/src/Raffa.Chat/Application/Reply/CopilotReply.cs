@@ -1,4 +1,5 @@
 using Raffa.Chat.Application.Capabilities;
+using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Interview;
 
 namespace Raffa.Chat.Application.Reply;
@@ -33,6 +34,8 @@ namespace Raffa.Chat.Application.Reply;
 /// as <c>ConversationMessage.PayloadJson</c> and served as the wire's <c>payload</c>.</param>
 /// <param name="Interview">ADR-030 interview metadata: the clarifying question(s), options and
 /// keys resolved server-side by the next turn. Present only on <see cref="ReplyKind.Interview"/>.</param>
+/// <param name="ConversationState">Server-owned durable state for the endpoint to persist. It stays
+/// outside <see cref="Payload"/> so ordinary replies retain <c>payload: null</c>.</param>
 public sealed record CopilotReply(
     ReplyKind Kind,
     string AnswerMarkdown,
@@ -41,4 +44,5 @@ public sealed record CopilotReply(
     ReplyProvenance Provenance,
     IReadOnlyList<string> FollowUps,
     ReplyPayload? Payload = null,
-    InterviewTurn? Interview = null);
+    InterviewTurn? Interview = null,
+    ConversationState? ConversationState = null);

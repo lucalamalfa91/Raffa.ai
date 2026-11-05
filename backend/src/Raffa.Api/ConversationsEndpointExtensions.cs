@@ -556,7 +556,7 @@ public static class ConversationsEndpointExtensions
         // The Ask engine reduces focus/goal/constraints from its authorised plan and structured
         // payload. The endpoint only persists that server-owned state after ownership checks.
         var priorState = ConversationState.Parse(conversation.StateJson);
-        var nextState = reply.Payload?.ConversationState ?? priorState;
+        var nextState = reply.ConversationState ?? priorState;
         if (nextState != priorState)
         {
             await conversationService.UpdateStateAsync(

@@ -637,7 +637,7 @@ public sealed class AskCopilotService(
             scopeContractId, reply.Payload);
         reply = reply with
         {
-            Payload = (reply.Payload ?? new ReplyPayload()) with { ConversationState = reducedState },
+            ConversationState = reducedState,
         };
         if (turnHints.UserMemory?.Suggestions.Count > 0 && reply.Kind == ReplyKind.Answer)
         {

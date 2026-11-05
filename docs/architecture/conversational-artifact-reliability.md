@@ -117,7 +117,9 @@ and never execute tools or external actions.
 
 Retention is rolling 180 days. `GET /api/ask/memory` lets the authenticated user inspect the safe
 projection and `DELETE /api/ask/memory` erases learned values and writes a disabled tombstone, so
-learning does not silently restart on the next message. Both update and deletion emit audit events.
+learning does not silently restart on the next message. Update and deletion emit
+`memory.profile.updated` / `memory.profile.deleted` audit events. The separate namespace prevents
+memory maintenance from being misclassified as a user-visible `chat.*` turn metric.
 The table has PostgreSQL row-level security on `tenant_id`; application queries additionally bind
 both tenant and authenticated user. Recent supplier labels are returned only through an explicitly
 authorized supplier allowlist (the public inspection endpoint currently omits them).

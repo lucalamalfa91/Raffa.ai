@@ -62,7 +62,7 @@ public sealed class UserProcurementMemoryService(
         }
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
         await audit.WriteAsync(new AuditEntry(
-            tenantId, userId, "chat.memory.updated", "user_procurement_memory", row.Id.Value.ToString(), clock.UtcNow), ct).ConfigureAwait(false);
+            tenantId, userId, "memory.profile.updated", "user_procurement_memory", row.Id.Value.ToString(), clock.UtcNow), ct).ConfigureAwait(false);
     }
 
     public async Task<bool> DeleteAsync(TenantId tenantId, string userId, CancellationToken ct = default)
@@ -87,7 +87,7 @@ public sealed class UserProcurementMemoryService(
         row.UpdatedAt = now;
         row.ExpiresAt = now + Retention;
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
-        await audit.WriteAsync(new AuditEntry(tenantId, userId, "chat.memory.deleted", "user_procurement_memory", row.Id.Value.ToString(), clock.UtcNow), ct).ConfigureAwait(false);
+        await audit.WriteAsync(new AuditEntry(tenantId, userId, "memory.profile.deleted", "user_procurement_memory", row.Id.Value.ToString(), clock.UtcNow), ct).ConfigureAwait(false);
         return existed;
     }
 
