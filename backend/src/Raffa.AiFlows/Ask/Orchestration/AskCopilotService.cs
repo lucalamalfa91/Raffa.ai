@@ -11,6 +11,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Raffa.AiFlows.Ask.Answering;
 using Raffa.AiFlows.Ask.Gate;
 using Raffa.AiFlows.Ask.Interview;
@@ -29,6 +30,7 @@ using Raffa.Benchmark;
 using Raffa.Benchmark.Contracts;
 using Raffa.Chat.Application.Capabilities;
 using Raffa.Chat.Application.Interview;
+using Raffa.Chat.Application.Memory;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain;
@@ -207,7 +209,8 @@ public sealed class AskCopilotService(
     ContractContextReader? turnReads = null,
     TurnUnderstanding? understanding = null,
     AskTurnOptions? turnOptions = null,
-    Raffa.AiFlows.Ask.Artifacts.ArtifactComposer? artifactComposer = null)
+    Raffa.AiFlows.Ask.Artifacts.ArtifactComposer? artifactComposer = null,
+    ILogger<AskCopilotService>? logger = null)
 {
     /// <summary>
     /// Answers one Ask turn end to end: gate → (deterministic reply, or planner → pack → guarded
@@ -251,6 +254,13 @@ public sealed class AskCopilotService(
 
         var turnHints = hints ?? AskTurnHints.None;
 
+        if (turnHints.UserMemory?.PreferredOutput is { } preferredOutput)
+        {
+            recentTurns = recentTurns.Concat(
+                [(Role: "preference", Markdown: $"User presentation preference: {preferredOutput}. This is not a procurement fact.")])
+                .ToList();
+        }
+
         using var scope = tenantContext.BeginScope(tenantId);
 
         // One id for the whole turn (plan T-01): every ask.* / chat.* audit row of the turn and every
@@ -286,13 +296,109 @@ public sealed class AskCopilotService(
 
         var gate = domainGate.Classify(question, knownSuppliers);
 
+        // Create/open are application commands, not document questions. Resolve the simple forms
+        // deterministically before the model understanding step so a provider failure can never
+        // turn "crealo" or "aprilo" into broad contract retrieval.
+        var artifactCommand = Raffa.AiFlows.Ask.Artifacts.ArtifactCommandResolver.Resolve(
+            question, recentTurns, turnHints.CurrentArtifact, supplierNames.Values.Distinct().ToList(), turnHints.ConversationState);
+        if (artifactCommand.Command != Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.None)
+        {
+            logger?.LogInformation(
+                "Ask artifact command resolved: {Command} {ArtifactKind}; hasCurrentArtifact={HasCurrentArtifact}; turnId={TurnId}",
+                artifactCommand.Command,
+                artifactCommand.Kind,
+                turnHints.CurrentArtifact is not null,
+                RunContext.Current?.TurnId);
+            RunContext.AddTurnDetail(
+                $"artifactCommand={artifactCommand.Command} artifactKind={artifactCommand.Kind} retrieval=none");
+        }
+        var understandingReply = default((CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)?);
+        if (artifactCommand.Command == Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.Open
+            && turnHints.CurrentArtifact is { } currentArtifact)
+        {
+            var italian = (Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it") == "it";
+            understandingReply = (new CopilotReply(
+                ReplyKind.Answer,
+                italian ? $"Ho aperto “{currentArtifact.Title}” nel pannello azioni." : $"I opened “{currentArtifact.Title}” in the action panel.",
+                [], [], ReplyProvenance.NoModelCall([]), [],
+                new ReplyPayload(UiActions: [UiActionPayload.OpenArtifact(currentArtifact.Id)])), false, false);
+        }
+        else if (artifactCommand.Command == Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.ProposeUpdate
+            && turnHints.CurrentArtifact is { } artifactToUpdate && artifactCommand.Instruction is { } updateInstruction)
+        {
+            var italian = (Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it") == "it";
+            understandingReply = (new CopilotReply(
+                ReplyKind.Answer,
+                italian
+                    ? $"Posso aggiornare “{artifactToUpdate.Title}” con questa modifica. Confermi?"
+                    : $"I can update “{artifactToUpdate.Title}” with this change. Confirm?",
+                [], [], ReplyProvenance.NoModelCall([]), [],
+                new ReplyPayload(ArtifactChangeProposal: new ArtifactChangeProposal(artifactToUpdate.Id, updateInstruction))), false, false);
+        }
+        else if (artifactCommand.Command == Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.CancelUpdate)
+        {
+            var italian = (Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it") == "it";
+            understandingReply = (new CopilotReply(
+                ReplyKind.Answer,
+                italian ? "Modifica annullata. L'artefatto non è stato cambiato." : "Update cancelled. The artifact was not changed.",
+                [], [], ReplyProvenance.NoModelCall([]), [],
+                new ReplyPayload(ArtifactChangeCancelled: true)), false, false);
+        }
+        else if (artifactCommand.Command == Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.ConfirmUpdate
+            && artifactComposer is not null && turnHints.CurrentArtifact is { } artifactToRevise
+            && artifactCommand.Instruction is { } confirmedInstruction)
+        {
+            var language = Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it";
+            var composed = await artifactComposer.ComposeAsync(
+                tenantId,
+                new Raffa.AiFlows.Ask.Artifacts.ArtifactRequest(
+                    $"Update the existing artifact '{artifactToRevise.Title}' as follows: {confirmedInstruction}",
+                    recentTurns, artifactToRevise.ContractId ?? scopeContractId, language),
+                new Raffa.AiFlows.Ask.Artifacts.ArtifactScopeHint(
+                    artifactToRevise.FocusSupplier, false, false, artifactToRevise.Kind),
+                cancellationToken).ConfigureAwait(false);
+            if (composed is not null)
+            {
+                var payload = Raffa.AiFlows.Ask.Artifacts.ArtifactPayloads.From(composed, composed.Draft, turnHints.NextArtifactVersion);
+                understandingReply = (new CopilotReply(
+                    ReplyKind.Answer,
+                    language == "it"
+                        ? $"Ho aggiornato “{payload.Title}” alla versione {payload.Version} e l'ho aperto."
+                        : $"I updated “{payload.Title}” to version {payload.Version} and opened it.",
+                    [], [], new ReplyProvenance([], Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerName,
+                        Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerVersion, null), [],
+                    new ReplyPayload(Artifact: payload, UiActions: [UiActionPayload.OpenArtifact(payload.Id)])), false, false);
+            }
+        }
+        else if (artifactCommand.Command == Raffa.AiFlows.Ask.Artifacts.ArtifactCommandKind.Create && artifactComposer is not null)
+        {
+            var language = Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it";
+            var composed = await artifactComposer.ComposeAsync(
+                tenantId,
+                new Raffa.AiFlows.Ask.Artifacts.ArtifactRequest(question, recentTurns, scopeContractId, language),
+                new Raffa.AiFlows.Ask.Artifacts.ArtifactScopeHint(artifactCommand.Supplier, false, false, artifactCommand.Kind),
+                cancellationToken).ConfigureAwait(false);
+            if (composed is not null)
+            {
+                var payload = Raffa.AiFlows.Ask.Artifacts.ArtifactPayloads.From(composed, composed.Draft, turnHints.NextArtifactVersion);
+                var italian = language == "it";
+                understandingReply = (new CopilotReply(
+                    ReplyKind.Answer,
+                    italian
+                        ? $"Ho creato “{payload.Title}” e l'ho aperto nel pannello azioni. I dati mancanti restano da valutare."
+                        : $"I created “{payload.Title}” and opened it in the action panel. Missing data remains to be evaluated.",
+                    [], [], new ReplyProvenance([], Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerName, Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerVersion, null), [],
+                    new ReplyPayload(Artifact: payload, UiActions: [UiActionPayload.OpenArtifact(payload.Id)])), false, false);
+            }
+        }
+
         // Turn understanding (model): what the user means, read against the whole conversation. It
         // replaces the gate's word lists, the intent lexicon and the ambiguity detector as the decision
         // maker; the deterministic gate result stays only as the fallback when the model cannot be
         // read, and for the capability-gap catalog (it carries the gap the drafting flow needs). An
         // interview/consent resolution is already decided by key and is not re-understood.
-        var understandingReply = default((CopilotReply Reply, bool GuardIntervened, bool FallbackUsed)?);
-        if (understanding is not null
+        if (understandingReply is null
+            && understanding is not null
             && turnOptions?.AiUnderstanding == true
             && turnHints.ForcedIntent is null
             && turnHints.ForcedSupplierName is null
@@ -301,7 +407,8 @@ public sealed class AskCopilotService(
             && !turnHints.DeclinedWebResearch)
         {
             var understood = await understanding
-                .ResolveAsync(question, recentTurns, supplierNames.Values.Distinct().ToList(), scopeContractId is not null, cancellationToken)
+                .ResolveAsync(question, recentTurns, supplierNames.Values.Distinct().ToList(), scopeContractId is not null,
+                    turnHints.ConversationState, turnHints.UserMemory, cancellationToken)
                 .ConfigureAwait(false);
             if (understood is not null)
             {
@@ -346,11 +453,12 @@ public sealed class AskCopilotService(
                     {
                         var draft = composed.Draft;
                         var ack = artifactAsk.Acknowledgement.Length > 0 ? artifactAsk.Acknowledgement : draft.Title;
+                        var payload = Raffa.AiFlows.Ask.Artifacts.ArtifactPayloads.From(composed, draft, turnHints.NextArtifactVersion);
                         understandingReply = (new CopilotReply(
                             ReplyKind.Answer, ack, [], [],
                             new ReplyProvenance([], Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerName, Raffa.AiFlows.Ask.Artifacts.ArtifactComposer.ComposerVersion, null),
                             [],
-                            new ReplyPayload(Artifact: Raffa.AiFlows.Ask.Artifacts.ArtifactPayloads.From(composed, draft))), false, false);
+                            new ReplyPayload(Artifact: payload, UiActions: [UiActionPayload.OpenArtifact(payload.Id)])), false, false);
                     }
                 }
 
@@ -363,6 +471,33 @@ public sealed class AskCopilotService(
                     turnHints = turnHints with { Understood = true };
                 }
             }
+        }
+
+        // Deterministic continuity when the understanding provider is degraded: only explicit
+        // elliptical forms inherit the server-owned primary supplier. Portfolio questions and a
+        // newly named supplier continue through the normal gate unchanged.
+        var rememberedState = turnHints.ConversationState;
+        var referencedSupplier = ConversationStateReducer.RefersToPreviousPrimary(question)
+            ? rememberedState?.PreviousPrimarySupplier
+            : rememberedState?.PrimarySupplier;
+        if (gate.Label == GateLabel.InDomain && gate.NamedSupplier is null &&
+            referencedSupplier is { } rememberedSupplier &&
+            ConversationStateReducer.ShouldInheritPrimary(question))
+        {
+            gate = gate with
+            {
+                NamedSupplier = rememberedSupplier,
+                Reason = "elliptical follow-up resolved from authorised server-owned conversation state.",
+            };
+        }
+
+        // “Facciamo 10k” revises the current saving goal even without repeating “saving”. The
+        // number is parsed deterministically; only a previous saving/renewal intent can be reused.
+        if (turnHints.PlannedIntent is null && SavingsGoalParser.Parse(question).HasTarget &&
+            Enum.TryParse<AskIntent>(turnHints.ConversationState?.LastIntent, out var rememberedIntent) &&
+            rememberedIntent is AskIntent.Savings or AskIntent.PortfolioSavingsTarget or AskIntent.RenewalStrategy)
+        {
+            turnHints = turnHints with { PlannedIntent = rememberedIntent };
         }
 
         // ADR-030: an interview option that named a supplier is a known supplier by construction
@@ -496,6 +631,25 @@ public sealed class AskCopilotService(
             };
 
         capabilityChecks.Complete(check, turnTrace, question, reply, guardIntervened, fallbackUsed);
+
+        var reducedState = ConversationStateReducer.Reduce(
+            turnHints.ConversationState, question, turnTrace.Plan, gate.NamedSupplier,
+            scopeContractId, reply.Payload);
+        reply = reply with
+        {
+            ConversationState = reducedState,
+        };
+        if (turnHints.UserMemory?.Suggestions.Count > 0 && reply.Kind == ReplyKind.Answer)
+        {
+            var language = Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it";
+            var localizedSuggestions = UserMemorySnapshot.SuggestionsFor(
+                turnHints.UserMemory.FrequentWorkflows, language);
+            reply = reply with
+            {
+                FollowUps = reply.FollowUps.Concat(localizedSuggestions)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Take(3).ToList(),
+            };
+        }
 
         await audit.WriteAsync(tenantId, reply, guardIntervened, fallbackUsed, check.GapInvestigation, turnHints.WebMode, actor, cancellationToken)
             .ConfigureAwait(false);

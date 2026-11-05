@@ -32,6 +32,9 @@ export interface Artifact {
   markdown: string;
   /** 1 for the first one of its kind in a conversation; a change asked for later is the next version. */
   version: number;
+  status?: "draft" | "published" | "archived";
+  contractId?: string | null;
+  missingInputs?: string[];
   /** The screen the figures come from, on the same filters (Spesa e risparmi). */
   link?: { label: string; to: string };
 }
@@ -187,7 +190,7 @@ export function buildArtifact(kind: ArtifactKind, rows: readonly ContractListRow
 export function payloadToArtifact(p: ArtifactPayloadBody, version: number, t: T, id = `${p.kind}-${Date.now()}`): Artifact {
   const note = [p.focusSupplier, p.usedPortfolio ? t("all contracts") : null, p.usedMarket ? t("market data") : null].filter(Boolean).join(" · ");
   return {
-    id,
+    id: p.id?.trim() || id,
     kind: p.kind,
     title: p.title,
     subtitle: [p.subtitle, note].filter(Boolean).join(" · "),
@@ -195,7 +198,10 @@ export function payloadToArtifact(p: ArtifactPayloadBody, version: number, t: T,
     charts: p.charts,
     tables: p.tables,
     markdown: p.markdown,
-    version,
+    version: p.version && p.version > 0 ? p.version : version,
+    status: p.status ?? "draft",
+    contractId: p.contractId ?? null,
+    missingInputs: p.missingInputs ?? [],
   };
 }
 

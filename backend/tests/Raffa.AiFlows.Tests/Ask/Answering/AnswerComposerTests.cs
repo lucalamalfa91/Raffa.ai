@@ -122,6 +122,23 @@ public sealed class AnswerComposerTests
     }
 
     [Fact]
+    public async Task A_provider_failure_on_the_first_call_still_answers_from_authorised_pack_facts()
+    {
+        var gateway = new ScriptedAnswerGateway();
+        var pack = ScreenshotSavingsPack.Build();
+
+        var result = await new AnswerComposer(gateway).AnswerAsync(Question, pack, []);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, gateway.Calls);
+        Assert.True(result.Value.FallbackUsed);
+        Assert.True(result.Value.Result.CanDetermine);
+        Assert.Equal("deterministic-fallback", result.Value.Result.Metadata.ModelId);
+        Assert.True(GroundingGuard.Validate(result.Value.Result, pack).Passed);
+        Assert.True(NumericGuard.Validate(result.Value.Result.AnswerMarkdown, pack).Passed);
+    }
+
+    [Fact]
     public async Task A_retry_that_retreats_to_an_abstain_after_trying_to_answer_gets_the_packs_facts()
     {
         var gateway = new ScriptedAnswerGateway(FabricatedModelAnswer(), Abstain("The pack does not support a figure."));

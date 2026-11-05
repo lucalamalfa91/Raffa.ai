@@ -70,4 +70,8 @@ public enum AskIntent
     /// why. An interview option can also force this intent (the "search the public web" choice on
     /// the interpretation menu).</summary>
     WebResearch,
+
+    /// <summary>General procurement advisory: sourcing/RFx, supplier governance and risk, TCO,
+    /// category strategy, demand management, operating model, policy, ESG and business cases.</summary>
+    ProcurementAdvisory,
 }

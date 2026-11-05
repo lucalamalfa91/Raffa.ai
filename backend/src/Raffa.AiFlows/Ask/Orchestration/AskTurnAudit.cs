@@ -87,9 +87,16 @@ public sealed class AskTurnAudit(IAuditWriter auditWriter, IClock clock, IQueryH
                 // A-05: a run id on every turn, also the ones that never call a model (the flow's own
                 // fragment repeats it, same value, on agentic turns).
                 $"runId={RunContext.Current?.RunId ?? "none"} " +
-                (RunContext.TurnDetail ?? "flow=none")),
+                FlowDetail(RunContext.TurnDetail)),
             cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>The turn's flow fragment. Turns that ran no agentic flow still say so ("flow=none"),
+    /// also when other fragments (intent, plan basis, artifact command) were recorded.</summary>
+    private static string FlowDetail(string? turnDetail) =>
+        string.IsNullOrEmpty(turnDetail) ? "flow=none"
+        : turnDetail.Contains("stepsRun=", StringComparison.Ordinal) ? turnDetail
+        : turnDetail + " flow=none";
 
     /// <summary>F3-T11: the hash every site writing a digest into an audit row shares. With no key
     /// configured (<c>AiGateway:QueryHash:Key</c>, the default) it is the unkeyed SHA-256 the platform

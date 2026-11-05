@@ -1,0 +1,40 @@
+{
+  "name": "zscaler-artifact-reliability",
+  "description": "Sanitized deterministic regression for elliptical artifact creation and opening.",
+  "knownSuppliers": ["Zscaler", "Notion"],
+  "turns": [
+    {
+      "user": "Riassumi il contratto Zscaler",
+      "assert": { "activeSupplier": "Zscaler", "retrieval": "active_entity_only" }
+    },
+    {
+      "user": "Crea un KPI che evidenzia le leve di questo contratto",
+      "assert": { "artifactKind": "kpi", "activeSupplier": "Zscaler" }
+    },
+    {
+      "user": "Crealo con un visualizzatore",
+      "assert": {
+        "command": "Create",
+        "artifactKind": "kpi",
+        "retrieval": "none",
+        "uiAction": "OPEN_ACTION_PANEL",
+        "missingInputs": ["renewal_quote", "actual_usage", "market_benchmark"]
+      }
+    },
+    {
+      "user": "Voglio poterlo aprire nel pannello action di lato e consultarlo",
+      "assert": {
+        "command": "Open",
+        "target": "currentArtifact",
+        "retrieval": "none",
+        "uiAction": "OPEN_ACTION_PANEL"
+      }
+    }
+  ],
+  "forbidden": [
+    "broad_search",
+    "cross_contract_source",
+    "unproven_numeric_claim",
+    "model_authored_ui_event"
+  ]
+}

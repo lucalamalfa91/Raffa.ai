@@ -291,3 +291,72 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261105120000_AddConversationState') THEN
+    ALTER TABLE conversation ADD state_json jsonb NOT NULL DEFAULT '{}';
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261105120000_AddConversationState') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261105120000_AddConversationState', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261105130000_AddUserProcurementMemory') THEN
+    CREATE TABLE user_procurement_memory (
+        id uuid NOT NULL,
+        user_id character varying(200) NOT NULL,
+        profile_json jsonb NOT NULL,
+        updated_at timestamp with time zone NOT NULL,
+        expires_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_user_procurement_memory PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261105130000_AddUserProcurementMemory') THEN
+    CREATE INDEX ix_user_procurement_memory_expires_at ON user_procurement_memory (expires_at);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261105130000_AddUserProcurementMemory') THEN
+    CREATE UNIQUE INDEX ix_user_procurement_memory_tenant_id_user_id ON user_procurement_memory (tenant_id, user_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261105130000_AddUserProcurementMemory') THEN
+    ALTER TABLE "user_procurement_memory" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "user_procurement_memory" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "user_procurement_memory"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261105130000_AddUserProcurementMemory') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261105130000_AddUserProcurementMemory', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

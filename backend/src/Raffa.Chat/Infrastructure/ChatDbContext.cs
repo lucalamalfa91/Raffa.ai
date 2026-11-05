@@ -1,6 +1,7 @@
 using Raffa.Chat.Domain.Conversations;
 using Raffa.Chat.Domain.Feedback;
 using Raffa.Chat.Domain.WebResearch;
+using Raffa.Chat.Domain.Memory;
 using Raffa.Chat.Infrastructure.Configurations;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,6 +13,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
     public DbSet<FeatureRequest> FeatureRequests => Set<FeatureRequest>();
     public DbSet<WebResearchUsage> WebResearchUsage => Set<WebResearchUsage>();
+    public DbSet<UserProcurementMemory> UserProcurementMemories => Set<UserProcurementMemory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -19,6 +21,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         modelBuilder.ApplyConfiguration(new ConversationMessageConfiguration());
         modelBuilder.ApplyConfiguration(new FeatureRequestConfiguration());
         modelBuilder.ApplyConfiguration(new WebResearchUsageConfiguration());
+        modelBuilder.ApplyConfiguration(new UserProcurementMemoryConfiguration());
 
         base.OnModelCreating(modelBuilder);
     }

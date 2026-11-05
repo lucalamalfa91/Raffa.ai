@@ -104,7 +104,7 @@ public sealed class AnswerComposerOnRunnerTests
     }
 
     [Fact]
-    public async Task On_a_gateway_failure_is_the_same_failure_result()
+    public async Task On_a_gateway_failure_preserves_the_same_grounded_fallback()
     {
         var off = new ScriptedGateway();
         var on = new ScriptedGateway();
@@ -112,9 +112,12 @@ public sealed class AnswerComposerOnRunnerTests
         var offResult = await Composer(off, onRunner: false).AnswerAsync(Question, ScreenshotSavingsPack.Build(), []);
         var onResult = await Composer(on, onRunner: true).AnswerAsync(Question, ScreenshotSavingsPack.Build(), []);
 
-        Assert.True(offResult.IsFailure);
-        Assert.True(onResult.IsFailure);
-        Assert.Equal(offResult.Error, onResult.Error);
+        Assert.True(offResult.IsSuccess);
+        Assert.True(onResult.IsSuccess);
+        Assert.True(offResult.Value.FallbackUsed);
+        Assert.True(onResult.Value.FallbackUsed);
+        Assert.Equal(offResult.Value.Result.AnswerMarkdown, onResult.Value.Result.AnswerMarkdown);
+        Assert.Equal(offResult.Value.Result.CitationKeys, onResult.Value.Result.CitationKeys);
     }
 
     [Fact]

@@ -34,6 +34,20 @@ public sealed record IntentPlanResult(
     IntentPlanBasis Basis = IntentPlanBasis.Lexicon,
     IReadOnlyList<AskIntent>? Candidates = null);
 
+/// <summary>
+/// Maximum retrieval boundary authorised for a turn. The planner selects the smallest boundary
+/// that can answer the intent; downstream agents may use less, never more. This keeps contract
+/// facts isolated from portfolio and market evidence and makes retrieval decisions auditable.
+/// </summary>
+public enum RetrievalNeed
+{
+    None,
+    ActiveEntity,
+    Portfolio,
+    Benchmarks,
+    PublicWeb,
+}
+
 /// <summary>How an <see cref="IntentPlanResult"/> was reached.</summary>
 public enum IntentPlanBasis
 {

@@ -104,7 +104,7 @@ public sealed class IntentHandlerRegistryTests
             }
         }
 
-        Assert.Equal(10, scope.ServiceProvider.GetServices<IIntentHandler>().Count());
+        Assert.Equal(11, scope.ServiceProvider.GetServices<IIntentHandler>().Count());
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public sealed class IntentHandlerRegistryTests
 
         services.AddAiFlows().AddAiFlows();
 
-        Assert.Equal(10, services.Count(d => d.ServiceType == typeof(IIntentHandler)));
+        Assert.Equal(11, services.Count(d => d.ServiceType == typeof(IIntentHandler)));
     }
 
     private sealed class HostWorkspaceWebResearchPolicy : Raffa.AiFlows.WebResearch.Ports.IWorkspaceWebResearchPolicy

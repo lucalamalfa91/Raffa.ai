@@ -7,6 +7,19 @@ namespace Raffa.Chat.Tests.Reply;
 public sealed class ReplyPayloadJsonTests
 {
     [Fact]
+    public void Ui_action_round_trips_only_as_structured_payload()
+    {
+        var payload = new ReplyPayload(UiActions: [UiActionPayload.OpenArtifact("artifact-1")]);
+
+        var back = ReplyPayloadJson.Deserialize(ReplyPayloadJson.Serialize(payload));
+
+        var action = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<UiActionPayload>>(back!.UiActions));
+        Assert.Equal(UiActionPayload.OpenActionPanel, action.Type);
+        Assert.Equal(UiActionPayload.ProcurementArtifact, action.ResourceType);
+        Assert.Equal("artifact-1", action.ResourceId);
+    }
+
+    [Fact]
     public void Round_trips_every_member_and_writes_nulls_explicitly()
     {
         // Hand-written: Chat owns the payload contract, not the capability-gap catalog that builds it.

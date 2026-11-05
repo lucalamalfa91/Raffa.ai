@@ -49,6 +49,13 @@ namespace Raffa.Chat.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("scope_contract_id");
 
+                    b.Property<string>("StateJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("state_json");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -162,6 +169,20 @@ namespace Raffa.Chat.Migrations
                         .HasDatabaseName("ix_conversation_message_conversation_id_created_at");
 
                     b.ToTable("conversation_message", (string)null);
+                });
+
+            modelBuilder.Entity("Raffa.Chat.Domain.Memory.UserProcurementMemory", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("uuid").HasColumnName("id");
+                    b.Property<DateTimeOffset>("ExpiresAt").HasColumnType("timestamp with time zone").HasColumnName("expires_at");
+                    b.Property<string>("ProfileJson").IsRequired().HasColumnType("jsonb").HasColumnName("profile_json");
+                    b.Property<Guid>("TenantId").HasColumnType("uuid").HasColumnName("tenant_id");
+                    b.Property<DateTimeOffset>("UpdatedAt").HasColumnType("timestamp with time zone").HasColumnName("updated_at");
+                    b.Property<string>("UserId").IsRequired().HasMaxLength(200).HasColumnType("character varying(200)").HasColumnName("user_id");
+                    b.HasKey("Id").HasName("pk_user_procurement_memory");
+                    b.HasIndex("ExpiresAt").HasDatabaseName("ix_user_procurement_memory_expires_at");
+                    b.HasIndex("TenantId", "UserId").IsUnique().HasDatabaseName("ix_user_procurement_memory_tenant_id_user_id");
+                    b.ToTable("user_procurement_memory", (string)null);
                 });
 
             modelBuilder.Entity("Raffa.Chat.Domain.Feedback.FeatureRequest", b =>

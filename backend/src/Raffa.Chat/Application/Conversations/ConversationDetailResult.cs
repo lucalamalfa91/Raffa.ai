@@ -17,4 +17,5 @@ public sealed record ConversationDetailResult(
     IReadOnlyList<ConversationMessageResult> Messages,
     string? CustomTitle = null,
     DateTimeOffset? ArchivedAt = null,
-    EntityId? CaseId = null);
+    EntityId? CaseId = null,
+    string StateJson = "{}");

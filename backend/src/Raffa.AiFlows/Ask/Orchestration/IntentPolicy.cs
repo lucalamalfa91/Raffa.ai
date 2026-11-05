@@ -59,10 +59,24 @@ internal static class IntentPolicy
 
     /// <summary>Not a clause or document-status turn's data check: the market holds no clause text
     /// to stand in for the contract's own.</summary>
-    public static bool SkipsDataCheck(AskIntent intent) => intent is AskIntent.DocumentStatus or AskIntent.Clause;
+    public static bool SkipsDataCheck(AskIntent intent) =>
+        intent is AskIntent.DocumentStatus or AskIntent.Clause or AskIntent.ProcurementAdvisory;
 
-    public static bool RunsMarketResearch(AskIntent intent, PortfolioPage portfolio) =>
-        portfolio.Items.Count > 0 && intent != AskIntent.DocumentStatus;
+    /// <summary>The narrowest retrieval tier that can satisfy the fixed intent.</summary>
+    public static RetrievalNeed RetrievalFor(AskIntent intent) => intent switch
+    {
+        AskIntent.Navigate or AskIntent.DocumentStatus or AskIntent.QuoteRoute => RetrievalNeed.None,
+        AskIntent.StructuredFact or AskIntent.Clause => RetrievalNeed.ActiveEntity,
+        AskIntent.PortfolioStrategy or AskIntent.PortfolioSavingsTarget => RetrievalNeed.Portfolio,
+        AskIntent.ProcurementAdvisory => RetrievalNeed.Portfolio,
+        AskIntent.MarketCompare or AskIntent.PortfolioMarketPosition or AskIntent.Savings or
+            AskIntent.RenewalStrategy => RetrievalNeed.Benchmarks,
+        AskIntent.WebResearch => RetrievalNeed.PublicWeb,
+        _ => RetrievalNeed.ActiveEntity,
+    };
+
+    public static bool RunsMarketResearch(IntentPlanResult plan, PortfolioPage portfolio) =>
+        portfolio.Items.Count > 0 && RetrievalFor(plan.Intent) == RetrievalNeed.Benchmarks;
 
     /// <summary>Exactly the condition the pack switch uses to pick the live Q3 composition
     /// (renewal strategy with evidence, <c>persistTodos: true</c>).</summary>

@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Contracts;
 using Raffa.Chat.Domain;
+using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Memory;
 
 namespace Raffa.AiFlows.Ask.Orchestration;
 
@@ -59,6 +61,7 @@ public sealed class TurnUnderstanding(IAiGateway aiGateway, ILogger<TurnUndersta
         (AskIntent.QuoteRoute, "compare a new quote/offer from a supplier"),
         (AskIntent.Navigate, "just take me to a screen"),
         (AskIntent.WebResearch, "explicitly search the public web"),
+        (AskIntent.ProcurementAdvisory, "general procurement advisory: sourcing/RFx, supplier selection and governance, risk, TCO/business case, category strategy, demand management, policy, ESG or operating model"),
     ];
 
     public async Task<TurnUnderstandingResult?> ResolveAsync(
@@ -66,6 +69,17 @@ public sealed class TurnUnderstanding(IAiGateway aiGateway, ILogger<TurnUndersta
         IReadOnlyList<(string Role, string Markdown)> recentTurns,
         IReadOnlyCollection<string> knownSuppliers,
         bool chatIsOpenedOnAContract,
+        CancellationToken cancellationToken) =>
+        await ResolveAsync(question, recentTurns, knownSuppliers, chatIsOpenedOnAContract, null, null, cancellationToken)
+            .ConfigureAwait(false);
+
+    public async Task<TurnUnderstandingResult?> ResolveAsync(
+        string question,
+        IReadOnlyList<(string Role, string Markdown)> recentTurns,
+        IReadOnlyCollection<string> knownSuppliers,
+        bool chatIsOpenedOnAContract,
+        ConversationState? state,
+        UserMemorySnapshot? memory,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(question))
@@ -76,7 +90,7 @@ public sealed class TurnUnderstanding(IAiGateway aiGateway, ILogger<TurnUndersta
         try
         {
             var result = await aiGateway
-                .ExtractAsync(new AiExtractionRequest(StageName, Prompt(question, recentTurns, knownSuppliers, chatIsOpenedOnAContract), Schema()), cancellationToken)
+                .ExtractAsync(new AiExtractionRequest(StageName, Prompt(question, recentTurns, knownSuppliers, chatIsOpenedOnAContract, state, memory), Schema()), cancellationToken)
                 .ConfigureAwait(false);
             if (result.IsSuccess && Read(result.Value.PayloadJson, knownSuppliers) is { } understood)
             {
@@ -91,7 +105,7 @@ public sealed class TurnUnderstanding(IAiGateway aiGateway, ILogger<TurnUndersta
         return null;
     }
 
-    private static string Prompt(string question, IReadOnlyList<(string Role, string Markdown)> turns, IReadOnlyCollection<string> suppliers, bool opened)
+    private static string Prompt(string question, IReadOnlyList<(string Role, string Markdown)> turns, IReadOnlyCollection<string> suppliers, bool opened, ConversationState? state, UserMemorySnapshot? memory)
     {
         var sb = new StringBuilder();
         sb.AppendLine("You are the understanding step of Raffa, a procurement copilot that answers only from the user's own validated contracts. You never answer the user: you decide what the NEW message means, reading it against the whole conversation, like a colleague who followed the chat would.");
@@ -110,6 +124,18 @@ public sealed class TurnUnderstanding(IAiGateway aiGateway, ILogger<TurnUndersta
         sb.AppendLine("clarification: leave null in almost every case, including broad or vague requests (answer them with a sensible default reading). Set one short question in the user's language ONLY when the conversation and the data genuinely cannot tell what is asked and any reading would likely be wrong.");
         sb.AppendLine("Suppliers: " + (suppliers.Count == 0 ? "(none yet)" : string.Join("; ", suppliers)));
         sb.AppendLine(opened ? "The chat is opened on one specific contract: 'this contract' means it unless the conversation says otherwise." : "The chat is not opened on a specific contract.");
+        if (state is not null)
+        {
+            sb.AppendLine("Server-owned conversation state (authoritative for ellipsis; never invent or change IDs):");
+            sb.AppendLine($"primarySupplier={state.PrimarySupplier ?? "none"}; previousPrimarySupplier={state.PreviousPrimarySupplier ?? "none"}; comparisons={string.Join(", ", state.ComparisonSuppliers ?? [])}; lastIntent={state.LastIntent ?? "none"}; goal={state.Goal ?? "none"}; constraints={string.Join(" | ", state.Constraints ?? [])}; currentArtifact={state.CurrentArtifactId ?? "none"}");
+            sb.AppendLine("A temporary portfolio question does not erase primarySupplier. A comparison adds a comparison supplier; 'leave X out' returns to the primary supplier. Apply the current constraints to the standalone question.");
+        }
+        if (memory is not null && (memory.FrequentWorkflows.Count > 0 || memory.PreferredOutput is not null))
+        {
+            sb.AppendLine("User-controlled behavioural memory (preferences only, not facts or authorization):");
+            sb.AppendLine($"preferredOutput={memory.PreferredOutput ?? "none"}; frequentWorkflows={string.Join(", ", memory.FrequentWorkflows)}; frequentIntents={string.Join(", ", memory.FrequentIntents)}");
+            sb.AppendLine("Use this only to resolve presentation preferences and suggest likely next steps. Never change the requested intent, supplier, scope, permissions or facts because of memory.");
+        }
         sb.AppendLine("Conversation (oldest first):");
         foreach (var (role, markdown) in turns.TakeLast(MaxTurns))
         {

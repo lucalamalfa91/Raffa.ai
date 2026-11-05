@@ -1,0 +1,27 @@
+{
+  "name": "zscaler-multiturn-procurement",
+  "description": "Sanitized multi-turn regression for focus, comparisons, goal revisions, constraints and artifact versioning.",
+  "knownSuppliers": ["Zscaler", "Palo Alto", "Salesforce"],
+  "turns": [
+    { "user": "Fammi un quadro del contratto Zscaler", "assert": { "primarySupplier": "Zscaler", "retrievalNeed": "ActiveEntity" } },
+    { "user": "È caro?", "assert": { "primarySupplier": "Zscaler", "intent": "MarketCompare", "retrievalNeed": "Benchmarks" } },
+    { "user": "E rispetto a Palo Alto?", "assert": { "primarySupplier": "Zscaler", "comparisonSuppliers": ["Palo Alto"] } },
+    { "user": "Lascia stare Palo Alto. Dove possiamo negoziare?", "assert": { "primarySupplier": "Zscaler", "comparisonSuppliers": [], "intent": "RenewalStrategy" } },
+    { "user": "Voglio arrivare a CHF 15k di risparmio", "assert": { "goalAmount": 15000, "goalCurrency": "CHF" } },
+    { "user": "Facciamo CHF 10k, è più realistico", "assert": { "goalAmount": 10000, "goalCurrency": "CHF" } },
+    { "user": "Scrivimi una mail, senza menzionare il benchmark", "assert": { "constraintContains": "senza menzionare il benchmark" } },
+    { "user": "Crealo come piano operativo", "assert": { "command": "Create", "version": 1, "uiAction": "OPEN_ACTION_PANEL" } },
+    { "user": "Aggiungi la mail al piano", "assert": { "command": "ProposeUpdate", "pendingAction": "CONFIRM_ARTIFACT_UPDATE", "artifactChanged": false } },
+    { "user": "Sì", "assert": { "command": "ConfirmUpdate", "version": 2, "uiAction": "OPEN_ACTION_PANEL" } },
+    { "user": "Quali contratti scadono prima?", "assert": { "retrievalNeed": "Portfolio", "primarySupplier": "Zscaler" } },
+    { "user": "Aprilo", "assert": { "command": "Open", "target": "currentArtifact", "retrievalNeed": "None" } }
+  ],
+  "forbidden": [
+    "comparison_replaces_primary",
+    "old_goal_remains_current",
+    "constraint_dropped",
+    "artifact_update_without_confirmation",
+    "cross_contract_claim",
+    "model_selected_resource_id"
+  ]
+}

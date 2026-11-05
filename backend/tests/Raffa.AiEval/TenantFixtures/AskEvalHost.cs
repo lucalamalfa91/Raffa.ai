@@ -176,6 +176,12 @@ internal sealed class AskEvalHost : IAsyncDisposable
                 services.AddSingleton<IClock>(new FixedClock(AiEvalOptions.EvaluationInstant));
                 services.AddSingleton<IAuditWriter>(auditWriter);
 
+                // The golden set pins the deterministic gate/planner (zero gateway calls on
+                // greeting/off-domain/legal/capability turns, R-ASK-01/02); the model's turn
+                // understanding (Chat:AskTurn:AiUnderstanding, on in production) has its own tests.
+                services.RemoveAll<AskTurnOptions>();
+                services.AddSingleton(new AskTurnOptions());
+
                 if (gateway is not null)
                 {
                     services.AddSingleton<IAiGateway>(gateway);

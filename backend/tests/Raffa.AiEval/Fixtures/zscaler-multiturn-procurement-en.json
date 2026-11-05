@@ -1,0 +1,21 @@
+{
+  "name": "zscaler-multiturn-procurement-en",
+  "description": "Sanitized English parity regression for conversational focus, goals and artifact commands.",
+  "language": "en",
+  "knownSuppliers": ["Zscaler", "Palo Alto", "Salesforce"],
+  "turns": [
+    { "user": "Give me an overview of the Zscaler contract", "assert": { "primarySupplier": "Zscaler", "retrievalNeed": "ActiveEntity" } },
+    { "user": "Is this contract expensive?", "assert": { "primarySupplier": "Zscaler", "intent": "MarketCompare", "retrievalNeed": "Benchmarks" } },
+    { "user": "And compared with Palo Alto?", "assert": { "primarySupplier": "Zscaler", "comparisonSuppliers": ["Palo Alto"] } },
+    { "user": "Leave Palo Alto out. Where can we negotiate?", "assert": { "primarySupplier": "Zscaler", "comparisonSuppliers": [], "intent": "RenewalStrategy" } },
+    { "user": "I want to reach CHF 15k in savings", "assert": { "goalAmount": 15000, "goalCurrency": "CHF" } },
+    { "user": "Make it CHF 10k; that is more realistic", "assert": { "goalAmount": 10000, "goalCurrency": "CHF" } },
+    { "user": "Draft a supplier email without mentioning the benchmark", "assert": { "constraintContains": "without mentioning the benchmark" } },
+    { "user": "Create it as an action plan", "assert": { "command": "Create", "version": 1, "uiAction": "OPEN_ACTION_PANEL" } },
+    { "user": "Add the email to it", "assert": { "command": "ProposeUpdate", "pendingAction": "CONFIRM_ARTIFACT_UPDATE", "artifactChanged": false } },
+    { "user": "Yes, go ahead", "assert": { "command": "ConfirmUpdate", "version": 2, "uiAction": "OPEN_ACTION_PANEL" } },
+    { "user": "Which contracts expire first?", "assert": { "retrievalNeed": "Portfolio", "primarySupplier": "Zscaler" } },
+    { "user": "Open it", "assert": { "command": "Open", "target": "currentArtifact", "retrievalNeed": "None" } }
+  ],
+  "forbidden": ["comparison_replaces_primary", "old_goal_remains_current", "constraint_dropped", "artifact_update_without_confirmation", "cross_contract_claim", "model_selected_resource_id"]
+}
