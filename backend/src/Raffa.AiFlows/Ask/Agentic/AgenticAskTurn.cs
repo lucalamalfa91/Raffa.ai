@@ -120,7 +120,10 @@ public sealed class AgenticAskTurn(
                 {
                     if (calls == 0 && stepsRun.Count == 0)
                     {
-                        logger?.LogWarning("Agent role unavailable, falling back to the deterministic path: {Error}", step.Error);
+                        // Visible in the turn's audit row (a class of failure, never the provider's text)
+                        // and in the host log: a silent fallback would look like the router's reply.
+                        logger?.LogError("Agent role unavailable, falling back to the deterministic path: {Error}", step.Error);
+                        RunContext.AddTurnDetail("agenticFallback=" + FailureClass(step.Error));
                         return null;
                     }
 
@@ -311,6 +314,23 @@ public sealed class AgenticAskTurn(
             logger?.LogWarning(ex, "Ask tool {Tool} failed; the turn continues without it.", tool.Name);
             return AskToolResult.Error($"The tool failed: {ex.GetType().Name}. Answer from what the other tools returned.");
         }
+    }
+
+    /// <summary>A short, text-free class of a gateway failure for the audit row.</summary>
+    private static string FailureClass(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error)) return "unknown";
+        var e = error.ToLowerInvariant();
+        if (e.Contains("does not implement") || e.Contains("no ifixtureagentscript")) return "role-unavailable";
+        if (e.Contains("schema")) return "schema-rejected";
+        if (e.Contains("400") || e.Contains("bad request") || e.Contains("unsupported") || e.Contains("invalid")) return "request-rejected";
+        if (e.Contains("401") || e.Contains("403")) return "unauthorized";
+        if (e.Contains("404")) return "deployment-not-found";
+        if (e.Contains("429") || e.Contains("quota")) return "throttled";
+        if (e.Contains("timeout") || e.Contains("timed out") || e.Contains("canceled")) return "timeout";
+        if (e.Contains("content filter")) return "content-filter";
+        if (e.Contains("refused")) return "model-refusal";
+        return "provider-error";
     }
 
     private static void WriteDetail(List<string> stepsRun, List<string> failures, int marketQueries, Stopwatch stopwatch)

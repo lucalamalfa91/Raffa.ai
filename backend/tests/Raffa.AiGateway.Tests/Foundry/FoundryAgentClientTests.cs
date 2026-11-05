@@ -90,8 +90,9 @@ public class FoundryAgentClientTests
         Assert.Equal("get_contract", tool.GetProperty("function").GetProperty("name").GetString());
         Assert.True(tool.GetProperty("function").GetProperty("strict").GetBoolean());
         Assert.False(tool.GetProperty("function").GetProperty("parameters").GetProperty("additionalProperties").GetBoolean());
-        Assert.Equal("auto", root.GetProperty("tool_choice").GetString());
-        Assert.True(root.GetProperty("parallel_tool_calls").GetBoolean());
+        // Provider defaults (auto, parallel on) are not restated: fewer parameters a deployment can reject.
+        Assert.False(root.TryGetProperty("tool_choice", out _));
+        Assert.False(root.TryGetProperty("parallel_tool_calls", out _));
         Assert.Equal("json_schema", root.GetProperty("response_format").GetProperty("type").GetString());
         Assert.DoesNotContain("web_search", body, StringComparison.Ordinal);
 

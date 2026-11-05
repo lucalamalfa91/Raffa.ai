@@ -123,9 +123,11 @@ public sealed class AgenticAskTurnTests
     {
         var gateway = new ScriptedGateway(_ => Result<AiConversationResult>.Failure("no deployment"));
 
+        using var turn = RunContext.BeginTurn();
         var result = await Turn(gateway, new FakeTool("get_contract", (_, _) => AskToolResult.FromPack([]))).RunAsync(Context(), CancellationToken.None);
 
         Assert.Null(result);
+        Assert.Contains("agenticFallback=provider-error", RunContext.TurnDetail);
     }
 
     [Fact]
