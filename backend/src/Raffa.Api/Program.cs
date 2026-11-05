@@ -271,6 +271,12 @@ var interviewOptions = new Raffa.AiFlows.Ask.Interview.InterviewOptions();
 builder.Configuration.GetSection(Raffa.AiFlows.Ask.Interview.InterviewOptions.SectionName).Bind(interviewOptions);
 builder.Services.AddSingleton(interviewOptions);
 
+// AskRaffa4:* -- the 4.0 Chiedi flags (NoBenchmark is off: the engine has market data and abstains
+// honestly when it has none). Registered BEFORE AddChatModule because the module's own default is TryAdd.
+var askAnswerOptions = new Raffa.Chat.Application.Ask4.AskAnswerOptions();
+builder.Configuration.GetSection("AskRaffa4").Bind(askAnswerOptions);
+builder.Services.AddSingleton(askAnswerOptions);
+
 // F1 Ask turn options (Chat:AskTurn): every default reproduces today's behaviour.
 var askTurnOptions = new Raffa.AiFlows.Ask.Orchestration.AskTurnOptions { AiUnderstanding = true };
 builder.Configuration.GetSection(Raffa.AiFlows.Ask.Orchestration.AskTurnOptions.SectionName).Bind(askTurnOptions);

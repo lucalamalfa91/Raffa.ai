@@ -376,7 +376,7 @@ public sealed class AskCopilotService(
             var composed = await artifactComposer.ComposeAsync(
                 tenantId,
                 new Raffa.AiFlows.Ask.Artifacts.ArtifactRequest(question, recentTurns, scopeContractId, language),
-                new Raffa.AiFlows.Ask.Artifacts.ArtifactScopeHint(artifactCommand.Supplier, false, false, artifactCommand.Kind),
+                new Raffa.AiFlows.Ask.Artifacts.ArtifactScopeHint(artifactCommand.Supplier, artifactCommand.UsesPortfolio, artifactCommand.UsesMarket, artifactCommand.Kind),
                 cancellationToken).ConfigureAwait(false);
             if (composed is not null)
             {
