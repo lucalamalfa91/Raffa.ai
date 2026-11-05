@@ -1,6 +1,7 @@
 using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Ask4;
 using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Memory;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Contracts;
 
@@ -147,6 +148,7 @@ public static class AskConversationsEndpointExtensions
                 services.GetRequiredService<Raffa.AiFlows.Ask.Orchestration.AskCopilotService>(),
                 conversations,
                 services.GetRequiredService<CapabilityFollowUpAppender>(),
+                services.GetRequiredService<UserProcurementMemoryService>(),
                 tenantId, userId, conversation.ConversationId, conversation,
                 question, effectiveQuestion, hints, youInterviewJson, cancellationToken)
             .ConfigureAwait(false);

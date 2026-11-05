@@ -48,4 +48,30 @@ describe("storedArtifacts", () => {
     expect(out[0]!.artifact.subtitle).toContain("GitLab");
     expect(out[0]!.conversationId).toBe("c1");
   });
+
+  it("keeps the server id, version, contract and missing-data state across a conversation reload", () => {
+    const messages = [{
+      id: "m1",
+      payload: {
+        artifact: {
+          ...artifact("kpi"),
+          id: "stable-artifact-id",
+          version: 3,
+          status: "draft" as const,
+          contractId: "11111111-1111-1111-1111-111111111111",
+          missingInputs: ["renewal_quote", "actual_usage"],
+        },
+      },
+    }];
+
+    const [placed] = storedArtifacts(messages, "c1", t);
+
+    expect(placed?.artifact).toMatchObject({
+      id: "stable-artifact-id",
+      version: 3,
+      status: "draft",
+      contractId: "11111111-1111-1111-1111-111111111111",
+      missingInputs: ["renewal_quote", "actual_usage"],
+    });
+  });
 });

@@ -3,6 +3,7 @@ using Raffa.AiFlows.Ask.Interview;
 using Raffa.Api.Infrastructure;
 using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Interview;
+using Raffa.Chat.Application.Memory;
 
 namespace Raffa.Api;
 
@@ -49,6 +50,7 @@ public static class ChatEndpointExtensions
         ConversationService conversationService,
         AskCopilotService askCopilotService,
         CapabilityFollowUpAppender capabilityFollowUpAppender,
+        UserProcurementMemoryService memoryService,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -93,7 +95,7 @@ public static class ChatEndpointExtensions
             []);
 
         var reply = await ConversationsEndpointExtensions.AskAndAppendAsync(
-                askCopilotService, conversationService, capabilityFollowUpAppender, tenantId, userId, conversation.ConversationId,
+                askCopilotService, conversationService, capabilityFollowUpAppender, memoryService, tenantId, userId, conversation.ConversationId,
                 // The alias always opens a fresh conversation, so it can never be answering an
                 // interview: no hints, no interview reference (ADR-030).
                 detail, request.Question, request.Question, AskTurnHints.None, null, cancellationToken)

@@ -23,6 +23,16 @@ namespace Raffa.AiFlows.Tests.Ask.Planning;
 /// </summary>
 public sealed class IntentPlannerTests
 {
+    [Theory]
+    [InlineData("Come imposto una gara RFP per selezionare un nuovo fornitore?")]
+    [InlineData("Costruisci un business case TCO e una scorecard supplier risk")]
+    [InlineData("Quale strategia di categoria useresti per il software SaaS?")]
+    public void Broad_procurement_questions_use_the_advisory_intent(string question)
+    {
+        var result = new IntentPlanner().Plan(question, null);
+
+        Assert.Equal(AskIntent.ProcurementAdvisory, result.Intent);
+    }
     private readonly IntentPlanner _planner = new();
 
     [Fact]

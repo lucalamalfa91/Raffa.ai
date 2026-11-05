@@ -109,6 +109,12 @@ export default function ArtifactViewPanel({ artifact, onClose }: { artifact: Art
     >
       <article className="content-doc">
         <p className="content-sub">{artifact.subtitle}</p>
+        {artifact.missingInputs?.length ? (
+          <section className="content-section" aria-label={t("Missing data")}>
+            <h4 className="content-h">{t("Missing data")}</h4>
+            <ul>{artifact.missingInputs.map((input) => <li key={input}>{input.replaceAll("_", " ")}</li>)}</ul>
+          </section>
+        ) : null}
         {artifact.link ? (
           <Link className="btn btn-secondary content-link" to={artifact.link.to}>
             {artifact.link.label}

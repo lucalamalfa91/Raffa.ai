@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
+using System.Text;
 using Raffa.AiFlows.Ask.Guards;
 using Raffa.AiFlows.Shared.Guards;
 using Raffa.AiFlows.Shared.Pack;
@@ -96,6 +98,24 @@ public sealed class AnswerComposer(
             .ConfigureAwait(false);
         if (first.IsFailure)
         {
+            // Provider degradation must not erase an answer already present in the authorised
+            // pack. Use the same deterministic composer and the same guards as the two-attempt
+            // violation path. The synthetic metadata contains only a hash, never prompt data.
+            var inputHash = Convert.ToHexStringLower(
+                SHA256.HashData(Encoding.UTF8.GetBytes(promptedQuestion + "\n" + packJson)));
+            var metadata = new AiCallMetadata(
+                "deterministic-fallback", "1", AnswerPromptV2.Version,
+                DateTimeOffset.UtcNow, inputHash);
+            if (ComposeGrounded(question, pack, metadata) is { } grounded)
+            {
+                return Result<AnswerComposerResult>.Success(
+                    new AnswerComposerResult(
+                        grounded,
+                        GuardIntervened: false,
+                        GuardViolation: "answer provider unavailable",
+                        FallbackUsed: true));
+            }
+
             return Result<AnswerComposerResult>.Failure(first.Error);
         }
 

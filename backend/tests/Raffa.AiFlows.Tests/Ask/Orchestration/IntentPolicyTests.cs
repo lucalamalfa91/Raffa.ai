@@ -1,4 +1,5 @@
 using Raffa.AiFlows.Ask.Orchestration;
+using Raffa.AiFlows.Ask.Planning;
 using Raffa.Chat.Domain;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
@@ -35,18 +36,35 @@ public sealed class IntentPolicyTests
     [Theory]
     [InlineData(AskIntent.DocumentStatus, true)]
     [InlineData(AskIntent.Clause, true)]
+    [InlineData(AskIntent.ProcurementAdvisory, true)]
     [InlineData(AskIntent.StructuredFact, false)]
     [InlineData(AskIntent.Savings, false)]
-    public void Only_document_status_and_clause_turns_skip_the_data_check(AskIntent intent, bool expected) =>
+    public void Data_check_runs_only_where_contract_gap_estimates_are_relevant(AskIntent intent, bool expected) =>
         Assert.Equal(expected, IntentPolicy.SkipsDataCheck(intent));
 
     [Fact]
-    public void Market_research_needs_a_non_empty_portfolio_and_not_a_document_status_turn()
+    public void Market_research_runs_only_for_intents_that_need_benchmarks()
     {
-        Assert.False(IntentPolicy.RunsMarketResearch(AskIntent.Savings, Page()));
-        Assert.True(IntentPolicy.RunsMarketResearch(AskIntent.Savings, Page(Item())));
-        Assert.False(IntentPolicy.RunsMarketResearch(AskIntent.DocumentStatus, Page(Item())));
+        static IntentPlanResult Plan(AskIntent intent) => new(intent, "test", null);
+
+        Assert.False(IntentPolicy.RunsMarketResearch(Plan(AskIntent.Savings), Page()));
+        Assert.True(IntentPolicy.RunsMarketResearch(Plan(AskIntent.Savings), Page(Item())));
+        Assert.True(IntentPolicy.RunsMarketResearch(Plan(AskIntent.MarketCompare), Page(Item())));
+        Assert.False(IntentPolicy.RunsMarketResearch(Plan(AskIntent.Clause), Page(Item())));
+        Assert.False(IntentPolicy.RunsMarketResearch(Plan(AskIntent.StructuredFact), Page(Item())));
+        Assert.False(IntentPolicy.RunsMarketResearch(Plan(AskIntent.PortfolioStrategy), Page(Item())));
+        Assert.False(IntentPolicy.RunsMarketResearch(Plan(AskIntent.DocumentStatus), Page(Item())));
     }
+
+    [Theory]
+    [InlineData(AskIntent.Navigate, RetrievalNeed.None)]
+    [InlineData(AskIntent.Clause, RetrievalNeed.ActiveEntity)]
+    [InlineData(AskIntent.StructuredFact, RetrievalNeed.ActiveEntity)]
+    [InlineData(AskIntent.PortfolioStrategy, RetrievalNeed.Portfolio)]
+    [InlineData(AskIntent.MarketCompare, RetrievalNeed.Benchmarks)]
+    [InlineData(AskIntent.WebResearch, RetrievalNeed.PublicWeb)]
+    public void Retrieval_policy_is_explicit(AskIntent intent, RetrievalNeed expected) =>
+        Assert.Equal(expected, IntentPolicy.RetrievalFor(intent));
 
     [Fact]
     public void The_Q3_persist_turn_is_renewal_strategy_with_a_named_contract()

@@ -1,5 +1,7 @@
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Domain;
+using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Memory;
 using Raffa.SharedKernel;
 
 namespace Raffa.AiFlows.Ask.Interview;
@@ -25,7 +27,11 @@ public sealed record AskTurnHints(
     bool DeclinedWebResearch = false,
     bool WebMode = false,
     AskIntent? PlannedIntent = null,
-    bool Understood = false)
+    bool Understood = false,
+    CurrentArtifactHint? CurrentArtifact = null,
+    int NextArtifactVersion = 1,
+    ConversationState? ConversationState = null,
+    UserMemorySnapshot? UserMemory = null)
 {
     public static AskTurnHints None { get; } = new(null, null, null, false);
 
@@ -48,6 +54,15 @@ public sealed record AskTurnHints(
     /// <summary>The hints for a free-text interview answer: nothing forced, only no second interview.</summary>
     public static AskTurnHints FreeText { get; } = new(null, null, null, true);
 }
+
+/// <summary>The last persisted artifact in this conversation, resolved by the API before planning.</summary>
+public sealed record CurrentArtifactHint(
+    string Id,
+    string Kind,
+    string Title,
+    string? FocusSupplier,
+    EntityId? ContractId,
+    int Version);
 
 /// <summary>One contract the interview can offer as an option — display data only, never a guid
 /// in the label (R-ASK-08); the id travels in the resolution.</summary>

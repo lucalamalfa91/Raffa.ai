@@ -114,6 +114,7 @@ internal static class AskFlowServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IIntentHandler, DocumentStatusHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IIntentHandler, NavigateHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IIntentHandler, WebResearchHandler>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IIntentHandler, ProcurementAdvisoryHandler>());
         services.AddScoped<DefaultIntentHandler>();
         services.AddScoped<IntentHandlerRegistry>();
         services.AddScoped<InDomainReplyPipeline>();

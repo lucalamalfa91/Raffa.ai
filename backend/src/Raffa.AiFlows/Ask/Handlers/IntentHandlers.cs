@@ -76,6 +76,22 @@ internal sealed class PortfolioStrategyHandler(PortfolioStrategyPackBuilder buil
                 .ConfigureAwait(false));
 }
 
+internal sealed class ProcurementAdvisoryHandler(PortfolioStrategyPackBuilder portfolio) : IIntentHandler
+{
+    public IReadOnlyList<AskIntent> Intents { get; } = [AskIntent.ProcurementAdvisory];
+
+    public async Task<IntentOutcome> HandleAsync(InDomainTurn turn, CancellationToken cancellationToken)
+    {
+        var items = new List<Raffa.AiFlows.Shared.Pack.PackItem> { ProcurementAdvisoryPack.Build() };
+        if (turn.Scope.Portfolio.Items.Count > 0)
+        {
+            items.AddRange(await portfolio.BuildPortfolioStrategyPackAsync(
+                turn.Scope.Portfolio, turn.Scope.SupplierNames, cancellationToken).ConfigureAwait(false));
+        }
+        return new IntentOutcome.Pack(items);
+    }
+}
+
 internal sealed class PortfolioSavingsTargetHandler(SavingsPackBuilder builder) : IIntentHandler
 {
     public IReadOnlyList<AskIntent> Intents { get; } = [AskIntent.PortfolioSavingsTarget];

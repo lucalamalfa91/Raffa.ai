@@ -2,6 +2,7 @@ using Raffa.AiFlows.Ask.Interview;
 using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.Chat.Application.Ask4;
 using Raffa.Chat.Application.Conversations;
+using Raffa.Chat.Application.Memory;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.SharedKernel;
@@ -59,6 +60,7 @@ internal sealed class AgenticCaseQuestionAnswerer(
                     services.GetRequiredService<AskCopilotService>(),
                     conversations,
                     services.GetRequiredService<CapabilityFollowUpAppender>(),
+                    services.GetRequiredService<UserProcurementMemoryService>(),
                     tenantId, userId, conversationId, conversation,
                     text, text, AskTurnHints.None, null, cancellationToken)
                 .ConfigureAwait(false);

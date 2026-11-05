@@ -48,6 +48,7 @@ export const IT_ASK4: Readonly<Record<string, string>> = {
   "E.g. “When must we give notice to Salesforce?”": "Es. «Quando dobbiamo dare disdetta a Salesforce?»",
   "Ask⟦button⟧": "Chiedi",
   "Procurement only · cites its source or says it cannot": "Solo procurement · cita la fonte o dice che non può",
+  "The requested content could not be opened.": "Non sono riuscito ad aprire il contenuto richiesto.",
 
   // Guida Raffa
   "Continue the conversation or start a new one.": "Continua la conversazione o aprine una nuova.",

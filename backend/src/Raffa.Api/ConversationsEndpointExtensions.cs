@@ -11,6 +11,7 @@ using Raffa.Chat.Application.Conversations;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
+using Raffa.Chat.Application.Memory;
 using Raffa.Chat.Application.WebResearch;
 using Raffa.Chat.Domain.Conversations;
 using Raffa.SharedKernel;
@@ -88,6 +89,8 @@ public static class ConversationsEndpointExtensions
         endpoints.MapPost("/api/conversations/{id}/restore", RestoreConversationAsync);
         endpoints.MapPost("/api/conversations/{id}/messages", PostConversationMessageAsync);
         endpoints.MapPost("/api/conversations/{id}/feedback", PostConversationFeedbackAsync);
+        endpoints.MapGet("/api/ask/memory", GetUserMemoryAsync);
+        endpoints.MapDelete("/api/ask/memory", DeleteUserMemoryAsync);
         return endpoints;
     }
 
@@ -367,6 +370,7 @@ public static class ConversationsEndpointExtensions
         ConversationService conversationService,
         AskCopilotService askCopilotService,
         CapabilityFollowUpAppender capabilityFollowUpAppender,
+        UserProcurementMemoryService memoryService,
         ICallerContext callerContext,
         CancellationToken cancellationToken)
     {
@@ -434,7 +438,7 @@ public static class ConversationsEndpointExtensions
         }
 
         var reply = await AskAndAppendAsync(
-                askCopilotService, conversationService, capabilityFollowUpAppender, tenantId, userId, conversationId, conversation,
+                askCopilotService, conversationService, capabilityFollowUpAppender, memoryService, tenantId, userId, conversationId, conversation,
                 request.Question, effectiveQuestion, hints, youInterviewJson, cancellationToken)
             .ConfigureAwait(false);
 
@@ -483,6 +487,7 @@ public static class ConversationsEndpointExtensions
         AskCopilotService askCopilotService,
         ConversationService conversationService,
         CapabilityFollowUpAppender capabilityFollowUpAppender,
+        UserProcurementMemoryService memoryService,
         TenantId tenantId,
         string userId,
         EntityId conversationId,
@@ -494,6 +499,34 @@ public static class ConversationsEndpointExtensions
         CancellationToken cancellationToken)
     {
         var recentTurns = BuildPromptHistory(conversation);
+        var userMemory = await memoryService.GetAsync(
+            tenantId, userId, language: Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it", ct: cancellationToken).ConfigureAwait(false);
+        var artifactEntries = conversation.Messages
+            .Select(message => (Artifact: ReplyPayloadJson.Deserialize(message.PayloadJson)?.Artifact, message.MessageId))
+            .Where(entry => entry.Artifact is not null)
+            .Select(entry => (Artifact: entry.Artifact!, entry.MessageId))
+            .ToList();
+        var currentEntry = artifactEntries.LastOrDefault();
+        var currentArtifact = currentEntry.Artifact;
+        EntityId? currentArtifactContractId = currentArtifact?.ContractId is { } contractIdText
+            && Guid.TryParse(contractIdText, out var contractId)
+                ? new EntityId(contractId)
+                : null;
+        hints = hints with
+        {
+            CurrentArtifact = currentArtifact is null
+                ? null
+                : new CurrentArtifactHint(
+                    string.IsNullOrWhiteSpace(currentArtifact.Id) ? $"artifact-{currentEntry.MessageId.Value}" : currentArtifact.Id,
+                    currentArtifact.Kind,
+                    currentArtifact.Title,
+                    currentArtifact.FocusSupplier,
+                    currentArtifactContractId,
+                    currentArtifact.Version),
+            NextArtifactVersion = artifactEntries.Count == 0 ? 1 : artifactEntries.Max(a => Math.Max(1, a.Artifact.Version)) + 1,
+            ConversationState = ConversationState.Parse(conversation.StateJson),
+            UserMemory = userMemory,
+        };
 
         // A capability follow-up (ADR-031) sits after the turn it follows; it is never what a typed
         // message answers, so an interview right before it still counts as the last Raffa turn.
@@ -519,6 +552,18 @@ public static class ConversationsEndpointExtensions
         var raffaMessage = await conversationService.AppendMessageAsync(
                 tenantId, userId, conversationId, ToAppendRequest(reply), cancellationToken)
             .ConfigureAwait(false);
+
+        // The Ask engine reduces focus/goal/constraints from its authorised plan and structured
+        // payload. The endpoint only persists that server-owned state after ownership checks.
+        var priorState = ConversationState.Parse(conversation.StateJson);
+        var nextState = reply.Payload?.ConversationState ?? priorState;
+        if (nextState != priorState)
+        {
+            await conversationService.UpdateStateAsync(
+                tenantId, userId, conversationId, nextState, cancellationToken).ConfigureAwait(false);
+        }
+        await memoryService.ObserveAsync(
+            tenantId, userId, nextState, question, cancellationToken).ConfigureAwait(false);
 
         var messageId = raffaMessage?.MessageId ?? conversationId;
 
@@ -565,6 +610,37 @@ public static class ConversationsEndpointExtensions
             capabilityCheck = capabilityCheckState,
             followUpMessage,
         };
+    }
+
+    private static async Task<IResult> GetUserMemoryAsync(
+        HttpRequest request, ICallerContext callerContext, UserProcurementMemoryService memoryService,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null) return caller.Failure;
+        using var scope = caller.Scope;
+        var memory = await memoryService.GetAsync(
+            caller.TenantId, caller.Identity!, language: Raffa.SharedKernel.Language.ResponseLanguage.Current ?? "it", ct: cancellationToken).ConfigureAwait(false);
+        return Results.Ok(new
+        {
+            memory.PreferredOutput,
+            memory.FrequentWorkflows,
+            memory.FrequentIntents,
+            memory.Suggestions,
+            memory.ExpiresAt,
+            retentionDays = (int)UserProcurementMemoryService.Retention.TotalDays,
+        });
+    }
+
+    private static async Task<IResult> DeleteUserMemoryAsync(
+        HttpRequest request, ICallerContext callerContext, UserProcurementMemoryService memoryService,
+        CancellationToken cancellationToken)
+    {
+        var caller = await callerContext.ResolveTenantAsync(request, cancellationToken);
+        if (caller.Failure is not null) return caller.Failure;
+        using var scope = caller.Scope;
+        await memoryService.DeleteAsync(caller.TenantId, caller.Identity!, cancellationToken).ConfigureAwait(false);
+        return Results.NoContent();
     }
 
     /// <summary>

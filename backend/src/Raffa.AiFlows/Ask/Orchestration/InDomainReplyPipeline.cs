@@ -6,6 +6,7 @@ using Raffa.AiFlows.WebResearch.Orchestration;
 using Raffa.Chat.Application.Interview;
 using Raffa.Chat.Application.Reply;
 using Raffa.Chat.Domain;
+using Raffa.AiGateway.Telemetry;
 
 namespace Raffa.AiFlows.Ask.Orchestration;
 
@@ -40,6 +41,9 @@ public sealed class InDomainReplyPipeline(
 
         var plan = turn.Plan;
         var hints = scope.Hints;
+        var retrievalNeed = IntentPolicy.RetrievalFor(plan.Intent);
+        RunContext.AddTurnDetail(
+            $"intent={plan.Intent} planBasis={plan.Basis} retrievalNeed={retrievalNeed}");
 
         // Web research and navigate/quote-route end the turn before the interview.
         if (IntentPolicy.IsPreInterviewShortCircuit(plan.Intent))
@@ -108,7 +112,9 @@ public sealed class InDomainReplyPipeline(
                     IntentPolicy.SkipsDataCheck(plan.Intent) ? []
                     : turn.NamedContractItem is not null ? [turn.NamedContractItem]
                     : MarketDataCheck.ContractsForDataCheck(packItems, scope.Portfolio),
-                    IntentPolicy.RunsMarketResearch(plan.Intent, scope.Portfolio),
+                    turnOptions?.ReliableRetrievalPolicy == false
+                        ? scope.Portfolio.Items.Count > 0 && plan.Intent != AskIntent.DocumentStatus
+                        : IntentPolicy.RunsMarketResearch(plan, scope.Portfolio),
                     IntentPolicy.IsCouncilIntent(plan.Intent, turn.NamedContractItem),
                     AppendCalendarItem: true),
                 cancellationToken,

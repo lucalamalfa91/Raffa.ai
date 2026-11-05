@@ -42,7 +42,13 @@ public sealed record ArtifactRequest(
     string Language);
 
 /// <summary>The composed content with the scope it was built on (for the audit trail and the panel's subtitle).</summary>
-public sealed record ArtifactResult(ArtifactDraft Draft, string Kind, string? FocusSupplier, bool UsedPortfolio, bool UsedMarket);
+public sealed record ArtifactResult(
+    ArtifactDraft Draft,
+    string Kind,
+    string? FocusSupplier,
+    EntityId? FocusContractId,
+    bool UsedPortfolio,
+    bool UsedMarket);
 
 /// <summary>The scope the turn-understanding step resolved for an artifact request.</summary>
 public sealed record ArtifactScopeHint(string? Supplier, bool UsesPortfolio, bool UsesMarket, string Kind);
@@ -231,7 +237,13 @@ public sealed class ArtifactComposer(
         // model call at all (see BuildDeterministicDraft's own doc comment).
         draft ??= BuildDeterministicDraft(plan.Kind, request.Language, focusSupplier, focusFacts, portfolioSummary);
 
-        return new ArtifactResult(draft, plan.Kind, focusSupplier, plan.UsesPortfolio, usedMarket);
+        return new ArtifactResult(
+            draft,
+            plan.Kind,
+            focusSupplier,
+            focusItems.Count == 1 ? new EntityId(focusItems[0].ContractId) : null,
+            plan.UsesPortfolio,
+            usedMarket);
     }
 
     private static object Row(PortfolioListItem i, string supplier, DateOnly today) => new
@@ -349,6 +361,8 @@ public sealed class ArtifactComposer(
     {
         var it = string.Equals(language, "it", StringComparison.OrdinalIgnoreCase);
         string L(string italian, string english) => it ? italian : english;
+        var numberCulture = it ? CultureInfo.GetCultureInfo("it-IT") : CultureInfo.GetCultureInfo("en-US");
+        string Amount(decimal value) => value.ToString("N0", numberCulture);
 
         var tiles = new List<DraftTile>();
         var charts = new List<DraftChart>();
@@ -365,12 +379,12 @@ public sealed class ArtifactComposer(
 
             if (f.AnnualSpend is { } spend)
             {
-                tiles.Add(new DraftTile(L("Spesa annua", "Annual spend"), $"{f.Currency} {spend:N0}", "", ""));
+                tiles.Add(new DraftTile(L("Spesa annua", "Annual spend"), $"{f.Currency} {Amount(spend)}", "", ""));
             }
 
             if (f.TotalContractValue is { } tcv)
             {
-                tiles.Add(new DraftTile(L("Valore totale (TCV)", "Total contract value"), $"{f.Currency} {tcv:N0}", "", ""));
+                tiles.Add(new DraftTile(L("Valore totale (TCV)", "Total contract value"), $"{f.Currency} {Amount(tcv)}", "", ""));
             }
 
             if (f.Start is not null || f.End is not null)
@@ -419,7 +433,7 @@ public sealed class ArtifactComposer(
                 {
                     charts.Add(new DraftChart(
                         L("Costo annuo per voce", "Annual cost by line"),
-                        priced.Select(x => new DraftBar(Truncate(x.Description, 40), (double)x.AnnualCost!.Value, $"{f.Currency} {x.AnnualCost:N0}")).ToList()));
+                        priced.Select(x => new DraftBar(Truncate(x.Description, 40), (double)x.AnnualCost!.Value, $"{f.Currency} {Amount(x.AnnualCost.Value)}")).ToList()));
                 }
 
                 if (f.Clauses.Count > 0)
@@ -435,7 +449,7 @@ public sealed class ArtifactComposer(
             {
                 lines.Add($"**{L("Dati del contratto", "Contract data")}**");
                 lines.Add($"{f.Supplier} · {f.Type} · {f.Status}");
-                if (f.AnnualSpend is { } s) lines.Add(L($"Spesa annua: {f.Currency} {s:N0}", $"Annual spend: {f.Currency} {s:N0}"));
+                if (f.AnnualSpend is { } s) lines.Add(L($"Spesa annua: {f.Currency} {Amount(s)}", $"Annual spend: {f.Currency} {Amount(s)}"));
                 if (f.Start is not null || f.End is not null) lines.Add(L($"Durata: {f.Start ?? "—"} → {f.End ?? "—"}", $"Term: {f.Start ?? "—"} → {f.End ?? "—"}"));
                 if (f.CancellationDeadline is { } cd) lines.Add(L($"Scadenza disdetta: {cd}", $"Cancellation deadline: {cd}"));
                 if (f.Clauses.Count > 0)
@@ -529,7 +543,8 @@ internal sealed partial class GroundedFiguresVerifier : IStepVerifier<ArtifactCo
 /// <summary>Maps the composer's draft onto the reply payload the conversation stores and the client shows.</summary>
 public static class ArtifactPayloads
 {
-    public static Raffa.Chat.Application.Reply.ArtifactPayload From(ArtifactResult result, ArtifactDraft draft) => new(
+    public static Raffa.Chat.Application.Reply.ArtifactPayload From(ArtifactResult result, ArtifactDraft draft, int version = 1) => new(
+        Guid.NewGuid().ToString("N"),
         result.Kind,
         draft.Title,
         draft.Subtitle,
@@ -541,5 +556,9 @@ public static class ArtifactPayloads
             c.Title, c.Items.Select(i => new Raffa.Chat.Application.Reply.ArtifactBarPayload(i.Label, i.Value, i.Display)).ToList())).ToList(),
         draft.Tables.Select(t => new Raffa.Chat.Application.Reply.ArtifactTablePayload(
             t.Title, t.Columns, t.Rows.Select(r => (IReadOnlyList<string>)r).ToList())).ToList(),
-        draft.Markdown);
+        draft.Markdown,
+        Version: Math.Max(1, version),
+        Status: "draft",
+        ContractId: result.FocusContractId?.Value.ToString(),
+        MissingInputs: result.Kind == "kpi" ? ["renewal_quote", "actual_usage", "market_benchmark"] : []);
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Raffa.Chat.Application.Conversations;
 
 namespace Raffa.Chat.Application.Reply;
 
@@ -27,10 +28,32 @@ public sealed record ReplyPayload(
     FeedbackResult? FeedbackResult = null,
     IReadOnlyList<string>? FollowUps = null,
     string? CapabilityCheckFor = null,
-    ArtifactPayload? Artifact = null);
+    ArtifactPayload? Artifact = null,
+    IReadOnlyList<UiActionPayload>? UiActions = null,
+    ConversationState? ConversationState = null,
+    ArtifactChangeProposal? ArtifactChangeProposal = null,
+    bool ArtifactChangeCancelled = false);
+
+/// <summary>A server-created, non-executed artifact modification waiting for explicit confirmation.</summary>
+public sealed record ArtifactChangeProposal(string ArtifactId, string Instruction);
+
+/// <summary>
+/// A server-authorized client command. The closed vocabulary prevents model prose (or document
+/// text) from opening arbitrary application surfaces. Resource ids always refer to a resource
+/// already returned by the server in this conversation.
+/// </summary>
+public sealed record UiActionPayload(string Type, string ResourceType, string ResourceId)
+{
+    public const string OpenActionPanel = "OPEN_ACTION_PANEL";
+    public const string ProcurementArtifact = "procurement_artifact";
+
+    public static UiActionPayload OpenArtifact(string artifactId) =>
+        new(OpenActionPanel, ProcurementArtifact, artifactId);
+}
 
 /// <summary>A dashboard, KPI set or document the artifact-composer agent wrote for this turn; the client shows it in the side panel.</summary>
 public sealed record ArtifactPayload(
+    string Id,
     string Kind,
     string Title,
     string Subtitle,
@@ -40,7 +63,11 @@ public sealed record ArtifactPayload(
     IReadOnlyList<ArtifactTilePayload> Tiles,
     IReadOnlyList<ArtifactChartPayload> Charts,
     IReadOnlyList<ArtifactTablePayload> Tables,
-    string Markdown);
+    string Markdown,
+    int Version = 1,
+    string Status = "draft",
+    string? ContractId = null,
+    IReadOnlyList<string>? MissingInputs = null);
 
 public sealed record ArtifactTilePayload(string Label, string Value, string Hint, string Tone);
 

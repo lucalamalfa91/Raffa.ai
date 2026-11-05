@@ -4519,6 +4519,8 @@ export interface ConversationMessage4 {
     feedbackResult?: { forMessageId: string } | null;
     /** A dashboard / KPI set / brief written for this turn: it opens in the side panel. */
     artifact?: ArtifactPayloadBody | null;
+    /** Server-authorized, allowlisted application commands. Free-form model text is never executed. */
+    uiActions?: Array<{ type: string; resourceType: string; resourceId: string }> | null;
   } | null;
   /** Raffa asks before acting: questions with clickable options. */
   interview?: {
@@ -4662,6 +4664,7 @@ export interface OpenCase4 {
 
 /** A dashboard / KPI set / document the artifact-composer agent wrote for a turn (the reply's `payload.artifact`). */
 export interface ArtifactPayloadBody {
+  id?: string;
   kind: "kpi" | "dashboard" | "document";
   title: string;
   subtitle: string;
@@ -4672,6 +4675,10 @@ export interface ArtifactPayloadBody {
   charts: Array<{ title: string; items: Array<{ label: string; value: number; display: string }> }>;
   tables: Array<{ title: string; columns: string[]; rows: string[][] }>;
   markdown: string;
+  version?: number;
+  status?: "draft" | "published" | "archived";
+  contractId?: string | null;
+  missingInputs?: string[] | null;
 }
 
 export interface AskOfferApi {

@@ -44,6 +44,10 @@ public sealed class AskTurnOptions
     /// </summary>
     public bool AiUnderstanding { get; set; }
 
+    /// <summary>Use the smallest retrieval tier authorised by the planned intent. Disable only as
+    /// an emergency rollback; artifacts and persisted state remain readable.</summary>
+    public bool ReliableRetrievalPolicy { get; set; } = true;
+
     /// <summary>A-05: backstop deadline of one answer-composer step when <see cref="AnswerOnRunner"/> is on;
     /// far above the gateway's own timeout, so it bounds a hung call and changes no normal turn.</summary>
     public TimeSpan AnswerStepDeadline { get; set; } = TimeSpan.FromMinutes(10);

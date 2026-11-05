@@ -287,6 +287,18 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       const placed = storedArtifacts(r.data.conversation.messages, r.data.conversation.id, t).find((c) => c.afterMessageId === fresh.id);
       if (placed) setPanel({ id: placed.artifact.id, artifact: placed.artifact });
     }
+    // Execute only the closed server event vocabulary, and only for an artifact that this
+    // authenticated conversation actually returned. Model markdown can never open UI surfaces.
+    const openAction = fresh?.payload?.uiActions?.find(
+      (action) => action.type === "OPEN_ACTION_PANEL" && action.resourceType === "procurement_artifact",
+    );
+    if (openAction) {
+      const placed = storedArtifacts(r.data.conversation.messages, r.data.conversation.id, t).find(
+        (content) => content.artifact.id === openAction.resourceId,
+      );
+      if (placed) setPanel({ id: placed.artifact.id, artifact: placed.artifact });
+      else setConvError(t("The requested content could not be opened."));
+    }
     void reloadLists();
     // The capability check may still be looking: its follow-up turn lands in the conversation shortly.
     if (r.data.capabilityCheck === "pending") {

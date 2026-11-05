@@ -3,6 +3,7 @@ using Raffa.Chat.Application.Conversations;
 using Raffa.SharedKernel.Renewals;
 using Raffa.Chat.Application.Feedback;
 using Raffa.Chat.Application.WebResearch;
+using Raffa.Chat.Application.Memory;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Tenancy;
 using Microsoft.EntityFrameworkCore;
@@ -80,6 +81,7 @@ public static class ServiceCollectionExtensions
             // AddDbContext above) rather than a second, independently-tracked context — same
             // reason every DbContext-backed service in this codebase is Scoped, not Singleton.
             services.AddScoped<ConversationService>();
+            services.AddScoped<UserProcurementMemoryService>();
 
             // AskRaffa 4.0 Chiedi: the turn orchestration over the answer service (production:
             // Raffa.AiFlows; fixture mode: the deterministic ContractFacts answerer).

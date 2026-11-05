@@ -200,6 +200,15 @@ public sealed class IntentPlanner
         @"résum[eé]|résumer|resumen|zusammenfass\w*)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex ProcurementAdvisoryPattern = new(
+        @"\b(sourcing|source\s+to\s+contract|procure\w*|acquist\w*|approvvigion\w*|gara|rfp|rfq|rfi|tender|capitolato|" +
+        @"vendor\s+selection|selezione\s+fornitor\w*|supplier\s+(risk|performance|governance|scorecard)|rischio\s+fornitor\w*|" +
+        @"vendor\s+management|gestione\s+fornitor\w*|qbr|tco|total\s+cost|make\s+or\s+buy|business\s+case|" +
+        @"category\s+strategy|strategia\s+di\s+categoria|spend\s+analysis|analisi\s+della\s+spesa|demand\s+management|" +
+        @"license\s+optimi[sz]ation|ottimizzazione\s+licenz\w*|procurement\s+policy|politica\s+acquisti|esg|sostenibilit[aà]|" +
+        @"due\s+diligence|should-cost|cost\s+breakdown|negoziazione|trattativa)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// Whether <paramref name="question"/> speaks the notice lexicon (notice / preavviso / disdetta /
     /// cancellation deadline). The one definition of that lexicon: this planner uses it to steer the
@@ -302,6 +311,11 @@ public sealed class IntentPlanner
         if (BenchmarkPattern.IsMatch(trimmed))
         {
             Add(namedSupplier is not null ? AskIntent.MarketCompare : AskIntent.QuoteRoute);
+        }
+
+        if (ProcurementAdvisoryPattern.IsMatch(trimmed))
+        {
+            Add(AskIntent.ProcurementAdvisory);
         }
 
         if (RenewalStrategyPattern.IsMatch(trimmed))
@@ -425,6 +439,14 @@ public sealed class IntentPlanner
                     "matched the benchmark/compare lexicon with no supplier in scope — route to " +
                     "Quote check (R-SYS-02).",
                     namedSupplier, goal);
+        }
+
+        if (ProcurementAdvisoryPattern.IsMatch(trimmed))
+        {
+            return new IntentPlanResult(
+                AskIntent.ProcurementAdvisory,
+                "matched the general procurement advisory lexicon (sourcing, supplier management, TCO, category, risk or policy).",
+                namedSupplier, goal);
         }
 
         if (RenewalStrategyPattern.IsMatch(trimmed))

@@ -85,6 +85,7 @@ public sealed class ConversationService(
     private const string AuditConversationRestoredAction = "conversation.restored";
     private const string AuditConversationArchivedAction = "conversation.archived";
     private const string AuditConversationUnarchivedAction = "conversation.unarchived";
+    private const string AuditConversationStateUpdatedAction = "conversation.state.updated";
     private const string AuditConversationResourceType = "conversation";
     private const string AuditConversationMessageResourceType = "conversation_message";
 
@@ -110,6 +111,7 @@ public sealed class ConversationService(
             ScopeContractId = scopeContractId,
             CreatedAt = now,
             UpdatedAt = now,
+            StateJson = ConversationState.Empty.Serialize(),
         };
 
         dbContext.Conversations.Add(conversation);
@@ -207,7 +209,30 @@ public sealed class ConversationService(
             messages.Select(ToMessageResult).ToList(),
             conversation.CustomTitle,
             conversation.ArchivedAt,
-            conversation.CaseId);
+            conversation.CaseId,
+            conversation.StateJson);
+    }
+
+    /// <summary>Persists state only after the same tenant+user ownership check as message writes.</summary>
+    public async Task<bool> UpdateStateAsync(
+        TenantId tenantId, string userId, EntityId conversationId, ConversationState state,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+        var conversation = await dbContext.Conversations.SingleOrDefaultAsync(
+            c => c.TenantId == tenantId && c.UserId == userId && c.Id == conversationId,
+            cancellationToken).ConfigureAwait(false);
+        if (conversation is null) return false;
+
+        conversation.StateJson = state.Serialize();
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        await auditWriter.WriteAsync(new AuditEntry(
+            tenantId, userId, AuditConversationStateUpdatedAction, AuditConversationResourceType,
+            conversationId.Value.ToString(), clock.UtcNow,
+            $"hasContract={state.ActiveContractId is not null} hasArtifact={state.CurrentArtifactId is not null} pendingAction={state.PendingAction ?? "none"}"),
+            cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     /// <summary><see langword="null"/> under the identical "not this user's conversation in this

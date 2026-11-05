@@ -81,4 +81,7 @@ public sealed class Conversation : TenantScopedEntity
     /// free Chiedi conversation. Cross-module id only, no FK (ADR-002).
     /// </summary>
     public EntityId? CaseId { get; set; }
+
+    /// <summary>Backward-compatible JSON state used to resume Ask without reparsing prose.</summary>
+    public string StateJson { get; set; } = "{}";
 }
