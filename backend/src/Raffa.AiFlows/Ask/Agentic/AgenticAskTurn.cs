@@ -81,8 +81,8 @@ public sealed class AgenticAskTurn(
     private readonly AskTurnOptions settings = turnOptions ?? new AskTurnOptions();
     private readonly IReadOnlyList<IAskTool> toolList = tools.ToList();
 
-    private const int MaxHistoryTurns = 12;
-    private const int MaxTurnChars = 2500;
+    private const int MaxHistoryTurns = 20;
+    private const int MaxTurnChars = 4000;
     private const int MaxToolResultChars = 24000;
 
     internal async Task<AgenticTurnResult?> RunAsync(AskToolContext context, CancellationToken cancellationToken)
@@ -103,6 +103,8 @@ public sealed class AgenticAskTurn(
         var uiActions = new List<UiActionPayload>();
         var toolActions = new List<CopilotAction>();
         var calls = 0;
+        var forceFinalNext = false;
+        var retriedAfterTools = false;
         AiConversationResult? final = null;
         AiCallMetadata? metadata = null;
 
@@ -113,9 +115,18 @@ public sealed class AgenticAskTurn(
         {
             while (true)
             {
-                var forceFinal = calls >= settings.AgenticMaxToolCalls;
+                var forceFinal = forceFinalNext || calls >= settings.AgenticMaxToolCalls;
                 var request = new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, AgentPrompt.Version, forceFinal);
                 var step = await aiGateway.ConverseAsync(request, token).ConfigureAwait(false);
+                if (step.IsFailure && calls > 0 && !request.ForceFinal && !retriedAfterTools)
+                {
+                    // One more try for the final answer (no more tools) before giving up on the model.
+                    retriedAfterTools = true;
+                    logger?.LogWarning("Agent step failed after {Steps} tool call(s); asking once more for the final answer: {Error}", calls, step.Error);
+                    forceFinalNext = true;
+                    continue;
+                }
+
                 if (step.IsFailure)
                 {
                     if (calls == 0 && stepsRun.Count == 0)
@@ -196,15 +207,8 @@ public sealed class AgenticAskTurn(
 
         if (final is null)
         {
-            // The loop ended without an answer (a failed step, the deadline): the pack already read
-            // still makes a grounded answer when it can; otherwise the honest "service busy".
-            var busyMetadata = metadata ?? new AiCallMetadata("agent-unavailable", "1", AgentPrompt.Version, DateTimeOffset.UtcNow, string.Empty);
-            var grounded = pack.Count > 0 ? GroundedFallbackAnswer.Compose(context.Question, pack, busyMetadata) : null;
-            if (grounded is not null && Validate(grounded, pack).Passed)
-            {
-                return Finish(context, grounded, pack, toolActions, recoveryActions, recoveryFollowUps, artifact, uiActions, routingContext, intent, stepsRun, true, true);
-            }
-
+            // The loop ended without an answer (a failed step twice, the deadline): the honest "service
+            // busy" with the recovery actions -- never a deterministic digest in the model's place.
             return new AgenticTurnResult(
                 new CopilotReply(ReplyKind.Abstain, HelpfulFallbackAnswer.ServiceBusy(context.Question), [], recoveryActions, ReplyProvenance.NoModelCall([]), recoveryFollowUps),
                 false, true, context.FocusSupplier, Ref(context), intent, stepsRun);
@@ -225,15 +229,27 @@ public sealed class AgenticAskTurn(
         var guardIntervened = false;
         var fallbackUsed = false;
         var unverified = false;
-        var verdict = Validate(result, pack);
-        if (!verdict.Passed)
+        var grounding = GroundingGuard.Validate(result, pack, allowUncitedGuidance: true);
+        var verdict = grounding.Passed ? NumericGuard.Validate(result.AnswerMarkdown, pack, result.CitationKeys) : grounding;
+        if (!verdict.Passed && grounding.Passed)
         {
-            // R-ASK-06 as a detector, not a censor: one regeneration with the violation named (no more
-            // tools); if that still does not pass, the model's own answer is shown with its provenance
-            // marked unverified -- never replaced by a deterministic digest. A figure the pack does not
-            // hold is a flag for the reader, not a reason to hide the reasoning.
+            // R-ASK-06 as a detector, not a censor. A figure the pack does not hold verbatim (a computed
+            // day count, a total, a locale-formatted amount) is the consultant's reasoning, not a reason
+            // to hide the answer: it is shown as the model wrote it and the turn is marked unverified
+            // (audit agentUnverified=true) so the figure can be reviewed. No regeneration: it costs a
+            // full call and mostly reproduces the same, legitimate arithmetic.
             guardIntervened = true;
-            logger?.LogWarning("Agent answer failed a guard, regenerating once: {Violation}", verdict.Violation);
+            unverified = true;
+            logger?.LogInformation("Agent answer carries a figure outside the pack; shown as unverified: {Violation}", verdict.Violation);
+            RunContext.AddTurnDetail("agentUnverified=true");
+        }
+        else if (!verdict.Passed)
+        {
+            // A citation that names no tool result is a hallucinated source: one regeneration with the
+            // violation named (no more tools); if that still fails, the answer is shown with the unknown
+            // citations dropped and the turn marked unverified -- never a deterministic digest.
+            guardIntervened = true;
+            logger?.LogWarning("Agent answer cited a source outside the pack, regenerating once: {Violation}", verdict.Violation);
             messages.Add(AiConversationMessage.Assistant(final.FinalJson!));
             messages.Add(AiConversationMessage.User(RegenerateOnce.BuildRetryInstruction(verdict.Violation!)));
             var retry = await aiGateway.ConverseAsync(
