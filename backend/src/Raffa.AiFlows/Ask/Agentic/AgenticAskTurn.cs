@@ -36,7 +36,7 @@ internal sealed record PortfolioListItemRef(Guid ContractId);
 /// <summary>
 /// The orchestrator (ADR-024 amendment 2026-11-05, plan PR 3): one Ask turn as a bounded loop over
 /// the `agent` role and the <see cref="IAskTool"/> catalog. The model reads the conversation, the
-/// server-owned state and the tool descriptions; it asks for tool calls (run in parallel when it
+/// server-owned state and the tool descriptions; it asks for tool calls (run one after the other when it
 /// asks for several), reads the results, and writes the final answer as strict JSON. The final
 /// answer passes the same guards as the legacy path (every citation key in the union of the tool
 /// packs, every figure verbatim; one regeneration with the violation named, then the grounded
@@ -152,17 +152,23 @@ public sealed class AgenticAskTurn(
                     break;
                 }
 
-                // The model asked for tools: run them together, append its own message and one tool
+                // The model asked for tools: run them in order, append its own message and one tool
                 // message per call, in the order it asked.
                 var toolCalls = step.Value.ToolCalls.Take(Math.Max(1, settings.AgenticMaxToolCalls - calls)).ToList();
                 messages.Add(AiConversationMessage.AssistantToolCalls(toolCalls));
-                var executions = toolCalls.Select(call => ExecuteAsync(byName, call, context, token)).ToList();
-                await Task.WhenAll(executions).ConfigureAwait(false);
+                // One at a time: the tools share this request's scoped services (one EF DbContext per module,
+                // the turn's tenant scope, the context's focus), and a DbContext must never run two queries at
+                // once -- in parallel the second read throws and the model is told the tool failed.
+                var outcomes = new List<AskToolResult>(toolCalls.Count);
+                foreach (var call in toolCalls)
+                {
+                    outcomes.Add(await ExecuteAsync(byName, call, context, token).ConfigureAwait(false));
+                }
                 AskToolResult? endTurn = null;
                 for (var i = 0; i < toolCalls.Count; i++)
                 {
                     var call = toolCalls[i];
-                    var outcome = executions[i].Result;
+                    var outcome = outcomes[i];
                     calls++;
                     stepsRun.Add(call.Name);
                     if (outcome.Failure is not null)
@@ -294,6 +300,12 @@ public sealed class AgenticAskTurn(
         var actions = toolActions.Concat(resolved).Distinct().ToList();
 
         var reply = CopilotReplyBuilder.FromGuardedResult(result, pack, actions, recoveryActions, recoveryFollowUps);
+        if (reply.Kind == ReplyKind.Abstain && context.Italian && reply.AnswerMarkdown == CopilotReplyBuilder.DefaultAbstainReason)
+        {
+            // The generic way forward in the interface language, never English in an Italian chat.
+            reply = reply with { AnswerMarkdown = CopilotReplyBuilder.DefaultAbstainReasonIt };
+        }
+
         // Dates, amounts and percentages in the interface language, whatever form the model used.
         reply = reply with { AnswerMarkdown = AnswerFormatter.Format(reply.AnswerMarkdown, context.Language) };
         if (unverified)

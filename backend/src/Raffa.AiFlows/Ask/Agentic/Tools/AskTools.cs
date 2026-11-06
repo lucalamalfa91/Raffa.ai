@@ -493,7 +493,8 @@ internal sealed class ProposeStartRenewalTool : IAskTool
         "Use it when the user asks to start, open or begin the renewal of a contract (\"avvia il rinnovo\", \"start the renewal\", \"let's renew Splunk\"). " +
         "It does NOT start anything: it asks the user to confirm, and only on their yes does the app mark the contract as in renewal and open the " +
         "renewal case with its own chat. Pass the supplier as the user names it, or 'this' for the contract the conversation is about. " +
-        "Call it as the only call of the turn; do not write an answer of your own after it.";
+        "Call it as the only call of the turn, without reading the contract or the market first (the levers already discussed travel with the " +
+        "conversation into the case); do not write an answer of your own after it.";
 
     public string ParametersSchemaJson => Schema(
         ("supplier", "string", "Supplier name as written by the user, or 'this' for the current contract.", false));
