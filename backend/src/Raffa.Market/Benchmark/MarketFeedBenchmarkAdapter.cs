@@ -170,6 +170,19 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
             return Result<BenchmarkResult>.Success(BuildConfidentResult(query, strongMatch));
         }
 
+        // A contract or quote line rarely carries the corpus's exact product name ("Microsoft 365 E5
+        // named users / licenses" for "Microsoft 365 E5"): the supplier's product whose every word the
+        // line names, under the same baseline (geography, currency, term, sample), still benchmarks it,
+        // labelled with the product it was matched on.
+        var supplierDeals = _dbContextFactory is null ? deals : await LoadSupplierDealsAsync(query, cancellationToken).ConfigureAwait(false);
+        if (FindContainedProductMatch(supplierDeals, query) is { } contained)
+        {
+            return Result<BenchmarkResult>.Success(BuildConfidentResult(query, contained) with
+            {
+                Source = $"market-feed, matched by product name {contained.Product} (representative, mock)",
+            });
+        }
+
         var weakMatch = FindWeakMatch(deals, query);
         var latest = weakMatch is null
             ? await LatestUpdatedAtAsync(deals, cancellationToken).ConfigureAwait(false)
@@ -258,6 +271,60 @@ public sealed class MarketFeedBenchmarkAdapter : IBenchmarkProviderAdapter
     /// than one clears both bars, prefers an actual SKU match, then the larger sample size, so the
     /// answer stays deterministic.
     /// </summary>
+    private async Task<IReadOnlyList<MarketDeal>> LoadSupplierDealsAsync(BenchmarkQuery query, CancellationToken cancellationToken)
+    {
+        await using var dbContext = await _dbContextFactory!.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        if (await TrySnapshotAsync(dbContext, cancellationToken).ConfigureAwait(false) is { } snapshot)
+        {
+            return snapshot.Index.BySupplier(query.Supplier);
+        }
+
+        var supplier = MarketFilterColumns.SupplierNorm(query.Supplier);
+        var records = await dbContext.MarketRecords
+            .AsNoTracking()
+            .Where(r => r.SupplierNorm == null || r.SupplierNorm == supplier)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return records
+            .Select(record => JsonSerializer.Deserialize<MarketDeal>(record.PayloadJson, JsonOptions))
+            .Where(deal => deal is not null)
+            .Select(deal => deal!)
+            .ToList();
+    }
+
+    /// <summary>The same baseline as <see cref="IsBaselineMatch"/> (a named SKU must still agree) except the product: the deal's
+    /// product words must all appear in the query's product (and the deal must name more than the
+    /// supplier). The most specific product wins, then a matched SKU, then the larger sample.</summary>
+    private static MarketDeal? FindContainedProductMatch(IReadOnlyList<MarketDeal> deals, BenchmarkQuery query)
+    {
+        var queryWords = ProductWords(query.Product).Concat(query.Sku is null ? [] : ProductWords(query.Sku)).ToHashSet(StringComparer.Ordinal);
+        if (queryWords.Count == 0)
+        {
+            return null;
+        }
+
+        var supplierWords = ProductWords(query.Supplier).ToHashSet(StringComparer.Ordinal);
+        var queryTermMonths = ParseTermMonths(query.Term);
+        return deals
+            .Where(deal =>
+                string.Equals(deal.Supplier, query.Supplier, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(deal.Geography, query.Geography, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(deal.Currency, query.Currency, StringComparison.OrdinalIgnoreCase) &&
+                (queryTermMonths is null || queryTermMonths == deal.TermMonths) &&
+                (deal.Sku is null || query.Sku is null || string.Equals(deal.Sku, query.Sku, StringComparison.OrdinalIgnoreCase)) &&
+                deal.SampleSize >= MinimumViableSampleSize)
+            .Select(deal => (Deal: deal, Words: ProductWords(deal.Product).ToHashSet(StringComparer.Ordinal)))
+            .Where(x => x.Words.Count > 0 && x.Words.Except(supplierWords).Any() && x.Words.All(queryWords.Contains))
+            .OrderByDescending(x => x.Words.Count)
+            .ThenByDescending(x => SkuActuallyMatched(x.Deal, query))
+            .ThenByDescending(x => x.Deal.SampleSize)
+            .Select(x => x.Deal)
+            .FirstOrDefault();
+    }
+
+    private static IEnumerable<string> ProductWords(string text) =>
+        System.Text.RegularExpressions.Regex.Matches(text.ToLowerInvariant(), @"[\p{L}\p{N}]+").Select(m => m.Value);
+
     private static MarketDeal? FindStrongMatch(IReadOnlyList<MarketDeal> deals, BenchmarkQuery query) =>
         deals
             .Where(deal => IsBaselineMatch(deal, query) && deal.SampleSize >= MinimumViableSampleSize)

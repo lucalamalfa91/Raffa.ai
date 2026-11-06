@@ -53,6 +53,41 @@ public class MarketFeedBenchmarkAdapterTests
         Assert.True(benchmark.SampleSize >= 5);
     }
 
+    /// <summary>A contract line rarely carries the corpus's exact product name: a line that names
+    /// every word of a corpus product ("Microsoft 365 E5 named users / licenses") is benchmarked on
+    /// that product, under the same geography/currency baseline, and its source says so.</summary>
+    [Fact]
+    public async Task A_line_naming_a_corpus_product_is_benchmarked_on_that_product()
+    {
+        var query = new BenchmarkQuery(
+            Supplier: "Microsoft",
+            Product: "Microsoft 365 E5 named users / licenses",
+            Sku: null,
+            Geography: "CH",
+            Quantity: 535m,
+            Term: "12 months",
+            Currency: "CHF",
+            PurchaseDate: new DateOnly(2026, 6, 1));
+
+        var result = await _adapter.GetBenchmarkAsync(query);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.HasSufficientData);
+        Assert.Contains("matched by product name Microsoft 365 E5", result.Value.Source, StringComparison.Ordinal);
+        Assert.DoesNotContain("no Teams", result.Value.Source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_line_naming_only_the_supplier_is_not_benchmarked()
+    {
+        var query = new BenchmarkQuery("Microsoft", "Microsoft support hours", null, "CH", 1m, "12 months", "CHF", new DateOnly(2026, 6, 1));
+
+        var result = await _adapter.GetBenchmarkAsync(query);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.HasSufficientData);
+    }
+
     /// <summary>F6-D06: a term such as "12 months (1 year)" must parse to 12 (the leading number),
     /// not the concatenated digits 121, which matched no deal.</summary>
     [Theory]

@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Raffa.Benchmark.Contracts;
 using Raffa.Market.Contracts;
+using Raffa.Market.Retrieval;
 
 namespace Raffa.AiFlows.Shared.ContractContext;
 
@@ -42,6 +43,36 @@ public static partial class MarketBandFallback
         }
 
         return lines.Select(line => line.Benchmark is not null ? line : FillOne(line, candidates, supplierWords)).ToList();
+    }
+
+    /// <summary>
+    /// <see cref="Fill"/> over the supplier's deals read from <paramref name="lookup"/>: the one entry
+    /// point every reader of priced lines (Ask's packs, the strategy endpoint) calls, so a line gets the
+    /// same band wherever it is shown. A missing lookup, supplier or a failed read keeps the lines as they were.
+    /// </summary>
+    public static async Task<IReadOnlyList<PricedLine>> FillFromCorpusAsync(
+        IReadOnlyList<PricedLine> lines,
+        IMarketDealLookup? lookup,
+        string? supplierName,
+        string currency,
+        string? geography,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (lookup is null || string.IsNullOrWhiteSpace(supplierName) || lines.All(l => l.Benchmark is not null || l.UnitPrice is null))
+        {
+            return lines;
+        }
+
+        try
+        {
+            var deals = await lookup.GetBySupplierAsync(supplierName, cancellationToken).ConfigureAwait(false);
+            return Fill(lines, deals, supplierName, currency, geography);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return lines;
+        }
     }
 
     private static PricedLine FillOne(PricedLine line, IReadOnlyList<MarketDeal> deals, HashSet<string> supplierWords)
