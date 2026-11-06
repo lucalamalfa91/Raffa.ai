@@ -269,13 +269,13 @@ public sealed class AgenticAskTurnTests
     public void The_system_prompt_is_exactly_the_reviewed_markdown()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.3.md")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.4.md")))
         {
             directory = directory.Parent;
         }
 
         Assert.NotNull(directory);
-        var body = File.ReadAllText(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.3.md"));
+        var body = File.ReadAllText(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.4.md"));
         var start = body.IndexOf("\n\n", StringComparison.Ordinal) + 2;
         var end = body.LastIndexOf("\nBump the version", StringComparison.Ordinal);
         var expected = body[start..end].TrimEnd();

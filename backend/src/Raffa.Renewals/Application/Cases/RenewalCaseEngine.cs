@@ -30,7 +30,7 @@ public static partial class RenewalCaseEngine
     /// non-renewal track; anything else starts the interview. <paramref name="owner"/> defaults to the viewer.
     /// The approver is the workspace CPO (the prototype's Luca Lamalfa) unless <paramref name="approver"/> is given.
     /// </summary>
-    public static RenewalCase Create(int cid, CaseContext ctx, string? branch = null, string? owner = null, string? approver = null, IReadOnlyList<string>? members = null)
+    public static RenewalCase Create(int cid, CaseContext ctx, string? branch = null, string? owner = null, string? approver = null, IReadOnlyList<string>? members = null, string? brief = null, CaseInterviewTailoring? tailoring = null)
     {
         var who = owner ?? ctx.Viewer;
         var c = new RenewalCase
@@ -41,6 +41,7 @@ public static partial class RenewalCaseEngine
             Updated = ctx.Today,
             Members = members?.ToList() ?? [Luca, Marta],
             Phase = CasePhases.Interview,
+            Interview = tailoring is { Questions.Count: > 0 } ? tailoring : null,
             History = [new CaseOwnerChange { Who = who, At = ctx.Today }],
         };
         Push(c, ctx, new CaseFeedItem { K = "ov" });
@@ -51,10 +52,63 @@ public static partial class RenewalCaseEngine
         else
         {
             Push(c, ctx, new CaseFeedItem { K = "outlook" });
+            AttachBrief(c, ctx, brief);
             Push(c, ctx, new CaseFeedItem { K = "q", I = 0 });
         }
 
         return c;
+    }
+
+    /// <summary>The most of the chat's levers a case keeps.</summary>
+    public const int BriefMaxChars = 3500;
+
+    /// <summary>
+    /// The levers and strategy worked out in chat before this case existed: kept on the case and shown as a card, so
+    /// the questions and the emails start from them instead of from zero. No-op for an empty brief or one already kept.
+    /// </summary>
+    public static void AttachBrief(RenewalCase c, CaseContext ctx, string? brief)
+    {
+        var text = (brief ?? string.Empty).Trim();
+        if (text.Length == 0 || !string.IsNullOrEmpty(c.Brief))
+        {
+            return;
+        }
+
+        c.Brief = text.Length > BriefMaxChars ? text[..BriefMaxChars].TrimEnd() + "…" : text;
+        Say(c, ctx, B(
+            "I carry over what we worked out in chat. I use these levers to shape the questions and the email — tell me if anything changed:",
+            "Porto con me quello che abbiamo elaborato in chat. Uso queste leve per impostare le domande e la mail — dimmi se qualcosa è cambiato:"));
+        Say(c, ctx, CaseText.Of(c.Brief));
+    }
+
+    private static readonly Regex BriefTerm = new(@"(?<![\d.,])(12|24|36)\s*(?:mesi|months)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+
+    private static readonly Regex BriefPercent = new(
+        @"(?:riduzion\w*|sconto|reduction|discount|cut|taglio)[^%\n]{0,60}?(\d+(?:[.,]\d+)?)\s*%", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+
+    private static readonly Regex BriefVolumes = new(
+        @"(?:riduzion\w*|ridimension\w*|reduc\w*)\s+(?:dei\s+|of\s+(?:the\s+)?|the\s+)?(?:volum\w*|quantit\w*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+
+    /// <summary>What the chat's levers say about interview question <paramref name="question"/> (0 products, 1 term,
+    /// 2 economic goal), as one line under the question; null when they say nothing about it.</summary>
+    internal static CaseText? BriefHint(string? brief, int question)
+    {
+        if (string.IsNullOrWhiteSpace(brief))
+        {
+            return null;
+        }
+
+        switch (question)
+        {
+            case 0 when BriefVolumes.IsMatch(brief):
+                return B("From our chat: the levers include reducing volumes at renewal.", "Dalla chat: tra le leve c’è la riduzione dei volumi al rinnovo.");
+            case 1 when BriefTerm.Match(brief) is { Success: true } term:
+                return B("From our chat: the levers rest on a {n}-month term.", "Dalla chat: le leve si basano su una durata di {n} mesi.", ("n", term.Groups[1].Value));
+            case 2 when BriefPercent.Match(brief) is { Success: true } pct:
+                return B("From our chat: the levers aim at about {pct}% off.", "Dalla chat: le leve puntano a circa il {pct}% di sconto.", ("pct", pct.Groups[1].Value));
+            default:
+                return null;
+        }
     }
 
     /* ---------- helpers ---------- */
@@ -123,7 +177,26 @@ public static partial class RenewalCaseEngine
 
     private sealed record QuestionDef(CaseText Text, CaseText Hint, IReadOnlyList<(string Key, CaseText Label)> Opts, bool Multi);
 
-    private static QuestionDef QDef(int i, CaseContext ctx)
+    /// <summary>The question as this case words it: the standard text, with the model's wording for this contract and chat where it wrote one.</summary>
+    private static QuestionDef QDef(int i, CaseContext ctx, RenewalCase? c)
+    {
+        var def = StandardQuestion(i, ctx);
+        if (c?.Interview?.Questions.FirstOrDefault(x => x.Index == i) is not { } t)
+        {
+            return def;
+        }
+
+        return def with
+        {
+            Text = string.IsNullOrWhiteSpace(t.Text) ? def.Text : CaseText.Of(t.Text.Trim()),
+            Hint = string.IsNullOrWhiteSpace(t.Hint) ? def.Hint : CaseText.Of(t.Hint.Trim()),
+            Opts = t.Options is { Count: > 0 } labels
+                ? def.Opts.Select(o => (o.Key, labels.TryGetValue(o.Key, out var label) && !string.IsNullOrWhiteSpace(label) ? CaseText.Of(label.Trim()) : o.Label)).ToList()
+                : def.Opts,
+        };
+    }
+
+    private static QuestionDef StandardQuestion(int i, CaseContext ctx)
     {
         var f = CaseRules.Price(ctx);
         var cn = ctx.Contract;
@@ -182,7 +255,7 @@ public static partial class RenewalCaseEngine
             return CaseText.Of(text);
         }
 
-        foreach (var o in QDef(i, ctx).Opts)
+        foreach (var o in QDef(i, ctx, c).Opts)
         {
             if (o.Key == v)
             {

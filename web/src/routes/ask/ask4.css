@@ -202,3 +202,8 @@
   .k6-scroll { padding: 20px 16px; }
   .k6-composer-wrap { padding: 8px 16px 12px; }
 }
+
+/* Raffa asks before acting: confirm / cancel under the proposal, then what happened. */
+.k6-proposal { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.k6-proposal-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.k6-proposal.is-done, .k6-proposal.is-declined { flex-direction: row; align-items: center; gap: 12px; font-size: 13px; color: var(--color-text-secondary, inherit); }

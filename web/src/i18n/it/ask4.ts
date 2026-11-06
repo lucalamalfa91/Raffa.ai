@@ -50,6 +50,19 @@ export const IT_ASK4: Readonly<Record<string, string>> = {
   "Procurement only · cites its source or says it cannot": "Solo procurement · cita la fonte o dice che non può",
   "The requested content could not be opened.": "Non sono riuscito ad aprire il contenuto richiesto.",
 
+  // Raffa asks before acting (start a renewal / set a savings goal)
+  "Yes, start the renewal": "Sì, avvia il rinnovo",
+  "Yes, set the goal": "Sì, imposta l'obiettivo",
+  "No, leave it": "No, lascia stare",
+  "Raffa is working…": "Raffa sta lavorando…",
+  "Renewal started.": "Rinnovo avviato.",
+  "Savings goal set.": "Obiettivo di risparmio impostato.",
+  "Open Spend and savings": "Apri Spesa e risparmi",
+  "Okay, nothing changed.": "Va bene, non ho cambiato nulla.",
+  "The renewal could not be started.": "Non sono riuscito ad avviare il rinnovo.",
+  "The savings goal could not be set.": "Non sono riuscito a impostare l'obiettivo di risparmio.",
+  "This action is not available here.": "Questa azione non è disponibile qui.",
+
   // Guida Raffa
   "Continue the conversation or start a new one.": "Continua la conversazione o aprine una nuova.",
 };

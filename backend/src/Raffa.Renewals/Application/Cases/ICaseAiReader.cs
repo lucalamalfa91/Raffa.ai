@@ -38,6 +38,14 @@ public interface ICaseAiReader
     Task<CaseEmailRevision?> ReviseEmailAsync(
         TenantId tenantId, RenewalCase c, CaseContractFacts contract, CaseEmail email, string? instruction, string lang, CancellationToken cancellationToken = default) =>
         Task.FromResult<CaseEmailRevision?>(null);
+
+    /// <summary>
+    /// The four interview questions worded for this contract (its products, dates, uplift, clauses) and the levers worked
+    /// out in chat, instead of the standard text. Null on any failure or doubt: the standard wording stands.
+    /// </summary>
+    Task<CaseInterviewTailoring?> ReadInterviewAsync(
+        TenantId tenantId, CaseContractFacts contract, string? levers, string lang, CancellationToken cancellationToken = default) =>
+        Task.FromResult<CaseInterviewTailoring?>(null);
 }
 
 /// <summary>A new subject and body for an email draft, and Raffa's one-line note on what changed (user's language).</summary>

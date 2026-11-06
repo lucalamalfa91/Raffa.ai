@@ -32,7 +32,24 @@ public sealed record ReplyPayload(
     IReadOnlyList<UiActionPayload>? UiActions = null,
     ConversationState? ConversationState = null,
     ArtifactChangeProposal? ArtifactChangeProposal = null,
-    bool ArtifactChangeCancelled = false);
+    bool ArtifactChangeCancelled = false,
+    ActionProposalPayload? ActionProposal = null);
+
+/// <summary>
+/// Raffa asks before it changes anything: a renewal to start or a savings goal to set, waiting for the
+/// user's yes. The server resolved the contract; the model never supplies an id. The client runs the
+/// action through the same authenticated endpoints as the Renewals / Savings screens, only after a yes.
+/// </summary>
+/// <param name="Kind"><see cref="StartRenewal"/> or <see cref="SetSavingsGoal"/>.</param>
+/// <param name="ContractId">For a renewal: the contract (resolved from the workspace by the server).</param>
+/// <param name="Supplier">The supplier the proposal is about, as the workspace names it.</param>
+/// <param name="GoalText">For a savings goal: the objective in the user's words (parsed by the Savings
+/// endpoint on confirmation).</param>
+public sealed record ActionProposalPayload(string Kind, string? ContractId = null, string? Supplier = null, string? GoalText = null)
+{
+    public const string StartRenewal = "start_renewal";
+    public const string SetSavingsGoal = "set_savings_goal";
+}
 
 /// <summary>A server-created, non-executed artifact modification waiting for explicit confirmation.</summary>
 public sealed record ArtifactChangeProposal(string ArtifactId, string Instruction);

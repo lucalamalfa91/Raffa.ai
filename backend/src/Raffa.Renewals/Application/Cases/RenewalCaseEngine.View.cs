@@ -275,11 +275,16 @@ public static partial class RenewalCaseEngine
                 case "q":
                 {
                     var qi = it.I ?? 0;
-                    var q = QDef(qi, ctx);
+                    var q = QDef(qi, ctx, c);
                     var cur = c.Q == qi && c.Phase == CasePhases.Interview;
                     d.Kicker = B("Question {n} / 4", "Domanda {n} / 4", ("n", qi + 1));
                     d.Title = q.Text;
                     d.Lines = [q.Hint];
+                    if (c.Interview is null && BriefHint(c.Brief, qi) is { } fromChat)
+                    {
+                        d.Lines.Add(fromChat);
+                    }
+
                     if (cur)
                     {
                         d.Chips = q.Opts.Select(o => new CaseChip(

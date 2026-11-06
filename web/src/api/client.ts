@@ -2080,6 +2080,8 @@ export interface OpenRenewalCaseRequest {
   contractId: string;
   branch?: string | null;
   ownerUserId?: string | null;
+  /** The chat the renewal starts from: its levers travel into the case, which continues that conversation. */
+  conversationId?: string | null;
 }
 export type OpenRenewalCaseBody = paths["/api/renewals"]["post"]["responses"][200]["content"]["application/json"];
 
@@ -4500,6 +4502,14 @@ export interface ConversationSummary4 {
   questionCount: number;
 }
 
+/** A change Raffa proposed in chat and runs only after the user confirms (the server resolved the contract). */
+export interface ActionProposal {
+  kind: "start_renewal" | "set_savings_goal";
+  contractId?: string | null;
+  supplier?: string | null;
+  goalText?: string | null;
+}
+
 export interface ConversationMessage4 {
   id: string;
   role: "you" | "raffa";
@@ -4521,6 +4531,8 @@ export interface ConversationMessage4 {
     artifact?: ArtifactPayloadBody | null;
     /** Server-authorized, allowlisted application commands. Free-form model text is never executed. */
     uiActions?: Array<{ type: string; resourceType: string; resourceId: string }> | null;
+    /** Raffa asks before it changes anything: start a renewal / set a savings goal, on the user's yes. */
+    actionProposal?: ActionProposal | null;
   } | null;
   /** Raffa asks before acting: questions with clickable options. */
   interview?: {

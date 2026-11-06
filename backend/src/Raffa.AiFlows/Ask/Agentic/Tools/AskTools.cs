@@ -481,3 +481,74 @@ internal sealed class WebResearchTool(WebResearchFlow web, AbstainRecovery absta
             EndTurnReply: reply);
     }
 }
+
+/// <summary>Raffa never starts a renewal by itself: the tool ends the turn with a confirmation question
+/// and the proposal; the app opens the renewal case (the same action as "Avvia il rinnovo" in Rinnovi)
+/// only on the user's yes.</summary>
+internal sealed class ProposeStartRenewalTool : IAskTool
+{
+    public string Name => "propose_start_renewal";
+
+    public string Description =>
+        "Use it when the user asks to start, open or begin the renewal of a contract (\"avvia il rinnovo\", \"start the renewal\", \"let's renew Splunk\"). " +
+        "It does NOT start anything: it asks the user to confirm, and only on their yes does the app mark the contract as in renewal and open the " +
+        "renewal case with its own chat. Pass the supplier as the user names it, or 'this' for the contract the conversation is about. " +
+        "Call it as the only call of the turn; do not write an answer of your own after it.";
+
+    public string ParametersSchemaJson => Schema(
+        ("supplier", "string", "Supplier name as written by the user, or 'this' for the current contract.", false));
+
+    public Task<AskToolResult> ExecuteAsync(JsonElement arguments, AskToolContext context, CancellationToken cancellationToken)
+    {
+        var (item, supplier, _) = context.ResolveContract(GetString(arguments, "supplier"));
+        if (item is null)
+        {
+            return Task.FromResult(AskToolResult.Error(supplier is null
+                ? $"No validated contract for that supplier. Known suppliers: {string.Join(", ", context.KnownSupplierNames)}."
+                : $"No contract found for {supplier}."));
+        }
+
+        var name = supplier ?? "?";
+        var text = context.Italian
+            ? $"Posso avviare il rinnovo di **{name}**: imposto il contratto come in rinnovo e apro la pratica portando con me le leve che abbiamo individuato in questa chat: le uso per le domande e per la mail. Non invio nulla al fornitore. Confermi?"
+            : $"I can start the renewal of **{name}**: I mark the contract as in renewal and open the case carrying over the levers we found in this chat: I use them for the questions and the email. Nothing is sent to the supplier. Confirm?";
+        var reply = new CopilotReply(
+            ReplyKind.Answer, text, [], [], ReplyProvenance.NoModelCall([]), [],
+            new ReplyPayload(ActionProposal: new ActionProposalPayload(ActionProposalPayload.StartRenewal, item.ContractId.ToString(), name)));
+        return Task.FromResult(new AskToolResult(
+            JsonSerializer.Serialize(new { items = Array.Empty<object>(), summary = new { endsTurn = true, proposed = "start_renewal", supplier = name } }),
+            [],
+            EndTurnReply: reply));
+    }
+}
+
+/// <summary>The savings objective a user states in chat ("voglio risparmiare il 15% su Splunk"): the tool
+/// ends the turn asking to set it as the savings goal; the app sets it (the Savings goal) only on the yes.</summary>
+internal sealed class ProposeSavingsGoalTool : IAskTool
+{
+    public string Name => "propose_savings_goal";
+
+    public string Description =>
+        "Use it when the user states a savings OBJECTIVE for the company or a supplier (\"voglio risparmiare il 15%\", \"obiettivo: tagliare 50k quest'anno\", " +
+        "\"we want to cut 10% on software\"). It does NOT set anything: it asks the user to confirm, and only on their yes does the app set it as the " +
+        "savings goal in Spesa e risparmi. Pass the objective in the user's own words (amount, percentage, scope and period as they said them). " +
+        "Call it as the only call of the turn; do not write an answer of your own after it. A question about where to save is NOT an objective: use the other tools.";
+
+    public string ParametersSchemaJson => Schema(
+        ("goalText", "string", "The objective in the user's own words, including the amount or percentage and any scope or period.", false));
+
+    public Task<AskToolResult> ExecuteAsync(JsonElement arguments, AskToolContext context, CancellationToken cancellationToken)
+    {
+        var goal = GetString(arguments, "goalText") ?? context.Question;
+        var text = context.Italian
+            ? $"Posso impostare questo come obiettivo di risparmio: «{goal}». Lo trovi in Spesa e risparmi e lo uso per misurare i progressi. Confermi?"
+            : $"I can set this as the savings goal: \"{goal}\". You will find it in Spend and savings, and I will use it to track progress. Confirm?";
+        var reply = new CopilotReply(
+            ReplyKind.Answer, text, [], [], ReplyProvenance.NoModelCall([]), [],
+            new ReplyPayload(ActionProposal: new ActionProposalPayload(ActionProposalPayload.SetSavingsGoal, GoalText: goal)));
+        return Task.FromResult(new AskToolResult(
+            JsonSerializer.Serialize(new { items = Array.Empty<object>(), summary = new { endsTurn = true, proposed = "set_savings_goal" } }),
+            [],
+            EndTurnReply: reply));
+    }
+}
