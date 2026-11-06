@@ -58,12 +58,25 @@ public static partial class RenewalCaseEngine
         }
 
         var stem = Path.GetFileNameWithoutExtension(file);
+        // Idempotent: the contract name can itself contain the file stem ("QA06-05-Northstar" inside
+        // "QA06-05-Northstar Systems Ltd."), so a plain Replace would grow the text on every run.
+        // Occurrences of the name already present are parked behind a sentinel while the file name and stem
+        // are swapped, then restored.
+        const string Sentinel = "\u0001CONTRACT_NAME\u0001";
         string Fix(string text)
         {
-            var fixedText = text.Replace(file, cn.Name, StringComparison.Ordinal);
-            return stem.Length >= 6 && !string.Equals(stem, cn.Name, StringComparison.Ordinal)
-                ? fixedText.Replace(stem, cn.Name, StringComparison.Ordinal)
-                : fixedText;
+            if (cn.Name.Length > 0)
+            {
+                text = text.Replace(cn.Name, Sentinel, StringComparison.Ordinal);
+            }
+
+            var fixedText = text.Replace(file, Sentinel, StringComparison.Ordinal);
+            if (stem.Length >= 6 && !string.Equals(stem, cn.Name, StringComparison.Ordinal))
+            {
+                fixedText = fixedText.Replace(stem, Sentinel, StringComparison.Ordinal);
+            }
+
+            return fixedText.Replace(Sentinel, cn.Name, StringComparison.Ordinal);
         }
 
         foreach (var e in c.Emails.Where(e => e.State == EmailStates.Draft))

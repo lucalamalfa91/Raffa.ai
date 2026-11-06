@@ -57,10 +57,10 @@ internal static class StagedExtractionJsonSchemas
         ["startDate"] = "the date the contract term starts, YYYY-MM-DD",
         ["endDate"] = "the date the current term ends, YYYY-MM-DD",
         ["effectiveDate"] = "the effective date of the agreement, YYYY-MM-DD",
-        ["cancellationDeadline"] = "the last date a termination or non-renewal notice can be sent, YYYY-MM-DD (end date minus the notice period, only when both are stated)",
+        ["cancellationDeadline"] = "the last date the CUSTOMER can send a termination or non-renewal notice, YYYY-MM-DD (end date minus the notice period, only when both are stated). Never use the date by which the VENDOR must send a renewal proposal, quote or price notice: that is not a cancellation deadline, and a contract with no customer notice window has none",
         ["autoRenewal"] = "'true' if the contract renews automatically (tacit renewal) unless a party terminates it, otherwise 'false'",
         ["renewalTermMonths"] = "the length of each renewal term in months, as an integer",
-        ["noticePeriodDays"] = "the notice period required to cancel or not renew, as a whole number of calendar days before the end date (convert weeks x7, months x30); only when the document states one - never compute the cancellation date from it yourself",
+        ["noticePeriodDays"] = "the notice period the CUSTOMER must respect to cancel or not renew (not the lead time the vendor has to submit a renewal proposal or quote), as a whole number of calendar days before the end date (convert weeks x7, months x30); only when the document states one - never compute the cancellation date from it yourself",
     };
 
     /// <summary>
@@ -230,7 +230,7 @@ internal static class StagedExtractionJsonSchemas
                         type = "object",
                         properties = new
                         {
-                            party = new { type = "string", description = "Who is bound: the party's name as written, or 'Supplier' / 'Customer'." },
+                            party = new { type = "string", description = "Who is bound: 'Supplier' or 'Customer' (or the party's name as written) only when the document makes it clear; a payment is the Customer's obligation only if the text says so. When the subject is ambiguous use 'Unknown' - never default to the supplier." },
                             obligationType = new { type = "string", description = "Short English label, e.g. 'payment', 'notice', 'delivery', 'reporting', 'insurance'." },
                             description = new { type = "string", description = "What must be done, summarised in one or two sentences (original language or English)." },
                             dueDate = new { type = new[] { "string", "null" }, description = "Calendar due date as YYYY-MM-DD when the document states one, or null." },

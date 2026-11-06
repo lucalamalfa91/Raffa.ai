@@ -80,6 +80,15 @@ export function spendLink(filters: SpendFilters): string {
   return query ? `/savings?${query}` : "/savings";
 }
 
+/** "Not the whole workspace: 33 contracts (EUR, GBP, USD) are out of the totals, never estimated." */
+function exclusionNote(report: SpendReport, t: T): string {
+  const currencies = [...new Set(report.excluded.map((x) => x.currency).filter((c) => c))].sort();
+  return t("Not the whole workspace: {n} contracts{currencies} are out of the totals, never estimated", {
+    n: report.excluded.length,
+    currencies: currencies.length ? ` (${currencies.join(", ")})` : "",
+  });
+}
+
 /**
  * A KPI view, a dashboard or a portfolio brief built from Spesa e risparmi's own figures (the same
  * view model as the page, so the numbers are the page's): in the reporting currency, on the
@@ -177,7 +186,11 @@ export function buildSpendArtifact(kind: ArtifactKind, report: SpendReport, inte
     id: `${kind}-${Date.now()}`,
     kind,
     title: filters.category !== null ? `${title} · ${filters.category || t("No category")}` : title,
-    subtitle: t("From Spend and savings · {year} · {basis} · in {currency}", { year: k.yearLabel, basis, currency: cur }),
+    subtitle: [
+      t("From Spend and savings · {year} · {basis} · in {currency}", { year: k.yearLabel, basis, currency: cur }),
+      // The scope limit travels with every kind (and so with its exports): these are not the totals of the whole workspace.
+      ...(report.excluded.length ? [exclusionNote(report, t)] : []),
+    ].join(" · "),
     tiles: kind === "document" ? [] : tiles,
     charts: kind === "dashboard" ? charts : [],
     tables: kind === "kpi" ? [trend] : kind === "dashboard" ? [trend, decisions] : [],

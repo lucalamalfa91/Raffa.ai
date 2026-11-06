@@ -142,9 +142,9 @@ export const IT_SETTINGS: Readonly<Record<string, string>> = {
   "Add the file": "Aggiungi il file",
   "Raffa could not add this file. Try a PDF or a text file.": "Raffa non è riuscita ad aggiungere questo file. Prova con un PDF o un file di testo.",
   // Spesa e risparmi: reporting currency, fiscal year, budget rates.
-  "Saved. Spesa e risparmi uses these settings from now on.": "Salvato. Spesa e risparmi usa queste impostazioni da ora.",
+  "Saved. Spend and savings uses these settings from now on.": "Salvato. Spesa e risparmi usa queste impostazioni da ora.",
   "Spend and savings": "Spesa e risparmi",
-  "How Spesa e risparmi reports money: the currency of every total, when your fiscal year starts, and the budget rates for contracts in other currencies.": "Come Spesa e risparmi riporta gli importi: la valuta di ogni totale, quando inizia il vostro anno fiscale e i cambi di budget per i contratti in altre valute.",
+  "How Spend and savings reports money: the currency of every total, when your fiscal year starts, and the budget rates for contracts in other currencies.": "Come Spesa e risparmi riporta gli importi: la valuta di ogni totale, quando inizia il vostro anno fiscale e i cambi di budget per i contratti in altre valute.",
   "Only a Workspace Admin can change these settings.": "Solo un Admin del workspace può modificare queste impostazioni.",
   "Reporting currency": "Valuta di riferimento",
   "Your workspace's currency, until you choose one.": "La valuta del workspace, finché non ne scegli una.",

@@ -1040,8 +1040,8 @@ public static partial class RenewalCaseEngine
 
             return k switch
             {
-                "term" => B("{val} months", "{val} mesi", ("val", val)),
-                "liab" => B("{val} months of fees", "{val} mesi di canone", ("val", val)),
+                "term" when IsPlainNumber(val) => B("{val} months", "{val} mesi", ("val", val)),
+                "liab" when IsPlainNumber(val) => B("{val} months of fees", "{val} mesi di canone", ("val", val)),
                 _ => val,
             };
         }
@@ -1321,8 +1321,8 @@ public static partial class RenewalCaseEngine
             CaseText? pv = t?.Val is { Length: > 0 } tv
                 ? k switch
                 {
-                    "term" => B("{val} months", "{val} mesi", ("val", tv)),
-                    "liab" => B("{val} months of fees", "{val} mesi di canone", ("val", tv)),
+                    "term" when IsPlainNumber(tv) => B("{val} months", "{val} mesi", ("val", tv)),
+                    "liab" when IsPlainNumber(tv) => B("{val} months of fees", "{val} mesi di canone", ("val", tv)),
                     _ => tv,
                 }
                 : null;
@@ -1346,4 +1346,9 @@ public static partial class RenewalCaseEngine
 
     [GeneratedRegex(@"(?<=[.!?])\s")]
     private static partial Regex SentenceEnd();
+
+    /// <summary>A unit ("months", "months of fees") is added only to a number: a text value such as
+    /// "No new liability cap" or "12 months" is shown as written.</summary>
+    private static bool IsPlainNumber(string value) =>
+        decimal.TryParse(value.Trim(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out _);
 }

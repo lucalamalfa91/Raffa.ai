@@ -117,7 +117,7 @@ export default function ReportingSettings({ apiClient, tenantId }: ReportingSett
     setSaving(false);
     if (r.ok && r.settings) {
       apply(r.settings);
-      setSaved(t("Saved. Spesa e risparmi uses these settings from now on."));
+      setSaved(t("Saved. Spend and savings uses these settings from now on."));
     } else {
       setError(r.error);
     }
@@ -144,7 +144,7 @@ export default function ReportingSettings({ apiClient, tenantId }: ReportingSett
         {t("Spend and savings")}
       </h3>
       <p className="st-p">
-        {t("How Spesa e risparmi reports money: the currency of every total, when your fiscal year starts, and the budget rates for contracts in other currencies.")}
+        {t("How Spend and savings reports money: the currency of every total, when your fiscal year starts, and the budget rates for contracts in other currencies.")}
       </p>
       {!canEdit ? <div className="st-note">{t("Only a Workspace Admin can change these settings.")}</div> : null}
 
