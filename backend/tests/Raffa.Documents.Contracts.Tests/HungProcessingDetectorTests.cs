@@ -8,6 +8,14 @@ public sealed class HungProcessingDetectorTests
     private static readonly DateTimeOffset Now = new(2026, 9, 18, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Processing_never_claimed_is_hung_once_the_window_has_passed_since_it_entered_the_pipeline()
+    {
+        Assert.True(HungProcessingDetector.IsHung(DocumentProcessingStatus.Processing, Now, [], Now.AddMinutes(-16)));
+        Assert.False(HungProcessingDetector.IsHung(DocumentProcessingStatus.Processing, Now, [], Now.AddMinutes(-5)));
+        Assert.False(HungProcessingDetector.IsHung(DocumentProcessingStatus.Processing, Now, []));
+    }
+
+    [Fact]
     public void Processing_with_a_fresh_claim_is_not_hung()
     {
         var jobs = new[] { new ExtractionJobProgress(Now.AddMinutes(-1), Now.AddMinutes(-1), null) };

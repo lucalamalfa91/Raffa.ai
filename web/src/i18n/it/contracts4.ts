@@ -16,6 +16,9 @@ export const IT_CONTRACTS4: Readonly<Record<string, string>> = {
   "The upload did not go through.": "Il caricamento non è andato a buon fine.",
   "The contracts could not be loaded.": "Non riesco a caricare i contratti.",
   "Try again": "Riprova",
+  "This offer could not be found. Upload it again.": "Offerta non trovata. Caricala di nuovo.",
+  "The offer could not be read.": "Non è stato possibile leggere l’offerta.",
+  "Back to Ask": "Torna ad Ask",
   "No validated contract. Upload the first: after the reading and the check of doubtful fields it shows up here and in Today.":
     "Nessun contratto validato. Carica il primo: dopo la lettura e la verifica dei campi dubbi compare qui e in Oggi.",
   "Notice by": "Disdetta entro",

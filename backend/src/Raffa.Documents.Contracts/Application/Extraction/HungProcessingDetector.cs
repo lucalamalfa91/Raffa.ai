@@ -42,7 +42,8 @@ public static class HungProcessingDetector
     public static bool IsHung(
         DocumentProcessingStatus status,
         DateTimeOffset now,
-        IEnumerable<ExtractionJobProgress> jobs)
+        IEnumerable<ExtractionJobProgress> jobs,
+        DateTimeOffset? neverClaimedSince = null)
     {
         ArgumentNullException.ThrowIfNull(jobs);
 
@@ -55,9 +56,11 @@ public static class HungProcessingDetector
         if (last is null)
         {
             // No heartbeat yet — the Worker has not claimed (or tests seeded Processing without
-            // jobs). Not a hang: a real claim always writes claimed_at before the row goes
-            // Processing.
-            return false;
+            // jobs). Not a hang by itself: a real claim always writes claimed_at before the row goes
+            // Processing. But a row that never got a heartbeat for a whole window (the message was lost,
+            // the Worker died before claiming) would sit on "Uploading…" forever, so the caller may pass
+            // the moment the row entered the pipeline and the window then counts from there.
+            return neverClaimedSince is { } since && now - since >= InactivityWindow;
         }
 
         return now - last.Value >= InactivityWindow;

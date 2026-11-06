@@ -164,6 +164,7 @@ export const IT_SPEND: Readonly<Record<string, string>> = {
   "{date} · {n} d": "{date} · {n} g",
   "{from} – {to}, notice passed, at the previous price": "{from} – {to}, preavviso passato, al prezzo precedente",
   "{n} contracts": "{n} contratti",
+  "Not the whole workspace: {n} contracts{currencies} are out of the totals, never estimated": "Non è tutto il workspace: {n} contratti{currencies} sono fuori dai totali, mai stimati",
   "{n} contracts are out of the totals, never estimated:": "{n} contratti sono fuori dai totali, mai stimati:",
   "{n} contracts · first: {supplier}, {date}": "{n} contratti · il primo: {supplier}, {date}",
   "{n} without a billing period (cash basis).": "{n} senza periodo di fatturazione (cassa).",

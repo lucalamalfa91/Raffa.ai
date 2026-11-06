@@ -159,9 +159,9 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
     },
     {
       label: t("Uplift at renewal"),
-      value: d.uplift,
+      value: d.uplift || t("Not stated"),
       sub: t("if nothing is negotiated"),
-      cls: d.uplift !== "0%" ? "c4-accent-text" : "",
+      cls: d.uplift && d.uplift !== "0%" ? "c4-accent-text" : "",
     },
     { label: t("Start date"), value: d.start, sub: rolled ? t("current term, renewed by itself") : startsLater ? t("next term · the current contract runs until it ends") : t("current term"), cls: "" },
   ];

@@ -101,19 +101,34 @@ function Offer({ apiClient, quoteId }: { apiClient: ApiClient; quoteId: string }
   const [view, setView] = useState<QuoteView4 | null>(null);
   const [missing, setMissing] = useState(false);
   const [step, setStep] = useState<Step | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let live = true;
-    void api.getQuote(tenantId, quoteId, lang).then((r) => {
-      if (!live) return;
-      setView(r.data);
-      setMissing(!r.ok && r.status === 404);
-      if (r.data) setStep((s) => s ?? (r.data!.status !== "checked" ? 3 : 1));
-    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // A freshly uploaded offer can answer 404 (or fail) for a moment before it is readable: ask again a few
+    // times before telling the user, and never send them back to the start without a word.
+    const load = (tries: number) => {
+      void api.getQuote(tenantId, quoteId, lang).then((r) => {
+        if (!live) return;
+        if (!r.ok && !r.data && tries < 3) {
+          timer = setTimeout(() => load(tries + 1), 1000 * (tries + 1));
+          return;
+        }
+        setView(r.data);
+        setMissing(!r.ok && r.status === 404);
+        setFailed(!r.ok && !r.data && r.status !== 404);
+        if (r.data) setStep((s) => s ?? (r.data!.status !== "checked" ? 3 : 1));
+      });
+    };
+    setFailed(false);
+    load(0);
     return () => {
       live = false;
+      if (timer) clearTimeout(timer);
     };
-  }, [api, tenantId, quoteId, lang]);
+  }, [api, tenantId, quoteId, lang, attempt]);
 
   const s = step ?? 1;
   useGuide(
@@ -127,7 +142,23 @@ function Offer({ apiClient, quoteId }: { apiClient: ApiClient; quoteId: string }
       : null,
   );
 
-  if (missing) return <Navigate to="/ask" replace />;
+  if (missing || failed) {
+    return (
+      <div data-screen-label="Offerta" className="q6-offer">
+        <div className="c4-error" role="alert">
+          <span>{missing ? t("This offer could not be found. Upload it again.") : t("The offer could not be read.")}</span>
+          {failed ? (
+            <button type="button" className="btn btn-secondary" onClick={() => { setMissing(false); setAttempt((n) => n + 1); }}>
+              {t("Try again")}
+            </button>
+          ) : null}
+          <button type="button" className="btn btn-ghost" onClick={() => navigate("/ask")}>
+            {t("Back to Ask")}
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (!view) return <div data-screen-label="Offerta" className="q6-offer" />;
 
   const a = view.assessment;
