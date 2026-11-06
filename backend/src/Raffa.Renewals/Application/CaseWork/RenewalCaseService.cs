@@ -144,7 +144,17 @@ public sealed partial class RenewalCaseService(
             }
 
             c0 = RenewalCaseEngine.Act(c0, "visit", CaseActionPayload.None, ctx0);
+            var hadBrief = !string.IsNullOrEmpty(c0.Brief);
             RenewalCaseEngine.AttachBrief(c0, ctx0, brief);
+
+            // A case still on its first question is worded for this contract when it never was (opened before the
+            // tailoring existed, or the model was slow), and again when the chat's levers have just arrived.
+            if (c0.Phase == CasePhases.Interview && c0.Q == 0 && (c0.Interview is null || (!hadBrief && !string.IsNullOrEmpty(c0.Brief)))
+                && await TailorInterviewAsync(tenantId, cf, c0.Brief, ct).ConfigureAwait(false) is { Questions.Count: > 0 } tailoring)
+            {
+                c0.Interview = tailoring;
+            }
+
             await SaveStateAsync(existing, c0, cf, members, ct).ConfigureAwait(false);
             return CaseResult.Ok(Envelope(existing, c0, cf, caller.Name));
         }
