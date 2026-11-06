@@ -124,7 +124,7 @@ public static class CaseActions
         "sigOk", "tick", "acceptF", "correctF", "validate", "startNotice", "nStart", "nReceipt", "nOut", "startAlt", "altReqs",
         "altReqToggle", "altFeatAdd", "remPick", "recapYes", "recapWait", "recapNo", "altAdd", "altEx", "altRfq", "thread",
         "altOffer", "altSel", "altNew", "delegate", "delegateClose", "transfer", "say", "ask", "note", "answer", "collab",
-        "conflictRecover", "conflictDismiss",
+        "conflictRecover", "conflictDismiss", "reask",
     ];
 
     /// <summary>Actions that do not touch <c>updated</c> (UI-only).</summary>

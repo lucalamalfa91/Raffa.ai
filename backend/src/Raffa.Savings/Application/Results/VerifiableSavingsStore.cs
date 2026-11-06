@@ -51,6 +51,19 @@ public sealed class CaseObjectiveTableStore(SavingsDbContext dbContext, ITenantC
         row.UpdatedAt = clock.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    public async Task RemoveAsync(TenantId tenantId, Guid caseId, CancellationToken cancellationToken = default)
+    {
+        using var _ = tenantContext.BeginScope(tenantId);
+        var rows = await dbContext.CaseObjectives.Where(o => o.TenantId == tenantId && o.CaseId == caseId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        dbContext.CaseObjectives.RemoveRange(rows);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
 }
 
 /// <summary>Default <see cref="ISavingResultRecorder"/>: one <c>saving_result</c> row; realized stays 0

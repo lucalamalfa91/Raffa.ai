@@ -45,6 +45,10 @@ public sealed class RenewalCase
     /// <summary>Index of the open interview question (0–3).</summary>
     public int Q { get; set; }
 
+    /// <summary>While the person changes an earlier answer: the question to go back to once it is answered
+    /// (3 = the clauses, then the plan). Null on the normal path.</summary>
+    public int? ResumeQ { get; set; }
+
     public CaseGoals Goals { get; set; } = new();
 
     public int PlanVer { get; set; }

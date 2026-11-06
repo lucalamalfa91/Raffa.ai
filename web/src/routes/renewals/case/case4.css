@@ -14,6 +14,7 @@
 .p4-head { padding: 14px 40px 0; border-bottom: 2px solid var(--color-text); flex: none; }
 .p4-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .v4 .p4-page .p4-back { padding: 0; font-size: 13px; white-space: nowrap; }
+.v4 .p4-page .p4-cancel { padding: 0 8px; font-size: 13px; white-space: nowrap; color: var(--color-accent); }
 .p4-title { font-family: var(--font-heading); font-weight: var(--weight-title); font-size: 16px; }
 .v4 .p4-page .p4-scheda-toggle { margin-left: auto; padding: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .p4-cells {
