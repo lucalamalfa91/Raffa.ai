@@ -334,8 +334,15 @@ public sealed class ContractFactsReader(
         var today = DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
         var notice = version.NoticeDays ?? facts.Notice;
         var deadline = version.ValidTo.AddDays(-notice);
+        var spend = version.AnnualValue ?? facts.Spend;
+        var currency = string.IsNullOrWhiteSpace(version.Currency) ? facts.Currency : version.Currency.Trim().ToUpperInvariant();
         return facts with
         {
+            Deep = facts.Deep with
+            {
+                Terms = AlignTerms(facts.Deep.Terms, version, spend, currency, notice),
+                Products = AlignProducts(facts.Deep.Products, facts.Spend, spend),
+            },
             StartDate = version.ValidFrom,
             EndDate = version.ValidTo,
             NoticeDeadline = deadline,
@@ -352,6 +359,37 @@ public sealed class ContractFactsReader(
                 ? uplift.ToString("0.##", CultureInfo.InvariantCulture) + "%"
                 : facts.Uplift,
         };
+    }
+
+    /// <summary>The key terms that the running version states (spend, period, notice) take its values, so
+    /// the header and "Full contract" describe the same version. Terms the version does not carry stay.</summary>
+    private static IReadOnlyList<ContractTerm> AlignTerms(
+        IReadOnlyList<ContractTerm> terms, ContractTermVersion version, decimal spend, string currency, int notice) =>
+        terms.Select(t => t.Label switch
+        {
+            "Annual spend" when version.AnnualValue is not null =>
+                t with { Value = currency + " " + spend.ToString("#,0", CultureInfo.InvariantCulture) },
+            "Term" => t with { Value = $"{FormatDate(version.ValidFrom)} → {FormatDate(version.ValidTo)}" },
+            "Notice period" => t with { Value = $"{notice} days" },
+            _ => t,
+        }).ToList();
+
+    /// <summary>Recurring product lines follow the version's annual value: the version stores the total, not
+    /// the lines, so each recurring line is scaled by the same ratio (quantity kept, unit price and annual
+    /// cost follow). One-off lines are left as written.</summary>
+    private static IReadOnlyList<ContractProduct> AlignProducts(IReadOnlyList<ContractProduct> products, decimal oldSpend, decimal newSpend)
+    {
+        if (oldSpend <= 0 || newSpend <= 0 || oldSpend == newSpend)
+        {
+            return products;
+        }
+
+        var ratio = newSpend / oldSpend;
+        return products
+            .Select(p => p.BillingPeriod is { } period && period.Contains("one", StringComparison.OrdinalIgnoreCase)
+                ? p
+                : p with { UnitPrice = Math.Round(p.UnitPrice * ratio, 2), Annual = Math.Round(p.Annual * ratio, 2) })
+            .ToList();
     }
 
     /// <summary>Each contract's currency, from its own row: the one source of truth (the facts JSON

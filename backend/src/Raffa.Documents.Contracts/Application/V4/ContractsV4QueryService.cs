@@ -96,7 +96,8 @@ public sealed record Contract360V4(
     IReadOnlyList<ContractObligationV4> OblYou,
     IReadOnlyList<ContractObligationV4> OblSup,
     IReadOnlyList<ContractStdTermV4> Std,
-    ContractAssessmentView? Assessment = null);
+    ContractAssessmentView? Assessment = null,
+    IReadOnlyList<ContractObligationV4>? OblOther = null);
 
 /// <summary>The AskRaffa 4.0 read models of Contratti and Contratto, built only from
 /// <see cref="IContractFactsReader"/> (current term version included) and the case status.</summary>
@@ -205,7 +206,8 @@ public sealed class ContractsV4QueryService(
             deep.OblYou.Select(Obligation).ToList(),
             deep.OblSup.Select(Obligation).ToList(),
             deep.Std.Select(s => new ContractStdTermV4(s.Topic, s.Says, s.Source)).ToList(),
-            assessment);
+            assessment,
+            deep.OblOther.Select(Obligation).ToList());
     }
 
     /// <summary>The prototype's <c>c3.next</c>: the case's next action, else start it (now when

@@ -75,7 +75,14 @@ public sealed class ContractFactsProjector(
 
         static bool IsOurs(string party) =>
             party.Contains("customer", StringComparison.OrdinalIgnoreCase) || party.Contains("buyer", StringComparison.OrdinalIgnoreCase)
-            || party.Contains("client", StringComparison.OrdinalIgnoreCase);
+            || party.Contains("client", StringComparison.OrdinalIgnoreCase) || party.Contains("licensee", StringComparison.OrdinalIgnoreCase);
+        // The supplier side only on evidence: a role word, or the supplier's own name. Any other party
+        // (a blank one, a company name that is not the supplier) is "undetermined", not the supplier.
+        bool IsSupplier(string party) =>
+            party.Contains("supplier", StringComparison.OrdinalIgnoreCase) || party.Contains("vendor", StringComparison.OrdinalIgnoreCase)
+            || party.Contains("provider", StringComparison.OrdinalIgnoreCase) || party.Contains("licensor", StringComparison.OrdinalIgnoreCase)
+            || party.Contains("seller", StringComparison.OrdinalIgnoreCase)
+            || (supplier.Length > 0 && party.Contains(supplier, StringComparison.OrdinalIgnoreCase));
         ContractObligation Obligation(Obligation o) => new(
             o.Description,
             o.DueDate is { } due ? Date(due) : (o.RecurrenceRule ?? "—"),
@@ -111,7 +118,8 @@ public sealed class ContractFactsProjector(
                 Std = clauses.Select(c => new ContractStandardTerm(
                     c.ClauseType, c.NormalizedValue ?? c.RawText, c.SourcePage is { } p ? $"p.{p}" : "")).ToList(),
                 OblYou = obligations.Where(o => IsOurs(o.Party)).Select(Obligation).ToList(),
-                OblSup = obligations.Where(o => !IsOurs(o.Party)).Select(Obligation).ToList(),
+                OblSup = obligations.Where(o => !IsOurs(o.Party) && IsSupplier(o.Party)).Select(Obligation).ToList(),
+                OblOther = obligations.Where(o => !IsOurs(o.Party) && !IsSupplier(o.Party)).Select(Obligation).ToList(),
                 Terms = terms,
             },
         };

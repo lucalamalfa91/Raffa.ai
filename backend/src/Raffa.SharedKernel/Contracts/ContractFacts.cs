@@ -96,6 +96,9 @@ public sealed record ContractDeepFacts
     public IReadOnlyList<ContractStandardTerm> Std { get; init; } = [];
     public IReadOnlyList<ContractObligation> OblYou { get; init; } = [];
     public IReadOnlyList<ContractObligation> OblSup { get; init; } = [];
+
+    /// <summary>Obligations whose bound party is neither clearly ours nor clearly the supplier's: shown apart, never attributed to the supplier without evidence.</summary>
+    public IReadOnlyList<ContractObligation> OblOther { get; init; } = [];
     public IReadOnlyList<ContractScorePart> ScoreParts { get; init; } = [];
     public IReadOnlyList<ContractRisk> Risks { get; init; } = [];
     public IReadOnlyList<ContractTerm> Terms { get; init; } = [];

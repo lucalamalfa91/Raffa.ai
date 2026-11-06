@@ -125,6 +125,9 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
 
   const d = contract.dates;
   const pointCount = contract.decisionPoints.length + negotiation.todos.length;
+  // A start date still ahead is the scheduled next term (a renewal signed in advance), not the current one.
+  const startMs = Date.parse(d.start);
+  const startsLater = !Number.isNaN(startMs) && startMs > Date.now();
   const meta = t("{type} · version {version} · validated · {value} / year", {
     type: contract.type,
     version: contract.version,
@@ -160,7 +163,7 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
       sub: t("if nothing is negotiated"),
       cls: d.uplift !== "0%" ? "c4-accent-text" : "",
     },
-    { label: t("Start date"), value: d.start, sub: rolled ? t("current term, renewed by itself") : t("current term"), cls: "" },
+    { label: t("Start date"), value: d.start, sub: rolled ? t("current term, renewed by itself") : startsLater ? t("next term · the current contract runs until it ends") : t("current term"), cls: "" },
   ];
 
   return (
@@ -288,6 +291,17 @@ export default function Contract360Route({ apiClient }: Contract360RouteProps) {
                 </div>
               ))}
             </div>
+            {(contract.oblOther?.length ?? 0) > 0 && (
+              <div>
+                <div className="c4-section-label">{t("Party not determined")}</div>
+                {contract.oblOther?.map((o) => (
+                  <div key={o.text} className="c4-obligation">
+                    <div className={o.high ? "c4-obligation-text is-high" : "c4-obligation-text"}>{o.text}</div>
+                    <div className="c4-obligation-when">{o.when}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <div className="c4-section-label">{t("Standard terms · already accepted")}</div>

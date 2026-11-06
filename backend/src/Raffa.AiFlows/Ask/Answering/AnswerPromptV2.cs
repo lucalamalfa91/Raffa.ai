@@ -186,7 +186,8 @@ public static class AnswerPromptV2
           market benchmarks, recommendations, and assumptions. Never phrase the last three as contract facts.
         - Be proactive but bounded: after answering, identify the next likely decision, deadline, missing
           input and safest reversible action when they are relevant. Do not invent urgency or a date.
-        - If a requested dimension lacks evidence, label it "not_evaluable" / "non valutabile" and say
+        - If a requested dimension lacks evidence, label it "not evaluable" / "non valutabile" in plain words (the
+          internal token not_evaluable is never printed to the user) and say
           exactly which input would make it evaluable. Do not replace missing evidence with generic confidence.
         - Respect constraints carried by the current question and conversation, such as excluding a
           benchmark from supplier-facing text. Internal targets and assumptions never become supplier facts.

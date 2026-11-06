@@ -118,6 +118,27 @@ public sealed class ProductionCaseFlowTests
     }
 
     [Fact]
+    public void Renaming_a_draft_is_idempotent_when_the_contract_name_contains_the_file_stem()
+    {
+        var northstar = CrowdStrike with
+        {
+            Name = "QA06-05-Northstar Systems Ltd.",
+            File = "QA06-05-Northstar.pdf",
+        };
+        var c = ToFirstEmail();
+        c.Emails[0].Subject = "QA06-05-Northstar.pdf — renewal proposal request";
+        c.Emails[0].Body = "Dear QA06-05-Northstar team, about QA06-05-Northstar.pdf.";
+
+        for (var i = 0; i < 4; i++)
+        {
+            c = RenewalCaseEngine.RenameDraftsFromFileName(c, northstar);
+        }
+
+        Assert.Equal("QA06-05-Northstar Systems Ltd. — renewal proposal request", c.Emails[0].Subject);
+        Assert.Equal("Dear QA06-05-Northstar Systems Ltd. team, about QA06-05-Northstar Systems Ltd..", c.Emails[0].Body);
+    }
+
+    [Fact]
     public void The_counter_proposal_repeats_only_what_the_supplier_wrote_and_labels_our_requests()
     {
         var c = SendEmail(ToFirstEmail(), 0, 0);
