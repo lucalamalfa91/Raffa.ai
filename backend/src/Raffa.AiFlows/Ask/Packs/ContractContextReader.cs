@@ -182,9 +182,54 @@ public sealed class ContractContextReader(
                 .GetCurrentAsync(CurrentTenantId, contract360.ContractId, cancellationToken)
                 .ConfigureAwait(false);
 
-        return await ContractInsightsMapper
+        var lines = await ContractInsightsMapper
             .ToPricedLines(contract360, benchmarkService, benchmarkSupplierName, geography, asOfDate, cancellationToken, storedMarketPrices)
             .ConfigureAwait(false);
+
+        return await FillMissingBandsAsync(contract360, lines, benchmarkSupplierName, geography, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A line the stored comparison and the exact-name benchmark both left without a band still gets
+    /// one from the supplier's market deals when a deal's product is named in the line's description
+    /// (<see cref="MarketBandFallback"/>) — so a market comparison asked anywhere in Ask (chat, KPI,
+    /// dashboard, negotiation) uses the market corpus instead of reporting "no benchmark". Works with
+    /// an incomplete benchmark key too (no workspace country: the currency still narrows the deals).
+    /// A failed lookup keeps the lines as they were.
+    /// </summary>
+    private async Task<IReadOnlyList<PricedLine>> FillMissingBandsAsync(
+        Contract360Result contract360,
+        IReadOnlyList<PricedLine> lines,
+        string? benchmarkSupplierName,
+        string? geography,
+        CancellationToken cancellationToken)
+    {
+        if (lines.All(l => l.Benchmark is not null || l.UnitPrice is null))
+        {
+            return lines;
+        }
+
+        try
+        {
+            var supplierName = benchmarkSupplierName;
+            if (supplierName is null && contract360.Header.SupplierId is { } supplierId)
+            {
+                var names = await supplierNameLookup.GetNamesAsync(CurrentTenantId, [supplierId], cancellationToken).ConfigureAwait(false);
+                names.TryGetValue(supplierId, out supplierName);
+            }
+
+            if (string.IsNullOrWhiteSpace(supplierName))
+            {
+                return lines;
+            }
+
+            var deals = await GetDealsBySupplierAsync(supplierName, cancellationToken).ConfigureAwait(false);
+            return MarketBandFallback.Fill(lines, deals, supplierName, contract360.Overview.Currency, geography);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return lines;
+        }
     }
 
     /// <summary>

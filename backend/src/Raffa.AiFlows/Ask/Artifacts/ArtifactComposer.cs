@@ -5,6 +5,9 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Raffa.AiFlows.Ask.Packs;
 using Raffa.AiFlows.Negotiation.Agents;
+using Raffa.AiFlows.Negotiation.DataCheck;
+using Raffa.Benchmark.Contracts;
+using Raffa.Market.Contracts;
 using Raffa.AiFlows.Shared.Pack;
 using Raffa.AiGateway;
 using Raffa.AiGateway.Agents;
@@ -59,7 +62,26 @@ internal sealed record ArtifactScopePlan(string? Supplier, bool UsesPortfolio, b
 public sealed record ArtifactComposerInput(string Request, string Language, string Kind, string FactsJson);
 
 /// <summary>One priced line of the focus contract's Products tab, for its own fact row.</summary>
-internal sealed record FocusLineItemFact(string Description, decimal? Quantity, string? Unit, decimal? UnitPrice, string? BillingPeriod, decimal? AnnualCost);
+internal sealed record FocusLineItemFact(
+    string Description, decimal? Quantity, string? Unit, decimal? UnitPrice, string? BillingPeriod, decimal? AnnualCost,
+    FocusLineMarketFact? Market = null);
+
+/// <summary>
+/// A priced line's market band (representative market data, never the user's own) and where the
+/// contract's unit price sits in it, computed here so the composer copies the comparison instead of
+/// computing it (its verifier rejects a computed figure). <c>Position</c>: below-p25, p25-p50, p50-p75, above-p75.
+/// </summary>
+internal sealed record FocusLineMarketFact(
+    decimal P25, decimal P50, decimal P75, string Currency, int? SampleSize, string? Source, string? AsOf,
+    decimal? DeltaVsP50, decimal? DeltaVsP50Pct, string? Position, decimal? AnnualDeltaVsP50);
+
+/// <summary>What comparable customers of the focus contract's supplier negotiated (representative market data).</summary>
+internal sealed record FocusMarketFact(string Terms, IReadOnlyList<FocusMarketDealFact> ComparableDeals);
+
+internal sealed record FocusMarketDealFact(
+    string Product, string Geography, string Currency, string CompanySizeBand, int TermMonths,
+    decimal UnitPriceP25, decimal UnitPriceP50, decimal UnitPriceP75, int SampleSize,
+    double? DiscountAchievedPct, double? UpliftCapPct, int? NoticeDays, string Source);
 
 /// <summary>One clause's raw text (capped, see <see cref="ArtifactComposer.MaxFocusClauses"/>), for the focus contract's own fact row.</summary>
 internal sealed record FocusClauseFact(string Type, string Text, int? Page);
@@ -81,7 +103,8 @@ internal sealed record FocusContractFact(
     int? DaysToEnd, int? DaysToCancellationDeadline, int? NoticePeriodDays, bool AutoRenewal, int? RenewalTermMonths,
     string? PaymentTerms, string? GoverningLaw, string? Risk,
     int LineItemCount, decimal? LineItemAnnualCostTotal, decimal? LineItemTotalCostTotal,
-    IReadOnlyList<FocusLineItemFact> LineItems, IReadOnlyList<FocusClauseFact> Clauses, IReadOnlyList<FocusObligationFact> Obligations);
+    IReadOnlyList<FocusLineItemFact> LineItems, IReadOnlyList<FocusClauseFact> Clauses, IReadOnlyList<FocusObligationFact> Obligations,
+    FocusMarketFact? Market = null);
 
 /// <summary>One currency's total of <see cref="PortfolioSummaryFact.SpendByCurrency"/>.</summary>
 internal sealed record CurrencyTotalFact(string Currency, decimal? TotalAnnualSpend, int Contracts);
@@ -132,16 +155,17 @@ public sealed class ArtifactComposer(
     private const int MaxFocusClauses = 30;
     private const int MaxFocusLineItems = 20;
     private const int MaxFocusObligations = 20;
+    private const int MaxComparableDeals = 5;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private const string ComposerPrompt =
         "You write the content of a procurement dashboard, a KPI set or a short document for a Raffa user, from the FACTS you are given.\n" +
         "Rules:\n" +
         "1. Use ONLY figures that appear in FACTS (copy them; abbreviate as 3.6M / 450k if you like, but never change a value, never compute a new one). If a figure is not there, say so in the hint or the markdown instead of inventing it.\n" +
-        "2. 'focus' is the contract(s) the conversation is about: when it is present, the content is about it. 'portfolio' lists every contract of the workspace: use it when the request compares or looks across contracts (similar contracts, ranking, totals). 'market' holds notes retrieved from the market knowledge base: use it, with its provenance, when the request asks how the contract sits against the market; never present a market note as the user's own data.\n" +
+        "2. 'focus' is the contract(s) the conversation is about: when it is present, the content is about it. 'portfolio' lists every contract of the workspace: use it when the request compares or looks across contracts (similar contracts, ranking, totals). 'market' holds notes retrieved from the market knowledge base, each focus line item's 'market' holds its benchmark band (p25/p50/p75, sample size, source) with the contract price's position and delta vs the median already computed, and each focus contract's 'market' holds what comparable customers negotiated (terms and comparable deals). When the request asks how the contract sits against the market (benchmark, prices, terms, savings), you MUST show these market figures (P25/P50/P75, the delta vs P50, the market terms) next to the contract's own and label them as representative market data; never present them as the user's own data, and never say a benchmark is missing when a line item carries 'market'.\n" +
         "3. Pick what fits the request: kind 'kpi' = 4 to 8 tiles; 'dashboard' = tiles plus at least one chart and/or table; 'document' = markdown (headings, lists, bold) with few or no tiles.\n" +
         "4. Write in the language given. Tile 'tone' is 'urgent', 'good' or an empty string. Chart items need a numeric value and a short display string. Unused lists are empty, unused strings are empty.\n" +
-        "5. Never address the user, never ask questions: return the content only.";
+        "5. Never address the user, never ask questions: return the content only. Never mention 'FACTS', field names or JSON keys: write plain business language (say 'dato non disponibile' / 'not available').";
 
     /// <summary>The composer's registry definition (kill switch <c>Agents:Agents:artifact-composer:Enabled</c>).</summary>
     public static AgentDefinition Definition() =>
@@ -166,7 +190,7 @@ public sealed class ArtifactComposer(
 
         var plan = new ArtifactScopePlan(
             hint.Supplier is { } given ? names.Values.FirstOrDefault(n => string.Equals(n, given, StringComparison.OrdinalIgnoreCase)) : null,
-            hint.UsesPortfolio, hint.UsesMarket, hint.Kind);
+            hint.UsesPortfolio, hint.UsesMarket || ArtifactCommandResolver.MentionsMarket(request.Request), hint.Kind);
 
         // The contract(s) in focus: the supplier the model resolved from the chat, else the contract the chat is opened on.
         var focusItems = plan.Supplier is { } supplier
@@ -192,12 +216,43 @@ public sealed class ArtifactComposer(
         // ClausePackBuilder already read for the named-contract text answer (Overview/Commercials/
         // Products/Clauses/Obligations) -- not just the portfolio's coarse row, so a request about
         // "this contract's data" can be grounded in the exact figures the chat already quoted.
+        // Each line also carries its market band (the same priced lines every Ask pack reads: stored
+        // comparison, benchmark, then the deals matched by product name), and with a market request the
+        // supplier's comparable deals and negotiated terms -- the structured market corpus, not only the
+        // market RAG's notes, so a "compare with the market" dashboard always has the benchmarks.
         var focusFacts = new List<FocusContractFact>(focusItems.Count);
         foreach (var item in focusItems)
         {
             var contract360 = await contractContextReader.GetContract360Async(item.ContractId, cancellationToken).ConfigureAwait(false);
-            focusFacts.Add(BuildFocusFact(item, NameOf(item), today, contract360));
+            IReadOnlyList<PricedLine>? pricedLines = null;
+            FocusMarketFact? marketFact = null;
+            if (contract360 is not null)
+            {
+                try
+                {
+                    var (benchmarkSupplier, geography) = await contractContextReader
+                        .ResolveBenchmarkKeyAsync(contract360.Header.SupplierId, cancellationToken).ConfigureAwait(false);
+                    pricedLines = await contractContextReader
+                        .ResolvePricedLinesAsync(contract360, benchmarkSupplier, geography, today, cancellationToken).ConfigureAwait(false);
+                    if (plan.UsesMarket)
+                    {
+                        var supplierName = benchmarkSupplier ?? NameOf(item);
+                        var deals = await contractContextReader.GetDealsBySupplierAsync(supplierName, cancellationToken).ConfigureAwait(false);
+                        var narrowed = MarketSafetyNet.MatchingProducts(
+                            PackItemFactory.NarrowDealsToContract(deals, contract360.Overview.Currency, geography), pricedLines);
+                        marketFact = BuildMarketFact(item.ContractId, NameOf(item), narrowed);
+                    }
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger?.LogWarning(exception, "Market benchmarks for the artifact could not be read; the artifact is built without them.");
+                }
+            }
+
+            focusFacts.Add(BuildFocusFact(item, NameOf(item), today, contract360, pricedLines) with { Market = marketFact });
         }
+
+        usedMarket |= focusFacts.Any(f => f.Market is not null || f.LineItems.Any(l => l.Market is not null));
 
         var portfolioSummary = plan.UsesPortfolio || focusFacts.Count == 0 ? Summarize(portfolio.Items, NameOf, today) : null;
         var facts = new
@@ -207,6 +262,7 @@ public sealed class ArtifactComposer(
             portfolio = portfolioSummary,
             market,
             marketRequestedButEmpty = plan.UsesMarket && !usedMarket,
+            marketDisclaimer = usedMarket ? "Market figures are representative market data (mock corpus), not the user's own contract data." : null,
         };
         var factsJson = JsonSerializer.Serialize(facts, Json);
 
@@ -235,7 +291,7 @@ public sealed class ArtifactComposer(
         // A request the user explicitly asked for never comes back empty-handed: when the agent
         // cannot deliver, the same fact pack above still builds a real, grounded draft with no
         // model call at all (see BuildDeterministicDraft's own doc comment).
-        draft ??= BuildDeterministicDraft(plan.Kind, request.Language, focusSupplier, focusFacts, portfolioSummary);
+        draft ??= BuildDeterministicDraft(plan.Kind, request.Language, focusSupplier, focusFacts, portfolioSummary, plan.UsesMarket);
 
         return new ArtifactResult(
             draft,
@@ -294,7 +350,8 @@ public sealed class ArtifactComposer(
     /// (deleted since the conversation was opened), in which case this still returns the portfolio row's own
     /// coarser fields rather than nothing at all.
     /// </summary>
-    internal static FocusContractFact BuildFocusFact(PortfolioListItem item, string supplier, DateOnly today, Contract360Result? contract360)
+    internal static FocusContractFact BuildFocusFact(
+        PortfolioListItem item, string supplier, DateOnly today, Contract360Result? contract360, IReadOnlyList<PricedLine>? pricedLines = null)
     {
         var overview = contract360?.Overview;
         var commercials = contract360?.Commercials;
@@ -325,7 +382,9 @@ public sealed class ArtifactComposer(
             LineItemAnnualCostTotal: commercials?.LineItemAnnualCostTotal,
             LineItemTotalCostTotal: commercials?.LineItemTotalCostTotal,
             LineItems: contract360?.Products.Take(MaxFocusLineItems)
-                .Select(p => new FocusLineItemFact(p.Description, p.Quantity, p.Unit, p.UnitPrice, p.BillingPeriod, p.AnnualCost))
+                .Select((p, i) => new FocusLineItemFact(
+                    p.Description, p.Quantity, p.Unit, p.UnitPrice, p.BillingPeriod, p.AnnualCost,
+                    pricedLines is not null && i < pricedLines.Count ? BuildLineMarketFact(pricedLines[i], p.Quantity) : null))
                 .ToList() ?? [],
             Clauses: contract360?.Clauses.Where(c => !string.IsNullOrWhiteSpace(c.RawText)).Take(MaxFocusClauses)
                 .Select(c => new FocusClauseFact(c.ClauseType, c.RawText, c.SourcePage))
@@ -333,6 +392,49 @@ public sealed class ArtifactComposer(
             Obligations: contract360?.Obligations.Take(MaxFocusObligations)
                 .Select(o => new FocusObligationFact(o.ObligationType, o.Description, Iso(o.DueDate), o.Criticality))
                 .ToList() ?? []);
+    }
+
+    /// <summary>The line's market band and where its unit price sits in it; null when no band resolved.</summary>
+    internal static FocusLineMarketFact? BuildLineMarketFact(PricedLine line, decimal? quantity)
+    {
+        if (line.Benchmark is not { } band)
+        {
+            return null;
+        }
+
+        decimal? delta = null, deltaPct = null, annualDelta = null;
+        string? position = null;
+        if (line.UnitPrice is { } price)
+        {
+            delta = Math.Round(price - band.P50, 2, MidpointRounding.AwayFromZero);
+            deltaPct = band.P50 == 0 ? null : Math.Round((price - band.P50) / band.P50 * 100m, 1, MidpointRounding.AwayFromZero);
+            annualDelta = quantity is { } q ? Math.Round((price - band.P50) * q, 2, MidpointRounding.AwayFromZero) : null;
+            position = price < band.P25 ? "below-p25" : price <= band.P50 ? "p25-p50" : price <= band.P75 ? "p50-p75" : "above-p75";
+        }
+
+        return new FocusLineMarketFact(
+            band.P25, band.P50, band.P75, line.Currency ?? "", line.SampleSize, line.AdapterName,
+            line.AsOf?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), delta, deltaPct, position, annualDelta);
+    }
+
+    /// <summary>The supplier's negotiated terms and a few comparable deals; null when the corpus has none.</summary>
+    internal static FocusMarketFact? BuildMarketFact(Guid contractId, string supplier, IReadOnlyList<MarketDeal> deals)
+    {
+        if (deals.Count == 0)
+        {
+            return null;
+        }
+
+        var terms = MarketSafetyNet.TermsItem(contractId, supplier, deals)?.Snippet ?? "";
+        var comparable = deals
+            .OrderByDescending(d => d.SampleSize)
+            .Take(MaxComparableDeals)
+            .Select(d => new FocusMarketDealFact(
+                d.Product, d.Geography, d.Currency, d.CompanySizeBand, d.TermMonths, d.UnitPriceP25, d.UnitPriceP50, d.UnitPriceP75,
+                d.SampleSize, d.DiscountAchievedPct, d.UpliftCapPct, d.NoticeDays,
+                d.Representative ? $"{d.Provider} (representative, {d.Source})" : d.Provider))
+            .ToList();
+        return new FocusMarketFact(terms, comparable);
     }
 
     private static string KindLabel(string kind, bool italian) => (kind, italian) switch
@@ -357,7 +459,8 @@ public sealed class ArtifactComposer(
     /// not "it" falls back to English), matching this product's own two supported languages.
     /// </summary>
     internal static ArtifactDraft BuildDeterministicDraft(
-        string kind, string language, string? focusSupplier, IReadOnlyList<FocusContractFact> focus, PortfolioSummaryFact? portfolioSummary)
+        string kind, string language, string? focusSupplier, IReadOnlyList<FocusContractFact> focus, PortfolioSummaryFact? portfolioSummary,
+        bool usesMarket = false)
     {
         var it = string.Equals(language, "it", StringComparison.OrdinalIgnoreCase);
         string L(string italian, string english) => it ? italian : english;
@@ -424,6 +527,40 @@ public sealed class ArtifactComposer(
             if (f.Risk is { } risk && !string.IsNullOrWhiteSpace(risk))
             {
                 tiles.Add(new DraftTile(L("Rischio", "Risk"), risk, "", risk is "High" or "Critical" ? "urgent" : ""));
+            }
+
+            var benchmarked = f.LineItems.Where(x => x.Market is not null).ToList();
+            if (usesMarket && benchmarked.Count > 0 && kind != "document")
+            {
+                foreach (var x in benchmarked.Take(2))
+                {
+                    var m = x.Market!;
+                    var hint = L($"P25 {m.P25} · P75 {m.P75} · {Truncate(x.Description, 40)} · dato di mercato rappresentativo",
+                        $"P25 {m.P25} · P75 {m.P75} · {Truncate(x.Description, 40)} · representative market data");
+                    tiles.Add(new DraftTile(L("Mediana di mercato (P50)", "Market median (P50)"), $"{m.Currency} {m.P50}", hint, ""));
+                    if (m.DeltaVsP50Pct is { } pct)
+                    {
+                        tiles.Add(new DraftTile(
+                            L("Prezzo vs mediana", "Price vs median"),
+                            $"{(pct > 0 ? "+" : "")}{pct.ToString(CultureInfo.InvariantCulture)}%",
+                            m.Position ?? "",
+                            pct > 0 ? "urgent" : "good"));
+                    }
+                }
+
+                tables.Add(new DraftTable(
+                    L("Confronto con il mercato", "Market comparison"),
+                    [L("Voce", "Line"), L("Prezzo unitario", "Unit price"), "P25", "P50", "P75", L("Delta vs P50", "Delta vs P50"), L("Fonte", "Source")],
+                    benchmarked.Select(x => new List<string>
+                    {
+                        Truncate(x.Description, 60),
+                        x.UnitPrice?.ToString(CultureInfo.InvariantCulture) ?? "—",
+                        x.Market!.P25.ToString(CultureInfo.InvariantCulture),
+                        x.Market.P50.ToString(CultureInfo.InvariantCulture),
+                        x.Market.P75.ToString(CultureInfo.InvariantCulture),
+                        x.Market.DeltaVsP50Pct is { } p ? $"{(p > 0 ? "+" : "")}{p.ToString(CultureInfo.InvariantCulture)}%" : "—",
+                        x.Market.Source ?? "—",
+                    }).ToList()));
             }
 
             if (kind == "dashboard")
