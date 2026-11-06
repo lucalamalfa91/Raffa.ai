@@ -144,7 +144,17 @@ public sealed partial class RenewalCaseService(
             }
 
             c0 = RenewalCaseEngine.Act(c0, "visit", CaseActionPayload.None, ctx0);
+            var hadBrief = !string.IsNullOrEmpty(c0.Brief);
             RenewalCaseEngine.AttachBrief(c0, ctx0, brief);
+
+            // A case still on its first question is worded for this contract when it never was (opened before the
+            // tailoring existed, or the model was slow), and again when the chat's levers have just arrived.
+            if (c0.Phase == CasePhases.Interview && c0.Q == 0 && (c0.Interview is null || (!hadBrief && !string.IsNullOrEmpty(c0.Brief)))
+                && await TailorInterviewAsync(tenantId, cf, c0.Brief, ct).ConfigureAwait(false) is { Questions.Count: > 0 } tailoring)
+            {
+                c0.Interview = tailoring;
+            }
+
             await SaveStateAsync(existing, c0, cf, members, ct).ConfigureAwait(false);
             return CaseResult.Ok(Envelope(existing, c0, cf, caller.Name));
         }
@@ -218,6 +228,53 @@ public sealed partial class RenewalCaseService(
         }
 
         return await db.CaseVendorMessages.AsNoTracking().Where(x => x.CaseId == id).OrderBy(x => x.ReceivedAt).ToListAsync(ct).ConfigureAwait(false);
+    }
+
+    /* ---------------- cancel ---------------- */
+
+    /// <summary>
+    /// <c>DELETE /api/renewals/{caseId}</c>: the negotiation is cancelled and its case removed with everything
+    /// it projected (emails, delegations, reminders, events, supplier messages, the objective in Results), so the
+    /// contract is free to start again from scratch. Open cases only; owner, approver or a delegate only. The
+    /// contract itself is never touched.
+    /// </summary>
+    public async Task<CaseResult> CancelAsync(TenantId tenantId, string? callerIdentity, Guid caseId, CancellationToken ct = default)
+    {
+        using var scope = tenantContext.BeginScope(tenantId);
+        var id = new EntityId(caseId);
+        var record = await db.RenewalCases.FirstOrDefaultAsync(x => x.Id == id, ct).ConfigureAwait(false);
+        if (record is null)
+        {
+            return CaseResult.NotFound("No case with this id.");
+        }
+
+        if (record.ClosedAt is not null)
+        {
+            return CaseResult.Bad("This case is already closed: it cannot be cancelled.");
+        }
+
+        var members = await memberDirectory.ListAsync(tenantId, ct).ConfigureAwait(false);
+        var caller = CaseCaller.From(members, callerIdentity);
+        var c = RenewalCaseJson.Deserialize(record.State);
+        if (!CaseRules.CanWork(c, caller.Name))
+        {
+            return new CaseResult(CaseResultKind.Forbidden, Error: "Only the owner, the approver or a delegate can cancel this negotiation.");
+        }
+
+        db.CaseEmails.RemoveRange(await db.CaseEmails.Where(x => x.CaseId == id).ToListAsync(ct).ConfigureAwait(false));
+        db.CaseDelegations.RemoveRange(await db.CaseDelegations.Where(x => x.CaseId == id).ToListAsync(ct).ConfigureAwait(false));
+        db.CaseEvents.RemoveRange(await db.CaseEvents.Where(x => x.CaseId == id).ToListAsync(ct).ConfigureAwait(false));
+        db.CaseVendorMessages.RemoveRange(await db.CaseVendorMessages.Where(x => x.CaseId == id).ToListAsync(ct).ConfigureAwait(false));
+        db.UserReminders.RemoveRange(await db.UserReminders.Where(x => x.CaseId == caseId).ToListAsync(ct).ConfigureAwait(false));
+        db.RenewalCases.Remove(record);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        await objectiveWriter.RemoveAsync(tenantId, caseId, ct).ConfigureAwait(false);
+        if (logger is not null)
+        {
+            Microsoft.Extensions.Logging.LoggerExtensions.LogInformation(logger, "Renewal case {CaseId} cancelled by {Caller}.", caseId, caller.Name);
+        }
+
+        return new CaseResult(CaseResultKind.Ok);
     }
 
     /* ---------------- act ---------------- */

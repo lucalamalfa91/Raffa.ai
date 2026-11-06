@@ -252,4 +252,46 @@ public sealed class ProductionCaseFlowTests
         Assert.Contains(view.Page.Current.Rows, r => r.V.Render() == "stays active until 04 Jul 2028");
         Assert.Contains(view.Page.Current.Rows, r => r.V.Render() == "CrowdStrike_OrderForm_signed.pdf");
     }
+
+    [Fact]
+    public void An_earlier_answer_can_be_changed_after_the_plan_and_the_unsent_draft_is_withdrawn()
+    {
+        var c = ToFirstEmail();
+        var first = c.Emails.Single();
+        var more = RenewalCaseEngine.View(c, Ctx(Marta)).Page.Current.More;
+        Assert.Contains(more, b => b.Act == "reask" && b.P.Q == 2);
+
+        c = Act(c, Marta, "reask", new() { Q = 2 });
+        Assert.Equal(CasePhases.Interview, c.Phase);
+        Assert.Equal(2, c.Q);
+        Assert.Equal(EmailStates.Superseded, c.Emails[first.Id].State);
+
+        // The new target, then straight back to the clauses (kept) and a new plan: term and products stay.
+        c = Act(c, Marta, "ans", new() { Q = 2, Val = "p10" });
+        Assert.Equal(3, c.Q);
+        Assert.Equal("12", c.Goals.Term);
+        c = Act(c, Marta, "q3done");
+        c = Act(c, Marta, "confirmPlan");
+        Assert.Equal("p10", c.Goals.Target);
+        Assert.Equal(EmailStates.Draft, c.Emails.Last().State);
+        Assert.Contains("10%", c.Emails.Last().Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void During_the_interview_going_back_returns_to_the_open_question_and_nothing_changes_once_an_email_is_sent()
+    {
+        var c = RenewalCaseEngine.Create(1, Ctx(Luca), owner: Marta);
+        c = Act(c, Marta, "ans", new() { Q = 0, Val = "keep" });
+        c = Act(c, Marta, "ans", new() { Q = 1, Val = "12" });
+        c = Act(c, Marta, "reask", new() { Q = 0 });
+        c = Act(c, Marta, "ans", new() { Q = 0, Val = "reduce" });
+        Assert.Equal(2, c.Q);
+        Assert.Equal("reduce", c.Goals.Prod);
+
+        var sent = SendEmail(ToFirstEmail(), 0, 0);
+        Assert.False(RenewalCaseEngine.CanChangeChoices(sent));
+        Assert.DoesNotContain(RenewalCaseEngine.View(sent, Ctx(Marta)).Page.Current.More, b => b.Act == "reask");
+        var after = Act(sent, Marta, "reask", new() { Q = 0 });
+        Assert.Equal(sent.Phase, after.Phase);
+    }
 }

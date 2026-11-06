@@ -199,6 +199,34 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
     void act(b.act, b.p);
   };
 
+  const [cancelling, setCancelling] = useState(false);
+  /** Cancels the negotiation (the case and its drafts are removed, the contract is untouched), then offers to start again. */
+  const cancelCase = async () => {
+    const cur = envRef.current;
+    if (!tenantId || !cur || !apiClient.cancelRenewalCase || cancelling) return;
+    if (!window.confirm(t("Cancel this negotiation? Your answers, the plan and the email drafts are deleted; the contract is not changed. Emails already sent to the supplier stay in your mailbox."))) return;
+    setCancelling(true);
+    setLocalWarn(null);
+    const r = await apiClient.cancelRenewalCase(tenantId, cur.caseId);
+    if (!r.ok) {
+      setCancelling(false);
+      setLocalWarn(null);
+      setError(r.error ?? t("The negotiation could not be cancelled."));
+      return;
+    }
+    notifyTodayChanged();
+    if (window.confirm(t("Negotiation cancelled. Start it again from scratch now?"))) {
+      const opened = await apiClient.openRenewalCase(tenantId, { contractId: cur.contractId, branch: null });
+      setCancelling(false);
+      if (opened.ok && opened.data) {
+        navigate(`/renewals/${encodeURIComponent(opened.data.caseId)}`);
+        return;
+      }
+    }
+    setCancelling(false);
+    navigate("/renewals");
+  };
+
   const docInput = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadDoc = async (file: File) => {
@@ -434,6 +462,11 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             ← {t("Renewals")}
           </button>
           <span className="p4-title">{tr(page.title)}</span>
+          {!env.closed && !env.demo && env.capabilities.canWork && apiClient.cancelRenewalCase ? (
+            <button type="button" className="btn btn-ghost p4-cancel" onClick={() => void cancelCase()} disabled={cancelling}>
+              {cancelling ? t("Cancelling…") : t("Cancel the negotiation")}
+            </button>
+          ) : null}
           <button type="button" className="btn btn-ghost p4-scheda-toggle" onClick={() => setScheda((s) => !s)}>
             {scheda ? t("Hide details ▴") : t("Details: terms, emails, team, dates ▾")}
           </button>

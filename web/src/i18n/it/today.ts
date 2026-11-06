@@ -124,6 +124,11 @@ export const IT_TODAY: Readonly<Record<string, string>> = {
   // — Pratica —
   "Details: terms, emails, team, dates ▾": "Scheda: condizioni, email, team, date ▾",
   "Hide details ▴": "Nascondi la scheda ▴",
+  "Cancel the negotiation": "Annulla la trattativa",
+  "Cancelling…": "Annullamento…",
+  "Cancel this negotiation? Your answers, the plan and the email drafts are deleted; the contract is not changed. Emails already sent to the supplier stay in your mailbox.": "Annullare questa trattativa? Le risposte, il piano e le bozze email vengono eliminati; il contratto non cambia. Le email già inviate al fornitore restano nella tua casella.",
+  "The negotiation could not be cancelled.": "Non è stato possibile annullare la trattativa.",
+  "Negotiation cancelled. Start it again from scratch now?": "Trattativa annullata. Vuoi ricominciarla da capo adesso?",
   "Phase": "Fase",
   "Next action · who": "Prossima azione · chi",
   "Notice by · contract end": "Disdetta entro · fine contratto",

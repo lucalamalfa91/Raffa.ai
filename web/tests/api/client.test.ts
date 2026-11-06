@@ -2681,6 +2681,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       getRenewalCase: () => client.getRenewalCase!("tenant-1", "case-1"),
       postRenewalCaseAction: () => client.postRenewalCaseAction!("tenant-1", "case-1", "visit", null, 1),
       askRenewalCase: () => client.askRenewalCase!("tenant-1", "case-1", "q", 1),
+      cancelRenewalCase: () => client.cancelRenewalCase!("tenant-1", "case-1"),
       deleteContract: () => client.deleteContract!("tenant-1", "contract-1"),
       getCompanyRules: () => client.getCompanyRules!("tenant-1"),
       saveCompanyRules: () => client.saveCompanyRules!("tenant-1", { text: "t", startWindowDays: 90, sourceFile: null }),

@@ -169,6 +169,33 @@ public sealed class AiCaseReaderTests
         Assert.Contains("31", gateway.Requests[1].InputJson, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task The_interview_names_the_money_of_each_target_and_keeps_every_answer_meaning()
+    {
+        var gateway = new AnalyzeOnlyGateway(
+            """
+            {"questions":[
+              {"index":1,"text":"Durata: 24 mesi in cambio di prezzo?","hint":"Il contratto scade il 21 Oct 2026.","options":[
+                {"key":"12","label":"12 mesi, massima flessibilità"},{"key":"24","label":"Impegno lungo in cambio di sconto"}]},
+              {"index":2,"text":"Target di prezzo sul CHF 50 per seat?","hint":"Il mercato è tra CHF 40 e 48, mediana 44: sei sopra.","options":[
+                {"key":"p10","label":"−10%: CHF 45 per seat"},{"key":"p5","label":"−5%: CHF 47.50 per seat"},{"key":"budget","label":"Budget CHF 3,000 / anno"}]}]}
+            """);
+        var reader = new AiCaseReader(gateway, new TenantContext(), marketMatcher: new FixedMatcher(40, 44, 48));
+
+        var tailoring = await reader.ReadInterviewAsync(TenantId.New(), Contract with { Currency = "CHF" }, null, "it");
+
+        Assert.NotNull(tailoring);
+        var term = tailoring!.Questions.Single(q => q.Index == 1);
+        Assert.Equal("12 mesi, massima flessibilità", term.Options!["12"]);
+        Assert.False(term.Options.ContainsKey("24"));
+        var price = tailoring.Questions.Single(q => q.Index == 2);
+        Assert.Equal("−10%: CHF 45 per seat", price.Options!["p10"]);
+        Assert.Equal("−5%: CHF 47.50 per seat", price.Options["p5"]);
+        Assert.False(price.Options.ContainsKey("budget"));
+        Assert.Contains("mediana 44", price.Hint, StringComparison.Ordinal);
+        Assert.Contains("\"p10UnitPrice\":45", gateway.Requests.Single().InputJson, StringComparison.Ordinal);
+    }
+
     private sealed class FixedMatcher(decimal p25, decimal p50, decimal p75) : Raffa.SharedKernel.Market.IMarketPriceMatcher
     {
         public Task<IReadOnlyList<Raffa.SharedKernel.Market.MarketPriceMatch?>> MatchAsync(

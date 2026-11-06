@@ -175,6 +175,35 @@ public static partial class RenewalCaseEngine
 
     /* ---------- interview ---------- */
 
+    /// <summary>The person can still change their interview answers: the case is open, on the renewal path, and nothing
+    /// has reached the supplier yet (no email copied or sent).</summary>
+    public static bool CanChangeChoices(RenewalCase c) =>
+        c.Outcome is null && c.Notice is null && c.Alt is null
+        && c.Phase is CasePhases.Interview or CasePhases.Plan or CasePhases.Email
+        && !c.Emails.Any(e => e.State is EmailStates.Sent or EmailStates.Copied);
+
+    /// <summary>After an answer: the next question, or back to where the person was when they changed an earlier one.</summary>
+    private static void NextQuestion(RenewalCase c, CaseContext ctx)
+    {
+        if (c.ResumeQ is { } resume && resume > c.Q + 1)
+        {
+            c.ResumeQ = null;
+            c.Q = resume;
+            c.Goals.Clauses ??= c.Q == 3 ? PushClauseKeys(ctx) : null;
+        }
+        else
+        {
+            c.ResumeQ = null;
+            c.Q++;
+            if (c.Q == 3)
+            {
+                c.Goals.Clauses = PushClauseKeys(ctx);
+            }
+        }
+
+        Push(c, ctx, new CaseFeedItem { K = "q", I = c.Q });
+    }
+
     private sealed record QuestionDef(CaseText Text, CaseText Hint, IReadOnlyList<(string Key, CaseText Label)> Opts, bool Multi);
 
     /// <summary>The question as this case words it: the standard text, with the model's wording for this contract and chat where it wrote one.</summary>
@@ -669,13 +698,7 @@ public static partial class RenewalCaseEngine
 
                 SetGoal(c.Goals, q, p.Val);
                 UserSays(c, ctx, v, AnsLabel(c, ctx, q));
-                c.Q++;
-                if (c.Q == 3)
-                {
-                    c.Goals.Clauses = PushClauseKeys(ctx);
-                }
-
-                Push(c, ctx, new CaseFeedItem { K = "q", I = c.Q });
+                NextQuestion(c, ctx);
                 break;
             }
 
@@ -699,9 +722,48 @@ public static partial class RenewalCaseEngine
                 Push(c, ctx, new CaseFeedItem { K = "policy", By = v });
                 break;
             case "q3done":
+                c.ResumeQ = null;
                 UserSays(c, ctx, v, AnsLabel(c, ctx, 3));
                 MakePlan(c, ctx);
                 break;
+            case "reask":
+            {
+                // Change one earlier answer: back to that question, the other answers kept, then straight back to
+                // where the person was. Before anything reached the supplier only; unsent drafts are withdrawn.
+                if (!CaseRules.CanWork(c, v))
+                {
+                    return Deny(c, NoWork);
+                }
+
+                if (p.Q is not { } rq || rq is < 0 or > 3 || !CanChangeChoices(c) || (c.Phase == CasePhases.Interview && rq >= c.Q))
+                {
+                    break;
+                }
+
+                c.ResumeQ = c.Phase == CasePhases.Interview ? c.Q : 3;
+                c.Q = rq;
+                c.PlanOk = false;
+                c.Phase = CasePhases.Interview;
+                c.Ui.Other = null;
+                c.Ui.OtherText = string.Empty;
+                c.Ui.Edit = null;
+                var withdrawn = 0;
+                foreach (var draft in c.Emails.Where(x => x.State is EmailStates.Draft or EmailStates.ToApprove or EmailStates.Approved))
+                {
+                    draft.State = EmailStates.Superseded;
+                    withdrawn++;
+                }
+
+                if (withdrawn > 0)
+                {
+                    Log(c, ctx, v, B("Interview answer changed — unsent email drafts withdrawn", "Risposta dell’intervista cambiata — bozze email non inviate ritirate"));
+                }
+
+                Say(c, ctx, B("Okay — change your answer here. The other answers stay; then I bring you back to where you were.", "Va bene — cambia qui la risposta. Le altre risposte restano; poi ti riporto dove eri."));
+                Push(c, ctx, new CaseFeedItem { K = "q", I = rq });
+                break;
+            }
+
             case "editPlan":
                 c.Q = 0;
                 c.PlanOk = false;
@@ -1787,13 +1849,7 @@ public static partial class RenewalCaseEngine
             c.Ui.OtherText = string.Empty;
             SetGoal(c.Goals, c.Q, "custom", text);
             UserSays(c, ctx, v, text);
-            c.Q++;
-            if (c.Q == 3)
-            {
-                c.Goals.Clauses = PushClauseKeys(ctx);
-            }
-
-            Push(c, ctx, new CaseFeedItem { K = "q", I = c.Q });
+            NextQuestion(c, ctx);
             return c;
         }
 

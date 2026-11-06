@@ -48,6 +48,7 @@ public static class RenewalCasesEndpointExtensions
     {
         endpoints.MapPost("/api/renewals", OpenAsync);
         endpoints.MapGet("/api/renewals/{caseId:guid}", GetAsync);
+        endpoints.MapDelete("/api/renewals/{caseId:guid}", CancelAsync);
         endpoints.MapPost("/api/renewals/{caseId:guid}/actions", ActAsync);
         endpoints.MapPost("/api/renewals/{caseId:guid}/ask", AskAsync);
         endpoints.MapPost("/api/renewals/{caseId:guid}/documents", DocumentAsync);
@@ -315,6 +316,14 @@ public static class RenewalCasesEndpointExtensions
             }
 
             return Map(await service.ActAsync(caller.TenantId, caller.Identity, caseId, "transfer", new CaseActionPayload { Who = m.Name }, body.Version, ct).ConfigureAwait(false));
+        });
+
+    /// <summary>Cancels an open negotiation and removes its case, so the contract can start again from scratch.</summary>
+    private static Task<IResult> CancelAsync(Guid caseId, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>
+        WithCaller(request, callerContext, ct, async caller =>
+        {
+            var r = await service.CancelAsync(caller.TenantId, caller.Identity, caseId, ct).ConfigureAwait(false);
+            return r.Kind == CaseResultKind.Ok ? Results.NoContent() : Map(r);
         });
 
     /// <summary>Closes the step that ends the case (signed contract confirmed, fields validated, notice outcome) — approver or a delegate with closing rights only.</summary>

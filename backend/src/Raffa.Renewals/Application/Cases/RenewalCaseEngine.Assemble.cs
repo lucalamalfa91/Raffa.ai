@@ -394,6 +394,14 @@ public static partial class RenewalCaseEngine
         _ => null,
     };
 
+    private static CaseText ChangeAnswerLabel(int q) => q switch
+    {
+        0 => B("Change answer: products and quantities", "Cambia risposta: prodotti e quantità"),
+        1 => B("Change answer: term", "Cambia risposta: durata"),
+        2 => B("Change answer: price target", "Cambia risposta: obiettivo economico"),
+        _ => B("Change answer: clauses", "Cambia risposta: clausole"),
+    };
+
     /* ---------- the case screen (AskRaffa V4.dc.html, `scr.caso`) ---------- */
 
     private static CasePage ComposePage(RenewalCase c, CaseContext ctx, List<CaseCard> all, CaseHeader hdr, IReadOnlyList<CaseStepItem> stepsX, List<CaseLink> actions, List<CaseLink> demo)
@@ -468,6 +476,16 @@ public static partial class RenewalCaseEngine
         if (c.Alt is null && !Has("startAlt"))
         {
             more.Add(new CaseButton(B("Evaluate alternatives", "Valuta alternative"), "startAlt", CaseActionPayload.None));
+        }
+
+        // Every answer already given can be changed until something reaches the supplier.
+        if (!ctx.Services.Scripted && CanChangeChoices(c) && CaseRules.CanWork(c, ctx.Viewer))
+        {
+            var answered = c.Phase == CasePhases.Interview ? c.Q : 4;
+            for (var q = 0; q < answered; q++)
+            {
+                more.Add(new CaseButton(ChangeAnswerLabel(q), "reask", new CaseActionPayload { Q = q }));
+            }
         }
 
         more.AddRange(demo.Select(d => new CaseButton(B("Demo: {label}", "Demo: {label}", ("label", d.Label)), d.Act, d.P)));

@@ -2000,6 +2000,8 @@ export interface ApiClient {
     caseId: string,
     input: { type: "addDoc" | "altOffer"; file: File; vendor?: string | null; version: number | null; lang: string },
   ): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `DELETE /api/renewals/{caseId}` -- cancels an open negotiation and removes its case, so the renewal can start again from scratch. */
+  cancelRenewalCase?(tenantId: string, caseId: string): Promise<CaseCallResult<unknown>>;
   /** `DELETE /api/contracts/{id}` (Admin) -- the contract with its documents, renewal case and chats. */
   deleteContract?(tenantId: string, contractId: string): Promise<CaseCallResult<unknown>>;
   /** `GET /api/company-rules` -- the company rules and whether the caller may change them. */
@@ -4430,6 +4432,10 @@ export function createApiClient(
       if (input.vendor) form.append("vendor", input.vendor);
       if (input.version !== null) form.append("version", String(input.version));
       return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/documents`, form);
+    },
+
+    cancelRenewalCase(tenantId, caseId) {
+      return caseCall<unknown>(apiFetch, baseUrl, getAccessToken, tenantId, "DELETE", `/api/renewals/${encodeURIComponent(caseId)}`);
     },
 
     deleteContract(tenantId, contractId) {

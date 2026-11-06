@@ -55,4 +55,7 @@ public interface ICaseObjectiveSource
 public interface ICaseObjectiveWriter
 {
     Task UpsertAsync(TenantId tenantId, CaseObjectiveInfo objective, CancellationToken cancellationToken = default);
+
+    /// <summary>Removes the objective of a cancelled case (no-op when there is none).</summary>
+    Task RemoveAsync(TenantId tenantId, Guid caseId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
