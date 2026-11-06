@@ -65,8 +65,11 @@ public static partial class ArtifactCommandResolver
     [GeneratedRegex(@"\b(brief|documento|document|report|relazione|riepilogo|sintesi|summary|piano\s+d['’]azione|action\s+plan)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DocumentPattern();
 
-    [GeneratedRegex(@"\b(mercato|market|benchmark|concorren\w*|competitor\w*)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\b(mercato|market|benchmark\w*|concorren\w*|competitor\w*|prezz\w+\s+medi\w*|media\s+di\s+mercato|peer|similar[ie]?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex MarketPattern();
+
+    /// <summary>True when <paramref name="text"/> asks for the market (benchmarks, competitors, peers).</summary>
+    internal static bool MentionsMarket(string? text) => !string.IsNullOrWhiteSpace(text) && MarketPattern().IsMatch(text);
 
     [GeneratedRegex(@"\b(portafoglio|portfolio|tutti\s+i\s+contratti|all\s+(?:the\s+)?contracts|ogni\s+contratto|every\s+contract)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PortfolioPattern();

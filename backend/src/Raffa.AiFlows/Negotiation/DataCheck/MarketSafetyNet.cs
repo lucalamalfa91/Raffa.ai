@@ -422,6 +422,21 @@ public static class MarketSafetyNet
             return deals;
         }
 
+        // The deals whose whole product name a line names (the same rule the line's band uses,
+        // MarketBandFallback / MarketPriceMatcher) first; any shared word only when none does.
+        var named = deals
+            .Where(d => pricedLines.Any(line =>
+            {
+                var words = Words(line.Description).Concat(line.Sku is null ? [] : Words(line.Sku)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var product = Words(d.Product).ToList();
+                return product.Count > 1 && product.All(words.Contains);
+            }))
+            .ToList();
+        if (named.Count > 0)
+        {
+            return named;
+        }
+
         var matching = deals
             .Where(d => Words(d.Product).Concat(d.Sku is null ? [] : Words(d.Sku)).Any(lineWords.Contains))
             .ToList();

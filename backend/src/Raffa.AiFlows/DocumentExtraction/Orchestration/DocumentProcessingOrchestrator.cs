@@ -283,15 +283,22 @@ public sealed class DocumentProcessingOrchestrator(
         // contract's market column is filled from the first time it is opened (see
         // LineItemMarketPriceService for how it stays current afterwards). Never fails the
         // upload: a matcher failure keeps whatever comparison is stored.
+        IReadOnlyDictionary<EntityId, LineItemMarketPrice>? marketPrices = null;
         if (marketPriceService is not null)
         {
-            await marketPriceService
+            marketPrices = await marketPriceService
                 .PriceContractAsync(tenantId, extractionResult.Value.ContractId, cancellationToken)
                 .ConfigureAwait(false);
         }
 
         var chunksIndexed = await IndexForRetrievalAsync(tenantId, document.Id, pages, cancellationToken)
             .ConfigureAwait(false);
+        if (marketPrices is { Count: > 0 })
+        {
+            chunksIndexed += await IndexMarketBenchmarksAsync(
+                    tenantId, document.Id, extractionResult.Value.ContractId, marketPrices, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         return Result<DocumentProcessingSummary>.Success(new DocumentProcessingSummary(
             document.Id,
@@ -459,6 +466,100 @@ public sealed class DocumentProcessingOrchestrator(
         }
 
         return indexed;
+    }
+
+    /// <summary>Chunk index of the market-benchmark chunk: far past any page index, so it never
+    /// collides with a page chunk (whose index is the zero-based page number).</summary>
+    internal const int MarketBenchmarkChunkIndex = 100_000;
+
+    internal const string MarketBenchmarkSection = "Market benchmark";
+
+    /// <summary>
+    /// Turns the contract's market comparison (just computed by <see cref="LineItemMarketPriceService"/>)
+    /// into knowledge for the tenant RAG: one chunk under the document, labelled
+    /// <see cref="MarketBenchmarkSection"/>, listing each line's unit price next to the representative
+    /// market band (P25/P50/P75, product matched, sample, as-of) or the estimated band of a line the
+    /// corpus did not match. It lives under the document's own source, so contract-scoped retrieval finds
+    /// it and deleting or reprocessing the document removes and rebuilds it. Never fails the upload.
+    /// </summary>
+    private async Task<int> IndexMarketBenchmarksAsync(
+        TenantId tenantId,
+        EntityId documentId,
+        EntityId contractId,
+        IReadOnlyDictionary<EntityId, LineItemMarketPrice> prices,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var contract = await dbContext.Contracts.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == contractId, cancellationToken)
+                .ConfigureAwait(false);
+            var lines = await dbContext.ContractLineItems.AsNoTracking()
+                .Where(l => l.TenantId == tenantId && l.ContractId == contractId)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+            var text = MarketBenchmarkChunkText(contract?.Currency, lines, prices);
+            if (text is null)
+            {
+                return 0;
+            }
+
+            var result = await embeddingRetrievalService
+                .IndexChunkAsync(tenantId, DocumentSourceType, documentId, MarketBenchmarkChunkIndex, text, page: null, MarketBenchmarkSection, cancellationToken)
+                .ConfigureAwait(false);
+            return result.IsSuccess ? 1 : 0;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>The market-benchmark chunk's text, or <see langword="null"/> when no line has a band.</summary>
+    internal static string? MarketBenchmarkChunkText(
+        string? currency, IReadOnlyList<ContractLineItem> lines, IReadOnlyDictionary<EntityId, LineItemMarketPrice> prices)
+    {
+        static string N(decimal value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        var rows = new List<string>();
+        foreach (var line in lines)
+        {
+            if (!prices.TryGetValue(line.Id, out var price))
+            {
+                continue;
+            }
+
+            string band;
+            decimal? p50;
+            var cur = price.Currency ?? currency ?? "";
+            if (price is { Matched: true, UnitPriceP25: { } p25, UnitPriceP50: { } median, UnitPriceP75: { } p75 })
+            {
+                p50 = median;
+                band = $"market P25 {N(p25)} · P50 {N(median)} · P75 {N(p75)} {cur} per unit " +
+                    $"(representative market data: {price.Product}, {price.Geography}, n={price.SampleSize?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "n/a"}" +
+                    $"{(price.MarketUpdatedAt is { } at ? $", as of {at:yyyy-MM-dd}" : "")})";
+            }
+            else if (price.Estimate is { } estimate)
+            {
+                p50 = estimate.UnitPriceP50;
+                cur = estimate.Currency;
+                band = $"estimated market P25 {N(estimate.UnitPriceP25)} · P50 {N(estimate.UnitPriceP50)} · P75 {N(estimate.UnitPriceP75)} {cur} per unit " +
+                    $"(estimate, not market data: {estimate.Basis})";
+            }
+            else
+            {
+                continue;
+            }
+
+            var own = line.UnitPrice is { } unit ? $"contract unit price {N(unit)} {currency}" : "contract unit price not stated";
+            var delta = line.UnitPrice is { } u && p50 is { } m && m != 0
+                ? $"; {(u >= m ? "+" : "")}{N(Math.Round((u - m) / m * 100m, 1))}% vs market median"
+                : "";
+            rows.Add($"- {line.Description}: {own}; {band}{delta}.");
+        }
+
+        return rows.Count == 0
+            ? null
+            : "Market benchmark of this contract's priced lines (representative market data, not terms of the contract):\n" + string.Join('\n', rows);
     }
 
     /// <summary>

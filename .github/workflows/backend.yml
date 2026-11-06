@@ -80,8 +80,21 @@ jobs:
             sleep 15
           done
 
+      # Every WebApplicationFactory host the API tests build watches its appsettings*.json for
+      # changes (one inotify instance each); hundreds of per-test hosts exhaust the runner's limit
+      # of 128 and every later host fails to start ("configured user limit (128) on the number of
+      # inotify instances"). Tests never edit config at runtime: no reload, polling watchers, and a
+      # higher limit as a last resort.
+      - name: raise inotify limits
+        run: |
+          sudo sysctl -w fs.inotify.max_user_instances=8192
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+
       - name: dotnet test
         working-directory: backend
+        env:
+          DOTNET_hostBuilder__reloadConfigOnChange: "false"
+          DOTNET_USE_POLLING_FILE_WATCHER: "true"
         run: dotnet test Raffa.slnx --configuration Release --no-build
 
       # The Ask golden set once more through the orchestrator (ADR-024 amendment 2026-11-05,

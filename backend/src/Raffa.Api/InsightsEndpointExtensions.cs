@@ -12,6 +12,8 @@ using Raffa.Renewals.Domain;
 using Raffa.Savings.Application;
 using Raffa.SharedKernel;
 using Raffa.SharedKernel.Market;
+using Raffa.SharedKernel.Suppliers;
+using Raffa.Market.Retrieval;
 
 namespace Raffa.Api;
 
@@ -219,6 +221,22 @@ public static class InsightsEndpointExtensions
             .ConfigureAwait(false);
         var pricedLines = await ToPricedLines(
                 contract360, benchmarkService, supplierName, geography, asOfDate, cancellationToken, storedMarketPrices)
+            .ConfigureAwait(false);
+
+        // Lines the stored comparison and the exact-name benchmark both left without a band take the
+        // band of the supplier's market deals they name -- the same rule every Ask pack applies
+        // (MarketBandFallback), so this screen and the chat never disagree about one line.
+        var services = request.HttpContext.RequestServices;
+        var dealSupplier = supplierName;
+        if (dealSupplier is null && contract360.Header.SupplierId is { } supplierId
+            && services.GetService<ISupplierNameLookup>() is { } supplierNames)
+        {
+            (await supplierNames.GetNamesAsync(tenantId, [supplierId], cancellationToken).ConfigureAwait(false))
+                .TryGetValue(supplierId, out dealSupplier);
+        }
+
+        pricedLines = await MarketBandFallback
+            .FillFromCorpusAsync(pricedLines, services.GetService<IMarketDealLookup>(), dealSupplier, contract360.Overview.Currency, geography, cancellationToken)
             .ConfigureAwait(false);
         var criticalFacts = ToCriticalFacts(contract360);
 
