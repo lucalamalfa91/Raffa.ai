@@ -265,17 +265,82 @@ public sealed class AgenticAskTurnTests
         Assert.Matches(@"failures=1 failedSteps=get-market-benchmark", RunContext.TurnDetail!);
     }
 
+    /// <summary>A tool that takes a moment and records how many tools ran at the same time.</summary>
+    private sealed class SlowTool(string name, int[] inFlight, int[] maxInFlight, List<string> order) : IAskTool
+    {
+        public string Name => name;
+        public string Description => name;
+        public string ParametersSchemaJson => """{"type":"object","additionalProperties":false,"required":["supplier"],"properties":{"supplier":{"type":"string"}}}""";
+
+        public async Task<AskToolResult> ExecuteAsync(JsonElement arguments, AskToolContext context, CancellationToken cancellationToken)
+        {
+            var now = Interlocked.Increment(ref inFlight[0]);
+            lock (maxInFlight)
+            {
+                maxInFlight[0] = Math.Max(maxInFlight[0], now);
+            }
+
+            await Task.Delay(30, cancellationToken);
+            lock (order)
+            {
+                order.Add(name);
+            }
+
+            Interlocked.Decrement(ref inFlight[0]);
+            return AskToolResult.FromPack([]);
+        }
+    }
+
+    [Fact]
+    public async Task Tools_asked_together_run_one_at_a_time_in_the_order_asked()
+    {
+        // The tools share the request's scoped EF DbContexts: two reads at once would throw.
+        var gateway = new ScriptedGateway(
+            _ => Result<AiConversationResult>.Success(new AiConversationResult(
+                [new AiToolCall("c1", "get_contract", """{"supplier":"coupa"}"""), new AiToolCall("c2", "search_clauses", """{"supplier":"coupa"}""")],
+                null, Metadata)),
+            _ => Final("Ecco il riassunto di Coupa."));
+        int[] inFlight = [0];
+        int[] maxInFlight = [0];
+        var order = new List<string>();
+
+        using var turn = RunContext.BeginTurn();
+        var result = await Turn(gateway, new SlowTool("get_contract", inFlight, maxInFlight, order), new SlowTool("search_clauses", inFlight, maxInFlight, order))
+            .RunAsync(Context(), CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(1, maxInFlight[0]);
+        Assert.Equal(["get_contract", "search_clauses"], order);
+    }
+
+    [Fact]
+    public async Task An_abstain_without_a_reason_fit_to_show_is_in_the_interface_language()
+    {
+        var gateway = new ScriptedGateway(_ => Result<AiConversationResult>.Success(new AiConversationResult([], JsonSerializer.Serialize(new
+        {
+            canDetermine = false, answerMarkdown = "", citationKeys = Array.Empty<string>(), actionKeys = Array.Empty<string>(),
+            followUps = Array.Empty<string>(), abstainReason = (string?)null, focusSupplier = (string?)null,
+        }), Metadata)));
+
+        using var turn = RunContext.BeginTurn();
+        var result = await Turn(gateway).RunAsync(Context("cosa mi dici di coupa?"), CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(ReplyKind.Abstain, result.Reply.Kind);
+        Assert.Equal(Raffa.AiFlows.Shared.Reply.CopilotReplyBuilder.DefaultAbstainReasonIt, result.Reply.AnswerMarkdown);
+    }
+
     [Fact]
     public void The_system_prompt_is_exactly_the_reviewed_markdown()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.4.md")))
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.5.md")))
         {
             directory = directory.Parent;
         }
 
         Assert.NotNull(directory);
-        var body = File.ReadAllText(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.4.md"));
+        var body = File.ReadAllText(Path.Combine(directory.FullName, "src", "Raffa.AiFlows", "Ask", "Prompts", "agent", "v1.5.md"));
         var start = body.IndexOf("\n\n", StringComparison.Ordinal) + 2;
         var end = body.LastIndexOf("\nBump the version", StringComparison.Ordinal);
         var expected = body[start..end].TrimEnd();

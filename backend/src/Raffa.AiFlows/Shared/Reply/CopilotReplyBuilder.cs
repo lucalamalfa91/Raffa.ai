@@ -23,6 +23,11 @@ public static class CopilotReplyBuilder
         "Happy to help: name the supplier or the contract and tell me the goal (savings, a renewal, a " +
         "market comparison or a clause), and I'll build the answer from your validated contracts.";
 
+    /// <summary><see cref="DefaultAbstainReason"/> in Italian.</summary>
+    public const string DefaultAbstainReasonIt =
+        "Volentieri: dimmi il fornitore o il contratto e l'obiettivo (risparmio, rinnovo, confronto di " +
+        "mercato o una clausola) e costruisco la risposta dai tuoi contratti validati.";
+
     // An abstain reason is shown to the user as is (the web prints it verbatim), so one that talks
     // about the machinery — the pack, its keys, the guards, a requirement id — is replaced by
     // DefaultAbstainReason rather than shown (R-ASK-08 "never engineer chrome").
