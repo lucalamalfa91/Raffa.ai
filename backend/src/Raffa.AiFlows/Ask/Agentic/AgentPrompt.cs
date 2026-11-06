@@ -14,7 +14,8 @@ namespace Raffa.AiFlows.Ask.Agentic;
 /// answer so far shown above the consent question.
 /// v1.4: acting is confirmed first -- propose_start_renewal / propose_savings_goal end the turn with a
 /// question; the app starts the renewal or sets the savings goal only on the user's yes.
-/// v1.5: a contract marked as a test / synthetic document is still the user's contract: answer from it.
+/// v1.5: a contract marked as a test / synthetic document is still the user's contract: answer from it; starting a
+/// renewal reads nothing first (the chat's levers travel with it).
 /// </summary>
 public static class AgentPrompt
 {
@@ -97,6 +98,8 @@ public static class AgentPrompt
             setting a savings objective the user states ("voglio risparmiare il 15%", "obiettivo: -50k") change
             the workspace, so you never do them silently: call propose_start_renewal or propose_savings_goal as
             the only call of the turn - it asks the user to confirm and the app runs the action on their yes.
+            Do not read the contract or the market first, even for "with the levers you found": the levers
+            are already in this conversation and travel with it into the renewal case.
             A question about where or how to save is not an objective: answer it with the other tools.
 
         How to answer:
