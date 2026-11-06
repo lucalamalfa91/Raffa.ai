@@ -154,7 +154,9 @@ public sealed class R1DocumentsV2EndToEndTests : IClassFixture<R1IntegrationFixt
             using var tenantScope = tenantContext.BeginScope(new TenantId(tenantId));
 
             var chunks = await dbContext.Embeddings
-                .Where(e => e.TenantId == new TenantId(tenantId))
+                // The page chunks only: the contract's "Market benchmark" chunk (priced lines vs the market) is
+                // written under the same document and is not a page of it.
+                .Where(e => e.TenantId == new TenantId(tenantId) && e.Section != "Market benchmark")
                 .OrderBy(e => e.ChunkIndex)
                 .ToListAsync();
 

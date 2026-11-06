@@ -157,7 +157,7 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
             endDate: DateOnly.FromDateTime(now.UtcDateTime).AddDays(90));
         await factory.SeedContractAsync(contract);
         await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
-        await SeedLineItemAsync(factory, tenantId, contract.Id);
+        await SeedLineItemAsync(factory, tenantId, contract.Id, UnknownToTheCorpus);
 
         var targetItem = await BuildSingleRenewalTargetAsync(factory, tenantId);
 
@@ -226,7 +226,7 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
         var contract = PortfolioEndpointTests.NewContract(tenantId, now, salesforceId);
         await factory.SeedContractAsync(contract);
         await factory.SeedDocumentAsync(InMemoryAskEngineFactory.NewLinkedDocument(tenantId, contract.Id));
-        await SeedLineItemAsync(factory, tenantId, contract.Id);
+        await SeedLineItemAsync(factory, tenantId, contract.Id, UnknownToTheCorpus);
 
         var pack = await BuildMarketComparePackAsync(factory, tenantId, contract.Id);
 
@@ -313,8 +313,13 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
         await db.SaveChangesAsync();
     }
 
+    /// <summary>A product the market corpus has no deal for: the market fallback (a line named like a corpus
+    /// product gets its band) cannot price it, so the abstain paths these tests cover stay reachable.</summary>
+    private const string UnknownToTheCorpus = "Bespoke onboarding services";
+
     private static async Task SeedLineItemAsync(
-        WebApplicationFactory<Program> factory, TenantId tenantId, EntityId contractId)
+        WebApplicationFactory<Program> factory, TenantId tenantId, EntityId contractId,
+        string description = "Sales Cloud Enterprise")
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocumentsContractsDbContext>();
@@ -323,7 +328,7 @@ public sealed class AskPricedLinesParityTests : IClassFixture<RaffaApiFactory>
             TenantId = tenantId,
             ContractId = contractId,
             Sku = "SKU-1",
-            Description = "Sales Cloud Enterprise",
+            Description = description,
             Quantity = 100m,
             Unit = "seats",
             UnitPrice = 2300m,
