@@ -132,13 +132,61 @@ public sealed class AiCaseReaderTests
         Assert.Null(await invented.ReviseEmailAsync(TenantId.New(), new RenewalCase(), Contract, Draft(), "make it firmer", "en"));
     }
 
-    private sealed class AnalyzeOnlyGateway(string payloadJson) : IAiGateway
+    [Fact]
+    public async Task A_composed_first_email_negotiates_on_the_interview_target_and_the_market_band()
+    {
+        var c = new RenewalCase();
+        c.Goals.Prod = "add";
+        c.Goals.Term = "24";
+        c.Goals.Target = "p10";
+        var gateway = new AnalyzeOnlyGateway(
+            """{"intent":"revise","subject":"Acme Suite renewal — CHF 45 per seat, 24 months","body":"Dear Acme team,\n\nOur agreement ends on 21 Oct 2026. Market references for comparable deals sit at CHF 40-48 per seat, below our CHF 50. We can commit to 24 months at CHF 45 per seat. Please send a revised proposal by 14 Nov 2026.\n\nKind regards,\nPietro","note":""}""");
+        var reader = new AiCaseReader(gateway, new TenantContext(), marketMatcher: new FixedMatcher(40, 44, 48));
+
+        var composed = await reader.ReviseEmailAsync(TenantId.New(), c, Contract with { Currency = "CHF" }, Draft(), null, "en");
+
+        Assert.NotNull(composed);
+        Assert.Contains("CHF 45 per seat", composed!.Body, StringComparison.Ordinal);
+        var input = gateway.Requests.Single().InputJson;
+        Assert.Contains("\"targetUnitPrice\":45", input, StringComparison.Ordinal);
+        Assert.Contains("\"marketMedian\":44", input, StringComparison.Ordinal);
+        Assert.Contains("trade for price", input, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_composed_email_with_an_invented_figure_is_sent_back_once_with_the_reason()
+    {
+        var gateway = new AnalyzeOnlyGateway(
+            """{"intent":"revise","subject":"","body":"Dear Acme team,\n\nOur agreement ends on 21 Oct 2026. Competitors offer 31% less. Please send a revised proposal by 14 Nov 2026.\n\nKind regards,\nPietro","note":""}""",
+            """{"intent":"revise","subject":"","body":"Dear Acme team,\n\nOur agreement ends on 21 Oct 2026. We need a sharper price before the notice date. Please send a revised proposal by 14 Nov 2026.\n\nKind regards,\nPietro","note":""}""");
+        var reader = new AiCaseReader(gateway, new TenantContext());
+
+        var composed = await reader.ReviseEmailAsync(TenantId.New(), new RenewalCase(), Contract, Draft(), null, "en");
+
+        Assert.NotNull(composed);
+        Assert.Contains("sharper price", composed!.Body, StringComparison.Ordinal);
+        Assert.Equal(2, gateway.Requests.Count);
+        Assert.Contains("31", gateway.Requests[1].InputJson, StringComparison.Ordinal);
+    }
+
+    private sealed class FixedMatcher(decimal p25, decimal p50, decimal p75) : Raffa.SharedKernel.Market.IMarketPriceMatcher
+    {
+        public Task<IReadOnlyList<Raffa.SharedKernel.Market.MarketPriceMatch?>> MatchAsync(
+            Raffa.SharedKernel.Market.MarketPriceContext context, IReadOnlyList<Raffa.SharedKernel.Market.MarketPriceLine> lines, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Raffa.SharedKernel.Market.MarketPriceMatch?>>(lines
+                .Select(_ => (Raffa.SharedKernel.Market.MarketPriceMatch?)new Raffa.SharedKernel.Market.MarketPriceMatch(
+                    "r1", "Acme Suite", "CH", context.Currency, 24, p25, p50, p75, 12, "test", DateTimeOffset.UnixEpoch))
+                .ToList());
+    }
+
+    private sealed class AnalyzeOnlyGateway(params string[] payloads) : IAiGateway
     {
         public List<AiAnalysisRequest> Requests { get; } = [];
 
         public Task<Result<AiAnalysisResult>> AnalyzeAsync(AiAnalysisRequest request, CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
+            var payloadJson = payloads[Math.Min(Requests.Count - 1, payloads.Length - 1)];
             return Task.FromResult(Result<AiAnalysisResult>.Success(new AiAnalysisResult(
                 payloadJson, new AiCallMetadata("fake", "1", request.PromptVersion, DateTimeOffset.UnixEpoch, "hash"))));
         }
