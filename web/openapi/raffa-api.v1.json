@@ -13822,6 +13822,28 @@
                         }
                       }
                     },
+                    "oblOther": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "when",
+                          "high"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "when": {
+                            "type": "string"
+                          },
+                          "high": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
                     "std": {
                       "type": "array",
                       "items": {

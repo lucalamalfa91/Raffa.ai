@@ -239,7 +239,8 @@ public sealed class R1EndToEndTests : IClassFixture<R1IntegrationFixture>
             using var tenantScope = tenantContext.BeginScope(new TenantId(tenantId));
 
             var chunkCount = await dbContext.Embeddings.CountAsync(
-                e => e.SourceType == "Document" && e.SourceId == new EntityId(scannedDocumentId));
+                e => e.SourceType == "Document" && e.SourceId == new EntityId(scannedDocumentId)
+                    && e.Section != "Market benchmark");
             Assert.Equal(2, chunkCount);
         }
     }

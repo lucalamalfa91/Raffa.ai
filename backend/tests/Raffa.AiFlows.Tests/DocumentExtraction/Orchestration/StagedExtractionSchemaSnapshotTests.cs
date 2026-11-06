@@ -21,13 +21,13 @@ public sealed class StagedExtractionSchemaSnapshotTests
         [ExtractionStage.CommercialTerms] =
             "224b4ab5ead613ea96f0a72286e50623d0b703966b3e74454b97882a39e483c8",
         [ExtractionStage.DatesAndRenewalTerms] =
-            "e6c42f05268df274215a56d43f55c6a15c259d7a05ee9c5e1a4ef6633f2d1066",
+            "40f4f7255640e87c9ea50010779c91632bf54cb688db63c035cfba337d33315a",
         [ExtractionStage.LineItems] =
             "255e28562e0d2bdd6d0220ad35639b878caff5d1f159354b6260328122b58119",
         [ExtractionStage.LegalClauses] =
             "cf720191b94b0f3741de545dd50260d9820e3322ddec0e7604b7f16dda3e4f74",
         [ExtractionStage.Obligations] =
-            "8a92f09573b4abc013cd85e8211520b0803fe0548d5d655cb809d83d8c2e9eb1",
+            "95747817df22d76ca79b141cee9524bbce4df4c727b886c68e28046dbb901d16",
         [ExtractionStage.Risk] =
             "e45265eefd1db228b670731f99151d89eeb0c2b8ea6f6d532fb6005fa9207f11",
     };
