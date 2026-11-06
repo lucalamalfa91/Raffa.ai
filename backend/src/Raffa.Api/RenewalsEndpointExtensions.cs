@@ -1,13 +1,11 @@
-using Raffa.AiFlows.Shared.ContractContext;
 using Raffa.Api.Infrastructure;
-using Raffa.Benchmark;
-using Raffa.Benchmark.Contracts;
 using Raffa.Documents.Contracts.Application;
 using Raffa.Documents.Contracts.Domain;
 using Raffa.Identity.Workspace.Domain;
 using Raffa.Renewals.Application;
 using Raffa.Renewals.Domain;
 using Raffa.SharedKernel;
+using Raffa.SharedKernel.Market;
 using Raffa.SharedKernel.Suppliers;
 using Raffa.SharedKernel.Tenancy;
 
@@ -138,11 +136,9 @@ public static class RenewalsEndpointExtensions
         RenewalPipelineBuilder pipelineBuilder,
         ISupplierNameLookup supplierNameLookup,
         RenewalActionService actionService,
-        IBenchmarkService benchmarkService,
-        BenchmarkKeyResolution benchmarkKeyResolution,
+        LineItemMarketPriceService lineItemMarketPrices,
         RenewalEngine renewalEngine,
         PriorityScoreCalculator priorityScoreCalculator,
-        IClock clock,
         ITenantContext tenantContext,
         ICallerContext callerContext,
         IServiceProvider services,
@@ -182,34 +178,26 @@ public static class RenewalsEndpointExtensions
 
         // Task E21/F02/US01/T01 (NW-22): resolve the market band per candidate here in the host —
         // the one project allowed to reference every module — so RenewalPipelineBuilder stays pure
-        // (ADR-002 w17 clause 2). BenchmarkKeyResolution resolved the (supplier, geography) key in
-        // phase 1 (E21/F01/US01/T01); here we call IBenchmarkService and determine the position
-        // from the distribution. Abstentions (incomplete key, thin sample, no spend) produce a null
-        // band that the builder maps to "insufficient market data" (ADR-001 w17 clause 4).
-        //
-        // The keys for the whole page are resolved up front -- one supplier-name lookup and one
-        // workspace-country read, not two queries per row -- and a benchmark answer is reused by the
-        // rows that ask the identical question (same supplier, contract type, currency and day). Both
-        // live for this request only. The rows themselves stay sequential: the benchmark service may
-        // share this request's scoped DbContext, which is not safe to use concurrently.
-        var benchmarkKeys = await benchmarkKeyResolution
-            .ResolveManyAsync(
+        // (ADR-002 w17 clause 2). The band is the contract's own stored per-line comparison (the
+        // market column Contract 360 shows, LineItemMarketPriceService): each matched line's UNIT
+        // price against its UNIT-price band. Read for the whole page in one query and never
+        // re-priced from here -- MarketRepriceScheduler keeps the rows current, and a per-row read
+        // (or re-pricing) of every contract on the page is what exhausted the DB connections
+        // before. No matched line produces a null band that the builder maps to
+        // "insufficient market data" (ADR-001 w17 clause 4).
+        var storedComparisons = await lineItemMarketPrices
+            .GetStoredMatchedAsync(
                 tenantId,
-                [.. portfolioPage.Items
-                    .Where(item => item.SupplierId is not null)
-                    .Select(item => new EntityId(item.SupplierId!.Value))
-                    .Distinct()],
+                [.. portfolioPage.Items.Select(item => new EntityId(item.ContractId))],
                 cancellationToken)
             .ConfigureAwait(false);
-        var benchmarkAnswers = new Dictionary<BenchmarkQuery, Result<BenchmarkResult>>();
-        var candidatesWithBands = new List<RenewalDashboardCandidate>(portfolioPage.Items.Count);
-        foreach (var item in portfolioPage.Items)
-        {
-            var band = await ResolveMarketBandAsync(
-                item, benchmarkKeys, benchmarkAnswers, benchmarkService, clock, cancellationToken)
-                .ConfigureAwait(false);
-            candidatesWithBands.Add(ToCandidate(item, band));
-        }
+        var candidatesWithBands = portfolioPage.Items
+            .Select(item => ToCandidate(
+                item,
+                storedComparisons.TryGetValue(new EntityId(item.ContractId), out var lines)
+                    ? ResolveMarketBand(item.Currency, lines)
+                    : null))
+            .ToList();
 
         var pipeline = pipelineBuilder.Build(candidatesWithBands);
 
@@ -317,97 +305,94 @@ public static class RenewalsEndpointExtensions
             band,
             item.NoticePeriodDays);
 
+    /// <summary>The source label of a band built only from the line's own products — the same corpus,
+    /// and the same wording, <c>MarketFeedBenchmarkAdapter</c> reports as its source (the builder
+    /// adds the "representative" label itself).</summary>
+    internal const string StoredMarketSource = "market-feed";
+
+    /// <summary>The source label when at least one line's band is a similar product's, or a bundle's
+    /// summed price, rather than the line's own product — so the board never presents it as exact.</summary>
+    internal const string StoredMarketApproximateSource = "market-feed, incl. similar or bundled products";
+
     /// <summary>
-    /// Resolves the market position band for one portfolio row (task E21/F02/US01/T01, NW-22).
+    /// Resolves one contract's market position from its stored per-line comparisons (task
+    /// E21/F02/US01/T01, NW-22), comparing like with like: each matched line's <b>unit</b> price
+    /// against that line's <b>unit</b>-price P25/P75 band.
     ///
     /// <list type="number">
-    /// <item>Takes the (supplier name, geography) key <see cref="BenchmarkKeyResolution.ResolveManyAsync"/>
-    ///   resolved for the page (the same key <see cref="BenchmarkKeyResolution.ResolveAsync"/> gives per
-    ///   row) — the two dimensions a <c>BenchmarkQuery</c> requires
-    ///   that only the host can supply (phase 1, E21/F01/US01/T01). An incomplete key → null.</item>
-    /// <item>Calls <see cref="IBenchmarkService.GetBenchmarkAsync"/> with a query composed from
-    ///   the resolved key plus the portfolio item's own currency and today's date as the purchase
-    ///   date. A service failure or an adapter abstention (too few comparables) → null.</item>
-    /// <item>Compares <see cref="PortfolioListItem.AnnualSpend"/> to the P25/P75 band
-    ///   (at-or-below P25 = <c>"below market"</c>, at-or-above P75 = <c>"above market"</c>,
-    ///   otherwise <c>"in line with market"</c>). No annual spend or inverted markers → null.</item>
+    /// <item>Usable lines: a contract unit price, a well-ordered band (P25 ≤ P50 ≤ P75) and the
+    ///   contract's own currency (a band in another currency is not comparable).</item>
+    /// <item>The lines are combined weighted by their annual cost: each line counts with its volume
+    ///   (quantity; else annual cost ÷ unit price; else 1), so the contract is compared as
+    ///   Σ volume·unit price against what the same volumes would cost at the market's P25 and P75.
+    ///   A line's weight in the comparison is therefore its annual spend.</item>
+    /// <item>The same <c>[P25, P75]</c> rule <c>MarketAssessmentCalculator</c> uses: at-or-below the
+    ///   P25 total = <c>"below market"</c>, at-or-above the P75 total = <c>"above market"</c>,
+    ///   otherwise <c>"in line with market"</c>.</item>
     /// </list>
     ///
-    /// A null result is not a defect — the builder maps it to <c>"insufficient market data"</c>
-    /// (ADR-001 w17 clause 4, AC-3). Never throws: all failure modes are returned as null so the
-    /// loop in <see cref="GetRenewalsAsync"/> keeps processing the remaining candidates.
+    /// Provenance: the source says whether any band is only a similar product's or a bundle's; the
+    /// sample size is the smallest behind any line used (the weakest comparison), and the as-of date
+    /// the oldest. <see langword="null"/> when no line is usable — the builder maps that to
+    /// <c>"insufficient market data"</c> (ADR-001 w17 clause 4); never a fabricated position.
     /// </summary>
-    private static async Task<ResolvedMarketBand?> ResolveMarketBandAsync(
-        PortfolioListItem item,
-        IReadOnlyDictionary<EntityId, BenchmarkKeyResult> benchmarkKeys,
-        Dictionary<BenchmarkQuery, Result<BenchmarkResult>> benchmarkAnswers,
-        IBenchmarkService benchmarkService,
-        IClock clock,
-        CancellationToken cancellationToken)
+    internal static ResolvedMarketBand? ResolveMarketBand(
+        string? contractCurrency, IReadOnlyList<StoredLineMarketComparison> lines)
     {
-        // A row with no supplier id has no key at all (ResolveAsync: no supplier name → incomplete).
-        if (item.SupplierId is not { } sid
-            || !benchmarkKeys.TryGetValue(new EntityId(sid), out var keyResult)
-            || keyResult is not BenchmarkKeyResult.Complete key)
-            return null; // incomplete key (no supplier name or no workspace country) → abstain
+        ArgumentNullException.ThrowIfNull(lines);
 
-        var query = new BenchmarkQuery(
-            Supplier: key.Supplier,
-            // PortfolioListItem has no product name; contract type is the closest identifying
-            // fact on the row (PortfolioListItem's own "Contract" column proxy). An unmatched
-            // product is an adapter abstention, not a fabricated catalog name.
-            Product: item.Type.ToString(),
-            Sku: null,
-            Geography: key.Geography,
-            Quantity: 1m,
-            // PortfolioListItem does not carry RenewalTermMonths; "unknown" lets the adapter skip
-            // term-gating rather than inventing "12 months" (Appendix C rule 10).
-            Term: "unknown",
-            Currency: item.Currency,
-            PurchaseDate: DateOnly.FromDateTime(clock.UtcNow.UtcDateTime));
+        decimal spend = 0m, atP25 = 0m, atP75 = 0m;
+        int? sampleSize = null;
+        DateTimeOffset? asOf = null;
+        var approximate = false;
+        var used = 0;
 
-        // The same query is the same question: asked once per request (BenchmarkQuery is a value record).
-        if (!benchmarkAnswers.TryGetValue(query, out var benchmarkResult))
+        foreach (var line in lines)
         {
-            benchmarkResult = await benchmarkService
-                .GetBenchmarkAsync(query, cancellationToken)
-                .ConfigureAwait(false);
-            benchmarkAnswers[query] = benchmarkResult;
+            if (line.UnitPrice is not { } unitPrice || unitPrice < 0m)
+                continue;
+            if (!(line.UnitPriceP25 <= line.UnitPriceP50 && line.UnitPriceP50 <= line.UnitPriceP75))
+                continue;
+            if (!string.IsNullOrWhiteSpace(contractCurrency)
+                && !string.IsNullOrWhiteSpace(line.Currency)
+                && !string.Equals(contractCurrency, line.Currency, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var volume = LineVolume(line, unitPrice);
+            spend += volume * unitPrice;
+            atP25 += volume * line.UnitPriceP25;
+            atP75 += volume * line.UnitPriceP75;
+            used++;
+
+            approximate |= line.Kind != MarketMatchKind.Exact;
+            if (line.SampleSize is { } n)
+                sampleSize = sampleSize is { } m ? Math.Min(m, n) : n;
+            asOf = asOf is { } a && a <= line.AsOf ? a : line.AsOf;
         }
 
-        if (benchmarkResult.IsFailure || !benchmarkResult.Value.HasSufficientData)
-            return null; // adapter abstained (thin sample or service error) → abstain
+        if (used == 0)
+            return null;
 
-        var position = DetermineMarketPosition(item.AnnualSpend, benchmarkResult.Value.Distribution!);
-        if (position is null)
-            return null; // no spend to compare → abstain
+        var position = spend <= atP25 ? "below market"
+            : spend >= atP75 ? "above market"
+            : "in line with market";
 
         return new ResolvedMarketBand(
             position,
-            benchmarkResult.Value.Source,
-            benchmarkResult.Value.SampleSize,
-            benchmarkResult.Value.UpdatedAt);
+            approximate ? StoredMarketApproximateSource : StoredMarketSource,
+            sampleSize,
+            asOf!.Value);
     }
 
-    /// <summary>
-    /// Classifies <paramref name="annualSpend"/> relative to the P25/P75 band — the same
-    /// <c>[P25, P75]</c> rule <c>Raffa.Quotes.Application.Assessment.MarketAssessmentCalculator</c>
-    /// already uses: at-or-below P25 → <c>"below market"</c>, at-or-above P75 →
-    /// <c>"above market"</c>, anything else (including P50) → <c>"in line with market"</c>.
-    /// Returns <see langword="null"/> when spend is unknown or the markers are not well-ordered
-    /// — never a fabricated position (Appendix C rule 10; ADR-001 w17 clause 4).
-    /// </summary>
-    private static string? DetermineMarketPosition(decimal? annualSpend, BenchmarkDistribution dist)
+    /// <summary>A line's volume for the weighting: its quantity, else the quantity its annual cost
+    /// implies at its unit price, else one unit.</summary>
+    private static decimal LineVolume(StoredLineMarketComparison line, decimal unitPrice)
     {
-        if (annualSpend is not { } spend)
-            return null;
-
-        if (!(dist.P25 <= dist.P50 && dist.P50 <= dist.P75))
-            return null;
-
-        if (spend <= dist.P25) return "below market";
-        if (spend >= dist.P75) return "above market";
-        return "in line with market";
+        if (line.Quantity is > 0m and { } quantity)
+            return quantity;
+        if (line.AnnualCost is > 0m and { } annualCost && unitPrice > 0m)
+            return annualCost / unitPrice;
+        return 1m;
     }
 
     /// <summary>

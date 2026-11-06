@@ -38,6 +38,26 @@ public sealed record LineItemMarketPrice(
     MarketPriceEstimate? Estimate = null);
 
 /// <summary>
+/// One line item's stored, matched market band beside the line's own figures, as
+/// <see cref="LineItemMarketPriceService.GetStoredMatchedAsync"/> reads it for a list surface.
+/// <see cref="UnitPrice"/> is the contract's own unit price for the line (null when extraction found
+/// none); the band is a <b>unit-price</b> band in <see cref="Currency"/>. <see cref="AsOf"/> is when
+/// the market data was last updated, or when the line was compared when the record carries no date.
+/// </summary>
+public sealed record StoredLineMarketComparison(
+    EntityId LineItemId,
+    decimal? UnitPrice,
+    decimal? Quantity,
+    decimal? AnnualCost,
+    string? Currency,
+    decimal UnitPriceP25,
+    decimal UnitPriceP50,
+    decimal UnitPriceP75,
+    int? SampleSize,
+    MarketMatchKind Kind,
+    DateTimeOffset AsOf);
+
+/// <summary>
 /// Compares a contract's line items with the shared market corpus and keeps the result on
 /// <see cref="ContractLineItemMarketPrice"/> — so the market column is filled from the moment a
 /// document is extracted, and stays current afterwards:
@@ -120,6 +140,78 @@ public sealed class LineItemMarketPriceService(
     public Task<IReadOnlyDictionary<EntityId, LineItemMarketPrice>> RefreshIfStaleAsync(
         TenantId tenantId, EntityId contractId, CancellationToken cancellationToken) =>
         RefreshAsync(tenantId, contractId, force: false, bounded: false, cancellationToken);
+
+    /// <summary>
+    /// The stored, <b>matched</b> comparisons of every line of <paramref name="contractIds"/>, joined
+    /// to the line's own unit price, quantity and annual cost — grouped by contract. One query for the
+    /// whole set, and read-only: unlike <see cref="GetCurrentAsync"/> it never re-prices, waits for a
+    /// re-pricing or writes, so a list surface (the Renewals board) can read a whole page of contracts
+    /// without fanning out per row. <c>MarketRepriceScheduler</c> keeps the rows current. A contract
+    /// with no matched line is absent from the result; unmatched lines and estimates are never
+    /// returned (an estimate is not market data).
+    /// </summary>
+    public async Task<IReadOnlyDictionary<EntityId, IReadOnlyList<StoredLineMarketComparison>>> GetStoredMatchedAsync(
+        TenantId tenantId, IReadOnlyCollection<EntityId> contractIds, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(contractIds);
+        if (contractIds.Count == 0)
+        {
+            return new Dictionary<EntityId, IReadOnlyList<StoredLineMarketComparison>>();
+        }
+
+        using var tenantScope = tenantContext.BeginScope(tenantId);
+
+        var ids = contractIds.Distinct().ToList();
+        var rows = await (
+                from price in dbContext.ContractLineItemMarketPrices.AsNoTracking()
+                join line in dbContext.ContractLineItems.AsNoTracking() on price.LineItemId equals line.Id
+                where price.TenantId == tenantId
+                    && line.TenantId == tenantId
+                    && line.ContractId == price.ContractId
+                    && ids.Contains(price.ContractId)
+                    && price.RecordId != null
+                    && price.UnitPriceP25 != null
+                    && price.UnitPriceP50 != null
+                    && price.UnitPriceP75 != null
+                select new
+                {
+                    price.ContractId,
+                    LineItemId = line.Id,
+                    line.UnitPrice,
+                    line.Quantity,
+                    line.AnnualCost,
+                    price.Currency,
+                    price.UnitPriceP25,
+                    price.UnitPriceP50,
+                    price.UnitPriceP75,
+                    price.SampleSize,
+                    price.MatchKind,
+                    price.MarketUpdatedAt,
+                    price.CheckedAt,
+                })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return rows
+            .GroupBy(r => r.ContractId)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<StoredLineMarketComparison>)g
+                    .OrderBy(r => r.LineItemId.Value)
+                    .Select(r => new StoredLineMarketComparison(
+                        r.LineItemId,
+                        r.UnitPrice,
+                        r.Quantity,
+                        r.AnnualCost,
+                        r.Currency,
+                        r.UnitPriceP25!.Value,
+                        r.UnitPriceP50!.Value,
+                        r.UnitPriceP75!.Value,
+                        r.SampleSize,
+                        r.MatchKind ?? MarketMatchKind.Exact,
+                        r.MarketUpdatedAt ?? r.CheckedAt))
+                    .ToList());
+    }
 
     /// <summary>
     /// Up to <paramref name="max"/> contracts of the tenant with a line a read would re-price now: the
