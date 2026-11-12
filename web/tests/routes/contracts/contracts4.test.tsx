@@ -342,8 +342,25 @@ describe("Revisione", () => {
       ),
     });
     renderAt(`/contracts/review/${DOC}`, <Route path="/contracts/review/:documentId" element={<ReviewRoute apiClient={api} />} />);
-    expect(await screen.findByText(/Questo file non ha testo leggibile/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Questo file non ha testo leggibile" })).toBeInTheDocument();
+    expect(screen.getByText(/Sembra una scansione o una foto senza testo/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Carica un’altra versione" })).toBeInTheDocument();
+    expect(missing).toEqual([]);
+  });
+
+  it("says plainly when the uploaded file is not a contract", async () => {
+    const api = client({
+      getDocumentReading: vi.fn().mockResolvedValue(
+        ok(reading({ status: "failed", fields: [], failure: { id: "This file does not look like a contract. Upload another file." } })),
+      ),
+    });
+    renderAt(`/contracts/review/${DOC}`, <Route path="/contracts/review/:documentId" element={<ReviewRoute apiClient={api} />} />);
+    expect(await screen.findByRole("heading", { name: "Questo file non è un contratto" })).toBeInTheDocument();
+    expect(screen.queryByText("La lettura non è terminata")).not.toBeInTheDocument();
+    expect(screen.getByText(/Raffa legge solo contratti/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Carica un contratto" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Torna ai contratti" })).toBeInTheDocument();
+    expect(missing).toEqual([]);
   });
 
   it("outside fixture mode, /contracts/review/new leads to the Documents upload", async () => {
