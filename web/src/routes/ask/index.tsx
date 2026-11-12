@@ -314,6 +314,12 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       else setConvError(t("The requested content could not be opened."));
     }
     void reloadLists();
+    // "Avvia il rinnovo", "aprilo in rinnovi": the user's message was the command, so the renewal starts now --
+    // the contract is marked as in renewal and its case opens, carrying this conversation -- with nothing to click.
+    if (fresh?.payload?.actionProposal?.kind === "start_renewal" && fresh.payload.actionProposal.autoRun) {
+      void confirmProposal(fresh, r.data.conversation.id);
+      return;
+    }
     // The capability check may still be looking: its follow-up turn lands in the conversation shortly.
     if (r.data.capabilityCheck === "pending") {
       const id = r.data.conversation.id;
@@ -340,7 +346,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
    * The user said yes: the same action as the Renewals / Savings screens. A renewal marks the contract as in
    * renewal and opens its case (with the case's own chat); a savings goal is set on Spend and savings.
    */
-  const confirmProposal = async (message: ConversationMessage4) => {
+  const confirmProposal = async (message: ConversationMessage4, conversationId?: string) => {
     const proposal = message.payload?.actionProposal;
     if (!proposal || proposals[message.id]?.status === "running" || proposals[message.id]?.status === "done") return;
     setProposal(message.id, { status: "running" });
@@ -349,7 +355,7 @@ export default function AskRoute({ apiClient }: AskRouteProps) {
       const board = apiClient.getRenewalsBoard ? await apiClient.getRenewalsBoard(tenantId) : null;
       const viewer = board?.ok ? board.body.viewer : null;
       const ownerUserId = viewer ? (viewer.isApprover ? (board?.ok ? (board.body.assignee?.userId ?? viewer.userId) : viewer.userId) : viewer.userId) : null;
-      const r = await apiClient.openRenewalCase(tenantId, { contractId: proposal.contractId, ownerUserId, conversationId: current?.id ?? null });
+      const r = await apiClient.openRenewalCase(tenantId, { contractId: proposal.contractId, ownerUserId, conversationId: conversationId ?? current?.id ?? null });
       const caseId = (r.data as { caseId?: string } | null)?.caseId;
       if (r.ok && caseId) {
         setProposal(message.id, { status: "done" });

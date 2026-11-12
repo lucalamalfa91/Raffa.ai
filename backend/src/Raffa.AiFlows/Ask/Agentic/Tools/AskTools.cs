@@ -482,19 +482,23 @@ internal sealed class WebResearchTool(WebResearchFlow web, AbstainRecovery absta
     }
 }
 
-/// <summary>Raffa never starts a renewal by itself: the tool ends the turn with a confirmation question
-/// and the proposal; the app opens the renewal case (the same action as "Avvia il rinnovo" in Rinnovi)
-/// only on the user's yes.</summary>
+/// <summary>The user asked to start the renewal of a contract: the tool ends the turn with a short reply and the
+/// action, which the app runs at once (the same action as "Avvia il rinnovo" in Rinnovi): it marks the contract as
+/// in renewal and opens the renewal case, carrying this conversation into it. Nothing goes to the supplier.
+/// The same reply is built by <c>AskCopilotService</c> when the command is recognised before the model runs
+/// (<see cref="RenewalStartCommand"/>).</summary>
 internal sealed class ProposeStartRenewalTool : IAskTool
 {
     public string Name => "propose_start_renewal";
 
     public string Description =>
-        "Use it when the user asks to start, open or begin the renewal of a contract (\"avvia il rinnovo\", \"start the renewal\", \"let's renew Splunk\"). " +
-        "It does NOT start anything: it asks the user to confirm, and only on their yes does the app mark the contract as in renewal and open the " +
-        "renewal case with its own chat. Pass the supplier as the user names it, or 'this' for the contract the conversation is about. " +
-        "Call it as the only call of the turn, without reading the contract or the market first (the levers already discussed travel with the " +
-        "conversation into the case); do not write an answer of your own after it.";
+        "Use it whenever the user asks to start, open, launch or proceed with the renewal of a contract, to open it in Renewals, to be " +
+        "interviewed for the renewal, or to send the renewal email (\"avvia il rinnovo\", \"avvia la pratica\", \"aprilo in rinnovi\", " +
+        "\"intervistami per il rinnovo\", \"invia la mail per il rinnovo\", \"start the renewal\", \"open it in renewals\", \"send the renewal email\"). " +
+        "The app then marks the contract as in renewal and opens the renewal case in its own chat, carrying this conversation (levers and the " +
+        "user's constraints) into it: the case runs the interview and writes the email there. Pass the supplier as the user names it, or 'this' " +
+        "for the contract the conversation is about. Call it as the only call of the turn, without reading the contract or the market first and " +
+        "without writing the email yourself; do not write an answer of your own after it.";
 
     public string ParametersSchemaJson => Schema(
         ("supplier", "string", "Supplier name as written by the user, or 'this' for the current contract.", false));
@@ -510,16 +514,21 @@ internal sealed class ProposeStartRenewalTool : IAskTool
         }
 
         var name = supplier ?? "?";
-        var text = context.Italian
-            ? $"Posso avviare il rinnovo di **{name}**: imposto il contratto come in rinnovo e apro la pratica portando con me le leve che abbiamo individuato in questa chat: le uso per le domande e per la mail. Non invio nulla al fornitore. Confermi?"
-            : $"I can start the renewal of **{name}**: I mark the contract as in renewal and open the case carrying over the levers we found in this chat: I use them for the questions and the email. Nothing is sent to the supplier. Confirm?";
-        var reply = new CopilotReply(
-            ReplyKind.Answer, text, [], [], ReplyProvenance.NoModelCall([]), [],
-            new ReplyPayload(ActionProposal: new ActionProposalPayload(ActionProposalPayload.StartRenewal, item.ContractId.ToString(), name)));
         return Task.FromResult(new AskToolResult(
-            JsonSerializer.Serialize(new { items = Array.Empty<object>(), summary = new { endsTurn = true, proposed = "start_renewal", supplier = name } }),
+            JsonSerializer.Serialize(new { items = Array.Empty<object>(), summary = new { endsTurn = true, started = "start_renewal", supplier = name } }),
             [],
-            EndTurnReply: reply));
+            EndTurnReply: Reply(item.ContractId, name, context.Italian)));
+    }
+
+    /// <summary>The reply that starts the renewal: one line saying what happens, and the action the app runs at once.</summary>
+    internal static CopilotReply Reply(Guid contractId, string supplier, bool italian)
+    {
+        var text = italian
+            ? $"Avvio il rinnovo di **{supplier}**: segno il contratto come in rinnovo e apro la pratica nei Rinnovi portando con me quello che abbiamo definito in questa chat (leve, obiettivi e vincoli). L'intervista e la mail partono da lì. Non invio nulla al fornitore."
+            : $"Starting the renewal of **{supplier}**: I mark the contract as in renewal and open the case in Renewals, carrying over what we settled in this chat (levers, goals and constraints). The interview and the email start from there. Nothing is sent to the supplier.";
+        return new CopilotReply(
+            ReplyKind.Answer, text, [], [], ReplyProvenance.NoModelCall([]), [],
+            new ReplyPayload(ActionProposal: new ActionProposalPayload(ActionProposalPayload.StartRenewal, contractId.ToString(), supplier, AutoRun: true)));
     }
 }
 

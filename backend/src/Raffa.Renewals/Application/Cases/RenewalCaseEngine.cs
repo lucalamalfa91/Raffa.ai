@@ -87,7 +87,7 @@ public static partial class RenewalCaseEngine
         @"(?:riduzion\w*|sconto|reduction|discount|cut|taglio)[^%\n]{0,60}?(\d+(?:[.,]\d+)?)\s*%", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
 
     private static readonly Regex BriefVolumes = new(
-        @"(?:riduzion\w*|ridimension\w*|reduc\w*)\s+(?:dei\s+|of\s+(?:the\s+)?|the\s+)?(?:volum\w*|quantit\w*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
+        @"(?:riduzion\w*|ridimension\w*|ridurre|riducia\w*|taglia\w*|reduc\w*|cut(?:ting)?|lower(?:ing)?)\s+(?:anche\s+|also\s+)?(?:dei\s+|delle\s+|il\s+|le\s+|i\s+|of\s+(?:the\s+)?|the\s+|our\s+)?(?:numero\s+(?:di|delle|dei)\s+|number\s+of\s+)?(?:volum\w*|quantit\w*|l[ie]cen[csz]\w*|seats?|postazion\w*|utenz\w*|users?)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
 
     /// <summary>What the chat's levers say about interview question <paramref name="question"/> (0 products, 1 term,
     /// 2 economic goal), as one line under the question; null when they say nothing about it.</summary>

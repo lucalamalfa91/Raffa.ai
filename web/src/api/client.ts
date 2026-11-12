@@ -4514,6 +4514,8 @@ export interface ActionProposal {
   contractId?: string | null;
   supplier?: string | null;
   goalText?: string | null;
+  /** The user's own message was the command ("avvia il rinnovo"): the app runs it as soon as the reply arrives. */
+  autoRun?: boolean;
 }
 
 export interface ConversationMessage4 {

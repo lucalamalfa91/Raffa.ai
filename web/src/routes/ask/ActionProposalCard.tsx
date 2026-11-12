@@ -5,7 +5,8 @@ export type ProposalState = { status: "running" } | { status: "done"; savings?: 
 
 /**
  * Raffa asks before it acts: the proposal's confirm / cancel buttons (typing "yes" works too) and,
- * once answered, what happened. Nothing runs until the user confirms.
+ * once answered, what happened. Nothing runs until the user confirms -- except a renewal the user's own
+ * message commanded ("avvia il rinnovo"), which runs as soon as the reply arrives (autoRun).
  */
 export default function ActionProposalCard({
   proposal,
@@ -42,6 +43,14 @@ export default function ActionProposalCard({
   }
   if (!active && !state) return null;
   const running = state?.status === "running";
+  // A renewal the user commanded runs by itself: no buttons while it opens, only what is happening.
+  if (running && proposal.autoRun) {
+    return (
+      <div className="k6-proposal is-running" data-parity-hide role="status">
+        <span>{t("Raffa is working…")}</span>
+      </div>
+    );
+  }
   return (
     <div className="k6-proposal" data-parity-hide>
       <div className="k6-proposal-acts">
