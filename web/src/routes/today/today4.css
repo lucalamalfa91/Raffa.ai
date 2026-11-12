@@ -46,6 +46,7 @@
 }
 .v4 .o4-zero-cta .btn { min-height: 46px; font-size: 15px; padding: 0 20px; }
 .o4-note { font-size: 13px; color: var(--color-neutral-600); }
+.o4-note.is-error { color: var(--color-accent); }
 
 /* — Focus — */
 .o4-dots { display: flex; gap: 6px; margin: 22px 0 14px; }
