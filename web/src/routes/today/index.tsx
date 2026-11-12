@@ -4,6 +4,7 @@ import type { ApiClient } from "../../api/client";
 import type { TodayFeed, TodayItem } from "../../api/renewalCases";
 import { useGuide, useNavBadge } from "../../components/shell/guide";
 import { useTenantId } from "../../routes/contracts/contracts4";
+import { useContractUpload } from "../../routes/contracts/useContractUpload";
 import { useI18n } from "../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../i18n/translate";
 import { CONTRACTS_CHANGED, loadToday, notifyTodayChanged } from "./loadToday";
@@ -83,18 +84,14 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
     [apiClient, tenantId, load],
   );
 
-  const startSample = useCallback(async () => {
-    if (!tenantId) return;
+  const upload = useContractUpload(apiClient);
+
+  /** The main "Punto zero" action: verify the document already read, else pick the user's own contract(s). */
+  const startSample = useCallback(() => {
     const doc = feed?.documents[0];
-    if (doc) {
-      navigate(`/contracts/review/${doc.documentId}`);
-      return;
-    }
-    const r = await apiClient.uploadSampleDocument(tenantId);
-    const documentId = r.ok ? (r.data as { documentId?: string } | null)?.documentId : undefined;
-    if (documentId) navigate(`/contracts/review/${documentId}`);
-    else setError(r.error ?? t("The sample contract could not be uploaded."));
-  }, [apiClient, tenantId, feed, navigate, t]);
+    if (doc) navigate(`/contracts/review/${doc.documentId}`);
+    else upload.pickFiles();
+  }, [feed, navigate, upload]);
 
   const delegate = useCallback(
     async (item: TodayItem) => {
@@ -185,7 +182,7 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
             now: hasDoc ? t("Verify the two doubtful fields.") : t("Upload the first contract."),
             why: t("Raffa works only on read and verified contracts: a doubtful notice date cannot drive a decision."),
             next: t("Contract validated → the notice deadline appears in Today → you run the renewal through to signature."),
-            cta: { label: startCta, onClick: () => void startSample() },
+            cta: { label: startCta, onClick: startSample },
           }
         : {
             where: f ? t("Today · {n} things for you", { n: mine.length }) : t("Today · nothing pending"),
@@ -227,10 +224,18 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
             ))}
           </div>
           <div className="o4-zero-cta">
-            <button type="button" className="btn btn-primary" onClick={() => void startSample()}>
+            <button type="button" className="btn btn-primary" disabled={upload.busy} onClick={startSample}>
               {startCta}
             </button>
-            {!hasDoc ? <span className="o4-note">{t("Demo: upload “Salesforce_MSA_2024.pdf”, the sample contract.")}</span> : null}
+            {!hasDoc ? (
+              <>
+                <button type="button" className="btn btn-secondary" disabled={upload.busy} onClick={upload.startDemo}>
+                  {t("Load the demo contract")}
+                </button>
+                <span className="o4-note">{t("No contract at hand? The demo loads a sample contract with fictitious parties.")}</span>
+              </>
+            ) : null}
+            {upload.error ? <span className="o4-note is-error">{t(upload.error)}</span> : null}
           </div>
         </div>
       ) : null}

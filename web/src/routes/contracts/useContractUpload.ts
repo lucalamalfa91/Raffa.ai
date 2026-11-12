@@ -22,6 +22,10 @@ export async function startSampleUpload(apiClient: ApiClient, tenantId: string):
   return result.ok && result.data ? reviewPath(result.data.documentId) : null;
 }
 
+/** The demo contract bundled with the web app (`public/samples`), uploaded like any real file. */
+export const DEMO_CONTRACT_URL = "/samples/Demo_SaaS_MSA_2024.pdf";
+export const DEMO_CONTRACT_NAME = "Demo_SaaS_MSA_2024.pdf";
+
 /** A bulk upload in flight (or just finished): what the Contratti banner reports. */
 export interface BulkUploadProgress {
   total: number;
@@ -48,6 +52,10 @@ const subscribeBulk = (listener: () => void) => {
 export interface ContractUpload {
   /** Starts an upload: the sample in fixture mode, else the file picker (one or many files). */
   start: () => void;
+  /** Always the file picker, fixture mode or not: the user's own contracts. */
+  pickFiles: () => void;
+  /** The demo contract: the scripted sample in fixture mode, else the bundled demo PDF uploaded for real. */
+  startDemo: () => void;
   busy: boolean;
   error: string | null;
   bulk: BulkUploadProgress | null;
@@ -110,19 +118,22 @@ export function useContractUpload(apiClient: ApiClient): ContractUpload {
     [apiClient, tenantId, navigate],
   );
 
-  const start = useCallback(() => {
+  const uploadOne = useCallback(
+    async (file: File) => {
+      if (!tenantId) return;
+      setBusy(true);
+      const result = await apiClient.uploadDocument(tenantId, file);
+      setBusy(false);
+      if (result.ok && result.document) navigate(reviewPath(result.document.id));
+      else if (result.alreadyUploaded) navigate("/contracts");
+      else setError(result.error ?? "The upload did not go through.");
+    },
+    [apiClient, tenantId, navigate],
+  );
+
+  const pickFiles = useCallback(() => {
     if (!tenantId || busy) return;
     setError(null);
-    if (fixture) {
-      setBusy(true);
-      void startSampleUpload(apiClient, tenantId).then((path) => {
-        setBusy(false);
-        if (path) navigate(path);
-        else setError("The upload did not go through.");
-      });
-      return;
-    }
-
     const input = document.createElement("input");
     input.type = "file";
     input.multiple = true;
@@ -130,20 +141,35 @@ export function useContractUpload(apiClient: ApiClient): ContractUpload {
     input.onchange = () => {
       const files = Array.from(input.files ?? []);
       if (files.length === 0) return;
-      if (files.length > 1) {
-        void uploadMany(files);
-        return;
-      }
-      setBusy(true);
-      void apiClient.uploadDocument(tenantId, files[0]).then((result) => {
-        setBusy(false);
-        if (result.ok && result.document) navigate(reviewPath(result.document.id));
-        else if (result.alreadyUploaded) navigate("/contracts");
-        else setError(result.error ?? "The upload did not go through.");
-      });
+      if (files.length > 1) void uploadMany(files);
+      else void uploadOne(files[0]);
     };
     input.click();
-  }, [apiClient, tenantId, fixture, busy, navigate, uploadMany]);
+  }, [tenantId, busy, uploadMany, uploadOne]);
 
-  return { start, busy: busy || (bulk !== null && !bulk.finished), error, bulk, dismissBulk: () => setBulk(() => null) };
+  const startDemo = useCallback(() => {
+    if (!tenantId || busy) return;
+    setError(null);
+    setBusy(true);
+    if (fixture) {
+      void startSampleUpload(apiClient, tenantId).then((path) => {
+        setBusy(false);
+        if (path) navigate(path);
+        else setError("The sample contract could not be uploaded.");
+      });
+      return;
+    }
+    void fetch(DEMO_CONTRACT_URL)
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((blob) => uploadOne(new File([blob], DEMO_CONTRACT_NAME, { type: "application/pdf" })))
+      .catch(() => {
+        setBusy(false);
+        setError("The sample contract could not be uploaded.");
+      });
+  }, [apiClient, tenantId, fixture, busy, navigate, uploadOne]);
+
+  /** Fixture mode keeps the scripted sample behind the generic "Upload" entry points. */
+  const start = useCallback(() => (fixture ? startDemo() : pickFiles()), [fixture, startDemo, pickFiles]);
+
+  return { start, pickFiles, startDemo, busy: busy || (bulk !== null && !bulk.finished), error, bulk, dismissBulk: () => setBulk(() => null) };
 }
