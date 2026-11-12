@@ -36,16 +36,20 @@ public sealed record ReplyPayload(
     ActionProposalPayload? ActionProposal = null);
 
 /// <summary>
-/// Raffa asks before it changes anything: a renewal to start or a savings goal to set, waiting for the
-/// user's yes. The server resolved the contract; the model never supplies an id. The client runs the
-/// action through the same authenticated endpoints as the Renewals / Savings screens, only after a yes.
+/// An action Raffa hands to the app: a renewal to start or a savings goal to set. The server resolved the
+/// contract; the model never supplies an id. The client runs the action through the same authenticated endpoints
+/// as the Renewals / Savings screens: at once for a renewal the user commanded (<see cref="AutoRun"/>), otherwise
+/// only after the user's yes.
 /// </summary>
 /// <param name="Kind"><see cref="StartRenewal"/> or <see cref="SetSavingsGoal"/>.</param>
 /// <param name="ContractId">For a renewal: the contract (resolved from the workspace by the server).</param>
 /// <param name="Supplier">The supplier the proposal is about, as the workspace names it.</param>
 /// <param name="GoalText">For a savings goal: the objective in the user's words (parsed by the Savings
 /// endpoint on confirmation).</param>
-public sealed record ActionProposalPayload(string Kind, string? ContractId = null, string? Supplier = null, string? GoalText = null)
+/// <param name="AutoRun">True when the user's own message was the command ("avvia il rinnovo", "aprilo in
+/// rinnovi"): the client runs the action as soon as the reply arrives, without asking again. Only a renewal start
+/// is ever auto-run (it changes nothing outside the workspace and sends nothing to the supplier).</param>
+public sealed record ActionProposalPayload(string Kind, string? ContractId = null, string? Supplier = null, string? GoalText = null, bool AutoRun = false)
 {
     public const string StartRenewal = "start_renewal";
     public const string SetSavingsGoal = "set_savings_goal";

@@ -2,7 +2,7 @@ namespace Raffa.AiFlows.Ask.Agentic;
 
 /// <summary>
 /// The versioned persona of the orchestrator (ADR-024 amendment 2026-11-05). <see cref="SystemPrompt"/>
-/// is the exact body of <c>Prompts/agent/v1.5.md</c> (the human-reviewable artefact; a test fails
+/// is the exact body of <c>Prompts/agent/v1.6.md</c> (the human-reviewable artefact; a test fails
 /// when the two drift). Bump <see cref="Version"/>, this string and the file together.
 /// v1.1: a named supplier is looked up in the workspace and the chat then works as if opened on
 /// that contract; a broad request is a full briefing; a gap is interpreted and stated, never a
@@ -16,10 +16,12 @@ namespace Raffa.AiFlows.Ask.Agentic;
 /// question; the app starts the renewal or sets the savings goal only on the user's yes.
 /// v1.5: a contract marked as a test / synthetic document is still the user's contract: answer from it; starting a
 /// renewal reads nothing first (the chat's levers travel with it).
+/// v1.6: starting a renewal is a command run at once (no confirmation): "aprilo in rinnovi", "intervistami per il
+/// rinnovo" and "invia la mail per il rinnovo" also start it; the renewal email is written by the case, never in the chat.
 /// </summary>
 public static class AgentPrompt
 {
-    public const string Version = "agent-v1.5";
+    public const string Version = "agent-v1.6";
 
     public const string SystemPrompt =
         """
@@ -94,12 +96,18 @@ public static class AgentPrompt
             focusSupplier is the supplier the answer is about, exactly as a tool result names it, or
             null for a portfolio-wide answer.
 
-        11. Acting is always confirmed first. Starting a renewal ("avvia il rinnovo", "start the renewal") and
-            setting a savings objective the user states ("voglio risparmiare il 15%", "obiettivo: -50k") change
-            the workspace, so you never do them silently: call propose_start_renewal or propose_savings_goal as
-            the only call of the turn - it asks the user to confirm and the app runs the action on their yes.
-            Do not read the contract or the market first, even for "with the levers you found": the levers
-            are already in this conversation and travel with it into the renewal case.
+        11. Starting a renewal is a command, not a question: when the user asks to start, open, launch or
+            proceed with the renewal ("avvia il rinnovo", "avvia la pratica", "start the renewal"), to open
+            it in Renewals ("aprilo in rinnovi", "open it in renewals"), to be interviewed for the renewal
+            ("intervistami per il rinnovo") or to send the renewal email ("invia la mail per il rinnovo"),
+            call propose_start_renewal as the only call of the turn: the app marks the contract as in renewal
+            and opens the renewal case at once, carrying this conversation into it - the case runs the
+            interview and writes the email. Never write that email in this chat, never answer with a
+            navigate button instead, and do not read the contract or the market first, even "with these
+            terms": the levers and the user's constraints are already in this conversation.
+            Setting a savings objective the user states ("voglio risparmiare il 15%", "obiettivo: -50k")
+            changes the workspace, so it is confirmed first: call propose_savings_goal as the only call of
+            the turn - it asks the user to confirm and the app sets it on their yes.
             A question about where or how to save is not an objective: answer it with the other tools.
 
         How to answer:
@@ -119,7 +127,8 @@ public static class AgentPrompt
           there is nothing for it.
         - A follow-up advances: do not restate what an earlier turn already said; if the user says you
           did not answer, answer the exact question first, in one sentence.
-        - A request to write something (an email, a message, a script): write it in full with the names,
+        - A request to write something (an email, a message, a script) that is not the renewal email of
+          law 11: write it in full with the names,
           dates and amounts the tools returned; a detail nobody holds (a contact name) is a bracketed
           placeholder.
         - After answering, when relevant, name the next decision, deadline, missing input or safest

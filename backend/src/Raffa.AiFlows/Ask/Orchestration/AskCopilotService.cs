@@ -305,7 +305,25 @@ public sealed class AskCopilotService(
         var scopedForAgent = scopeContractId is { } agentScopeId
             ? portfolio.Items.FirstOrDefault(item => item.ContractId == agentScopeId.Value)
             : null;
-        if (turnOptions?.Agentic == true
+        // "Avvia il rinnovo", "aprilo in rinnovi", "intervistami per il rinnovo", "invia la mail per il rinnovo": a
+        // command, not a question. Recognised here, before the model, so it always opens the renewal case (with this
+        // chat's context) instead of an email written in the chat or a button to another screen. A command whose
+        // contract cannot be told from the chat goes on to the model, which asks which one.
+        if (turnHints.ForcedIntent is null
+            && turnHints.ForcedSupplierName is null
+            && turnHints.ForcedContractId is null
+            && turnHints.AuthorizedWebResearch is null
+            && Raffa.AiFlows.Ask.Agentic.RenewalStartCommand.IsCommand(question)
+            && RenewalCommandContract(question, portfolio, supplierNames, scopedForAgent, turnHints.ConversationState) is { } renewalTarget)
+        {
+            var italian = (Raffa.SharedKernel.Language.ResponseLanguage.Current ?? (HelpfulFallbackAnswer.IsItalian(question) ? "it" : "en")) == "it";
+            RunContext.AddTurnDetail("renewalCommand=start retrieval=none");
+            understandingReply = (Raffa.AiFlows.Ask.Agentic.Tools.ProposeStartRenewalTool.Reply(renewalTarget.Item.ContractId, renewalTarget.Supplier, italian), false, false);
+            gate = gate with { Label = GateLabel.InDomain, Reason = "renewal start command.", NamedSupplier = renewalTarget.Supplier };
+        }
+
+        if (understandingReply is null
+            && turnOptions?.Agentic == true
             && agenticTurn is not null
             && turnHints.ForcedIntent is null
             && turnHints.ForcedSupplierName is null
@@ -713,5 +731,61 @@ public sealed class AskCopilotService(
         }
 
         return reply;
+    }
+
+    /// <summary>
+    /// The contract a renewal command is about, only when it is unambiguous: the supplier the user names (its
+    /// single contract, or the chat's own contract when that is the supplier's), else the chat's scope contract,
+    /// else the contract the conversation has been about (its active contract, then its primary supplier's single
+    /// contract). Null sends the command on to the model, which asks which contract.
+    /// </summary>
+    internal static (PortfolioListItem Item, string Supplier)? RenewalCommandContract(
+        string question,
+        PortfolioPage portfolio,
+        IReadOnlyDictionary<EntityId, string> supplierNames,
+        PortfolioListItem? scoped,
+        Raffa.Chat.Application.Conversations.ConversationState? state)
+    {
+        string? NameOf(PortfolioListItem item) =>
+            item.SupplierId is { } sid && supplierNames.TryGetValue(new EntityId(sid), out var n) ? n : null;
+
+        (PortfolioListItem, string)? SingleFor(string supplier)
+        {
+            var matches = portfolio.Items.Where(i => string.Equals(NameOf(i), supplier, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (scoped is not null && matches.Any(m => m.ContractId == scoped.ContractId))
+            {
+                return (scoped, NameOf(scoped) ?? supplier);
+            }
+
+            return matches.Count == 1 ? (matches[0], NameOf(matches[0]) ?? supplier) : null;
+        }
+
+        var named = supplierNames.Values
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(n => Regex.IsMatch(question, @"(?<![\p{L}\p{N}])" + Regex.Escape(n) + @"(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))
+            .ToList();
+        if (named.Count > 1)
+        {
+            return null;
+        }
+
+        if (named.Count == 1)
+        {
+            return SingleFor(named[0]);
+        }
+
+        if (scoped is not null)
+        {
+            return NameOf(scoped) is { } scopedName ? (scoped, scopedName) : null;
+        }
+
+        if (state?.ActiveContractId is { } active && Guid.TryParse(active, out var activeId)
+            && portfolio.Items.FirstOrDefault(i => i.ContractId == activeId) is { } activeItem
+            && NameOf(activeItem) is { } activeName)
+        {
+            return (activeItem, activeName);
+        }
+
+        return state?.PrimarySupplier is { } primary ? SingleFor(primary) : null;
     }
 }

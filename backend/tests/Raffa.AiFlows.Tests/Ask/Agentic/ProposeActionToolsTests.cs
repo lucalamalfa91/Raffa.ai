@@ -10,9 +10,9 @@ using Raffa.SharedKernel.Tenancy;
 namespace Raffa.AiFlows.Tests.Ask.Agentic;
 
 /// <summary>
-/// Acting is confirmed first: the two propose tools never change anything. They end the turn with a
-/// confirmation question and an <see cref="ActionProposalPayload"/> (the contract resolved by the
-/// server); the app runs the action only on the user's yes.
+/// The two action tools never change anything themselves: they end the turn with an <see cref="ActionProposalPayload"/>
+/// (the contract resolved by the server). A renewal the user asked to start is run by the app at once (AutoRun); a savings
+/// goal is set only on the user's yes.
 /// </summary>
 public sealed class ProposeActionToolsTests
 {
@@ -29,7 +29,7 @@ public sealed class ProposeActionToolsTests
     }
 
     [Fact]
-    public async Task Starting_a_renewal_ends_the_turn_with_a_confirmation_and_the_server_resolved_contract()
+    public async Task Starting_a_renewal_ends_the_turn_with_the_server_resolved_contract_run_at_once()
     {
         var (context, contractId) = Context();
         using var args = JsonDocument.Parse("""{"supplier":"splunk"}""");
@@ -42,7 +42,9 @@ public sealed class ProposeActionToolsTests
         Assert.Equal(ActionProposalPayload.StartRenewal, proposal.Kind);
         Assert.Equal(contractId.ToString(), proposal.ContractId);
         Assert.Equal("Splunk", proposal.Supplier);
-        Assert.EndsWith("Confermi?", reply.AnswerMarkdown);
+        Assert.True(proposal.AutoRun);
+        Assert.StartsWith("Avvio il rinnovo di **Splunk**", reply.AnswerMarkdown);
+        Assert.DoesNotContain("Confermi?", reply.AnswerMarkdown);
     }
 
     [Fact]
@@ -69,6 +71,7 @@ public sealed class ProposeActionToolsTests
         var proposal = Assert.IsType<ActionProposalPayload>(reply.Payload!.ActionProposal);
         Assert.Equal(ActionProposalPayload.SetSavingsGoal, proposal.Kind);
         Assert.Equal("cut 15% of software spend this year", proposal.GoalText);
+        Assert.False(proposal.AutoRun);
         Assert.EndsWith("Confirm?", reply.AnswerMarkdown);
     }
 

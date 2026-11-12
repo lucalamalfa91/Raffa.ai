@@ -113,6 +113,68 @@ describe("Ask Raffa asks before acting", () => {
   });
 });
 
+describe("a renewal the user commands in chat starts by itself", () => {
+  function renderCommand(askReply: ConversationDetail4) {
+    const before: ConversationDetail4 = { ...askReply, messages: askReply.messages.slice(0, 2) };
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (init?.method === "POST" && url.pathname === "/api/conversations/ask") return json({ conversation: askReply, needsContract: false });
+      if (url.pathname === "/api/conversations") return json(url.searchParams.get("state") === "recent" ? [{ ...before, archived: false, questionCount: 1 }] : []);
+      if (/^\/api\/conversations\/A$/.test(url.pathname)) return json(before);
+      return json([]);
+    });
+    const client = {
+      getWorkspaceSettings: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, settings: null, error: null }),
+      getRenewalsBoard: vi.fn().mockResolvedValue({ ok: true, body: { viewer: { userId: "u-luca", isApprover: false }, assignee: null } }),
+      openRenewalCase: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, data: { caseId: "case-9" }, error: null }),
+    } as unknown as ApiClient & { openRenewalCase: ReturnType<typeof vi.fn> };
+    registerAskOfferTransport(client, { baseUrl: "http://api.test", getAccessToken: async () => null, fetch });
+    render(
+      <MemoryRouter initialEntries={["/ask/A"]}>
+        <Routes>
+          <Route element={<Outlet context={{ workspaceId: "t1", kbReady: true, validatedContractCount: 1 }} />}>
+            <Route path="/ask/:conversationId" element={<AskRoute apiClient={client} />} />
+            <Route path="/renewals/:caseId" element={<div>Case page</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    return { client };
+  }
+
+  function withCommand(proposal: ActionProposal): ConversationDetail4 {
+    const base = conversation(RENEWAL, "Strategia per Workday: sconto del 27,7%.");
+    base.messages[1] = { ...base.messages[1]!, payload: null };
+    return {
+      ...base,
+      messages: [
+        ...base.messages,
+        { id: "m3", role: "you", kind: "question", markdown: "avvia il rinnovo con questi termini", citations: [], actions: [], createdAt: "2026-11-04T10:01:00Z", payload: null, interview: null },
+        { id: "m4", role: "raffa", kind: "answer", markdown: "Avvio il rinnovo di **Workday**.", citations: [], actions: [], createdAt: "2026-11-04T10:01:01Z", payload: { actionProposal: proposal }, interview: null },
+      ],
+    };
+  }
+
+  it("opens the case with this conversation's context, with nothing to click", async () => {
+    const { client } = renderCommand(withCommand({ kind: "start_renewal", contractId: "c-workday", supplier: "Workday", autoRun: true }));
+    const input = await screen.findByPlaceholderText(/When must we give notice/);
+    fireEvent.change(input, { target: { value: "avvia il rinnovo con questi termini" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByText("Case page")).toBeInTheDocument();
+    expect(client.openRenewalCase).toHaveBeenCalledWith("t1", { contractId: "c-workday", ownerUserId: "u-luca", conversationId: "A" });
+  });
+
+  it("a proposal that is not a command still waits for the yes", async () => {
+    const { client } = renderCommand(withCommand({ kind: "start_renewal", contractId: "c-workday", supplier: "Workday" }));
+    const input = await screen.findByPlaceholderText(/When must we give notice/);
+    fireEvent.change(input, { target: { value: "avvia il rinnovo con questi termini" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByRole("button", { name: "Yes, start the renewal" })).toBeInTheDocument();
+    expect(client.openRenewalCase).not.toHaveBeenCalled();
+  });
+});
+
 describe("proposal replies", () => {
   it("reads plain yes / no and nothing else", () => {
     for (const yes of ["sì", "Si", "ok", "va bene", "procedi", "Yes.", "go ahead"]) expect(proposalAnswer(yes)).toBe("yes");

@@ -97,4 +97,15 @@ public sealed class RenewalCaseBriefTests
         var term = RenewalCaseEngine.View(c, Ctx(1, Marta)).Cards.Where(x => x.K == "q").Last();
         Assert.Equal("Term: how long should the renewed contract run?", term.Title.Render());
     }
+
+    [Theory]
+    [InlineData("possiamo ridurre anche il numero di licenze del 10 %")]
+    [InlineData("we can reduce the number of licences by 10%")]
+    [InlineData("Volumi: concordare la riduzione dei volumi al rinnovo.")]
+    public void A_reduction_of_licences_or_volumes_set_in_chat_shows_under_the_products_question(string brief)
+    {
+        var c = RenewalCaseEngine.Create(1, Ctx(1, Luca), owner: Marta, brief: brief);
+
+        Assert.Contains(Lines(c, "q"), l => l.Contains("reducing volumes", StringComparison.OrdinalIgnoreCase));
+    }
 }

@@ -136,7 +136,7 @@ public static class RenewalCasesEndpointExtensions
 
             var result = await service.OpenAsync(
                 caller.TenantId, caller.Identity, body.ContractId, body.Branch == "renew" ? null : body.Branch, body.OwnerUserId,
-                chat is null ? null : ChatBrief.From(chat), ct).ConfigureAwait(false);
+                chat is null ? null : ChatBrief.From(chat, Raffa.SharedKernel.Language.ResponseLanguage.Current != "en"), ct).ConfigureAwait(false);
             if (chat is not null && result.Envelope is { } opened)
             {
                 // The case composer continues this conversation, so it never asks again what the chat already settled.
