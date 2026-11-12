@@ -5,6 +5,7 @@ import type { TodayFeed, TodayItem } from "../../api/renewalCases";
 import { useGuide, useNavBadge } from "../../components/shell/guide";
 import { useTenantId } from "../../routes/contracts/contracts4";
 import { useContractUpload } from "../../routes/contracts/useContractUpload";
+import { useFixtureSession } from "../../fixtures/FixtureSessionContext";
 import { useI18n } from "../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../i18n/translate";
 import { CONTRACTS_CHANGED, loadToday, notifyTodayChanged } from "./loadToday";
@@ -85,13 +86,16 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
   );
 
   const upload = useContractUpload(apiClient);
+  // Fixture mode is the scripted prototype (parity suite): the main button uploads the sample there.
+  const fixture = !!useFixtureSession();
 
-  /** The main "Punto zero" action: verify the document already read, else pick the user's own contract(s). */
+  /** The main "Punto zero" action: verify the document already read, else upload (the user's own contracts outside fixture mode). */
   const startSample = useCallback(() => {
     const doc = feed?.documents[0];
     if (doc) navigate(`/contracts/review/${doc.documentId}`);
+    else if (fixture) upload.startDemo();
     else upload.pickFiles();
-  }, [feed, navigate, upload]);
+  }, [feed, navigate, upload, fixture]);
 
   const delegate = useCallback(
     async (item: TodayItem) => {
@@ -224,10 +228,11 @@ export default function TodayRoute({ apiClient }: TodayRouteProps) {
             ))}
           </div>
           <div className="o4-zero-cta">
-            <button type="button" className="btn btn-primary" disabled={upload.busy} onClick={startSample}>
+            <button type="button" className="btn btn-primary" onClick={startSample}>
               {startCta}
             </button>
-            {!hasDoc ? (
+            {!hasDoc && fixture ? <span className="o4-note">{t("Demo: upload “Salesforce_MSA_2024.pdf”, the sample contract.")}</span> : null}
+            {!hasDoc && !fixture ? (
               <>
                 <button type="button" className="btn btn-secondary" disabled={upload.busy} onClick={upload.startDemo}>
                   {t("Load the demo contract")}
