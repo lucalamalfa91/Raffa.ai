@@ -152,6 +152,9 @@
 .c4-done-text { font-size: 14px; color: var(--color-neutral-700); margin-top: 6px; }
 .c4-done-actions { display: flex; gap: 10px; margin-top: 14px; }
 
+/* — a reading that stopped (not a contract, no readable text): what happened and what to do — */
+.c4-failed { border-top: 2px solid var(--color-accent); margin-top: 20px; padding-top: 16px; max-width: 72ch; }
+
 /* — inline error (DESIGN-GAPS A3) — */
 .c4-error {
   margin-top: 16px; background: var(--color-accent-100); border-left: 2px solid var(--color-accent);

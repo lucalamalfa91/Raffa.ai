@@ -104,6 +104,13 @@ export const IT_CONTRACTS4: Readonly<Record<string, string>> = {
   "You can leave: the work stays saved. When the reading is done I ask you only about the fields I am not sure of.":
     "Puoi uscire: il lavoro resta salvato. Quando la lettura finisce, ti chiedo solo i campi di cui non sono sicura.",
   "Upload another version": "Carica un’altra versione",
+  "This file is not a contract": "Questo file non è un contratto",
+  "Raffa reads contracts only: agreements, order forms, amendments, renewal letters. This document looks like something else (a receipt, an invoice, a letter…), so no contract was created from it.":
+    "Raffa legge solo contratti: accordi, ordini, modifiche, lettere di rinnovo. Questo documento sembra altro (una ricevuta, una fattura, una lettera…), quindi non è stato creato nessun contratto.",
+  "This file has no readable text": "Questo file non ha testo leggibile",
+  "It looks like a scan or a photo without a text layer, so Raffa cannot read it. Upload a PDF with selectable text or a sharper copy.":
+    "Sembra una scansione o una foto senza testo, quindi Raffa non riesce a leggerla. Carica un PDF con testo selezionabile o una copia più nitida.",
+  "Back to contracts": "Torna ai contratti",
   "Field {n} of {total} · to verify": "Campo {n} di {total} · da verificare",
   "Read": "Letto",
   "What to check": "Cosa controllare",

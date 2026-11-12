@@ -39,9 +39,43 @@ function NewUpload({ apiClient }: ReviewRouteProps) {
   return fixture ? null : <Navigate to="/documents" replace />;
 }
 
+/** Failure ids the API sends (`DocumentReadingModels.FailureFor`): the admission gate's two rejections. */
+const NOT_A_CONTRACT = "This file does not look like a contract. Upload another file.";
+const NO_READABLE_TEXT = "This file has no readable text (a scan without text?). Upload another version.";
+
+interface FailureCopy {
+  title: string;
+  text: string;
+  action: string;
+}
+
+/** Why the reading stopped, in words the user can act on: a title, what happened, what to do. */
+function failureCopy(t: Translate, reading: DocumentReadingBody): FailureCopy {
+  switch (reading.failure?.id) {
+    case NOT_A_CONTRACT:
+      return {
+        title: t("This file is not a contract"),
+        text: t("Raffa reads contracts only: agreements, order forms, amendments, renewal letters. This document looks like something else (a receipt, an invoice, a letter…), so no contract was created from it."),
+        action: t("Upload a contract"),
+      };
+    case NO_READABLE_TEXT:
+      return {
+        title: t("This file has no readable text"),
+        text: t("It looks like a scan or a photo without a text layer, so Raffa cannot read it. Upload a PDF with selectable text or a sharper copy."),
+        action: t("Upload another version"),
+      };
+    default:
+      return {
+        title: t("The reading did not finish"),
+        text: reading.failure ? tx(t, reading.failure) : t("The reading did not finish. Upload another version or try again."),
+        action: t("Upload another version"),
+      };
+  }
+}
+
 function title(t: Translate, reading: DocumentReadingBody): string {
   if (reading.status === "processing") return t("Raffa is reading the contract");
-  if (reading.status === "failed") return t("The reading did not finish");
+  if (reading.status === "failed") return failureCopy(t, reading).title;
   if (reading.status === "done") return t("{supplier} validated", { supplier: reading.supplier ?? reading.file });
   const n = reading.fields.length;
   if (n === 1) return t("One field to verify");
@@ -155,11 +189,17 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
       ) : null}
 
       {reading?.status === "failed" ? (
-        <div className="c4-error" role="alert">
-          <span>{tx(t, reading.failure)}</span>
-          <button type="button" className="btn btn-secondary" onClick={upload.start}>
-            {t("Upload another version")}
-          </button>
+        <div className="c4-failed" role="alert">
+          <div className="c4-done-text">{failureCopy(t, reading).text}</div>
+          <div className="c4-done-actions">
+            <button type="button" className="btn btn-primary" disabled={upload.busy} onClick={upload.start}>
+              {failureCopy(t, reading).action}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => navigate("/contracts")}>
+              {t("Back to contracts")}
+            </button>
+          </div>
+          {upload.error ? <div className="c4-error">{tx(t, { id: upload.error })}</div> : null}
         </div>
       ) : null}
 
