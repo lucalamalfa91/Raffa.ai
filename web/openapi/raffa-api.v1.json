@@ -10685,7 +10685,28 @@
                       "additionalProperties": {
                         "type": "number"
                       },
-                      "description": "Spesa e risparmi: the Admin's budget rates, units of reportingCurrency per one unit of each keyed ISO 4217 currency. A currency without a rate is never converted."
+                      "description": "Legacy: manual budget rates stored before the ECB reference rates. No longer used for any conversion."
+                    },
+                    "marketRates": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      },
+                      "description": "Spesa e risparmi: the official ECB reference rates downloaded every morning, crossed into reportingCurrency (units of reportingCurrency per one unit of each keyed supported currency). The only rates Spend and savings converts with; a currency not in this map is never converted."
+                    },
+                    "marketRatesDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The day (yyyy-MM-dd) the reference rates were published; null while none were ever downloaded."
+                    },
+                    "marketRatesSource": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Where the reference rates come from (\"ECB\"); null while none were ever downloaded."
                     },
                     "supportedCurrencies": {
                       "type": "array",
