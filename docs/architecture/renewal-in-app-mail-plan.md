@@ -1,7 +1,37 @@
 # Trattativa di rinnovo tutta in Raffa — analisi
 
-Stato: **analisi / proposta** (13 nov 2026). Serve una decisione di prodotto (ADR) prima di implementare,
-perché cambia un principio del brief AskRaffa 4.0.
+Stato: **decisioni prese, in sviluppo** (13 nov 2026). Le decisioni del §0 superano il §10.3 del brief
+AskRaffa 4.0 ("Raffa non invia email e non legge la casella") e le raccomandazioni originali del §3.
+
+## 0. Decisioni (intervista del 13 nov 2026)
+
+| Tema | Decisione |
+|---|---|
+| Mittente | **Sempre la casella aziendale dell'utente.** Mai un mittente "via Raffa". L'utente collega la propria casella **Microsoft 365 / Outlook** (Graph, `Mail.Send` delegato) o **Google Workspace / Gmail** (Gmail API, scope `gmail.send`). Nessun permesso di lettura della casella. |
+| Ricezione | Ogni pratica ha un **indirizzo dedicato** (`r-<token>@<sottodominio di ricezione>`), messo in **CC** e in **Reply-To** (insieme all'indirizzo dell'utente) di ogni mail inviata da Raffa: la risposta del fornitore arriva sia all'utente sia alla pratica. Ricezione con **Resend** (dominio con *receiving* abilitato, webhook `email.received` firmato). Dominio configurabile (`CaseMail__InboundDomain`), sottodominio dedicato. |
+| Avanzamento | Una mail arrivata **non fa avanzare la pratica da sola**: Raffa la mostra come *"Nuova mail del fornitore"*, **notifica** l'utente e lui **conferma** con un clic che appartiene alla pratica (→ registrata come risposta, con allegati) oppure la scarta. |
+| Notifiche | Questo giro: **in app** (campanella), **push del browser**, **email**, **Teams** e **Slack** tramite **webhook incollato** dall'utente (Teams Workflows / Slack Incoming Webhook). WhatsApp rimandato. Nelle notifiche esterne solo "nuova mail da *fornitore* sulla pratica *contratto*" + link, mai prezzi o testo. |
+| Fallback | Copia + "Ho inviato da un'altra casella", incolla risposta, carica `.eml/.msg` restano disponibili (chi non collega la casella può comunque lavorare). |
+
+### Architettura scelta
+
+- **Caselle collegate** (`mailbox_connection`, RLS, per utente): provider, indirizzo, refresh token **cifrato**
+  (AES-GCM, chiave `CaseMail__TokenKey` da Key Vault). OAuth *authorization code* lato server
+  (`GET /api/mailbox/connect/{microsoft|google}` → callback). Invio via HTTP (Graph `/me/sendMail` con MIME,
+  Gmail `users.messages.send` con MIME raw) — nessun nuovo SDK.
+- **Invio**: `POST /api/renewals/{id}/emails/{eid}/send` solo su `approved`/`copied`; il server compone il MIME
+  (From = casella collegata, To = destinatario della bozza, CC + Reply-To = indirizzo pratica, allegati del
+  contratto presi da Documents), invia, poi registra l'invio come oggi (`sentOk`, *inviata dalla casella X*).
+- **Ricezione**: `POST /api/webhooks/resend` (anonimo, firma Svix verificata) → registro indirizzi
+  `case_mail_address` (token → tenant, pratica; senza RLS: solo instradamento, nessun dato cliente) → scarica il
+  MIME grezzo da Resend → `case_inbound_mail` (RLS, stato `pending/accepted/dismissed`) → notifica.
+  `POST /api/renewals/{id}/inbound/{mid}/accept|dismiss`.
+- **Notifiche**: porta `INotificationPublisher` in SharedKernel; tabelle `notification`, `notification_channel`
+  (per utente: push subscription, webhook Teams/Slack cifrati, email on/off) nel modulo Renewals finché i soli
+  eventi sono della trattativa (estraibile in un modulo proprio quando servirà ad altri); consegna in background
+  (coda in memoria, tentativi limitati, l'in-app resta sempre). Web Push con VAPID (`Notifications__Vapid*`).
+
+## 0bis. Analisi originale
 
 ## 1. Il problema
 
