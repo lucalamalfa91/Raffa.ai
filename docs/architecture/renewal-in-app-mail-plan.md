@@ -143,6 +143,62 @@ Tutte tenant-scoped con RLS come le tabelle esistenti; log senza destinatari, co
   *Non è una risposta*; allegati con *Usa come bozza contratto* / *Usa come contratto firmato*.
 - Copy da aggiornare: frasi tipo "non vedo la tua casella" valgono solo se la pratica non usa il canale Raffa.
 
+### 5.6 Notifiche: "il fornitore ha risposto"
+
+Oggi non esiste un sistema di notifiche (solo la lista **Oggi** e i promemoria interni). Con la ricezione
+in-app l'evento più importante della trattativa — *nuovo messaggio dal fornitore* — deve raggiungere il
+responsabile dove lavora, sul canale che sceglie lui.
+
+**Eventi notificabili** (prima versione):
+
+| Evento | Destinatari |
+|---|---|
+| `supplier_message_received` — nuova mail del fornitore abbinata alla pratica | responsabile + delegati della pratica |
+| `supplier_attachment_received` — allegato riconosciuto come bozza/firmato | responsabile |
+| `email_bounced` — invio non consegnato | chi ha inviato + responsabile |
+| `approval_requested` — una bozza attende la tua approvazione | approvatore / delegati |
+| `inbound_unmatched` — mail arrivata e non abbinata | admin del workspace |
+| `check_date_due` — data di controllo raggiunta senza risposta | responsabile |
+
+**Canali** — l'utente collega quelli che preferisce e sceglie, per tipo di evento, dove riceverlo:
+
+| Canale | Come | Note |
+|---|---|---|
+| **In app** (sempre attivo) | campanella + voce in Oggi + badge sulla pratica | base, nessun collegamento |
+| **Push browser** | Web Push (VAPID) + service worker sul web | funziona anche a scheda chiusa; su iOS solo con PWA installata |
+| **Push mobile** | Expo Push → APNs/FCM dall'app `mobile/` | quando l'app mobile esce dalla lane non-gating |
+| **Email** | ACS, mail di avviso all'utente (non al fornitore) | utile come fallback |
+| **Microsoft Teams** | app/bot Teams (Bot Framework) con messaggio proattivo in chat personale; in alternativa Workflows webhook su un canale | il bot permette il pulsante "Apri la pratica" e l'identità Entra coincide |
+| **Slack** | app Slack con OAuth (`chat:write`), DM all'utente collegato | collegamento per utente o per workspace |
+| **WhatsApp** | WhatsApp Business Cloud API (Meta) o tramite Twilio/ACS Advanced Messaging; template approvati da Meta | richiede opt-in esplicito e numero verificato; i messaggi avviati dall'azienda devono usare template |
+
+**Principi**
+
+- **La notifica non contiene la trattativa.** Solo "Nuovo messaggio da *Fornitore* sulla pratica *Contratto*"
+  + link alla pratica. Niente prezzi, condizioni o testo della mail su WhatsApp/Slack/Teams (canali fuori dal
+  perimetro di Raffa, inoltrabili, conservati da terzi). Un'opzione per workspace può abilitare un'anteprima
+  per Teams/Slack aziendali.
+- **Preferenze per utente**, con default per workspace decisi dall'admin; l'admin può disabilitare canali
+  (es. vietare WhatsApp).
+- **Ore di silenzio e raggruppamento**: più messaggi della stessa pratica in pochi minuti → una notifica.
+- **Consegna affidabile**: outbox transazionale; l'evento si scrive insieme al `case_event`, un job del
+  worker lo consegna con retry; se un canale fallisce resta sempre l'in-app.
+- **Collegamento sicuro** di ogni canale (OAuth per Slack/Teams, codice di verifica per WhatsApp), revocabile
+  dall'utente in qualunque momento; token cifrati (Key Vault).
+
+**Architettura**
+
+- Nuovo modulo `Raffa.Notifications`: `INotificationPublisher.PublishAsync(event)` usato dagli altri moduli;
+  tabelle `notification` (in-app, letta/non letta), `notification_channel` (canali collegati per utente),
+  `notification_preference` (evento × canale), `notification_delivery` (tentativi, esito).
+- Un adapter per canale (`WebPushSender`, `ExpoPushSender`, `TeamsSender`, `SlackSender`,
+  `WhatsAppSender`, `EmailNotificationSender`) dietro `INotificationChannel`; i provider SDK solo negli adapter.
+- Web: centro notifiche (campanella) + pagina *Impostazioni → Notifiche* per collegare canali e scegliere
+  gli eventi.
+
+**Ordine consigliato**: in-app + push browser insieme a F3 (sono il minimo perché la ricezione sia utile);
+poi Teams e Slack; WhatsApp per ultimo (approvazione template Meta, costi per conversazione, opt-in).
+
 ## 6. Sicurezza, conformità, rischi
 
 - **Deliverability**: obbligatorio il dominio custom (già previsto in `infra/modules/communication`) con
@@ -165,6 +221,7 @@ Tutte tenant-scoped con RLS come le tabelle esistenti; log senza destinatari, co
 | **F1 — File della pratica** | Persistenza file (oggi scartati); firmato → documento in Documents collegato al contratto; upload `.eml/.msg` con allegati | Nessuna | Subito meno lavoro manuale, contratto nuovo davvero in archivio |
 | **F2 — Invio in-app** | `ICaseMailSender` + ACS dominio custom, azione `sendOut`, allegati, eventi di consegna, nuova UI card | ACS dominio verificato | L'utente non esce più per inviare |
 | **F3 — Ricezione in-app** | Indirizzo per pratica, webhook inbound, abbinamento, coda "Da smistare", pre-lettura AI, conferma risposta, promozione allegati, voce in Oggi | Provider inbound | Botta e risposta interamente in Raffa |
+| **F3b — Notifiche** | Modulo `Raffa.Notifications`, centro notifiche in-app, push browser (con F3); poi Teams, Slack, WhatsApp; preferenze per utente | Bot Teams, app Slack, WhatsApp Business | L'utente sa subito che il fornitore ha risposto, sul canale che preferisce |
 | **F4 — Casella collegata (opz.)** | M365 Graph / Gmail per "invia come me" e lettura del solo thread della pratica | Consenso admin cliente | Per i clienti che non accettano un mittente Raffa |
 
 F1 è indipendente e si può iniziare subito; F2 e F3 sono il cuore della richiesta; F4 solo su domanda.
@@ -178,3 +235,5 @@ F1 è indipendente e si può iniziare subito; F2 e F3 sono il cuore della richie
 3. **Provider inbound**: restare nell'ecosistema Microsoft (casella Exchange + Graph) o servizio inbound dedicato?
 4. **Dominio**: quale dominio/sottodominio usare per invio (`trattative@…`) e ricezione (`in.…`)?
 5. **Allegati in uscita**: quali documenti Raffa può allegare automaticamente (contratto attuale, piano, RFQ)?
+6. **Notifiche**: anteprima del contenuto ammessa su Teams/Slack aziendali o sempre solo "nuovo messaggio + link"?
+   WhatsApp tramite Meta diretto o tramite un provider (Twilio / ACS Advanced Messaging)?
