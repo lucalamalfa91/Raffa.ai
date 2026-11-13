@@ -334,29 +334,37 @@ public sealed class DocumentReadingService(
             .ThenBy(e => e.FieldName, StringComparer.Ordinal)
             .ToList();
 
-        var passages = await PassagesAsync(tenantId, contractId, cancellationToken).ConfigureAwait(false);
+        var evidence = await EvidenceAsync(tenantId, contractId, cancellationToken).ConfigureAwait(false);
         return latest.Select(e =>
         {
             decisions.TryGetValue(e.FieldName, out var decision);
-            passages.TryGetValue(e.FieldName, out var passage);
+            evidence.TryGetValue(e.FieldName, out var own);
             var reason = ExtractionFlagReason.For(e.FieldName, e.Confidence);
+            var value = e.OverrideValue ?? e.Value ?? "";
+            var quote = own?.Quote ?? ExtractionFlagReason.Quote(null, null, null, e.SourceSpan);
             return new ReadingField(
                 e.FieldName,
                 ReadingFieldLabels.For(e.FieldName),
-                e.OverrideValue ?? e.Value ?? "",
+                value,
                 e.SourcePage,
                 e.SourcePage is { } page ? $"p.{page}" : "",
                 reason,
                 reason,
-                passage ?? ExtractionFlagReason.Quote(null, null, null, e.SourceSpan),
+                quote,
                 ExtractionFlagReason.IsCritical(e.FieldName),
                 decision?.Decision,
-                decision?.Value);
+                decision?.Value,
+                own?.Box,
+                ReadingBasisBuilder.For(e.FieldName, value, quote, e.SourcePage, evidence));
         }).ToList();
     }
 
-    /// <summary>The quoted passages the evidence query already computes (page text around the span).</summary>
-    private async Task<Dictionary<string, ReadingQuote?>> PassagesAsync(
+    /// <summary>
+    /// Every field's latest evidence: its value, the quoted passage (page text around the span the
+    /// evidence query already computes) and the box on the page image. The flagged field reads its
+    /// own passage from here; its reasoning reads the fields it rests on (e.g. the end of the term).
+    /// </summary>
+    private async Task<Dictionary<string, ReadingBasisBuilder.Evidence>> EvidenceAsync(
         TenantId tenantId, EntityId contractId, CancellationToken cancellationToken)
     {
         var evidence = await new ContractEvidenceQueryService(dbContext, tenantContext)
@@ -364,9 +372,15 @@ public sealed class DocumentReadingService(
             .ConfigureAwait(false);
         return (evidence ?? [])
             .GroupBy(e => e.FieldName, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
             .ToDictionary(
-                g => g.Key,
-                g => ExtractionFlagReason.Quote(g.First().Passage, g.First().HighlightStart, g.First().HighlightLength, g.First().SourceSpan),
+                e => e.FieldName,
+                e => new ReadingBasisBuilder.Evidence(
+                    e.FieldName,
+                    e.OverrideValue ?? e.Value,
+                    e.SourcePage,
+                    ExtractionFlagReason.Quote(e.Passage, e.HighlightStart, e.HighlightLength, e.SourceSpan),
+                    e.Box is { } b ? new ReadingBox(b.X, b.Y, b.Width, b.Height) : null),
                 StringComparer.OrdinalIgnoreCase);
     }
 
