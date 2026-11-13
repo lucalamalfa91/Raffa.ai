@@ -105,3 +105,9 @@ variable "outreach_secrets" {
   sensitive   = true
   default     = {}
 }
+
+variable "outreach_secret_names" {
+  description = "Which outreach_secrets to write (vault secret names). A separate, non-sensitive set so it is known at plan time."
+  type        = set(string)
+  default     = []
+}

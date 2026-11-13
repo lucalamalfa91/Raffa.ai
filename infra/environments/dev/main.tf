@@ -306,7 +306,8 @@ module "keyvault" {
   query_hash_key = var.query_hash_key
   # Renewal plan F2/F3/F3b: this root's own HCP workspace variables; empty
   # values create no secret.
-  outreach_secrets = local.outreach_secrets
+  outreach_secrets      = local.outreach_secrets
+  outreach_secret_names = local.outreach_secret_names
 }
 
 module "acr" {
@@ -338,7 +339,7 @@ module "monitor" {
 # the API app reads them by env var name.
 # ---------------------------------------------------------------------------------------------------------
 locals {
-  outreach_secret_names = {
+  outreach_secret_names_by_env = {
     "CaseMail__TokenKey"                = "casemail-token-key"
     "CaseMail__Microsoft__ClientSecret" = "casemail-ms-client-secret"
     "CaseMail__Google__ClientSecret"    = "casemail-google-client-secret"
@@ -347,31 +348,50 @@ locals {
     "Notifications__VapidPrivateKey"    = "notifications-vapid-private-key"
   }
 
+  # The company-mailbox app is created here (modules/mailboxapp) once the API's public URL is known;
+  # a client id / secret set by hand in the workspace still wins.
+  mailbox_app_enabled = var.case_mail_api_public_base_url != ""
+  ms_client_id        = var.case_mail_microsoft_client_id != "" ? var.case_mail_microsoft_client_id : (local.mailbox_app_enabled ? module.mailboxapp[0].client_id : "")
+  ms_client_secret    = var.case_mail_microsoft_client_secret != "" ? var.case_mail_microsoft_client_secret : (local.mailbox_app_enabled ? module.mailboxapp[0].client_secret : "")
+  ms_secret_present   = var.case_mail_microsoft_client_secret != "" || local.mailbox_app_enabled
+
   outreach_secrets = {
     "casemail-token-key"              = var.case_mail_token_key
-    "casemail-ms-client-secret"       = var.case_mail_microsoft_client_secret
+    "casemail-ms-client-secret"       = local.ms_client_secret
     "casemail-google-client-secret"   = var.case_mail_google_client_secret
     "casemail-resend-api-key"         = var.case_mail_resend_api_key
     "casemail-resend-webhook-secret"  = var.case_mail_resend_webhook_secret
     "notifications-vapid-private-key" = var.notifications_vapid_private_key
   }
 
+  # Known at plan time: which of the secrets above this environment has.
+  outreach_secret_names = toset(compact([
+    nonsensitive(var.case_mail_token_key != "") ? "casemail-token-key" : "",
+    nonsensitive(local.ms_secret_present) ? "casemail-ms-client-secret" : "",
+    nonsensitive(var.case_mail_google_client_secret != "") ? "casemail-google-client-secret" : "",
+    nonsensitive(var.case_mail_resend_api_key != "") ? "casemail-resend-api-key" : "",
+    nonsensitive(var.case_mail_resend_webhook_secret != "") ? "casemail-resend-webhook-secret" : "",
+    nonsensitive(var.notifications_vapid_private_key != "") ? "notifications-vapid-private-key" : "",
+  ]))
+
   outreach_secret_ids = {
-    for env_name, secret_name in local.outreach_secret_names :
+    for env_name, secret_name in local.outreach_secret_names_by_env :
     env_name => module.keyvault.outreach_secret_versionless_ids[secret_name]
-    if contains(keys(nonsensitive(module.keyvault.outreach_secret_versionless_ids)), secret_name)
+    if contains(local.outreach_secret_names, secret_name)
   }
 
-  outreach_env = {
-    "CaseMail__InboundDomain"       = var.case_mail_inbound_domain
-    "CaseMail__ApiPublicBaseUrl"    = var.case_mail_api_public_base_url
-    "CaseMail__Microsoft__ClientId" = var.case_mail_microsoft_client_id
-    "CaseMail__Google__ClientId"    = var.case_mail_google_client_id
-    "Notifications__VapidSubject"   = var.notifications_vapid_subject
-    "Notifications__VapidPublicKey" = var.notifications_vapid_public_key
-  }
+  # Only the settings this environment has (values may be unknown until apply, keys never are).
+  outreach_env = merge(
+    { for k, v in {
+      "CaseMail__InboundDomain"       = var.case_mail_inbound_domain
+      "CaseMail__ApiPublicBaseUrl"    = var.case_mail_api_public_base_url
+      "CaseMail__Google__ClientId"    = var.case_mail_google_client_id
+      "Notifications__VapidSubject"   = var.notifications_vapid_subject
+      "Notifications__VapidPublicKey" = var.notifications_vapid_public_key
+    } : k => v if v != "" },
+    var.case_mail_microsoft_client_id != "" || local.mailbox_app_enabled ? { "CaseMail__Microsoft__ClientId" = local.ms_client_id } : {},
+  )
 
-  # The MX record of the inbound sub-domain, only when it sits in this root's mail DNS zone.
   case_mail_inbound_in_zone = (
     var.case_mail_inbound_domain != "" && var.case_mail_inbound_mx != "" && var.mail_dns_zone_name != null
     && endswith(var.case_mail_inbound_domain, ".${coalesce(var.mail_dns_zone_name, "-")}")
@@ -399,4 +419,13 @@ resource "azurerm_dns_mx_record" "case_mail_inbound" {
     preference = 10
     exchange   = var.case_mail_inbound_mx
   }
+}
+
+# Renewal plan F2: the Entra app people sign in to when they connect their Microsoft 365 mailbox.
+module "mailboxapp" {
+  source = "../../modules/mailboxapp"
+  count  = var.case_mail_api_public_base_url != "" ? 1 : 0
+
+  environment         = "dev"
+  api_public_base_url = var.case_mail_api_public_base_url
 }

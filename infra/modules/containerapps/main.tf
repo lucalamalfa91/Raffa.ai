@@ -292,14 +292,15 @@ resource "azurerm_container_app" "api" {
       # Renewal plan F2/F3/F3b: company mailboxes, inbound supplier mail and
       # notifications. The web base is this environment's SPA host (where the
       # browser returns after connecting a mailbox, and the links in
-      # notifications); the rest is optional and empty keeps it off.
+      # notifications); the rest is optional -- the root passes only the
+      # settings it has, so an absent one keeps its feature off.
       env {
         name  = "CaseMail__WebPublicBaseUrl"
         value = "https://${var.spa_host_name}"
       }
 
       dynamic "env" {
-        for_each = { for name, value in var.outreach_env : name => value if value != "" }
+        for_each = var.outreach_env
 
         content {
           name  = env.key
