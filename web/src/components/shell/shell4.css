@@ -185,3 +185,20 @@
 }
 .v4 .v4-acct-item:hover { background: var(--color-neutral-200); }
 @media (max-width: 700px) { .v4-nav { padding: 0 16px; } }
+
+/* — notification bell (renewal plan F3b) — */
+.v4-bell { position: relative; margin-left: auto; }
+.v4 .v4-bell + .v4-guide-toggle { margin-left: 0; }
+.v4-bell-button { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 1px solid var(--color-divider); background: var(--color-surface); color: var(--color-text); cursor: pointer; }
+.v4-bell-button.has-unread { border-color: var(--color-accent); color: var(--color-accent-700); }
+.v4-bell-count { position: absolute; top: -6px; right: -8px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; background: var(--color-accent); color: var(--color-bg); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
+.v4-bell-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; width: min(380px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; background: var(--color-bg); border: 2px solid var(--color-text); box-shadow: 0 8px 24px color-mix(in srgb, var(--color-text) 12%, transparent); }
+.v4-bell-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--color-divider); }
+.v4-bell-empty { padding: 14px 12px; font-size: 14px; color: var(--color-neutral-600); }
+.v4-bell-item { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; padding: 10px 12px; border: none; border-bottom: 1px solid var(--color-divider); background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.v4-bell-item.is-unread { border-left: 3px solid var(--color-accent); }
+.v4-bell-item:hover { background: var(--color-accent-100); }
+.v4-bell-title { font-weight: 600; font-size: 14px; }
+.v4-bell-body { font-size: 13px; color: var(--color-neutral-700); }
+.v4-bell-when { font-size: 12px; color: var(--color-neutral-600); }
+.v4-bell-settings { width: 100%; padding: 10px 12px; border: none; background: transparent; color: var(--color-accent-700); text-align: left; cursor: pointer; font: inherit; font-size: 13px; }

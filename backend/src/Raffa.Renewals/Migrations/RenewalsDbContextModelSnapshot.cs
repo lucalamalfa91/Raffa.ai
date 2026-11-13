@@ -759,6 +759,10 @@ namespace Raffa.Renewals.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("user_identity");
 
+                    b.Property<string>("VarsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("vars_json");
+
                     b.HasKey("Id")
                         .HasName("pk_notification");
 

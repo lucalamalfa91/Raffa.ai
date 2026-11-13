@@ -10,6 +10,7 @@ import { I18nProvider } from "../../i18n/I18nProvider";
 import DemoBar from "../../fixtures/DemoBar";
 import { useFixtureSession } from "../../fixtures/FixtureSessionContext";
 import TopNav from "./TopNav";
+import NotificationBell from "./NotificationBell";
 import GuidePanel from "./GuidePanel";
 import { GuideProvider, useGuideState } from "./guide";
 import { useTodayBadge } from "../../routes/today/loadToday";
@@ -79,7 +80,14 @@ function ShellLayout({ workspaceId, workspaceName, role, userLabel, onSignOut, o
   return (
     <div className="v4">
       {fixture ? <DemoBar /> : null}
-      <TopNav workspaceName={workspaceName} role={role} userLabel={userLabel} onSignOut={onSignOut} onSwitchWorkspace={onSwitchWorkspace} />
+      <TopNav
+        workspaceName={workspaceName}
+        role={role}
+        userLabel={userLabel}
+        onSignOut={onSignOut}
+        onSwitchWorkspace={onSwitchWorkspace}
+        bell={fixture ? null : <NotificationBell apiClient={apiClient} tenantId={workspaceId} />}
+      />
       <div className={open ? "v4-body" : "v4-body is-guide-closed"}>
         <main className="v4-main" ref={mainRef}>
           <Outlet context={{ workspaceId, kbReady, validatedContractCount: count, documentCounts, role }} />

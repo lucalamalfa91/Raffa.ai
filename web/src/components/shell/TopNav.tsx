@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { useGuideState } from "./guide";
@@ -23,7 +24,7 @@ const TABS: ReadonlyArray<{ id: string; label: string; to: string; active: (path
  * 3px accent bottom border; badge on Oggi), and the Guida Raffa toggle. It is the page's
  * `<header>` (banner) landmark.
  */
-export default function TopNav(account: AccountMenuProps) {
+export default function TopNav({ bell, ...account }: AccountMenuProps & { bell?: ReactNode }) {
   const { t } = useI18n();
   const { pathname } = useLocation();
   const { open, toggle, badge } = useGuideState();
@@ -51,6 +52,7 @@ export default function TopNav(account: AccountMenuProps) {
           );
         })}
       </nav>
+      {bell}
       <button
         type="button"
         className={open ? "v4-guide-toggle is-open" : "v4-guide-toggle"}

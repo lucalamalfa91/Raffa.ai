@@ -92,6 +92,7 @@ namespace Raffa.Renewals.Migrations
                     body = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: false),
                     link = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     case_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    vars_json = table.Column<string>(type: "jsonb", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     read_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     tenant_id = table.Column<Guid>(type: "uuid", nullable: false)

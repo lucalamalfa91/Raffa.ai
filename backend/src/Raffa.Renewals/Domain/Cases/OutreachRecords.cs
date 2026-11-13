@@ -103,6 +103,9 @@ public sealed class NotificationRecord : TenantScopedEntity
 
     public Guid? CaseId { get; set; }
 
+    /// <summary>The values of the title and body ({"supplier":…, "contract":…}), so the screens can show them in the reader's language.</summary>
+    public string? VarsJson { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset? ReadAt { get; set; }

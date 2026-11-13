@@ -791,7 +791,8 @@ public sealed partial class RenewalCaseService(
                 "An email to " + cf.Supplier + " waits for your approval",
                 CaseFactsMapper.ShortName(cf.Name) + ": review the exact version and approve it.",
                 "/renewals/" + record.Id.Value,
-                record.Id.Value), ct).ConfigureAwait(false);
+                record.Id.Value,
+                new Dictionary<string, string> { ["supplier"] = cf.Supplier, ["contract"] = CaseFactsMapper.ShortName(cf.Name) }), ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

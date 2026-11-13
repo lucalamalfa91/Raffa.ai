@@ -334,7 +334,8 @@ public sealed partial class CaseMailService(
                 "New email from " + supplier,
                 contract + ": confirm it belongs to the negotiation to add it to the case.",
                 "/renewals/" + record.Id.Value,
-                record.Id.Value), ct).ConfigureAwait(false);
+                record.Id.Value,
+                new Dictionary<string, string> { ["supplier"] = supplier, ["contract"] = contract }), ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

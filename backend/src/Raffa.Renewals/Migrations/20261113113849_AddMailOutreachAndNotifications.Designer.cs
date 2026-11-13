@@ -12,7 +12,7 @@ using Raffa.Renewals.Infrastructure;
 namespace Raffa.Renewals.Migrations
 {
     [DbContext(typeof(RenewalsDbContext))]
-    [Migration("20261113112119_AddMailOutreachAndNotifications")]
+    [Migration("20261113113849_AddMailOutreachAndNotifications")]
     partial class AddMailOutreachAndNotifications
     {
         /// <inheritdoc />
@@ -761,6 +761,10 @@ namespace Raffa.Renewals.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("user_identity");
+
+                    b.Property<string>("VarsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("vars_json");
 
                     b.HasKey("Id")
                         .HasName("pk_notification");

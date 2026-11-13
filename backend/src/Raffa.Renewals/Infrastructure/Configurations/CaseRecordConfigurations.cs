@@ -184,6 +184,7 @@ public sealed class NotificationRecordConfiguration : IEntityTypeConfiguration<N
         builder.Property(e => e.Title).IsRequired().HasMaxLength(300);
         builder.Property(e => e.Body).IsRequired().HasMaxLength(1000);
         builder.Property(e => e.Link).HasMaxLength(500);
+        builder.Property(e => e.VarsJson).HasColumnType("jsonb");
         builder.HasIndex(e => new { e.TenantId, e.UserIdentity, e.CreatedAt });
     }
 }

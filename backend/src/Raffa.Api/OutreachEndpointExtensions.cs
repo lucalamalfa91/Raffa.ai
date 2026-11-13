@@ -86,7 +86,7 @@ public static class OutreachEndpointExtensions
                 return channel is null ? Results.BadRequest(new CaseErrorBody("bad_channel", error, null, null)) : Results.Ok(channel);
             }));
 
-        endpoints.MapPatch("/api/notifications/channels/{id:guid}", (Guid id, UpdateChannelRequest body, HttpRequest r, NotificationService s, ICallerContext cc, CancellationToken ct) =>
+        endpoints.MapPut("/api/notifications/channels/{id:guid}", (Guid id, UpdateChannelRequest body, HttpRequest r, NotificationService s, ICallerContext cc, CancellationToken ct) =>
             WithCaller(r, cc, ct, async caller =>
                 await s.UpdateChannelAsync(caller.TenantId, caller.Identity!, id, body.Enabled, ct).ConfigureAwait(false) ? Results.NoContent() : Results.NotFound()));
 

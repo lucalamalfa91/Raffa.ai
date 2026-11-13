@@ -278,3 +278,13 @@
 .p4-file-note { font-size: 12px; color: var(--color-neutral-600); }
 .p4-file-actions { display: flex; gap: 6px; margin-left: auto; }
 .v4 .p4-page .p4-file-actions .btn { font-size: 13px; }
+
+/* — case mail: send from the company mailbox, supplier emails to confirm (renewal plan F2/F3) — */
+.p4-mail { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.p4-inbound { border: 1px solid var(--color-accent); background: var(--color-accent-100); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.p4-inbound-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.p4-inbound-kicker { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent-700); font-weight: 600; }
+.p4-inbound-preview { white-space: pre-wrap; max-height: 220px; overflow: auto; background: var(--color-bg); padding: 8px 10px; border: 1px solid var(--color-divider); }
+.p4-inbound-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.p4-send { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; }
+.v4 .p4-page .p4-inbound-actions .btn, .v4 .p4-page .p4-send .btn { font-size: 13px; }

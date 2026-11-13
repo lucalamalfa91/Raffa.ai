@@ -20,7 +20,8 @@ public static class NotificationChannelKinds
 }
 
 /// <summary>What happened, for one person.</summary>
-public sealed record NotificationMessage(string Kind, string Title, string Body, string? Link, Guid? CaseId);
+/// <param name="Vars">The values in <paramref name="Title"/> and <paramref name="Body"/> (supplier, contract), for the screens' own language.</param>
+public sealed record NotificationMessage(string Kind, string Title, string Body, string? Link, Guid? CaseId, IReadOnlyDictionary<string, string>? Vars = null);
 
 /// <summary>One delivery of a notification to one external channel; the target is in clear (never stored so).</summary>
 public sealed record NotificationDelivery(
@@ -40,7 +41,7 @@ public sealed class NullNotificationDispatcher : INotificationDispatcher
     }
 }
 
-public sealed record NotificationItem(Guid Id, string Kind, string Title, string Body, string? Link, Guid? CaseId, DateTimeOffset CreatedAt, bool Read);
+public sealed record NotificationItem(Guid Id, string Kind, string Title, string Body, string? Link, Guid? CaseId, DateTimeOffset CreatedAt, bool Read, IReadOnlyDictionary<string, string>? Vars = null);
 
 public sealed record NotificationFeed(IReadOnlyList<NotificationItem> Items, int Unread);
 
@@ -92,6 +93,7 @@ public sealed class NotificationService(
                 Body = Cut(message.Body, 1000),
                 Link = message.Link,
                 CaseId = message.CaseId,
+                VarsJson = message.Vars is { Count: > 0 } vars ? System.Text.Json.JsonSerializer.Serialize(vars) : null,
                 CreatedAt = now,
             });
         }
@@ -124,7 +126,8 @@ public sealed class NotificationService(
         var rows = await mine.OrderByDescending(n => n.CreatedAt).Take(Math.Clamp(limit, 1, 100)).ToListAsync(ct).ConfigureAwait(false);
         var unread = await mine.CountAsync(n => n.ReadAt == null, ct).ConfigureAwait(false);
         return new NotificationFeed(
-            rows.Select(n => new NotificationItem(n.Id.Value, n.Kind, n.Title, n.Body, n.Link, n.CaseId, n.CreatedAt, n.ReadAt is not null)).ToList(),
+            rows.Select(n => new NotificationItem(n.Id.Value, n.Kind, n.Title, n.Body, n.Link, n.CaseId, n.CreatedAt, n.ReadAt is not null,
+                n.VarsJson is { } v ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(v) : null)).ToList(),
             unread);
     }
 

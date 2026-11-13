@@ -13,6 +13,7 @@ import { useI18n } from "../../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../../i18n/translate";
 import { notifyTodayChanged } from "../../today/loadToday";
 import { CaseFiles } from "./CaseFiles";
+import { CaseMail } from "./CaseMail";
 import "./case4.css";
 
 export interface CaseRouteProps {
@@ -807,6 +808,23 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             {!isEmpty(cd.note) ? <div className="p4-note">{tr(cd.note)}</div> : null}
           </div>
 
+          {!env.demo && tenantId ? (
+            <CaseMail
+              apiClient={apiClient}
+              tenantId={tenantId}
+              caseId={caseId}
+              version={env.version}
+              canWork={!env.closed && env.capabilities.canWork}
+              email={em ?? null}
+              onCase={(next) => {
+                if (next) {
+                  envRef.current = next;
+                  setEnv(next);
+                  notifyTodayChanged();
+                }
+              }}
+            />
+          ) : null}
           {!env.demo && tenantId ? (
             <CaseFiles
               apiClient={apiClient}
