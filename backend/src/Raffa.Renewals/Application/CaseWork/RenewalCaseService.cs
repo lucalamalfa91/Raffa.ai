@@ -76,7 +76,9 @@ public sealed partial class RenewalCaseService(
     IContractSituationAssessor? situationAssessor = null,
     Microsoft.Extensions.Logging.ILogger<RenewalCaseService>? logger = null,
     ICaseAiReader? aiReader = null,
-    Raffa.SharedKernel.Market.IMarketObservationSink? marketSink = null)
+    Raffa.SharedKernel.Market.IMarketObservationSink? marketSink = null,
+    Raffa.SharedKernel.Storage.IDocumentStorage? caseFileStorage = null,
+    IContractDocumentAttacher? documentAttacher = null)
 {
     public const int SnoozeDays = 3;
 
@@ -694,6 +696,8 @@ public sealed partial class RenewalCaseService(
                 return new CaseResult(CaseResultKind.Forbidden, Envelope(record, next, cf, caller.Name), next.Ui.Warn?.Render());
             }
 
+            StageUploadedFiles(tenantId, record, type, p, c, next, caller.Name);
+
             if (type == "reply" && next.Reps.Count > c.Reps.Count)
             {
                 var rep = next.Reps[^1];
@@ -729,6 +733,7 @@ public sealed partial class RenewalCaseService(
             await AppendEventAsync(tenantId, record, caller.Name, invalidated ? "email_edited_invalidated" : type, p, eid, ct).ConfigureAwait(false);
         }
 
+        var storedFiles = await PersistStagedFilesAsync(tenantId, ct).ConfigureAwait(false);
         try
         {
             await SaveStateAsync(record, c, cf, members, ct).ConfigureAwait(false);
@@ -736,6 +741,7 @@ public sealed partial class RenewalCaseService(
         catch (DbUpdateConcurrencyException)
         {
             db.ChangeTracker.Clear();
+            await DeleteStoredAsync(tenantId, storedFiles).ConfigureAwait(false);
             var fresh = await db.RenewalCases.AsNoTracking().FirstAsync(x => x.Id == record.Id, ct).ConfigureAwait(false);
             return new CaseResult(CaseResultKind.Conflict, Envelope(fresh, RenewalCaseJson.Deserialize(fresh.State), cf, caller.Name), "The case changed while you were working on it.");
         }
@@ -1003,9 +1009,11 @@ public sealed partial class RenewalCaseService(
 
         // BACKEND-SPEC §2.9: the renewed terms become the contract's current version (Contratti,
         // Rinnovi, Oggi and Risultati read the new dates through IContractFactsReader).
+        // Plan F1: the signed contract the case received becomes a document of the contract.
+        var signedDocumentId = await AttachSignedToDocumentsAsync(tenantId, record, c, ct).ConfigureAwait(false);
         await termWriter.WriteCurrentAsync(tenantId, new ContractTermVersionInput(
             record.ContractId.Value,
-            null,
+            signedDocumentId,
             o.Start ?? cf.End.AddDays(1),
             o.End,
             cf.Notice,

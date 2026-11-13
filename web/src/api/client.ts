@@ -52,7 +52,7 @@
 import type { paths } from "./generated/schema";
 import { createCoalescingFetch, type CoalescingFetch } from "./coalescingFetch";
 import { getActiveLang, LANG_HEADER } from "../i18n/activeLang";
-import type { CaseActionPayload, CaseCallResult, CaseEnvelope, RenewalsBoard, TodayFeed } from "./renewalCases";
+import type { CaseActionPayload, CaseCallResult, CaseEnvelope, CaseFile, RenewalsBoard, TodayFeed } from "./renewalCases";
 import type { CompanyRulesBody, PolicyProposal, RuleInterviewReply, RuleTurn } from "./companyRules";
 import type { SpendReport, SpendReportQuery } from "./spend";
 
@@ -1999,6 +1999,23 @@ export interface ApiClient {
     tenantId: string,
     caseId: string,
     input: { type: "addDoc" | "altOffer"; file: File; vendor?: string | null; version: number | null; lang: string },
+  ): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `POST /api/renewals/{caseId}/vendor-messages/file` -- the supplier's email as an .eml/.msg file, registered as its reply with sender, date and attachments. */
+  uploadRenewalCaseEmail?(
+    tenantId: string,
+    caseId: string,
+    input: { file: File; version: number | null; lang: string },
+  ): Promise<CaseCallResult<CaseEnvelope>>;
+  /** `GET /api/renewals/{caseId}/files` -- the files the case received (drafts, signed contract, offers, supplier emails and attachments). */
+  listRenewalCaseFiles?(tenantId: string, caseId: string): Promise<CaseCallResult<CaseFile[]>>;
+  /** `GET /api/renewals/{caseId}/files/{fileId}` -- one case file's bytes (null when it cannot be read). */
+  downloadRenewalCaseFile?(tenantId: string, caseId: string, fileId: string): Promise<Blob | null>;
+  /** `POST /api/renewals/{caseId}/files/{fileId}/use` -- a case file (an email attachment) used as the contract draft / signed contract (`addDoc`) or an offer (`altOffer`). */
+  applyRenewalCaseFile?(
+    tenantId: string,
+    caseId: string,
+    fileId: string,
+    input: { type: "addDoc" | "altOffer"; vendor?: string | null; version: number | null; lang: string },
   ): Promise<CaseCallResult<CaseEnvelope>>;
   /** `DELETE /api/renewals/{caseId}` -- cancels an open negotiation and removes its case, so the renewal can start again from scratch. */
   cancelRenewalCase?(tenantId: string, caseId: string): Promise<CaseCallResult<unknown>>;
@@ -4432,6 +4449,39 @@ export function createApiClient(
       if (input.vendor) form.append("vendor", input.vendor);
       if (input.version !== null) form.append("version", String(input.version));
       return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/documents`, form);
+    },
+
+    uploadRenewalCaseEmail(tenantId, caseId, input) {
+      const form = new FormData();
+      form.append("file", input.file);
+      form.append("lang", input.lang);
+      if (input.version !== null) form.append("version", String(input.version));
+      return caseCall<CaseEnvelope>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", `/api/renewals/${encodeURIComponent(caseId)}/vendor-messages/file`, form);
+    },
+
+    listRenewalCaseFiles(tenantId, caseId) {
+      return caseCall<CaseFile[]>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", `/api/renewals/${encodeURIComponent(caseId)}/files`);
+    },
+
+    async downloadRenewalCaseFile(tenantId, caseId, fileId) {
+      try {
+        const response = await apiFetch(new URL(`/api/renewals/${encodeURIComponent(caseId)}/files/${encodeURIComponent(fileId)}`, baseUrl), {
+          method: "GET",
+          headers: { "X-Tenant-Id": tenantId, ...await authHeaders(getAccessToken) },
+          cache: "no-store",
+        });
+        return response.ok ? await response.blob() : null;
+      } catch {
+        return null;
+      }
+    },
+
+    applyRenewalCaseFile(tenantId, caseId, fileId, input) {
+      return caseCall<CaseEnvelope>(
+        apiFetch, baseUrl, getAccessToken, tenantId, "POST",
+        `/api/renewals/${encodeURIComponent(caseId)}/files/${encodeURIComponent(fileId)}/use`,
+        { type: input.type, vendor: input.vendor ?? null, version: input.version, lang: input.lang },
+      );
     },
 
     cancelRenewalCase(tenantId, caseId) {

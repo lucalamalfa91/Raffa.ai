@@ -105,6 +105,23 @@ public sealed class CaseVendorMessageRecordConfiguration : IEntityTypeConfigurat
     }
 }
 
+public sealed class CaseFileRecordConfiguration : IEntityTypeConfiguration<CaseFileRecord>
+{
+    public void Configure(EntityTypeBuilder<CaseFileRecord> builder)
+    {
+        CaseTableMapping.Ids(builder, "case_file");
+        builder.Property(e => e.CaseId).HasConversion(ValueConverters.EntityIdConverter);
+        builder.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+        builder.Property(e => e.FileName).IsRequired().HasMaxLength(300);
+        builder.Property(e => e.MimeType).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.Checksum).IsRequired().HasMaxLength(64);
+        builder.Property(e => e.StoragePath).IsRequired().HasMaxLength(1024);
+        builder.Property(e => e.Vendor).HasMaxLength(200);
+        builder.Property(e => e.UploadedBy).IsRequired().HasMaxLength(200);
+        builder.HasIndex(e => new { e.TenantId, e.CaseId });
+    }
+}
+
 public sealed class UserReminderRecordConfiguration : IEntityTypeConfiguration<UserReminderRecord>
 {
     public void Configure(EntityTypeBuilder<UserReminderRecord> builder)

@@ -12,6 +12,7 @@ import { useTenantId } from "../../../routes/contracts/contracts4";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { resolveText, type Text } from "../../../i18n/translate";
 import { notifyTodayChanged } from "../../today/loadToday";
+import { CaseFiles } from "./CaseFiles";
 import "./case4.css";
 
 export interface CaseRouteProps {
@@ -243,6 +244,37 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
       notifyTodayChanged();
     }
     if (!r.ok) setLocalWarn(t("Raffa could not add this file. Try a PDF or a text file."));
+  };
+
+  /** The supplier's email as an .eml/.msg file (plan F1): registered as its reply with sender, date and
+   * attachments — no copy and paste. A duplicate comes back with the current case and its warning. */
+  const emailInput = useRef<HTMLInputElement | null>(null);
+  const [readingEmail, setReadingEmail] = useState(false);
+  const uploadEmail = async (file: File) => {
+    const cur = envRef.current;
+    if (!tenantId || !cur || !apiClient.uploadRenewalCaseEmail || busy.current) return;
+    busy.current = true;
+    setReadingEmail(true);
+    setLocalWarn(null);
+    try {
+      const r = await apiClient.uploadRenewalCaseEmail(tenantId, caseId, { file, version: cur.version, lang });
+      const next = r.ok ? r.body : r.current;
+      if (next) {
+        envRef.current = next;
+        setEnv(next);
+        notifyTodayChanged();
+      }
+      if (!r.ok && r.code !== "duplicate_reply") {
+        setLocalWarn(
+          r.code === "stale_version"
+            ? t("The case changed since you loaded it. Your text is kept; review the current version.")
+            : t("Raffa could not read this email. Save it from your mailbox as .eml or .msg, or paste its text."),
+        );
+      }
+    } finally {
+      setReadingEmail(false);
+      busy.current = false;
+    }
   };
 
   /**
@@ -775,14 +807,52 @@ export default function CaseRoute({ apiClient }: CaseRouteProps) {
             {!isEmpty(cd.note) ? <div className="p4-note">{tr(cd.note)}</div> : null}
           </div>
 
+          {!env.demo && tenantId ? (
+            <CaseFiles
+              apiClient={apiClient}
+              tenantId={tenantId}
+              caseId={caseId}
+              version={env.version}
+              canUse={!env.closed && env.capabilities.canWork}
+              onCase={(next) => {
+                if (next) {
+                  envRef.current = next;
+                  setEnv(next);
+                  notifyTodayChanged();
+                }
+              }}
+            />
+          ) : null}
+
           {v.reply.open ? (
             <div className="p4-reply">
               <div className="p4-reply-head">{t("Paste the supplier reply")}</div>
+              {!env.demo && apiClient.uploadRenewalCaseEmail ? (
+                <div className="p4-reply-hint">{t("Or upload the email itself: drag it from your mailbox to your desktop and choose it here. Raffa keeps the sender, the date and the attachments.")}</div>
+              ) : null}
               <textarea className="input" value={draft<string>("replyText", v.reply.text)} onChange={(e) => setDraft("replyText", e.target.value)} />
               <div className="p4-reply-actions">
                 <button type="button" className="btn btn-primary" onClick={() => void act("reply", {})}>
                   {t("Add to the case")}
                 </button>
+                {!env.demo && apiClient.uploadRenewalCaseEmail ? (
+                  <>
+                    <button type="button" className="btn btn-secondary" disabled={readingEmail} onClick={() => emailInput.current?.click()}>
+                      {readingEmail ? t("Raffa is reading the email…") : t("Upload the email (.eml, .msg)")}
+                    </button>
+                    <input
+                      ref={emailInput}
+                      type="file"
+                      hidden
+                      accept=".eml,.msg,message/rfc822,application/vnd.ms-outlook"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) void uploadEmail(f);
+                      }}
+                    />
+                  </>
+                ) : null}
                 {env.demo ? (
                   <button
                     type="button"

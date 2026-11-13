@@ -84,6 +84,12 @@
          is no longer referenced here directly — this same task moved the only reference to it to
          Raffa.Storage (see the ProjectReference above and Raffa.Storage.csproj's own doc comment). -->
     <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.18.0" />
+    <!-- Renewal plan F1 (docs/architecture/renewal-in-app-mail-plan.md): a supplier email uploaded to a
+         renewal case as .eml (MimeKit) or Outlook .msg (MsgReader) is read here, in the host
+         (CaseEmailFileReader) — file-format parsers, kept out of the domain modules like every
+         provider SDK (ADR-002). -->
+    <PackageReference Include="MimeKit" Version="5.0.0" />
+    <PackageReference Include="MsgReader" Version="6.2.1" />
   </ItemGroup>
 
 </Project>

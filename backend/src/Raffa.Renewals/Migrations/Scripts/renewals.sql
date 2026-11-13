@@ -558,3 +558,64 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113104552_AddCaseFiles') THEN
+    CREATE TABLE case_file (
+        id uuid NOT NULL,
+        case_id uuid NOT NULL,
+        kind character varying(20) NOT NULL,
+        file_name character varying(300) NOT NULL,
+        mime_type character varying(200) NOT NULL,
+        size_bytes bigint NOT NULL,
+        checksum character varying(64) NOT NULL,
+        storage_path character varying(1024) NOT NULL,
+        draft_version integer,
+        vendor character varying(200),
+        reply_index integer,
+        source_file_id uuid,
+        document_id uuid,
+        uploaded_by character varying(200) NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_case_file PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113104552_AddCaseFiles') THEN
+    CREATE INDEX ix_case_file_tenant_id ON case_file (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113104552_AddCaseFiles') THEN
+    CREATE INDEX ix_case_file_tenant_id_case_id ON case_file (tenant_id, case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113104552_AddCaseFiles') THEN
+    ALTER TABLE "case_file" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "case_file" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "case_file"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113104552_AddCaseFiles') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261113104552_AddCaseFiles', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

@@ -7,7 +7,7 @@ public sealed partial class RenewalCaseService
 {
     /// <summary>
     /// Removes everything the 4.0 renewal case keeps for these contracts — the cases, their emails,
-    /// delegations, events, vendor messages and reminders, and the Oggi snoozes of their items — when a
+    /// delegations, events, vendor messages, files and reminders, and the Oggi snoozes of their items — when a
     /// contract is deleted. Returns how many cases were removed.
     /// </summary>
     public async Task<int> DeleteForContractsAsync(TenantId tenantId, IReadOnlyCollection<Guid> contractIds, CancellationToken ct = default)
@@ -27,12 +27,14 @@ public sealed partial class RenewalCaseService
         db.CaseDelegations.RemoveRange(await db.CaseDelegations.Where(x => caseIds.Contains(x.CaseId)).ToListAsync(ct).ConfigureAwait(false));
         db.CaseEvents.RemoveRange(await db.CaseEvents.Where(x => caseIds.Contains(x.CaseId)).ToListAsync(ct).ConfigureAwait(false));
         db.CaseVendorMessages.RemoveRange(await db.CaseVendorMessages.Where(x => caseIds.Contains(x.CaseId)).ToListAsync(ct).ConfigureAwait(false));
+        var filePaths = await RemoveCaseFilesAsync(caseIds, ct).ConfigureAwait(false);
         db.UserReminders.RemoveRange(await db.UserReminders.Where(x => x.CaseId != null && caseGuids.Contains(x.CaseId)).ToListAsync(ct).ConfigureAwait(false));
         var prefixes = contractIds.Select(id => id.ToString() + ":").ToList();
         var snoozes = await db.TodaySnoozes.ToListAsync(ct).ConfigureAwait(false);
         db.TodaySnoozes.RemoveRange(snoozes.Where(s => prefixes.Any(p => s.ItemKey.Contains(p, StringComparison.Ordinal))));
         db.RenewalCases.RemoveRange(cases);
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        await DeleteStoredAsync(tenantId, filePaths).ConfigureAwait(false);
         return cases.Count;
     }
 }

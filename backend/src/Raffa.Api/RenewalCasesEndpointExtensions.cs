@@ -67,6 +67,10 @@ public static class RenewalCasesEndpointExtensions
         endpoints.MapPost("/api/renewals/{caseId:guid}/close", CloseAsync);
         endpoints.MapPost("/api/renewals/{caseId:guid}/vendor-messages", PostVendorMessageAsync);
         endpoints.MapGet("/api/renewals/{caseId:guid}/vendor-messages", GetVendorMessagesAsync);
+        endpoints.MapPost("/api/renewals/{caseId:guid}/vendor-messages/file", PostVendorMessageFileAsync);
+        endpoints.MapGet("/api/renewals/{caseId:guid}/files", FilesAsync);
+        endpoints.MapGet("/api/renewals/{caseId:guid}/files/{fileId:guid}", FileAsync);
+        endpoints.MapPost("/api/renewals/{caseId:guid}/files/{fileId:guid}/use", UseFileAsync);
 
         endpoints.MapGet("/api/today", TodayAsync);
         endpoints.MapPost("/api/today/{key}/snooze", (string key, HttpRequest r, RenewalCaseService s, ICallerContext cc, CancellationToken ct) => SnoozeAsync(key, true, r, s, cc, ct));
@@ -186,29 +190,129 @@ public static class RenewalCasesEndpointExtensions
             }
 
             var fileName = Path.GetFileName(file.FileName);
-            var text = string.Empty;
-            var (bytes, format, bytesRefusal) = await DocumentsEndpointExtensions.ReadUploadBytesAsync(file, options, ct).ConfigureAwait(false);
-            if (bytesRefusal is null)
+            var text = await ReadCaseFileTextAsync(fileName, file, parser, options, ct).ConfigureAwait(false);
+            byte[] raw;
+            await using (var stream = file.OpenReadStream())
+            using (var buffer = new MemoryStream())
             {
-                var parsed = await parser.ParseAsync(fileName, format!.MimeType, bytes!, ct).ConfigureAwait(false);
-                if (parsed.IsSuccess)
-                {
-                    text = string.Join("\n\n", parsed.Value.Select(p => p.Text));
-                }
-            }
-            else if (Path.GetExtension(fileName).ToLowerInvariant() is ".txt" or ".md")
-            {
-                await using var stream = file.OpenReadStream();
-                using var reader = new StreamReader(stream);
-                text = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+                await stream.CopyToAsync(buffer, ct).ConfigureAwait(false);
+                raw = buffer.ToArray();
             }
 
-            // An unreadable file is still recorded (by name); Raffa then says it did not read it, never guesses.
+            // An unreadable file is still recorded (by name) and kept; Raffa then says it did not read it, never guesses.
             int? version = int.TryParse(form["version"].ToString(), out var v) ? v : null;
             using var language = Raffa.SharedKernel.Language.ResponseLanguage.Use(form["lang"].ToString() == "en" ? "en" : "it");
-            return Map(await service.ActWithDocumentAsync(
-                    caller.TenantId, caller.Identity, caseId, type, fileName, text, form["vendor"].ToString() is { Length: > 0 } vendor ? vendor : null, version, ct)
+            var upload = new CaseUpload(fileName, string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType, raw);
+            return Map(await service.ActWithUploadAsync(
+                    caller.TenantId, caller.Identity, caseId, type, upload, text, form["vendor"].ToString() is { Length: > 0 } vendor ? vendor : null, version, ct)
                 .ConfigureAwait(false));
+        });
+
+    /// <summary>The text Raffa reads from a case file: the document parser for PDF/Office/images, the
+    /// plain text of <c>.txt</c>/<c>.md</c>; empty when it cannot be read.</summary>
+    private static async Task<string> ReadCaseFileTextAsync(
+        string fileName, IFormFile file, Raffa.AiFlows.Shared.Parsing.HybridDocumentParsingService parser,
+        Raffa.Documents.Contracts.Application.Admission.DocumentAdmissionOptions options, CancellationToken ct)
+    {
+        var (bytes, format, bytesRefusal) = await DocumentsEndpointExtensions.ReadUploadBytesAsync(file, options, ct).ConfigureAwait(false);
+        if (bytesRefusal is null)
+        {
+            var parsed = await parser.ParseAsync(fileName, format!.MimeType, bytes!, ct).ConfigureAwait(false);
+            return parsed.IsSuccess ? string.Join("\n\n", parsed.Value.Select(p => p.Text)) : string.Empty;
+        }
+
+        if (Path.GetExtension(fileName).ToLowerInvariant() is ".txt" or ".md")
+        {
+            await using var stream = file.OpenReadStream();
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>The same reading over bytes already stored (a case file used as a draft, the signed
+    /// contract or an offer).</summary>
+    private static Task<string> ReadStoredFileTextAsync(
+        string fileName, string mimeType, byte[] bytes, Raffa.AiFlows.Shared.Parsing.HybridDocumentParsingService parser,
+        Raffa.Documents.Contracts.Application.Admission.DocumentAdmissionOptions options, CancellationToken ct) =>
+        ReadCaseFileTextAsync(fileName, new FormFile(new MemoryStream(bytes), 0, bytes.Length, "file", fileName) { Headers = new HeaderDictionary(), ContentType = mimeType }, parser, options, ct);
+
+    /// <summary><c>GET /api/renewals/{id}/files</c>: drafts, signed contract, offers, uploaded supplier emails and their attachments.</summary>
+    private static Task<IResult> FilesAsync(Guid caseId, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>
+        WithCaller(request, callerContext, ct, async caller =>
+        {
+            var files = await service.FilesAsync(caller.TenantId, caseId, ct).ConfigureAwait(false);
+            return files is null ? Results.NotFound() : Results.Ok(files);
+        });
+
+    /// <summary><c>GET /api/renewals/{id}/files/{fileId}</c>: downloads one case file.</summary>
+    private static Task<IResult> FileAsync(Guid caseId, Guid fileId, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>
+        WithCaller(request, callerContext, ct, async caller =>
+        {
+            var file = await service.DownloadFileAsync(caller.TenantId, caseId, fileId, ct).ConfigureAwait(false);
+            return file is { } f ? Results.File(f.Bytes, f.Record.MimeType, f.Record.FileName) : Results.NotFound();
+        });
+
+    public sealed record UseCaseFileRequest(string Type, string? Vendor, int? Version, string? Lang);
+
+    /// <summary><c>POST /api/renewals/{id}/files/{fileId}/use</c>: a case file (an email attachment) used as
+    /// a contract draft or the signed contract (<c>addDoc</c>), or an alternative offer (<c>altOffer</c>).</summary>
+    private static Task<IResult> UseFileAsync(
+        Guid caseId, Guid fileId, UseCaseFileRequest body, HttpRequest request, RenewalCaseService service,
+        Raffa.AiFlows.Shared.Parsing.HybridDocumentParsingService parser, Raffa.Documents.Contracts.Application.Admission.DocumentAdmissionOptions options,
+        ICallerContext callerContext, CancellationToken ct) =>
+        WithCaller(request, callerContext, ct, async caller =>
+        {
+            using var language = Raffa.SharedKernel.Language.ResponseLanguage.Use(body.Lang == "en" ? "en" : "it");
+            return Map(await service.UseFileAsync(
+                    caller.TenantId, caller.Identity, caseId, fileId, body.Type, string.IsNullOrWhiteSpace(body.Vendor) ? null : body.Vendor, body.Version,
+                    (name, mime, bytes, token) => ReadStoredFileTextAsync(name, mime, bytes, parser, options, token), ct)
+                .ConfigureAwait(false));
+        });
+
+    /// <summary><c>POST /api/renewals/{id}/vendor-messages/file</c> (multipart: <c>file</c> = .eml | .msg,
+    /// <c>version</c>, <c>lang</c>): the supplier's email, registered as its reply with sender, date and
+    /// attachments — no copy and paste.</summary>
+    private static Task<IResult> PostVendorMessageFileAsync(
+        Guid caseId, HttpRequest request, RenewalCaseService service,
+        Raffa.Documents.Contracts.Application.Admission.DocumentAdmissionOptions options, ICallerContext callerContext, CancellationToken ct) =>
+        WithCaller(request, callerContext, ct, async caller =>
+        {
+            var (form, file, refusal) = await DocumentsEndpointExtensions.ReadUploadFormAsync(request, options, ct).ConfigureAwait(false);
+            if (refusal is not null)
+            {
+                return refusal;
+            }
+
+            var fileName = Path.GetFileName(file!.FileName);
+            if (!CaseEmailFileReader.IsEmailFile(fileName))
+            {
+                return Results.BadRequest(new CaseErrorBody("bad_request", "Upload the supplier email as an .eml or .msg file.", null, null));
+            }
+
+            if (file.Length > MaxCaseDocumentBytes)
+            {
+                return Results.Json(new CaseErrorBody("too_large", "Raffa reads emails up to 20 MB.", null, null), statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
+
+            byte[] raw;
+            await using (var stream = file.OpenReadStream())
+            using (var buffer = new MemoryStream())
+            {
+                await stream.CopyToAsync(buffer, ct).ConfigureAwait(false);
+                raw = buffer.ToArray();
+            }
+
+            var email = CaseEmailFileReader.Read(fileName, raw, MaxCaseDocumentBytes);
+            if (email is null)
+            {
+                return Results.BadRequest(new CaseErrorBody("unreadable_email", "Raffa could not read this email file, or it has no text.", null, null));
+            }
+
+            int? version = int.TryParse(form!["version"].ToString(), out var v) ? v : null;
+            using var language = Raffa.SharedKernel.Language.ResponseLanguage.Use(form["lang"].ToString() == "en" ? "en" : "it");
+            return Map(await service.ReplyWithEmailAsync(caller.TenantId, caller.Identity, caseId, email, version, ct).ConfigureAwait(false));
         });
 
     private static Task<IResult> TimelineAsync(Guid caseId, HttpRequest request, RenewalCaseService service, ICallerContext callerContext, CancellationToken ct) =>

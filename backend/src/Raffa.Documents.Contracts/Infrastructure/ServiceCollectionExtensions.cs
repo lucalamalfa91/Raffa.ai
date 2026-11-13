@@ -198,6 +198,7 @@ public static class ServiceCollectionExtensions
         // points and the Revisione reading. The case status reader defaults to "no case" until
         // Raffa.Renewals replaces it (services.Replace).
         services.AddScoped<Raffa.SharedKernel.Contracts.IContractTermWriter, Application.Facts.ContractTermWriter>();
+        services.AddScoped<Raffa.SharedKernel.Contracts.IContractDocumentAttacher, Application.ContractDocumentAttacher>();
         services.TryAddScoped<Raffa.SharedKernel.Contracts.IContractCaseStatusReader, Raffa.SharedKernel.Contracts.NoContractCaseStatusReader>();
         services.TryAddScoped<Raffa.SharedKernel.Contracts.IContractSituationAssessor, Raffa.SharedKernel.Contracts.RulesContractSituationAssessor>();
         services.AddScoped<Application.V4.ContractDecisionPointService>();

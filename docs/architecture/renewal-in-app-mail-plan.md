@@ -226,6 +226,20 @@ poi Teams e Slack; WhatsApp per ultimo (approvazione template Meta, costi per co
 
 F1 è indipendente e si può iniziare subito; F2 e F3 sono il cuore della richiesta; F4 solo su domanda.
 
+### Stato F1 (implementata, 13 nov 2026)
+
+- Tabella `case_file` (migrazione `AddCaseFiles`, RLS): bozze, firmato, offerte, email caricate e loro allegati
+  restano nello storage del tenant, in transazione con lo stato della pratica; un documento rifiutato dal motore
+  (es. bozza prima dell'accordo) non viene conservato.
+- `POST /api/renewals/{id}/vendor-messages/file`: email del fornitore come `.eml`/`.msg` → registrata come
+  risposta (mittente, data, oggetto, solo la parte nuova del testo, elenco allegati); allegati salvati.
+- `GET /api/renewals/{id}/files`, `GET …/files/{fileId}` (download), `POST …/files/{fileId}/use` (un allegato
+  usato come bozza / contratto firmato senza scaricarlo e ricaricarlo).
+- Chiusura come rinnovato: il firmato diventa un documento del contratto in Documents
+  (`IContractDocumentAttacher`, stato *Completed*, nessuna estrazione, nessun secondo contratto) e la nuova
+  versione dei termini punta a quel documento.
+- Web: sezione *File della pratica* e pulsante *Carica l'email (.eml, .msg)* nel pannello risposta.
+
 ## 8. Decisioni da prendere
 
 1. **Mittente**: va bene un mittente "via Raffa" con Reply-To al buyer (A), o serve da subito l'invio dalla

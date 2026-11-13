@@ -82,6 +82,9 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         return new RenewalsDbContext(b.Options);
     }
 
+    private readonly MemoryStorage _storage = new();
+    private readonly RecordingAttacher _attacher = new();
+
     private async Task<RenewalCaseService> ServiceAsync(ICaseScriptServices? script = null, DateTimeOffset? now = null, ICaseAiReader? aiReader = null, Raffa.SharedKernel.Market.IMarketObservationSink? marketSink = null)
     {
         var db = Db();
@@ -90,7 +93,7 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
             db, _tenantContext, _facts, new Members(), script ?? FixtureCaseScriptServices.Instance,
             new NoAnswerer(), _terms, new NoSavings(), new NoObjectives(),
             new NoOpenQuoteDecisions(), new NoDocumentsNeedingReview(), _audit, new FixedClock(now ?? Now),
-            aiReader: aiReader, marketSink: marketSink);
+            aiReader: aiReader, marketSink: marketSink, caseFileStorage: _storage, documentAttacher: _attacher);
     }
 
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 14, 0, 0, TimeSpan.Zero);
@@ -321,6 +324,84 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
         // Closed: the next renewal cycle may open a new case for the same contract.
         var open = await s.OpenAsync(_tenant, LucaOid, _facts.Id(1), null, null);
         Assert.NotEqual(e.CaseId, open.Envelope!.CaseId);
+    }
+
+    [Fact]
+    public async Task Uploaded_drafts_and_the_signed_contract_are_kept_and_the_signed_one_is_filed_in_documents_on_closing()
+    {
+        var s = await ServiceAsync();
+        var flow = CaseFixtures.Flows()["salesforce_da_zero"]!.AsObject();
+        var e = await OpenAsync(s, 1);
+        var uploads = new List<byte[]>();
+        foreach (var step in flow["steps"]!.AsArray())
+        {
+            var a = step!.AsArray();
+            var who = a[0]!.GetValue<string>();
+            var type = a[1]!.GetValue<string>();
+            var p = CaseFixtures.Payload(type, a.Count > 2 ? a[2] as JsonObject : null);
+            CaseResult r;
+            if (type == "addDoc")
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes("pdf bytes " + uploads.Count);
+                uploads.Add(bytes);
+                var name = "upload_" + uploads.Count + ".pdf";
+                r = await s.ActWithUploadAsync(_tenant, Oid(who), e.CaseId, type, new CaseUpload(name, "application/pdf", bytes), string.Empty, null, null);
+            }
+            else
+            {
+                r = await s.ActAsync(_tenant, Oid(who), e.CaseId, type, p, null);
+            }
+
+            Assert.True(r.Kind is CaseResultKind.Ok or CaseResultKind.Forbidden, type + " → " + r.Kind);
+        }
+
+        Assert.True(uploads.Count >= 2);
+        var files = await s.FilesAsync(_tenant, e.CaseId);
+        Assert.NotNull(files);
+        Assert.Contains(files!, f => f.Kind == CaseFileKinds.Draft && f.DraftVersion == 1);
+        var signed = Assert.Single(files!, f => f.Kind == CaseFileKinds.Signed);
+
+        // The signed contract became a document of the renewed contract, and the new term version points at it.
+        var attached = Assert.Single(_attacher.Attached);
+        Assert.Equal(_facts.Id(1), attached.ContractId);
+        Assert.Equal(uploads[^1], attached.Content);
+        Assert.Equal(_attacher.DocumentId, Assert.Single(_terms.Written).SourceDocumentId);
+        Assert.Equal(_attacher.DocumentId, (await s.FilesAsync(_tenant, e.CaseId))!.Single(f => f.Kind == CaseFileKinds.Signed).DocumentId);
+
+        var download = await s.DownloadFileAsync(_tenant, e.CaseId, signed.Id);
+        Assert.Equal(uploads[^1], download!.Value.Bytes);
+        Assert.Null(await s.DownloadFileAsync(_tenant, Guid.NewGuid(), signed.Id));
+    }
+
+    [Fact]
+    public async Task A_supplier_email_file_is_registered_as_the_reply_with_its_attachments_and_a_refused_document_is_not_kept()
+    {
+        var s = await ServiceAsync();
+        var e = await OpenAsync(s, 4);
+        var email = new CaseEmailUpload(
+            new CaseUpload("reply.eml", "message/rfc822", [1, 2, 3]),
+            "From: Anna <anna@docusign.example>\n\nWe can offer 5% off for 24 months.",
+            [new CaseUpload("OrderForm_draft.pdf", "application/pdf", [4, 5, 6]), new CaseUpload("empty.txt", "text/plain", [])]);
+        var r = await s.ReplyWithEmailAsync(_tenant, MartaOid, e.CaseId, email, e.Version);
+        Assert.Equal(CaseResultKind.Ok, r.Kind);
+
+        var files = (await s.FilesAsync(_tenant, e.CaseId))!;
+        var source = Assert.Single(files, f => f.Kind == CaseFileKinds.Email);
+        Assert.Equal(0, source.ReplyIndex);
+        var attachment = Assert.Single(files, f => f.Kind == CaseFileKinds.Attachment);
+        Assert.Equal(source.Id, attachment.SourceFileId);
+        Assert.Equal("OrderForm_draft.pdf", attachment.FileName);
+        await using (var db = Db())
+        {
+            using var _ = _tenantContext.BeginScope(_tenant);
+            Assert.Contains("5% off", (await db.CaseVendorMessages.SingleAsync()).PastedText);
+        }
+
+        // No terms are agreed yet: the engine refuses the draft, so no second copy is stored.
+        var used = await s.UseFileAsync(_tenant, MartaOid, e.CaseId, attachment.Id, "addDoc", null, r.Envelope!.Version, (_, _, _, _) => Task.FromResult("draft text"));
+        Assert.Equal(CaseResultKind.Ok, used.Kind);
+        Assert.Equal(2, (await s.FilesAsync(_tenant, e.CaseId))!.Count);
+        Assert.Equal(CaseResultKind.NotFound, (await s.UseFileAsync(_tenant, MartaOid, e.CaseId, Guid.NewGuid(), "addDoc", null, null, (_, _, _, _) => Task.FromResult(""))).Kind);
     }
 
     [Fact]
@@ -584,6 +665,46 @@ public sealed class RenewalCaseServiceTests : IAsyncLifetime
 
         public Task<(string? Currency, string? Country)> MarketProfileAsync(TenantId tenantId, CancellationToken cancellationToken = default) =>
             Task.FromResult<(string?, string?)>(("CHF", "CH"));
+    }
+
+    private sealed class MemoryStorage : Raffa.SharedKernel.Storage.IDocumentStorage
+    {
+        private readonly Dictionary<string, byte[]> _blobs = new(StringComparer.Ordinal);
+
+        public async Task<string> SaveAsync(TenantId tenantId, EntityId documentId, int versionNumber, string fileName, Stream content, CancellationToken cancellationToken = default)
+        {
+            var path = Raffa.SharedKernel.Storage.DocumentStoragePath.Build(tenantId, documentId, versionNumber, fileName);
+            using var buffer = new MemoryStream();
+            await content.CopyToAsync(buffer, cancellationToken);
+            _blobs[path] = buffer.ToArray();
+            return path;
+        }
+
+        public Task<byte[]?> LoadAsync(TenantId tenantId, string storagePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_blobs.TryGetValue(storagePath, out var b) ? b : null);
+
+        public Task DeleteAsync(TenantId tenantId, string storagePath, CancellationToken cancellationToken = default)
+        {
+            _blobs.Remove(storagePath);
+            return Task.CompletedTask;
+        }
+
+        public Task<string> SavePreviewAsync(TenantId tenantId, EntityId documentId, Stream content, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<string> SavePreviewPageAsync(TenantId tenantId, EntityId documentId, int page, Stream content, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingAttacher : IContractDocumentAttacher
+    {
+        public Guid DocumentId { get; } = Guid.NewGuid();
+
+        public List<SignedContractDocument> Attached { get; } = [];
+
+        public Task<Guid> AttachSignedAsync(TenantId tenantId, SignedContractDocument document, CancellationToken cancellationToken = default)
+        {
+            Attached.Add(document);
+            return Task.FromResult(DocumentId);
+        }
     }
 
     private sealed class RecordingTermWriter : IContractTermWriter

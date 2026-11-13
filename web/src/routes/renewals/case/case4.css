@@ -236,6 +236,7 @@
 .p4-reply { border: 1px solid var(--color-divider); padding: 12px 14px; }
 .p4-reply-head { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-600); }
 .v4 .p4-page .p4-reply textarea { width: 100%; box-sizing: border-box; min-height: 100px; font-size: 14px; font-family: var(--font-body); margin-top: 8px; }
+.p4-reply-hint { font-size: 13px; color: var(--color-neutral-600); margin-top: 6px; }
 .p4-reply-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .v4 .p4-page .p4-reply-actions .btn { font-size: 13px; }
 
@@ -266,3 +267,14 @@
   .p4-feed { padding: 20px 16px; }
   .p4-error { padding: 20px 16px; }
 }
+
+/* — case files (renewal plan F1) — */
+.p4-files { border: 1px solid var(--color-divider); padding: 10px 14px; margin-bottom: 12px; font-size: 14px; }
+.p4-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 0; border-bottom: 1px solid var(--color-divider); }
+.p4-file:last-of-type { border-bottom: none; }
+.p4-file.is-attachment { padding-left: 18px; }
+.p4-file-kind { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-neutral-600); min-width: 120px; }
+.p4-file-name { font-weight: 600; flex: 1 1 200px; }
+.p4-file-note { font-size: 12px; color: var(--color-neutral-600); }
+.p4-file-actions { display: flex; gap: 6px; margin-left: auto; }
+.v4 .p4-page .p4-file-actions .btn { font-size: 13px; }

@@ -43,6 +43,8 @@ public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> option
 
     public DbSet<CaseVendorMessageRecord> CaseVendorMessages => Set<CaseVendorMessageRecord>();
 
+    public DbSet<CaseFileRecord> CaseFiles => Set<CaseFileRecord>();
+
     public DbSet<UserReminderRecord> UserReminders => Set<UserReminderRecord>();
 
     public DbSet<TodaySnoozeRecord> TodaySnoozes => Set<TodaySnoozeRecord>();
@@ -58,6 +60,7 @@ public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> option
         modelBuilder.ApplyConfiguration(new CaseEmailRecordConfiguration());
         modelBuilder.ApplyConfiguration(new CaseDelegationRecordConfiguration());
         modelBuilder.ApplyConfiguration(new CaseEventRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new CaseFileRecordConfiguration());
         modelBuilder.ApplyConfiguration(new CaseVendorMessageRecordConfiguration());
         modelBuilder.ApplyConfiguration(new UserReminderRecordConfiguration());
         modelBuilder.ApplyConfiguration(new TodaySnoozeRecordConfiguration());
