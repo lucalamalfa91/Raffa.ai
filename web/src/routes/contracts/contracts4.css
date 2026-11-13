@@ -152,6 +152,43 @@
 .c4-done-text { font-size: 14px; color: var(--color-neutral-700); margin-top: 6px; }
 .c4-done-actions { display: flex; gap: 10px; margin-top: 14px; }
 
+/* Revisione side by side: the field and Raffa's reasoning on the left, the contract page with the
+   quoted words boxed on the right (stacked below 1100px). */
+.c4-review-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 18px;
+}
+.c4-review-grid > .c4-field { margin-top: 0; }
+.c4-queue { margin-top: 6px; font-size: 14px; color: var(--color-neutral-700); }
+.c4-passage { display: flex; flex-direction: column; gap: 6px; }
+.c4-passage-head, .c4-basis-head, .c4-source-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.v4 .btn.c4-page-link { font-size: 13px; min-height: 24px; padding: 0 6px; margin-left: auto; text-decoration: underline; }
+.c4-basis { border-left: 2px solid var(--color-text); padding: 4px 0 4px 14px; display: flex; flex-direction: column; gap: 8px; }
+.c4-basis.is-notStated { border-left-color: var(--color-accent); }
+.c4-basis-kind { font-size: 13px; font-weight: 700; }
+.c4-basis.is-notStated .c4-basis-kind { color: var(--color-accent-700); }
+.c4-basis-text { margin: 0; font-size: 14px; text-wrap: pretty; max-width: 66ch; }
+.c4-sources { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.c4-source { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.c4-quote.is-source { font-size: 13px; padding: 10px 12px; }
+.c4-quote.is-source mark { background: transparent; outline: 2px solid var(--color-text); outline-offset: 1px; }
+
+.c4-pane { border: 1px solid var(--color-divider); background: #fff; position: sticky; top: 12px; display: flex; flex-direction: column; }
+.c4-pane-bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--color-divider); font-size: 13px; }
+.c4-pane-page { font-variant-numeric: tabular-nums; }
+.c4-pane-open { margin-left: auto; font-size: 13px; }
+.c4-pane-jump { padding: 6px 10px; font-size: 13px; color: var(--color-neutral-700); border-bottom: 1px solid var(--color-divider); }
+.v4 .btn.c4-pane-jump-btn { font-size: 13px; min-height: 24px; padding: 0 6px; text-decoration: underline; }
+.c4-pane-canvas { position: relative; background: var(--color-surface); max-height: calc(100vh - 140px); overflow: auto; }
+.c4-pane-canvas img { display: block; width: 100%; height: auto; }
+.c4-pane-boxes { position: absolute; inset: 0; pointer-events: none; }
+.c4-pane-box { position: absolute; }
+.c4-pane-box.is-field { border: 2px solid var(--color-accent); background: color-mix(in srgb, var(--color-accent) 22%, transparent); }
+.c4-pane-box.is-source { border: 2px solid var(--color-text); background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.c4-pane-empty { padding: 40px 20px; font-size: 14px; color: var(--color-neutral-700); display: flex; gap: 10px; align-items: center; justify-content: center; min-height: 240px; text-align: center; }
+
+.c4-queue-next { margin-top: 12px; font-size: 14px; }
+.c4-done-actions { flex-wrap: wrap; }
+
 /* — a reading that stopped (not a contract, no readable text): what happened and what to do — */
 .c4-failed { border-top: 2px solid var(--color-accent); margin-top: 20px; padding-top: 16px; max-width: 72ch; }
 
@@ -174,6 +211,10 @@
 .c4-del-ask { font-size: 14px; color: var(--color-neutral-700); margin-right: 4px; }
 
 /* Phone width (D9): the same 16px gutter as the nav. */
+@media (max-width: 1100px) {
+  .c4-review-grid { grid-template-columns: minmax(0, 1fr); }
+  .c4-pane { position: static; }
+}
 @media (max-width: 700px) {
   .c4-page, .c4-page.is-list { padding: 24px 16px 40px; }
 }

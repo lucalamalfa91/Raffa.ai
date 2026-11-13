@@ -24,7 +24,13 @@ const DOC = "33333333-3333-3333-3333-333333333333";
 const ok = <T,>(data: T): V4Result<T> => ({ ok: true, statusCode: 200, data, error: null });
 
 function client(overrides: Partial<ApiClient>): ApiClient {
-  return { ...contractsV4Mocks(), ...overrides } as unknown as ApiClient;
+  return {
+    ...contractsV4Mocks(),
+    // Revisione's page pane: no document / no page image unless a test says otherwise.
+    getDocument: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, document: null, error: null }),
+    getDocumentPreviewUrl: vi.fn().mockResolvedValue({ ok: false, statusCode: 404, objectUrl: null, error: null }),
+    ...overrides,
+  } as unknown as ApiClient;
 }
 
 function renderAt(path: string, routes: ReactNode) {
@@ -332,7 +338,112 @@ describe("Revisione", () => {
 
     expect(await screen.findByText("Contratto validato.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Salesforce validato" })).toBeInTheDocument();
+    // Nothing else to validate: back to Contracts, not to Today.
+    expect(await screen.findByText("Tutti i tuoi contratti sono validati.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apri il contratto" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Torna ai contratti" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Torna a Oggi" })).not.toBeInTheDocument();
     expect(missing).toEqual([]);
+  });
+
+  it("shows the contract page and explains how a derived value was worked out", async () => {
+    const user = userEvent.setup();
+    if (!URL.revokeObjectURL) URL.revokeObjectURL = () => undefined;
+    const deadline = reading({
+      fields: [
+        {
+          key: "cancellationDeadline",
+          label: { id: "Notice deadline" },
+          value: "2028-04-06",
+          page: 1,
+          src: "p.1",
+          why: { id: "Critical field" },
+          flagReason: { id: "Critical field" },
+          quote: { before: "renew automatically unless Customer gives non-renewal notice at least ", mark: "105 days", after: " before expiry." },
+          critical: true,
+          decision: null,
+          correctedValue: null,
+          box: { x: 10, y: 20, width: 30, height: 5 },
+          basis: {
+            kind: "derived",
+            explanation: {
+              id: "The contract does not write this date: I worked it out as the end of the term ({end}) minus the {days}-day notice period. Check both passages below.",
+              vars: { end: "2028-07-20", days: 105 },
+            },
+            sources: [
+              { key: "endDate", label: { id: "Contract end" }, value: "2028-07-20", page: 3, quote: { before: "The term ends on ", mark: "20 July 2028", after: "." }, box: null },
+            ],
+          },
+        },
+      ],
+    });
+    const preview = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, objectUrl: "blob:page", error: null });
+    const api = client({
+      getDocumentReading: vi.fn().mockResolvedValue(ok(deadline)),
+      getDocumentPreviewUrl: preview,
+      listContractsV4: vi.fn().mockResolvedValue(ok({ rows: [], document: { documentId: DOC, file: "Salesforce_MSA_2024.pdf", status: "review", flagged: 1, reading: 0, toReview: 3 } })),
+    });
+    renderAt(`/contracts/review/${DOC}`, <Route path="/contracts/review/:documentId" element={<ReviewRoute apiClient={api} />} />);
+
+    expect(await screen.findByText("Come l’ho letto")).toBeInTheDocument();
+    expect(screen.getByText("Ricavato da altri passaggi")).toBeInTheDocument();
+    expect(screen.getByText(/l’ho calcolata come fine del periodo \(2028-07-20\) meno i 105 giorni di preavviso/)).toBeInTheDocument();
+    expect(screen.getByText("20 July 2028").tagName).toBe("MARK");
+    expect(await screen.findByRole("img", { name: "Pagina 1 del contratto" })).toBeInTheDocument();
+    expect(preview).toHaveBeenCalledWith(TENANT, DOC, 1);
+    expect(await screen.findByTestId("review-queue")).toHaveTextContent("3 contratti da validare, compreso questo");
+
+    await user.click(screen.getByRole("button", { name: "vedi pagina 3" }));
+    await waitFor(() => expect(preview).toHaveBeenLastCalledWith(TENANT, DOC, 3));
+    expect(missing).toEqual([]);
+  });
+
+  it("once validated, moves on to the next contract to verify", async () => {
+    const user = userEvent.setup();
+    const NEXT = "44444444-4444-4444-4444-444444444444";
+    const done = reading({ status: "done", fields: reading({}).fields.map((f) => ({ ...f, decision: "accept" as const })) });
+    const api = client({
+      getDocumentReading: vi.fn().mockResolvedValue(ok(done)),
+      listContractsV4: vi.fn().mockResolvedValue(ok({ rows: [], document: { documentId: NEXT, file: "Google_Cloud.pdf", status: "review", flagged: 2, reading: 1, toReview: 1 } })),
+    });
+    renderAt(
+      `/contracts/review/${DOC}`,
+      <>
+        <Route path={`/contracts/review/${DOC}`} element={<ReviewRoute apiClient={api} />} />
+        <Route path={`/contracts/review/${NEXT}`} element={<div data-testid="next-review" />} />
+      </>,
+    );
+
+    expect(await screen.findByTestId("review-next")).toHaveTextContent("Ancora 2 contratti da validare · il prossimo: Google_Cloud.pdf");
+    expect(screen.getByRole("button", { name: "Apri il contratto" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Torna ai contratti" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Vai subito al prossimo" }));
+    expect(await screen.findByTestId("next-review")).toBeInTheDocument();
+    expect(missing).toEqual([]);
+  });
+
+  it("opens the next contract by itself after a short pause", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const NEXT = "44444444-4444-4444-4444-444444444444";
+      const done = reading({ status: "done", fields: reading({}).fields.map((f) => ({ ...f, decision: "accept" as const })) });
+      const api = client({
+        getDocumentReading: vi.fn().mockResolvedValue(ok(done)),
+        listContractsV4: vi.fn().mockResolvedValue(ok({ rows: [], document: { documentId: NEXT, file: "Google_Cloud.pdf", status: "review", flagged: 2, reading: 0, toReview: 1 } })),
+      });
+      renderAt(
+        `/contracts/review/${DOC}`,
+        <>
+          <Route path={`/contracts/review/${DOC}`} element={<ReviewRoute apiClient={api} />} />
+          <Route path={`/contracts/review/${NEXT}`} element={<div data-testid="next-review" />} />
+        </>,
+      );
+      expect(await screen.findByText(/si apre tra 4 s/)).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(4100);
+      expect(await screen.findByTestId("next-review")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("offers another upload when the document cannot be read", async () => {

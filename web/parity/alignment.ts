@@ -18,6 +18,18 @@ export const D9_SHOTS: ReadonlySet<string> = new Set([
   '19-rinnovi-con-dati',
 ]);
 
+/**
+ * Approved deviation D11 (PARITY.md): Revisione puts the contract page beside the field, explains how
+ * the value was read, and once validated moves on to the next contract instead of offering "Torna a
+ * Oggi". The prototype's pixels no longer describe these shots either, so they get the same layout
+ * rules (no sideways scroll, no cut text) instead of a pixel comparison.
+ */
+export const D11_SHOTS: ReadonlySet<string> = new Set([
+  '03-revisione-campo-1',
+  '04-revisione-campo-2',
+  '05-contratto-validato',
+]);
+
 /** The layout faults on the screen in view; empty when the D9 rules hold. */
 export async function alignmentFaults(page: Page): Promise<string[]> {
   return page.evaluate(() => {

@@ -182,4 +182,42 @@ export const IT_CONTRACTS4: Readonly<Record<string, string>> = {
   "Expired on {date}: plan a new contract if you still use the service":
     "Scaduto il {date}: pianifica un nuovo contratto se usi ancora il servizio",
   "Negotiate a new contract before {date}": "Negozia un nuovo contratto prima del {date}",
+  // Revisione: the contract page beside the field, Raffa's reasoning, the queue of contracts to validate
+  "Contract page": "Pagina del contratto",
+  "Previous page": "Pagina precedente",
+  "Next page": "Pagina successiva",
+  "Page {page}": "Pagina {page}",
+  "Open the whole document": "Apri il documento intero",
+  "Also highlighted on": "Evidenziato anche a",
+  "page {page}": "pagina {page}",
+  "Page {page} of the contract": "Pagina {page} del contratto",
+  "Loading the page…": "Carico la pagina…",
+  "The page image is not available: check the quoted passage beside it.":
+    "L’immagine della pagina non è disponibile: controlla il passaggio citato qui accanto.",
+  "{n} contracts to validate, this one included": "{n} contratti da validare, compreso questo",
+  "The passage I read": "Il passaggio che ho letto",
+  "see page {page}": "vedi pagina {page}",
+  "How I read it": "Come l’ho letto",
+  "Written in the contract": "Scritto nel contratto",
+  "Worked out from other passages": "Ricavato da altri passaggi",
+  "Not written in the contract": "Non scritto nel contratto",
+  "1 contract still to validate": "Ancora 1 contratto da validare",
+  "{n} contracts still to validate": "Ancora {n} contratti da validare",
+  "it opens in {s} s": "si apre tra {s} s",
+  "All your contracts are validated.": "Tutti i tuoi contratti sono validati.",
+  "Next contract now": "Vai subito al prossimo",
+  "Read in the highlighted passage on page {page}: compare the value with the words in yellow.":
+    "Letto nel passaggio evidenziato a pagina {page}: confronta il valore con le parole evidenziate.",
+  "Read in the highlighted passage: compare the value with the words in yellow.":
+    "Letto nel passaggio evidenziato: confronta il valore con le parole evidenziate.",
+  "No passage of the contract states this value: Raffa inferred it from the rest of the document. Confirm it only if you know it is right, otherwise correct it.":
+    "Nessun passaggio del contratto riporta questo valore: Raffa l’ha dedotto dal resto del documento. Confermalo solo se sai che è giusto, altrimenti correggilo.",
+  "The contract does not write this date. I read {value}, but the end of the term ({end}) minus the {days}-day notice period gives {expected}: check which one is right.":
+    "Il contratto non scrive questa data. Ho letto {value}, ma la fine del periodo ({end}) meno i {days} giorni di preavviso dà {expected}: verifica quale è giusta.",
+  "The contract does not write this date: I worked it out as the end of the term ({end}) minus the {days}-day notice period. Check both passages below.":
+    "Il contratto non scrive questa data: l’ho calcolata come fine del periodo ({end}) meno i {days} giorni di preavviso. Controlla entrambi i passaggi qui sotto.",
+  "The contract does not write this date: it states a {days}-day notice period, so I counted back {days} days from the end of the term. Check the end of the term too.":
+    "Il contratto non scrive questa data: indica un preavviso di {days} giorni, quindi ho contato {days} giorni a ritroso dalla fine del periodo. Controlla anche la fine del periodo.",
+  "The contract does not write this date: I worked it out from the end of the term ({end}), but the notice period is not clearly stated. Check the notice clause.":
+    "Il contratto non scrive questa data: l’ho ricavata dalla fine del periodo ({end}), ma il preavviso non è indicato chiaramente. Controlla la clausola di disdetta.",
 };
