@@ -142,9 +142,13 @@ public sealed class CaseMailAddressRecordConfiguration : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<CaseMailAddressRecord> builder)
     {
-        CaseTableMapping.Ids(builder, "case_mail_address");
+        builder.ToTable("case_mail_address");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).HasConversion(ValueConverters.EntityIdConverter).ValueGeneratedNever();
+        builder.Property(e => e.TenantId).HasConversion(ValueConverters.TenantIdConverter);
         builder.Property(e => e.CaseId).HasConversion(ValueConverters.EntityIdConverter);
         builder.Property(e => e.Token).IsRequired().HasMaxLength(40);
+        builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.Token).IsUnique();
         builder.HasIndex(e => new { e.TenantId, e.CaseId }).IsUnique();
     }
