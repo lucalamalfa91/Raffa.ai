@@ -16,7 +16,10 @@ public static class NotificationChannelKinds
     public const string Teams = "teams";
     public const string Slack = "slack";
 
-    public static readonly IReadOnlyList<string> All = [WebPush, Email, Teams, Slack];
+    /// <summary>A Teams channel the person chose, posted to with their connected Microsoft account (no webhook).</summary>
+    public const string TeamsAccount = "teams_account";
+
+    public static readonly IReadOnlyList<string> All = [WebPush, Email, Teams, Slack, TeamsAccount];
 }
 
 /// <summary>What happened, for one person.</summary>
@@ -25,7 +28,7 @@ public sealed record NotificationMessage(string Kind, string Title, string Body,
 
 /// <summary>One delivery of a notification to one external channel; the target is in clear (never stored so).</summary>
 public sealed record NotificationDelivery(
-    Guid TenantId, Guid ChannelId, string ChannelKind, string Target, NotificationMessage Message, string? AbsoluteLink);
+    Guid TenantId, Guid ChannelId, string ChannelKind, string Target, NotificationMessage Message, string? AbsoluteLink, string? UserIdentity = null);
 
 /// <summary>Delivers to external channels in the background (the host's queue and senders).</summary>
 public interface INotificationDispatcher
@@ -114,7 +117,7 @@ public sealed class NotificationService(
         {
             if (protector.Unprotect(channel.TargetProtected) is { } target)
             {
-                dispatcher.Enqueue(new NotificationDelivery(tenantId.Value, channel.Id.Value, channel.Kind, target, message, absolute));
+                dispatcher.Enqueue(new NotificationDelivery(tenantId.Value, channel.Id.Value, channel.Kind, target, message, absolute, channel.UserIdentity));
             }
         }
     }
@@ -274,6 +277,8 @@ public sealed class NotificationService(
                     : "Paste the Teams Workflows webhook URL (https://…logic.azure.com/… or …powerplatform.com/…).";
             case NotificationChannelKinds.WebPush:
                 return WebPushSubscription.TryParse(target) is null ? "The browser did not give a valid push subscription." : null;
+            case NotificationChannelKinds.TeamsAccount:
+                return TeamsChannelTarget.TryParse(target) is null ? "Choose a Teams team and channel." : null;
             default:
                 return "Unknown channel.";
         }
@@ -291,6 +296,7 @@ public sealed class NotificationService(
         NotificationChannelKinds.Email => target,
         NotificationChannelKinds.Slack => "Slack",
         NotificationChannelKinds.Teams => "Microsoft Teams",
+        NotificationChannelKinds.TeamsAccount => TeamsChannelTarget.TryParse(target)?.Label ?? "Microsoft Teams",
         _ => "Browser",
     };
 
@@ -318,6 +324,23 @@ public sealed record WebPushSubscription(string Endpoint, string P256dh, string 
                 : null;
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+}
+
+/// <summary>The Teams channel of a <see cref="NotificationChannelKinds.TeamsAccount"/> channel.</summary>
+public sealed record TeamsChannelTarget(string TeamId, string ChannelId, string? Label)
+{
+    public static TeamsChannelTarget? TryParse(string json)
+    {
+        try
+        {
+            var t = System.Text.Json.JsonSerializer.Deserialize<TeamsChannelTarget>(json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            return t is { TeamId.Length: > 0, ChannelId.Length: > 0 } ? t : null;
+        }
+        catch (System.Text.Json.JsonException)
         {
             return null;
         }

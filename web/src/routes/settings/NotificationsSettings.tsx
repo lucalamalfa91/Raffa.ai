@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
-import type { MailboxStatus, NotificationChannelKind, NotificationSettings } from "../../api/outreach";
+import type { MailboxStatus, NotificationChannelKind, NotificationSettings, TeamsChannel } from "../../api/outreach";
 import { useTenantId } from "../../routes/contracts/contracts4";
 import { useI18n } from "../../i18n/I18nProvider";
 import { pushSupported, subscribeToPush } from "../../notifications/webPush";
@@ -17,6 +17,7 @@ const KIND_LABELS: Record<NotificationChannelKind, string> = {
   webpush: "Browser",
   email: "Email",
   teams: "Microsoft Teams",
+  teams_account: "Microsoft Teams",
   slack: "Slack",
 };
 
@@ -31,7 +32,7 @@ const MAILBOX_RESULTS: Record<string, string> = {
 /**
  * Impostazioni → Email e notifiche (renewal plan F2/F3b): the person's company mailbox (Raffa sends the
  * approved negotiation emails from it, never reads it) and where they want to hear that a supplier answered:
- * in the app always, plus this browser, email, a Teams or a Slack channel.
+ * in the app always, plus this browser, email, a Teams channel (with their Microsoft account) or Slack.
  */
 export default function NotificationsSettings({ apiClient }: NotificationsSettingsProps) {
   const tenantId = useTenantId() ?? undefined;
@@ -41,8 +42,10 @@ export default function NotificationsSettings({ apiClient }: NotificationsSettin
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [webhook, setWebhook] = useState<{ teams: string; slack: string; email: string }>({ teams: "", slack: "", email: "" });
+  const [webhook, setWebhook] = useState<{ slack: string; email: string }>({ slack: "", email: "" });
   const [busy, setBusy] = useState(false);
+  const [teamsChannels, setTeamsChannels] = useState<TeamsChannel[] | null>(null);
+  const [teamsChoice, setTeamsChoice] = useState("");
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -96,6 +99,7 @@ export default function NotificationsSettings({ apiClient }: NotificationsSettin
       const r = await apiClient.addNotificationChannel(tenantId, { kind, target, label });
       if (!r.ok) return r.error;
       setWebhook((w) => ({ ...w, [kind]: "" }));
+      setTeamsChoice("");
       setMessage(t("Channel added. Send a test to check it."));
       return null;
     });
@@ -139,9 +143,16 @@ export default function NotificationsSettings({ apiClient }: NotificationsSettin
                 <strong>{mb.address}</strong> · {PROVIDER_LABELS[mb.provider] ?? mb.provider}
               </div>
               {mb.needsReconnect ? <div className="st-note st-error">{t("The connection has expired: connect the mailbox again to keep sending from Raffa.")}</div> : null}
-              <p className="st-sub">{t("Raffa only has permission to send: it never reads your mailbox. The supplier's replies reach the case through the case address Raffa puts in copy.")}</p>
+              {!mb.needsReconnect && mb.needsUpgrade ? (
+                <div className="st-note">{t("Connect again to let Raffa also read the supplier's replies and post to Teams.")}</div>
+              ) : null}
+              <p className="st-sub">
+                {mb.canReceive
+                  ? t("Raffa sends the approved emails from this mailbox and reads only the replies to the emails it sent for a case — never the rest of your mail. Each reply waits for you to confirm it belongs to the case.")
+                  : t("Raffa sends the approved emails from this mailbox. The supplier's replies are added by hand (paste or upload the email).")}
+              </p>
               <div className="st-actions">
-                {mb.needsReconnect ? (
+                {mb.needsReconnect || mb.needsUpgrade ? (
                   <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void connect(mb.provider)}>
                     {t("Connect again")}
                   </button>
@@ -153,7 +164,9 @@ export default function NotificationsSettings({ apiClient }: NotificationsSettin
             </>
           ) : mailbox?.available ? (
             <>
-              <p className="st-sub">{t("Raffa only asks for permission to send: it never reads your mailbox.")}</p>
+              <p className="st-sub">
+                {t("Optional. Connect your company mailbox and Raffa sends the approved emails from your address and brings the supplier's replies into the case. Without it you keep copying the email and pasting or uploading the reply.")}
+              </p>
               <div className="st-actions">
                 {mailbox.providers.map((p) => (
                   <button key={p} type="button" className="btn btn-primary" disabled={busy} onClick={() => void connect(p)}>
@@ -215,16 +228,44 @@ export default function NotificationsSettings({ apiClient }: NotificationsSettin
             </div>
           ) : null}
 
-          {available.has("teams") ? (
+          {available.has("teams_account") ? (
             <div className="st-add">
-              <label>
-                {t("Microsoft Teams — Workflows webhook URL")}
-                <input className="input" value={webhook.teams} placeholder="https://…logic.azure.com/…" onChange={(e) => setWebhook((w) => ({ ...w, teams: e.target.value }))} />
-              </label>
-              <span className="st-help">{t("In Teams: the channel or chat → … → Workflows → “Post to a channel when a webhook request is received”, then copy the URL here.")}</span>
-              <button type="button" className="btn btn-secondary" disabled={busy || !webhook.teams.trim()} onClick={() => void add("teams", webhook.teams)}>
-                {t("Add Teams")}
-              </button>
+              <span className="st-help">{t("Microsoft Teams: Raffa posts the notices in a channel you choose, with your Microsoft account.")}</span>
+              {mb?.provider === "microsoft" && mb.canPostToTeams ? (
+                teamsChannels === null ? (
+                  <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => void run(async () => {
+                    if (!tenantId || !apiClient.getTeamsChannels) return null;
+                    const r = await apiClient.getTeamsChannels(tenantId);
+                    if (!r.ok) return r.error;
+                    setTeamsChannels(r.body);
+                    return r.body.length === 0 ? t("Your Microsoft account is in no Teams channel.") : null;
+                  })}>
+                    {t("Choose a Teams channel")}
+                  </button>
+                ) : (
+                  <>
+                    <label>
+                      {t("Teams channel")}
+                      <select className="input" value={teamsChoice} onChange={(e) => setTeamsChoice(e.target.value)}>
+                        <option value="">{t("Choose…")}</option>
+                        {teamsChannels.map((c) => (
+                          <option key={c.teamId + "/" + c.channelId} value={c.teamId + "/" + c.channelId}>
+                            {c.teamName} · {c.channelName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button type="button" className="btn btn-secondary" disabled={busy || !teamsChoice} onClick={() => {
+                      const c = teamsChannels.find((x) => x.teamId + "/" + x.channelId === teamsChoice);
+                      if (c) void add("teams_account", JSON.stringify({ teamId: c.teamId, channelId: c.channelId, label: `${c.teamName} · ${c.channelName}` }));
+                    }}>
+                      {t("Add Teams")}
+                    </button>
+                  </>
+                )
+              ) : (
+                <span className="st-help">{mb ? t("Connect your Microsoft account again (above) to choose a Teams channel.") : t("Connect your Microsoft account (above) to choose a Teams channel.")}</span>
+              )}
             </div>
           ) : null}
 

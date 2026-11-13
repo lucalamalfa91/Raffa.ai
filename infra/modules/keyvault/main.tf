@@ -171,12 +171,13 @@ resource "azurerm_key_vault_secret" "jev_api_key" {
 }
 
 # Renewal plan F2/F3/F3b (docs/architecture/renewal-in-app-mail-plan.md): the
-# company-mailbox, inbound-mail and notification secrets. One secret per
-# non-empty entry (the map keys are the vault secret names, never secret
-# themselves); an environment that leaves them empty still applies and keeps
-# those features off. API app only (modules/containerapps outreach_secret_ids).
+# company-mailbox, inbound-mail and notification secrets. One secret per name in
+# outreach_secret_names (known at plan time even when a value is not, e.g. a
+# client secret Terraform creates in the same apply); an environment that
+# leaves them empty still applies and keeps those features off. API app only
+# (modules/containerapps outreach_secret_ids).
 resource "azurerm_key_vault_secret" "outreach" {
-  for_each = nonsensitive(toset([for name, value in var.outreach_secrets : name if value != ""]))
+  for_each = var.outreach_secret_names
 
   name         = each.key
   value        = var.outreach_secrets[each.key]

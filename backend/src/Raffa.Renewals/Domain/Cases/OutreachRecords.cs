@@ -21,6 +21,9 @@ public sealed class MailboxConnectionRecord : TenantScopedEntity
 
     public required string RefreshTokenProtected { get; set; }
 
+    /// <summary>The permissions the person granted (space-separated, as the provider reports them).</summary>
+    public string? Scopes { get; set; }
+
     public required DateTimeOffset ConnectedAt { get; set; }
 
     public DateTimeOffset? LastUsedAt { get; set; }
@@ -140,4 +143,32 @@ public sealed class NotificationChannelRecord : TenantScopedEntity
     public DateTimeOffset? LastDeliveredAt { get; set; }
 
     public string? LastError { get; set; }
+}
+
+/// <summary>
+/// <c>case_mail_watch</c>: a conversation in a person's connected mailbox that Raffa started for a case, whose
+/// replies Raffa reads (only those) until the case closes or the watch expires. Like
+/// <see cref="CaseMailAddressRecord"/> it is read by the background reader before any workspace is known and
+/// holds no customer content (ids only), so it is not a <see cref="TenantScopedEntity"/> and has no RLS policy.
+/// </summary>
+public sealed class CaseMailWatchRecord
+{
+    public EntityId Id { get; set; } = EntityId.New();
+
+    public required TenantId TenantId { get; set; }
+
+    public required EntityId CaseId { get; set; }
+
+    /// <summary>The person whose mailbox holds the conversation.</summary>
+    public required string UserIdentity { get; set; }
+
+    public required string Provider { get; set; }
+
+    public required string ConversationId { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset? LastCheckedAt { get; set; }
+
+    public required DateTimeOffset ActiveUntil { get; set; }
 }

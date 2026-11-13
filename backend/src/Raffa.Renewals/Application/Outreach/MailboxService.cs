@@ -8,7 +8,12 @@ using Raffa.SharedKernel.Tenancy;
 namespace Raffa.Renewals.Application.Outreach;
 
 /// <summary>A person's connected mailbox as the screens show it (never the token).</summary>
-public sealed record MailboxInfo(string Provider, string Address, string? DisplayName, DateTimeOffset ConnectedAt, DateTimeOffset? LastUsedAt, bool NeedsReconnect);
+/// <param name="CanReceive">The connection may read the supplier's replies (Raffa reads only the conversations it started).</param>
+/// <param name="CanPostToTeams">The connection may post notifications to a Teams channel the person chooses.</param>
+/// <param name="NeedsUpgrade">Connected before these permissions existed: connecting again grants them.</param>
+public sealed record MailboxInfo(
+    string Provider, string Address, string? DisplayName, DateTimeOffset ConnectedAt, DateTimeOffset? LastUsedAt, bool NeedsReconnect,
+    bool CanReceive = false, bool CanPostToTeams = false, bool NeedsUpgrade = false);
 
 /// <summary><c>GET /api/mailbox</c>: the caller's mailbox and the providers this deployment offers.</summary>
 public sealed record MailboxStatus(MailboxInfo? Mailbox, IReadOnlyList<string> Providers, bool Available);
@@ -17,9 +22,9 @@ public sealed record MailboxStatus(MailboxInfo? Mailbox, IReadOnlyList<string> P
 public sealed record MailboxConnectOutcome(bool Connected, string RedirectUrl, string? Error);
 
 /// <summary>
-/// Company mailboxes (plan F2): a person connects their Microsoft 365 or Google mailbox with the send-only
-/// permission, and Raffa sends the approved case emails from it — the supplier always sees the company
-/// address. The OAuth state is signed and carries the workspace and the person (the callback is a browser
+/// Company mailboxes (plan F2/F3): a person may connect their Microsoft 365 mailbox (optional — the manual
+/// copy / paste / upload path always stays) and Raffa sends the approved case emails from it — the supplier
+/// always sees the company address — and reads the supplier's replies in the conversations it started. The OAuth state is signed and carries the workspace and the person (the callback is a browser
 /// redirect without the API bearer token) and expires after 10 minutes.
 /// </summary>
 public sealed class MailboxService(
@@ -43,13 +48,22 @@ public sealed class MailboxService(
         var row = await db.MailboxConnections.AsNoTracking()
             .FirstOrDefaultAsync(x => x.UserIdentity == identity, ct).ConfigureAwait(false);
         return new MailboxStatus(
-            row is null ? null : Info(row),
+            row is null ? null : Info(row, Provider(row.Provider)),
             Available ? providers.Where(p => p.IsConfigured).Select(p => p.Name).ToList() : [],
             Available);
     }
 
-    internal static MailboxInfo Info(MailboxConnectionRecord row) =>
-        new(row.Provider, row.Address, row.DisplayName, row.ConnectedAt, row.LastUsedAt, row.LastError == "reconnect");
+    internal static MailboxInfo Info(MailboxConnectionRecord row, IMailboxProvider? provider)
+    {
+        var receive = provider?.CanReceive(row.Scopes) ?? false;
+        var teams = provider?.CanPostToTeams(row.Scopes) ?? false;
+        return new(row.Provider, row.Address, row.DisplayName, row.ConnectedAt, row.LastUsedAt, row.LastError == "reconnect",
+            receive, teams, provider is not null && row.Provider == "microsoft" && (!receive || !teams));
+    }
+
+    internal MailboxInfo InfoOf(MailboxConnectionRecord row) => Info(row, Provider(row.Provider));
+
+    internal IMailboxProvider? ProviderOf(MailboxConnectionRecord row) => Provider(row.Provider);
 
     /// <summary><c>POST /api/mailbox/connect</c>: the provider's consent page URL, or null when unavailable.</summary>
     public string? BeginConnect(TenantId tenantId, string identity, string provider, string? loginHint)
@@ -116,6 +130,7 @@ public sealed class MailboxService(
         row.Address = grant.Address;
         row.DisplayName = grant.DisplayName;
         row.RefreshTokenProtected = protector.Protect(grant.RefreshToken);
+        row.Scopes = grant.Scopes;
         row.ConnectedAt = clock.UtcNow;
         row.LastError = null;
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
@@ -143,20 +158,30 @@ public sealed class MailboxService(
         return await db.MailboxConnections.FirstOrDefaultAsync(x => x.UserIdentity == identity, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Sends from the connection; keeps a rotated token and records a revoked grant.</summary>
-    internal async Task SendAsync(TenantId tenantId, MailboxConnectionRecord row, OutgoingMail mail, CancellationToken ct)
+    /// <summary>
+    /// Runs <paramref name="work"/> with a fresh access token of the connection: keeps a rotated refresh
+    /// token and the granted permissions, and records a revoked grant ("reconnect") or a refusal.
+    /// </summary>
+    internal async Task<T> WithTokenAsync<T>(TenantId tenantId, MailboxConnectionRecord row, Func<IMailboxProvider, string, Task<T>> work, CancellationToken ct)
     {
         var p = Provider(row.Provider) ?? throw new MailboxSendException("This mailbox provider is not available.", false);
-        var token = protector?.Unprotect(row.RefreshTokenProtected) ?? throw new MailboxSendException("The mailbox must be connected again.", true);
+        var refresh = protector?.Unprotect(row.RefreshTokenProtected) ?? throw new MailboxSendException("The mailbox must be connected again.", true);
         using var scope = tenantContext.BeginScope(tenantId);
+        T result;
         try
         {
-            var rotated = await p.SendAsync(token, mail, ct).ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(rotated) && rotated != token)
+            var token = await p.AccessTokenAsync(refresh, ct).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(token.RotatedRefreshToken) && token.RotatedRefreshToken != refresh)
             {
-                row.RefreshTokenProtected = protector!.Protect(rotated);
+                row.RefreshTokenProtected = protector!.Protect(token.RotatedRefreshToken);
             }
 
+            if (!string.IsNullOrWhiteSpace(token.Scopes))
+            {
+                row.Scopes = token.Scopes;
+            }
+
+            result = await work(p, token.AccessToken).ConfigureAwait(false);
             row.LastUsedAt = clock.UtcNow;
             row.LastError = null;
         }
@@ -168,6 +193,36 @@ public sealed class MailboxService(
         }
 
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        return result;
+    }
+
+    /// <summary>Sends from the connection.</summary>
+    internal Task<SentMail> SendAsync(TenantId tenantId, MailboxConnectionRecord row, OutgoingMail mail, CancellationToken ct) =>
+        WithTokenAsync(tenantId, row, (p, token) => p.SendAsync(token, mail, ct), ct);
+
+    /// <summary><c>GET /api/mailbox/teams-channels</c>: the Teams channels the caller can post to; null when the
+    /// connection cannot (not Microsoft, or connected before the Teams permissions).</summary>
+    public async Task<IReadOnlyList<TeamsChannel>?> TeamsChannelsAsync(TenantId tenantId, string identity, CancellationToken ct = default)
+    {
+        var row = await ConnectionAsync(tenantId, identity, ct).ConfigureAwait(false);
+        if (row is null || Provider(row.Provider) is not { } p || !p.CanPostToTeams(row.Scopes))
+        {
+            return null;
+        }
+
+        return await WithTokenAsync(tenantId, row, (provider, token) => provider.TeamsChannelsAsync(token, ct), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Posts to a Teams channel as the person (the notification sender).</summary>
+    public async Task PostToTeamsAsync(TenantId tenantId, string identity, string teamId, string channelId, string html, CancellationToken ct = default)
+    {
+        var row = await ConnectionAsync(tenantId, identity, ct).ConfigureAwait(false)
+                  ?? throw new MailboxSendException("No Microsoft account is connected.", true);
+        await WithTokenAsync(tenantId, row, async (p, token) =>
+        {
+            await p.PostToTeamsAsync(token, teamId, channelId, html, ct).ConfigureAwait(false);
+            return true;
+        }, ct).ConfigureAwait(false);
     }
 
     private string RedirectUri(string provider) => options.ApiPublicBaseUrl!.TrimEnd('/') + "/api/mailbox/callback/" + provider;

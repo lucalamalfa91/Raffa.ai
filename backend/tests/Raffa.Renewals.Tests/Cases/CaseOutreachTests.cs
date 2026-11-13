@@ -297,6 +297,76 @@ public sealed class CaseOutreachTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Replies_in_the_connected_mailbox_conversation_become_pending_emails_of_the_case_once()
+    {
+        var s = await ServicesAsync();
+        var e = await ApprovedFirstEmailAsync(s);
+        await ConnectMartaAsync(s);
+        e = (await s.Mail.SendEmailAsync(_tenant, MartaOid, e.CaseId, 0, e.Version)).Envelope!;
+        _mailbox.Conversation.Add(new MailboxMessage("m-own", "<sent-1@acme.example>", "marta@acme.example", "Marta", "Splunk renewal", Now.AddMinutes(1)));
+        _mailbox.Conversation.Add(new MailboxMessage("m-1", "<reply-1@splunk.example>", "anna@splunk.example", "Anna", "Re: Splunk renewal", Now.AddHours(2)));
+
+        var added = await s.Mail.PollMailboxesAsync(_ => ("We can offer 5% off for 24 months.", ["draft.pdf"]));
+
+        Assert.Equal(1, added);
+        var pending = Assert.Single((await s.Mail.StatusAsync(_tenant, MartaOid, e.CaseId))!.Inbound);
+        Assert.Equal("Anna <anna@splunk.example>", pending.From);
+        Assert.Equal(["draft.pdf"], pending.Attachments);
+        Assert.Contains((await s.Notifications.FeedAsync(_tenant, MartaOid)).Items, n => n.Kind == "supplier_message");
+
+        // Read again later: nothing twice.
+        await using (var db = Db())
+        {
+            foreach (var w in await db.CaseMailWatches.ToListAsync())
+            {
+                w.LastCheckedAt = Now.AddMinutes(-10);
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal(0, await s.Mail.PollMailboxesAsync(_ => ("x", [])));
+        var accepted = await s.Mail.AcceptInboundAsync(_tenant, MartaOid, e.CaseId, pending.Id, null, _ => null);
+        Assert.True(accepted.Kind == CaseResultKind.Ok, accepted.Error);
+    }
+
+    [Fact]
+    public async Task A_send_only_connection_asks_to_connect_again_and_is_not_read()
+    {
+        _mailbox.GrantScopes = "openid https://graph.microsoft.com/Mail.Send";
+        var s = await ServicesAsync();
+        var e = await ApprovedFirstEmailAsync(s);
+        await ConnectMartaAsync(s);
+        var info = (await s.Mailboxes.StatusAsync(_tenant, MartaOid)).Mailbox!;
+        Assert.False(info.CanReceive);
+        Assert.True(info.NeedsUpgrade);
+        await s.Mail.SendEmailAsync(_tenant, MartaOid, e.CaseId, 0, e.Version);
+        _mailbox.Conversation.Add(new MailboxMessage("m-1", "<reply-1@splunk.example>", "anna@splunk.example", "Anna", "Re", Now.AddHours(2)));
+        Assert.Equal(0, await s.Mail.PollMailboxesAsync(_ => ("x", [])));
+        Assert.Null(await s.Mailboxes.TeamsChannelsAsync(_tenant, MartaOid));
+    }
+
+    [Fact]
+    public async Task Teams_notifications_go_to_the_channel_chosen_with_the_microsoft_account()
+    {
+        var s = await ServicesAsync();
+        await ConnectMartaAsync(s);
+        var channels = (await s.Mailboxes.TeamsChannelsAsync(_tenant, MartaOid))!;
+        var channel = Assert.Single(channels);
+        Assert.NotNull((await s.Notifications.AddChannelAsync(_tenant, MartaOid, NotificationChannelKinds.TeamsAccount, "{}", null)).Error);
+        var target = System.Text.Json.JsonSerializer.Serialize(new { teamId = channel.TeamId, channelId = channel.ChannelId, label = "Procurement · Renewals" });
+        var (added, error) = await s.Notifications.AddChannelAsync(_tenant, MartaOid, NotificationChannelKinds.TeamsAccount, target, null);
+        Assert.Null(error);
+        Assert.Equal("Procurement · Renewals", added!.Label);
+
+        await s.Notifications.TestAsync(_tenant, MartaOid);
+        var delivery = Assert.Single(_dispatcher.Deliveries);
+        Assert.Equal(MartaOid, delivery.UserIdentity);
+        await s.Mailboxes.PostToTeamsAsync(_tenant, MartaOid, "t1", "c1", "<b>hi</b>");
+        Assert.Equal(("t1", "c1", "<b>hi</b>"), Assert.Single(_mailbox.Posts));
+    }
+
+    [Fact]
     public void The_secret_protector_round_trips_and_refuses_tampering()
     {
         var p = SecretProtector.From(_options)!;
@@ -314,9 +384,17 @@ public sealed class CaseOutreachTests : IAsyncLifetime
 
     private sealed class FakeMailbox : IMailboxProvider
     {
+        public const string AllScopes = "openid https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read https://graph.microsoft.com/Team.ReadBasic.All https://graph.microsoft.com/Channel.ReadBasic.All https://graph.microsoft.com/ChannelMessage.Send";
+
         public List<OutgoingMail> Sent { get; } = [];
 
         public List<string> TokensUsed { get; } = [];
+
+        public List<(string Team, string Channel, string Html)> Posts { get; } = [];
+
+        public List<MailboxMessage> Conversation { get; } = [];
+
+        public string GrantScopes { get; set; } = AllScopes;
 
         public MailboxSendException? Fail { get; set; }
 
@@ -327,9 +405,9 @@ public sealed class CaseOutreachTests : IAsyncLifetime
         public string AuthorizeUrl(string state, string redirectUri, string? loginHint) => "https://login.test/authorize?redirect_uri=" + Uri.EscapeDataString(redirectUri) + "&state=" + Uri.EscapeDataString(state);
 
         public Task<MailboxGrant> ExchangeCodeAsync(string code, string redirectUri, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new MailboxGrant("refresh-1", "marta@acme.example", "Marta Keller"));
+            Task.FromResult(new MailboxGrant("refresh-1", "marta@acme.example", "Marta Keller", GrantScopes));
 
-        public Task<string?> SendAsync(string refreshToken, OutgoingMail mail, CancellationToken cancellationToken = default)
+        public Task<MailboxToken> AccessTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
         {
             if (Fail is not null)
             {
@@ -337,8 +415,34 @@ public sealed class CaseOutreachTests : IAsyncLifetime
             }
 
             TokensUsed.Add(refreshToken);
+            return Task.FromResult(new MailboxToken("access", "refresh-2", null));
+        }
+
+        public Task<SentMail> SendAsync(string accessToken, OutgoingMail mail, CancellationToken cancellationToken = default)
+        {
             Sent.Add(mail);
-            return Task.FromResult<string?>("refresh-2");
+            return Task.FromResult(new SentMail("conv-1", "<sent-1@acme.example>"));
+        }
+
+        private static bool Has(string? scopes, string scope) => scopes?.Contains("/" + scope, StringComparison.Ordinal) == true;
+
+        public bool CanReceive(string? scopes) => Has(scopes, "Mail.Read");
+
+        public bool CanPostToTeams(string? scopes) => Has(scopes, "ChannelMessage.Send");
+
+        public Task<IReadOnlyList<MailboxMessage>> ConversationAsync(string accessToken, string conversationId, DateTimeOffset since, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<MailboxMessage>>(conversationId == "conv-1" ? Conversation.Where(m => m.ReceivedAt > since).ToList() : []);
+
+        public Task<byte[]?> RawAsync(string accessToken, string messageId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<byte[]?>(Encoding.UTF8.GetBytes("raw " + messageId));
+
+        public Task<IReadOnlyList<TeamsChannel>> TeamsChannelsAsync(string accessToken, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<TeamsChannel>>([new TeamsChannel("t1", "Procurement", "c1", "Renewals")]);
+
+        public Task PostToTeamsAsync(string accessToken, string teamId, string channelId, string html, CancellationToken cancellationToken = default)
+        {
+            Posts.Add((teamId, channelId, html));
+            return Task.CompletedTask;
         }
     }
 

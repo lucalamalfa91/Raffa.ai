@@ -50,37 +50,60 @@ public sealed class OutreachAdapterTests
     }
 
     [Fact]
-    public async Task Microsoft_exchanges_the_code_and_sends_the_mime_message_through_graph()
+    public async Task Microsoft_exchanges_the_code_sends_through_a_draft_and_reads_only_the_conversation()
     {
         var http = new RecordingHttp(request => request.RequestUri!.AbsoluteUri switch
         {
-            var u when u.Contains("/oauth2/v2.0/token") => Json(new { access_token = "at", refresh_token = "rt-new" }),
+            var u when u.Contains("/oauth2/v2.0/token") => Json(new { access_token = "at", refresh_token = "rt-new", scope = "https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Mail.Read" }),
             var u when u.StartsWith("https://graph.microsoft.com/v1.0/me?") => Json(new { mail = "marta@acme.example", displayName = "Marta Keller" }),
-            var u when u.EndsWith("/me/sendMail") => new HttpResponseMessage(HttpStatusCode.Accepted),
+            var u when u.EndsWith("/me/messages") && request.Method == HttpMethod.Post => Json(new { id = "draft-1", conversationId = "conv-1", internetMessageId = "<m1@acme>" }),
+            var u when u.EndsWith("/me/messages/draft-1/send") => new HttpResponseMessage(HttpStatusCode.Accepted),
+            var u when u.Contains("/me/messages?$filter=") => Json(new
+            {
+                value = new object[]
+                {
+                    new { id = "old", internetMessageId = "<old>", subject = "x", receivedDateTime = "2026-11-01T10:00:00Z", isDraft = false, from = new { emailAddress = new { address = "anna@splunk.example", name = "Anna" } } },
+                    new { id = "r1", internetMessageId = "<r1>", subject = "Re: x", receivedDateTime = "2026-11-20T10:00:00Z", isDraft = false, from = new { emailAddress = new { address = "anna@splunk.example", name = "Anna" } } },
+                },
+            }),
+            var u when u.EndsWith("/me/messages/r1/$value") => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.ASCII.GetBytes("MIME")) },
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         });
         var provider = new MicrosoftMailboxProvider(http, Options());
 
-        var url = provider.AuthorizeUrl("st", "https://api.raffa.test/api/mailbox/callback/microsoft", "marta@acme.example");
-        Assert.Contains("Mail.Send", Uri.UnescapeDataString(url));
-        Assert.DoesNotContain("Mail.Read", url);
+        var url = Uri.UnescapeDataString(provider.AuthorizeUrl("st", "https://api.raffa.test/api/mailbox/callback/microsoft", "marta@acme.example"));
+        Assert.Contains("Mail.Send", url);
+        Assert.Contains("Mail.Read", url);
+        Assert.Contains("ChannelMessage.Send", url);
         var grant = await provider.ExchangeCodeAsync("code", "https://api.raffa.test/api/mailbox/callback/microsoft");
         Assert.Equal(("rt-new", "marta@acme.example", "Marta Keller"), (grant.RefreshToken, grant.Address, grant.DisplayName));
+        Assert.True(provider.CanReceive(grant.Scopes));
+        Assert.False(provider.CanPostToTeams(grant.Scopes));
 
-        var rotated = await provider.SendAsync("rt-old", Mail());
-        Assert.Equal("rt-new", rotated);
-        var send = http.Requests.Single(r => r.Uri.EndsWith("/me/sendMail"));
-        Assert.Equal("Bearer at", send.Authorization);
-        var mime = MimeMessage.Load(new MemoryStream(Convert.FromBase64String(send.Body)));
-        Assert.Equal("r-abc123def456@in.raffa.test", mime.Cc.Mailboxes.Single().Address);
+        var token = await provider.AccessTokenAsync("rt-old");
+        Assert.Equal(("at", "rt-new"), (token.AccessToken, token.RotatedRefreshToken));
         Assert.Contains("refresh_token=rt-old", http.Requests.Last(r => r.Uri.Contains("/token")).Body);
+
+        var sent = await provider.SendAsync("at", Mail());
+        Assert.Equal("conv-1", sent.ConversationId);
+        var draft = http.Requests.Single(r => r.Uri.EndsWith("/me/messages"));
+        Assert.Equal("Bearer at", draft.Authorization);
+        var mime = MimeMessage.Load(new MemoryStream(Convert.FromBase64String(draft.Body)));
+        Assert.Equal("anna@supplier.example", mime.To.Mailboxes.Single().Address);
+        Assert.Contains(http.Requests, r => r.Uri.EndsWith("/me/messages/draft-1/send"));
+
+        var replies = await provider.ConversationAsync("at", "conv-1", new DateTimeOffset(2026, 11, 10, 0, 0, 0, TimeSpan.Zero));
+        var reply = Assert.Single(replies);
+        Assert.Equal(("r1", "anna@splunk.example"), (reply.Id, reply.FromAddress));
+        Assert.Contains("conversationId%20eq%20%27conv-1%27", http.Requests.Single(r => r.Uri.Contains("$filter=")).Uri);
+        Assert.Equal("MIME", Encoding.ASCII.GetString((await provider.RawAsync("at", "r1"))!));
     }
 
     [Fact]
     public async Task A_revoked_microsoft_grant_asks_to_reconnect()
     {
         var http = new RecordingHttp(_ => new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("{\"error\":\"invalid_grant\"}") });
-        var ex = await Assert.ThrowsAsync<MailboxSendException>(() => new MicrosoftMailboxProvider(http, Options()).SendAsync("rt", Mail()));
+        var ex = await Assert.ThrowsAsync<MailboxSendException>(() => new MicrosoftMailboxProvider(http, Options()).AccessTokenAsync("rt"));
         Assert.True(ex.Reconnect);
     }
 
@@ -98,7 +121,9 @@ public sealed class OutreachAdapterTests
         Assert.Contains("https://www.googleapis.com/auth/gmail.send", url);
         Assert.Contains("access_type=offline", url);
 
-        Assert.Null(await provider.SendAsync("grt", Mail()));
+        var token = await provider.AccessTokenAsync("grt");
+        Assert.Equal("gat", token.AccessToken);
+        Assert.Null((await provider.SendAsync(token.AccessToken, Mail())).ConversationId);
         var send = http.Requests.Single(r => r.Uri.Contains("messages/send"));
         var raw = JsonDocument.Parse(send.Body).RootElement.GetProperty("raw").GetString()!;
         var b64 = raw.Replace('-', '+').Replace('_', '/');

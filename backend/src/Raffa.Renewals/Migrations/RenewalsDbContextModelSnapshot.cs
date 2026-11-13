@@ -466,6 +466,66 @@ namespace Raffa.Renewals.Migrations
                     b.ToTable("case_mail_address", (string)null);
                 });
 
+            modelBuilder.Entity("Raffa.Renewals.Domain.Cases.CaseMailWatchRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ActiveUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("active_until");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<string>("ConversationId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("conversation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("LastCheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_checked_at");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("provider");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("UserIdentity")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("user_identity");
+
+                    b.HasKey("Id")
+                        .HasName("pk_case_mail_watch");
+
+                    b.HasIndex("ActiveUntil")
+                        .HasDatabaseName("ix_case_mail_watch_active_until");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_case_mail_watch_tenant_id");
+
+                    b.HasIndex("TenantId", "CaseId", "ConversationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_case_mail_watch_tenant_id_case_id_conversation_id");
+
+                    b.ToTable("case_mail_watch", (string)null);
+                });
+
             modelBuilder.Entity("Raffa.Renewals.Domain.Cases.CaseVendorMessageRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -622,6 +682,11 @@ namespace Raffa.Renewals.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("refresh_token_protected");
+
+                    b.Property<string>("Scopes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("scopes");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")

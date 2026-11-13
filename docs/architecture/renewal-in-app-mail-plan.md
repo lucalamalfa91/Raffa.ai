@@ -317,3 +317,22 @@ F1 è indipendente e si può iniziare subito; F2 e F3 sono il cuore della richie
   in-app resta sempre).
 - Una mail arrivata a un indirizzo di pratica sconosciuto viene scartata (registrata solo nel log).
 - WhatsApp rimandato (decisione dell'intervista).
+
+
+### Aggiornamento (13 nov 2026, pomeriggio): ricezione dalla casella collegata, Teams con l'account Microsoft
+
+Decisioni: **solo Microsoft 365** per ora (Raffa non ha un progetto Google Cloud: Google resta spento finché non
+viene configurato), **ricezione dalla casella collegata** (niente dominio), **Teams con lo stesso account
+Microsoft** (niente webhook), collegamento sempre **facoltativo** (senza, resta il flusso manuale).
+
+- L'utente collega Microsoft 365 una volta: permessi delegati `Mail.Send`, `Mail.Read`, `User.Read`,
+  `Team.ReadBasic.All`, `Channel.ReadBasic.All`, `ChannelMessage.Send` (nessuno richiede l'admin del cliente).
+  L'app Entra `raffa-<env>-mailbox` è creata da Terraform (`infra/modules/mailboxapp`).
+- **Invio**: bozza creata dal MIME e poi inviata, così Raffa conosce l'id della conversazione (`case_mail_watch`).
+- **Ricezione**: ogni 3 minuti l'API legge, per ogni conversazione avviata da Raffa, solo i messaggi di quella
+  conversazione arrivati dopo l'ultimo controllo, scarta quelli dell'utente stesso e aggiunge gli altri alla
+  pratica come *Nuova email del fornitore* da confermare, con notifica. Si ferma alla chiusura della pratica
+  o dopo 120 giorni. Un collegamento fatto prima di questi permessi chiede di ricollegare.
+- **Teams**: in *Impostazioni → Email e notifiche* l'utente sceglie team e canale; Raffa pubblica lì gli avvisi
+  come l'utente (Teams non avvisa l'autore dei propri messaggi: utile per un canale di team).
+- L'indirizzo della pratica via Resend resta disponibile ma non serve più.

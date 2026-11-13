@@ -396,6 +396,8 @@ builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.A
 builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.Api.Infrastructure.SlackWebhookSender>();
 builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.Api.Infrastructure.EmailNotificationSender>();
 builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.Api.Infrastructure.WebPushSender>();
+builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.Api.Infrastructure.TeamsAccountSender>();
+builder.Services.AddHostedService<Raffa.Api.Infrastructure.MailboxReaderService>();
 builder.Services.AddHostedService<Raffa.Api.Infrastructure.NotificationDeliveryService>();
 builder.Services.AddRenewalCases();
 builder.Services.AddScoped<Raffa.Renewals.Application.CaseWork.ICaseMemberDirectory, WorkspaceCaseMemberDirectory>();

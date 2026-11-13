@@ -74,6 +74,35 @@ internal sealed class TeamsWebhookSender(IHttpClientFactory httpClientFactory) :
     }
 }
 
+/// <summary>
+/// Teams with the person's connected Microsoft account: posts the title, the line and the link to the channel
+/// they chose, as them (no webhook). A revoked grant or a gone channel disables the channel.
+/// </summary>
+internal sealed class TeamsAccountSender(MailboxService mailboxes) : INotificationSender
+{
+    public string Kind => NotificationChannelKinds.TeamsAccount;
+
+    public async Task<DeliveryResult> SendAsync(NotificationDelivery d, CancellationToken ct)
+    {
+        if (TeamsChannelTarget.TryParse(d.Target) is not { } target || string.IsNullOrEmpty(d.UserIdentity))
+        {
+            return new DeliveryResult("No Teams channel chosen.", Gone: true);
+        }
+
+        var html = "<b>" + WebUtility.HtmlEncode(d.Message.Title) + "</b><br>" + WebUtility.HtmlEncode(d.Message.Body)
+                   + (d.AbsoluteLink is null ? string.Empty : "<br><a href=\"" + WebUtility.HtmlEncode(d.AbsoluteLink) + "\">Open in Raffa</a>");
+        try
+        {
+            await mailboxes.PostToTeamsAsync(new TenantId(d.TenantId), d.UserIdentity, target.TeamId, target.ChannelId, html, ct).ConfigureAwait(false);
+            return DeliveryResult.Ok;
+        }
+        catch (MailboxSendException ex)
+        {
+            return new DeliveryResult(ex.Reconnect ? "Connect your Microsoft account again." : "Teams refused the message.", ex.Reconnect);
+        }
+    }
+}
+
 /// <summary>Slack incoming webhook: the title in bold, the line and the link.</summary>
 internal sealed class SlackWebhookSender(IHttpClientFactory httpClientFactory) : INotificationSender
 {
@@ -211,5 +240,51 @@ internal sealed class NotificationDeliveryService(
             logger.LogWarning("A {Kind} notification could not be delivered: {Error}", delivery.ChannelKind, ex.GetType().Name);
             return new DeliveryResult("Delivery failed (" + ex.GetType().Name + ").");
         }
+    }
+}
+
+/// <summary>
+/// Reads the supplier's replies from the connected mailboxes (plan F3, mailbox) every few minutes — only the
+/// conversations Raffa started — and adds them to their case as emails to confirm. Several API replicas may
+/// run it at once: a message is stored once (unique index), so a race costs only a read.
+/// </summary>
+internal sealed class MailboxReaderService(IServiceScopeFactory scopes, ILogger<MailboxReaderService> logger) : BackgroundService
+{
+    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(3);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken).ConfigureAwait(false);
+        using var timer = new PeriodicTimer(Interval);
+        do
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                var options = scope.ServiceProvider.GetRequiredService<CaseMailOptions>();
+                if (!options.HasTokenKey)
+                {
+                    continue;
+                }
+
+                var added = await scope.ServiceProvider.GetRequiredService<CaseMailService>()
+                    .PollMailboxesAsync(Read, stoppingToken).ConfigureAwait(false);
+                if (added > 0)
+                {
+                    logger.LogInformation("{Count} supplier emails read from connected mailboxes", added);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Reading the connected mailboxes failed; next try in {Minutes} minutes", Interval.TotalMinutes);
+            }
+        }
+        while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
+    }
+
+    internal static (string Preview, IReadOnlyList<string> Attachments) Read(byte[] raw)
+    {
+        var email = CaseEmailFileReader.Read("message.eml", raw, 20L * 1024 * 1024);
+        return email is null ? (string.Empty, []) : (email.Text, email.Attachments.Select(a => a.FileName).ToList());
     }
 }
