@@ -509,6 +509,8 @@ export const IT_CASE4: Readonly<Record<string, string>> = {
   "Send the non-renewal notice to the old supplier and record the outcome.": "Invia la disdetta al vecchio fornitore e registra l’esito.",
   "Send the {kind} for approval": "Invia la {kind} in approvazione",
   "Sending the email is not the same as the contract ending. Attach the supplier’s confirmation, then record the outcome.": "Inviare l’email non equivale alla fine del contratto. Allega la conferma del fornitore, poi registra l’esito.",
+  "Sent by Raffa from {mailbox}": "Inviata da Raffa dalla casella {mailbox}",
+  "Sent by {who} from {mailbox} on {at}": "Inviata da {who} dalla casella {mailbox} il {at}",
   "Sent for approval": "Inviata in approvazione",
   "Sent — choose a check date": "Inviata — scegli la data di controllo",
   "Sign, then add the signed file": "Firma, poi aggiungi il file firmato",

@@ -27,7 +27,8 @@ public interface ICaseMemberDirectory
 /// <param name="Name">Display name — the engine's person key.</param>
 /// <param name="Title">"Head of Procurement" (Admin) / "Buyer" (Procurement) …</param>
 /// <param name="IsAdmin">Workspace Admin: the CPO, default approver of every case.</param>
-public sealed record CaseMember(Guid UserId, string? ExternalSubjectId, string Name, string Title, bool IsAdmin);
+/// <param name="Email">The member's email address (the default address for email notifications).</param>
+public sealed record CaseMember(Guid UserId, string? ExternalSubjectId, string Name, string Title, bool IsAdmin, string? Email = null);
 
 /// <summary>The caller as a case sees them.</summary>
 public sealed record CaseCaller(Guid? UserId, string Name, string Title, bool IsAdmin)

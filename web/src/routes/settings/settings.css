@@ -85,3 +85,19 @@
 /* Reference rates (ECB): a compact read-only grid, "1 USD = 0.8331 CHF". */
 .st-market { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 16px; }
 .st-market-rate { display: flex; align-items: baseline; gap: 6px; font-size: 14px; color: var(--color-neutral-700); font-variant-numeric: tabular-nums; }
+
+/* — Email and notifications (renewal plan F2/F3b) — */
+.st-error { border-left-color: var(--color-accent); }
+.st-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.st-channel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 0; border-bottom: 1px solid var(--color-divider); font-size: 14px; }
+.st-channel-kind { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-neutral-600); min-width: 110px; }
+.st-channel-label { font-weight: 600; flex: 1 1 160px; overflow-wrap: anywhere; }
+.st-channel-error { font-size: 12px; color: var(--color-accent-700); }
+.st-channel-toggle { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; }
+.st-add { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; font-size: 14px; }
+.st-add label { display: flex; flex-direction: column; gap: 4px; }
+.st-help { font-size: 13px; color: var(--color-neutral-600); }
+@media (max-width: 760px) {
+  .st-page { padding: 24px 16px 40px; }
+  .st-grid { grid-template-columns: minmax(0, 1fr); }
+}

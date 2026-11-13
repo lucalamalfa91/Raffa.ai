@@ -279,3 +279,22 @@ variable "platform_admin_object_ids" {
   type        = list(string)
   default     = []
 }
+
+# Renewal plan F2/F3/F3b: non-secret settings (CaseMail__InboundDomain,
+# CaseMail__ApiPublicBaseUrl, CaseMail__Microsoft__ClientId,
+# CaseMail__Google__ClientId, Notifications__VapidSubject,
+# Notifications__VapidPublicKey). Empty values are not set.
+variable "outreach_env" {
+  description = "Non-secret company-mailbox, inbound-mail and notification settings for the API app (env var name -> value); empty values are skipped."
+  type        = map(string)
+  default     = {}
+}
+
+# Renewal plan F2/F3/F3b: env var name (CaseMail__TokenKey, …) -> versionless
+# Key Vault secret id, only for the secrets this environment has.
+variable "outreach_secret_ids" {
+  description = "Company-mailbox, inbound-mail and notification secrets for the API app: env var name -> versionless Key Vault secret ID."
+  type        = map(string)
+  sensitive   = true
+  default     = {}
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { ApiClient } from "../../api/client";
 import {
   clampWindow,
@@ -186,7 +187,8 @@ export default function SettingsRoute({ apiClient }: SettingsRouteProps) {
       <h6 className="st-role">{t("Settings")}</h6>
       <h2 className="st-title">{t("Company rules")}</h2>
       <div className="st-sub">
-        {t("Raffa follows these rules to decide what to tell you, and when. Write them, upload your policy, or let Raffa interview you.")}
+        {t("Raffa follows these rules to decide what to tell you, and when. Write them, upload your policy, or let Raffa interview you.")}{" "}
+        <Link to="/settings/notifications">{t("Email and notifications")}</Link>
       </div>
       {!canEdit ? <div className="st-note">{t("Only the Head of Procurement can change the company rules.")}</div> : null}
 

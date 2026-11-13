@@ -57,3 +57,11 @@ output "jev_api_key_secret_versionless_id" {
   value       = length(azurerm_key_vault_secret.jev_api_key) > 0 ? azurerm_key_vault_secret.jev_api_key[0].versionless_id : null
   sensitive   = true
 }
+
+# Renewal plan F2/F3/F3b: vault secret name -> versionless id, only for the
+# secrets that exist.
+output "outreach_secret_versionless_ids" {
+  description = "Versionless Key Vault secret IDs of the outreach secrets that were created, keyed by vault secret name."
+  value       = { for name, secret in azurerm_key_vault_secret.outreach : name => secret.versionless_id }
+  sensitive   = true
+}

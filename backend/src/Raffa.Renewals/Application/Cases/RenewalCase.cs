@@ -283,6 +283,9 @@ public sealed class CaseSentDeclaration
 
     /// <summary>The text actually sent, when it differs from the approved one.</summary>
     public string? Text { get; set; }
+
+    /// <summary>The connected company mailbox Raffa sent it from (null: sent outside Raffa, declared by the user).</summary>
+    public string? Via { get; set; }
 }
 
 public sealed class CaseReminder
@@ -631,6 +634,9 @@ public sealed class CaseUi
     public bool SentEdited { get; set; }
 
     public string? SentText { get; set; }
+
+    /// <summary>Set by the server when it sent the email from the caller's connected mailbox.</summary>
+    public string? SentVia { get; set; }
 
     public bool ReplyOpen { get; set; }
 

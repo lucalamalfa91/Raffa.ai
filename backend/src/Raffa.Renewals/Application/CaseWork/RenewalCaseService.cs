@@ -43,7 +43,8 @@ public enum CaseResultKind
     Duplicate,
 }
 
-public sealed record CaseResult(CaseResultKind Kind, CaseEnvelope? Envelope = null, string? Error = null, Guid? ExistingMessageId = null)
+/// <param name="Code">A specific error code for the client (no_mailbox, mailbox_reconnect, …); null keeps the kind's default.</param>
+public sealed record CaseResult(CaseResultKind Kind, CaseEnvelope? Envelope = null, string? Error = null, Guid? ExistingMessageId = null, string? Code = null)
 {
     public static CaseResult Ok(CaseEnvelope e) => new(CaseResultKind.Ok, e);
 
@@ -76,7 +77,10 @@ public sealed partial class RenewalCaseService(
     IContractSituationAssessor? situationAssessor = null,
     Microsoft.Extensions.Logging.ILogger<RenewalCaseService>? logger = null,
     ICaseAiReader? aiReader = null,
-    Raffa.SharedKernel.Market.IMarketObservationSink? marketSink = null)
+    Raffa.SharedKernel.Market.IMarketObservationSink? marketSink = null,
+    Raffa.SharedKernel.Storage.IDocumentStorage? caseFileStorage = null,
+    IContractDocumentAttacher? documentAttacher = null,
+    Raffa.Renewals.Application.Notifications.NotificationService? notifications = null)
 {
     public const int SnoozeDays = 3;
 
@@ -289,6 +293,12 @@ public sealed partial class RenewalCaseService(
         if (string.IsNullOrWhiteSpace(type) || !CaseActions.All.Contains(type))
         {
             return CaseResult.Bad($"Unknown case action '{type}'.");
+        }
+
+        // Only the server records that Raffa sent an email from a connected mailbox.
+        if (type == "ui" && payload?.K == "sentVia")
+        {
+            return CaseResult.Bad("This value is set by Raffa when it sends the email.");
         }
 
         return await RunAsync(tenantId, callerIdentity, caseId, version, ct, (c, ctx, _) => [(type, payload ?? CaseActionPayload.None)]).ConfigureAwait(false);
@@ -694,6 +704,8 @@ public sealed partial class RenewalCaseService(
                 return new CaseResult(CaseResultKind.Forbidden, Envelope(record, next, cf, caller.Name), next.Ui.Warn?.Render());
             }
 
+            StageUploadedFiles(tenantId, record, type, p, c, next, caller.Name);
+
             if (type == "reply" && next.Reps.Count > c.Reps.Count)
             {
                 var rep = next.Reps[^1];
@@ -729,6 +741,7 @@ public sealed partial class RenewalCaseService(
             await AppendEventAsync(tenantId, record, caller.Name, invalidated ? "email_edited_invalidated" : type, p, eid, ct).ConfigureAwait(false);
         }
 
+        var storedFiles = await PersistStagedFilesAsync(tenantId, ct).ConfigureAwait(false);
         try
         {
             await SaveStateAsync(record, c, cf, members, ct).ConfigureAwait(false);
@@ -736,6 +749,7 @@ public sealed partial class RenewalCaseService(
         catch (DbUpdateConcurrencyException)
         {
             db.ChangeTracker.Clear();
+            await DeleteStoredAsync(tenantId, storedFiles).ConfigureAwait(false);
             var fresh = await db.RenewalCases.AsNoTracking().FirstAsync(x => x.Id == record.Id, ct).ConfigureAwait(false);
             return new CaseResult(CaseResultKind.Conflict, Envelope(fresh, RenewalCaseJson.Deserialize(fresh.State), cf, caller.Name), "The case changed while you were working on it.");
         }
@@ -745,9 +759,48 @@ public sealed partial class RenewalCaseService(
             await WriteOutcomeAsync(tenantId, record, c, cf, ct).ConfigureAwait(false);
         }
 
+        if (notifications is not null && events.Any(e => e.Type == "requestAppr"))
+        {
+            await NotifyApprovalAsync(tenantId, record, members, cf, ct).ConfigureAwait(false);
+        }
+
         await ContributeToMarketAsync(tenantId, caller.Name, record.Id.Value, cf, c, ct).ConfigureAwait(false);
         var env = Envelope(record, c, cf, caller.Name) with { Clip = clip, Tick = tick };
         return CaseResult.Ok(env);
+    }
+
+    /// <summary>An email was submitted for approval: the approver (and the case delegates who can approve) are notified.</summary>
+    private async Task NotifyApprovalAsync(TenantId tenantId, RenewalCaseRecord record, IReadOnlyList<CaseMember> members, CaseContractFacts cf, CancellationToken ct)
+    {
+        try
+        {
+            var ids = new HashSet<Guid>();
+            if (record.ApproverUserId is { } approver)
+            {
+                ids.Add(approver);
+            }
+
+            foreach (var d in await db.CaseDelegations.AsNoTracking().Where(d => d.CaseId == record.Id && d.RevokedAt == null && d.CanApprove && d.UserId != null).Select(d => d.UserId!.Value).ToListAsync(ct).ConfigureAwait(false))
+            {
+                ids.Add(d);
+            }
+
+            var who = members.Where(m => ids.Contains(m.UserId) && m.ExternalSubjectId is not null).Select(m => m.ExternalSubjectId!).ToList();
+            await notifications!.PublishAsync(tenantId, who, new Raffa.Renewals.Application.Notifications.NotificationMessage(
+                "approval_requested",
+                "An email to " + cf.Supplier + " waits for your approval",
+                CaseFactsMapper.ShortName(cf.Name) + ": review the exact version and approve it.",
+                "/renewals/" + record.Id.Value,
+                record.Id.Value,
+                new Dictionary<string, string> { ["supplier"] = cf.Supplier, ["contract"] = CaseFactsMapper.ShortName(cf.Name) }), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (logger is not null)
+            {
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "The approval notification could not be published.");
+            }
+        }
     }
 
     /* ---------------- persistence helpers ---------------- */
@@ -908,6 +961,7 @@ public sealed partial class RenewalCaseService(
                 row.SentBy = s.By;
                 row.SentAt ??= now;
                 row.SentBody = s.Text;
+                row.SentVia = s.Via;
             }
         }
     }
@@ -1003,9 +1057,11 @@ public sealed partial class RenewalCaseService(
 
         // BACKEND-SPEC §2.9: the renewed terms become the contract's current version (Contratti,
         // Rinnovi, Oggi and Risultati read the new dates through IContractFactsReader).
+        // Plan F1: the signed contract the case received becomes a document of the contract.
+        var signedDocumentId = await AttachSignedToDocumentsAsync(tenantId, record, c, ct).ConfigureAwait(false);
         await termWriter.WriteCurrentAsync(tenantId, new ContractTermVersionInput(
             record.ContractId.Value,
-            null,
+            signedDocumentId,
             o.Start ?? cf.End.AddDays(1),
             o.End,
             cf.Notice,

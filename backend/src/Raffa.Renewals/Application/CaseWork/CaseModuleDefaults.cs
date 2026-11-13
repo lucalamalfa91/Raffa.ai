@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Raffa.Renewals.Application.Cases;
@@ -42,6 +43,25 @@ public static class RenewalCaseServiceCollectionExtensions
         services.TryAddSingleton<ICompanyRulesAssistant, ScriptedCompanyRulesAssistant>();
         services.AddScoped<CompanyRulesService>();
         services.AddScoped<RenewalCaseService>();
+
+        // Renewal plan F2/F3: company mailboxes, case addresses, inbound mail and notifications. Off until
+        // configured (CaseMail__*, Notifications__*); the host adds the mailbox providers and the dispatcher.
+        services.TryAddSingleton(sp =>
+        {
+            var options = new Raffa.Renewals.Application.Outreach.CaseMailOptions();
+            sp.GetService<IConfiguration>()?.GetSection(Raffa.Renewals.Application.Outreach.CaseMailOptions.SectionName).Bind(options);
+            return options;
+        });
+        services.TryAddSingleton(sp =>
+        {
+            var options = new Raffa.Renewals.Application.Outreach.NotificationOptions();
+            sp.GetService<IConfiguration>()?.GetSection(Raffa.Renewals.Application.Outreach.NotificationOptions.SectionName).Bind(options);
+            return options;
+        });
+        services.TryAddSingleton<Raffa.Renewals.Application.Notifications.INotificationDispatcher, Raffa.Renewals.Application.Notifications.NullNotificationDispatcher>();
+        services.AddScoped<Raffa.Renewals.Application.Notifications.NotificationService>();
+        services.AddScoped<Raffa.Renewals.Application.Outreach.MailboxService>();
+        services.AddScoped<Raffa.Renewals.Application.Outreach.CaseMailService>();
         services.Replace(ServiceDescriptor.Scoped<IContractCaseStatusReader>(sp => sp.GetRequiredService<RenewalCaseService>()));
         services.Replace(ServiceDescriptor.Scoped<ICaseEmailDraftSink>(sp => sp.GetRequiredService<RenewalCaseService>()));
         services.Replace(ServiceDescriptor.Scoped<ICaseGoalsReader>(sp => sp.GetRequiredService<RenewalCaseService>()));

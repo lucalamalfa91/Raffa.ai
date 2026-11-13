@@ -196,6 +196,11 @@ module "containerapps" {
   azuread_audience           = module.identity.api_identifier_uri
   guest_provisioning_enabled = var.guest_provisioning_enabled
   platform_admin_object_ids  = var.platform_admin_object_ids
+  # Renewal plan F2/F3/F3b: company mailboxes, inbound supplier mail (Resend)
+  # and notifications -- this root's OWN module.keyvault instance only. Every
+  # value is optional: empty keeps the feature off and the manual path works.
+  outreach_env        = local.outreach_env
+  outreach_secret_ids = local.outreach_secret_ids
 }
 
 # ADR-008 amendment 2026-09-09: this root OWNS the single shared Azure AI
@@ -299,6 +304,9 @@ module "keyvault" {
   # F3-T11: this root's own HCP workspace variable; empty keeps the secret
   # uncreated (unkeyed query hash).
   query_hash_key = var.query_hash_key
+  # Renewal plan F2/F3/F3b: this root's own HCP workspace variables; empty
+  # values create no secret.
+  outreach_secrets = local.outreach_secrets
 }
 
 module "acr" {
@@ -322,4 +330,73 @@ module "monitor" {
   # idle dev environment cannot run up a log bill; pinned explicitly (the
   # module default is already 1) so the cap is visible at the env root.
   daily_quota_gb = 1
+}
+
+# ---------------------------------------------------------------------------------------------------------
+# Renewal plan F2/F3/F3b (docs/architecture/renewal-in-app-mail-plan.md): company mailboxes, inbound supplier
+# mail and notifications. Secret values live in this root's HCP workspace variables and land in Key Vault;
+# the API app reads them by env var name.
+# ---------------------------------------------------------------------------------------------------------
+locals {
+  outreach_secret_names = {
+    "CaseMail__TokenKey"                = "casemail-token-key"
+    "CaseMail__Microsoft__ClientSecret" = "casemail-ms-client-secret"
+    "CaseMail__Google__ClientSecret"    = "casemail-google-client-secret"
+    "CaseMail__Resend__ApiKey"          = "casemail-resend-api-key"
+    "CaseMail__Resend__WebhookSecret"   = "casemail-resend-webhook-secret"
+    "Notifications__VapidPrivateKey"    = "notifications-vapid-private-key"
+  }
+
+  outreach_secrets = {
+    "casemail-token-key"              = var.case_mail_token_key
+    "casemail-ms-client-secret"       = var.case_mail_microsoft_client_secret
+    "casemail-google-client-secret"   = var.case_mail_google_client_secret
+    "casemail-resend-api-key"         = var.case_mail_resend_api_key
+    "casemail-resend-webhook-secret"  = var.case_mail_resend_webhook_secret
+    "notifications-vapid-private-key" = var.notifications_vapid_private_key
+  }
+
+  outreach_secret_ids = {
+    for env_name, secret_name in local.outreach_secret_names :
+    env_name => module.keyvault.outreach_secret_versionless_ids[secret_name]
+    if contains(keys(nonsensitive(module.keyvault.outreach_secret_versionless_ids)), secret_name)
+  }
+
+  outreach_env = {
+    "CaseMail__InboundDomain"       = var.case_mail_inbound_domain
+    "CaseMail__ApiPublicBaseUrl"    = var.case_mail_api_public_base_url
+    "CaseMail__Microsoft__ClientId" = var.case_mail_microsoft_client_id
+    "CaseMail__Google__ClientId"    = var.case_mail_google_client_id
+    "Notifications__VapidSubject"   = var.notifications_vapid_subject
+    "Notifications__VapidPublicKey" = var.notifications_vapid_public_key
+  }
+
+  # The MX record of the inbound sub-domain, only when it sits in this root's mail DNS zone.
+  case_mail_inbound_in_zone = (
+    var.case_mail_inbound_domain != "" && var.case_mail_inbound_mx != "" && var.mail_dns_zone_name != null
+    && endswith(var.case_mail_inbound_domain, ".${coalesce(var.mail_dns_zone_name, "-")}")
+  )
+}
+
+data "azurerm_dns_zone" "case_mail_inbound" {
+  count = local.case_mail_inbound_in_zone ? 1 : 0
+
+  name                = var.mail_dns_zone_name
+  resource_group_name = var.mail_dns_zone_resource_group_name
+}
+
+# Resend receiving: the inbound sub-domain's MX points at Resend (the host the Resend dashboard shows for
+# the receiving domain). Its verification TXT/DKIM records are added as Resend lists them.
+resource "azurerm_dns_mx_record" "case_mail_inbound" {
+  count = local.case_mail_inbound_in_zone ? 1 : 0
+
+  name                = trimsuffix(var.case_mail_inbound_domain, ".${var.mail_dns_zone_name}")
+  zone_name           = data.azurerm_dns_zone.case_mail_inbound[0].name
+  resource_group_name = data.azurerm_dns_zone.case_mail_inbound[0].resource_group_name
+  ttl                 = 3600
+
+  record {
+    preference = 10
+    exchange   = var.case_mail_inbound_mx
+  }
 }

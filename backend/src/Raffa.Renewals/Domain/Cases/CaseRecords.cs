@@ -87,6 +87,9 @@ public sealed class CaseEmailRecord : TenantScopedEntity
     /// <summary>The text the user says was actually sent (may differ from the approved body).</summary>
     public string? SentBody { get; set; }
 
+    /// <summary>The connected mailbox Raffa sent it from (null: sent outside Raffa, declared by the user).</summary>
+    public string? SentVia { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 
     public required DateTimeOffset UpdatedAt { get; set; }
@@ -152,6 +155,50 @@ public sealed class CaseVendorMessageRecord : TenantScopedEntity
     public string? PromptVersion { get; set; }
 
     public string? InputHash { get; set; }
+}
+
+/// <summary>
+/// <c>case_file</c>: every file a case received — a contract draft, the signed contract, an alternative
+/// supplier's offer, a supplier email uploaded as <c>.eml</c>/<c>.msg</c> and that email's attachments.
+/// The bytes live in tenant-prefixed object storage (<see cref="StoragePath"/>); the engine state keeps
+/// only the file name, so this table is what makes a case file downloadable and reusable.
+/// </summary>
+public sealed class CaseFileRecord : TenantScopedEntity
+{
+    public required EntityId CaseId { get; set; }
+
+    /// <summary>draft | signed | offer | email | attachment.</summary>
+    public required string Kind { get; set; }
+
+    public required string FileName { get; set; }
+
+    public required string MimeType { get; set; }
+
+    public long SizeBytes { get; set; }
+
+    /// <summary>SHA-256 of the bytes, upper-case hex.</summary>
+    public required string Checksum { get; set; }
+
+    public required string StoragePath { get; set; }
+
+    /// <summary><c>draft</c>: the draft version (1-based) the engine gave it.</summary>
+    public int? DraftVersion { get; set; }
+
+    /// <summary><c>offer</c>: the alternative supplier.</summary>
+    public string? Vendor { get; set; }
+
+    /// <summary><c>email</c> / <c>attachment</c>: the reply index (rid) the email was registered as, if any.</summary>
+    public int? ReplyIndex { get; set; }
+
+    /// <summary><c>attachment</c>: the uploaded email it came with.</summary>
+    public Guid? SourceFileId { get; set; }
+
+    /// <summary><c>signed</c>: the Documents document it became when the case closed as renewed.</summary>
+    public Guid? DocumentId { get; set; }
+
+    public required string UploadedBy { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
 }
 
 /// <summary><c>user_reminder</c> (§2.7): a person's "check date" — never the contractual notice deadline.</summary>

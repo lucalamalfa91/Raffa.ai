@@ -363,6 +363,29 @@ export interface RenewalsBoard {
   cases: RenewalsRow[];
 }
 
+/**
+ * A file the case received (`GET /api/renewals/{caseId}/files`): a contract draft, the signed contract,
+ * an alternative offer, a supplier email uploaded as .eml/.msg, or one of that email's attachments.
+ */
+export interface CaseFile {
+  id: string;
+  /** draft | signed | offer | email | attachment */
+  kind: "draft" | "signed" | "offer" | "email" | "attachment";
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  uploadedBy: string;
+  draftVersion: number | null;
+  vendor: string | null;
+  /** The supplier reply (0-based) an email and its attachments were registered as. */
+  replyIndex: number | null;
+  /** An attachment: the email it came with. A file used from an attachment: that attachment. */
+  sourceFileId: string | null;
+  /** The signed contract: the document of the contract it became when the case closed. */
+  documentId: string | null;
+}
+
 /** A case call's result: the body, or the error with the current case the server returned with it. */
 export type CaseCallResult<T> =
   | { ok: true; statusCode: number; body: T; error: null }
