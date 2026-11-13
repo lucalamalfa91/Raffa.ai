@@ -12,7 +12,7 @@ const ok = <T,>(body: T): CaseCallResult<T> => ({ ok: true, statusCode: 200, bod
 
 const settings: NotificationSettings = {
   channels: [{ id: "c1", kind: "slack", label: "Slack", enabled: true, createdAt: "2026-11-13T10:00:00Z", lastDeliveredAt: null, lastError: null }],
-  available: ["email", "teams", "slack"],
+  available: ["email", "teams_account", "slack"],
   vapidPublicKey: null,
 };
 
@@ -34,17 +34,47 @@ beforeEach(() => {
 afterEach(() => window.sessionStorage.clear());
 
 describe("email and notifications settings", () => {
-  it("offers the configured mailbox providers and adds a Teams webhook", async () => {
-    const mailbox: MailboxStatus = { mailbox: null, providers: ["microsoft", "google"], available: true };
-    const add = vi.fn().mockResolvedValue(ok(settings.channels[0]));
-    renderPage({ getMailbox: vi.fn().mockResolvedValue(ok(mailbox)), getNotificationSettings: vi.fn().mockResolvedValue(ok(settings)), addNotificationChannel: add });
+  it("says connecting is optional and offers the configured mailbox providers", async () => {
+    const mailbox: MailboxStatus = { mailbox: null, providers: ["microsoft"], available: true };
+    renderPage({ getMailbox: vi.fn().mockResolvedValue(ok(mailbox)), getNotificationSettings: vi.fn().mockResolvedValue(ok(settings)) });
 
     expect(await screen.findByRole("button", { name: "Connect Microsoft 365 / Outlook" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Connect Google Workspace / Gmail" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Google/ })).toBeNull();
+    expect(screen.getByText(/^Optional\./)).toBeTruthy();
+    expect(screen.getByText("Connect your Microsoft account (above) to choose a Teams channel.")).toBeTruthy();
     expect(screen.getByText("Slack", { selector: ".st-channel-label" })).toBeTruthy();
-    await userEvent.type(screen.getByLabelText("Microsoft Teams — Workflows webhook URL"), "https://prod.logic.azure.com/wf");
+  });
+
+  it("adds a Teams channel chosen with the connected Microsoft account", async () => {
+    const mailbox: MailboxStatus = {
+      mailbox: { provider: "microsoft", address: "marta@acme.example", displayName: null, connectedAt: "2026-11-13T10:00:00Z", lastUsedAt: null, needsReconnect: false, canReceive: true, canPostToTeams: true, needsUpgrade: false },
+      providers: ["microsoft"],
+      available: true,
+    };
+    const add = vi.fn().mockResolvedValue(ok(settings.channels[0]));
+    renderPage({
+      getMailbox: vi.fn().mockResolvedValue(ok(mailbox)),
+      getNotificationSettings: vi.fn().mockResolvedValue(ok({ ...settings, available: ["teams_account", "slack"] })),
+      getTeamsChannels: vi.fn().mockResolvedValue(ok([{ teamId: "t1", teamName: "Procurement", channelId: "c1", channelName: "Renewals" }])),
+      addNotificationChannel: add,
+    });
+
+    expect(await screen.findByText(/reads only the replies to the emails it sent for a case/)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Choose a Teams channel" }));
+    await userEvent.selectOptions(await screen.findByLabelText("Teams channel"), "t1/c1");
     await userEvent.click(screen.getByRole("button", { name: "Add Teams" }));
-    expect(add).toHaveBeenCalledWith(expect.anything(), { kind: "teams", target: "https://prod.logic.azure.com/wf", label: undefined });
+    expect(add).toHaveBeenCalledWith("t1", { kind: "teams_account", target: JSON.stringify({ teamId: "t1", channelId: "c1", label: "Procurement · Renewals" }), label: undefined });
+  });
+
+  it("asks to connect again when the mailbox was connected before reading replies existed", async () => {
+    const mailbox: MailboxStatus = {
+      mailbox: { provider: "microsoft", address: "marta@acme.example", displayName: null, connectedAt: "2026-11-13T10:00:00Z", lastUsedAt: null, needsReconnect: false, canReceive: false, canPostToTeams: false, needsUpgrade: true },
+      providers: ["microsoft"],
+      available: true,
+    };
+    renderPage({ getMailbox: vi.fn().mockResolvedValue(ok(mailbox)), getNotificationSettings: vi.fn().mockResolvedValue(ok(settings)) });
+    expect(await screen.findByText("Connect again to let Raffa also read the supplier's replies and post to Teams.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect again" })).toBeTruthy();
   });
 
   it("shows the connected mailbox and the outcome of the connection", async () => {

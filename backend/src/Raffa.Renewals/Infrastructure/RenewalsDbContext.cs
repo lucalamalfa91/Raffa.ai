@@ -51,6 +51,8 @@ public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> option
 
     public DbSet<CaseInboundMailRecord> CaseInboundMails => Set<CaseInboundMailRecord>();
 
+    public DbSet<CaseMailWatchRecord> CaseMailWatches => Set<CaseMailWatchRecord>();
+
     public DbSet<NotificationRecord> Notifications => Set<NotificationRecord>();
 
     public DbSet<NotificationChannelRecord> NotificationChannels => Set<NotificationChannelRecord>();
@@ -74,6 +76,7 @@ public sealed class RenewalsDbContext(DbContextOptions<RenewalsDbContext> option
         modelBuilder.ApplyConfiguration(new MailboxConnectionRecordConfiguration());
         modelBuilder.ApplyConfiguration(new CaseMailAddressRecordConfiguration());
         modelBuilder.ApplyConfiguration(new CaseInboundMailRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new CaseMailWatchRecordConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationRecordConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationChannelRecordConfiguration());
         modelBuilder.ApplyConfiguration(new CaseVendorMessageRecordConfiguration());

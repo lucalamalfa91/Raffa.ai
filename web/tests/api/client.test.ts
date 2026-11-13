@@ -2695,6 +2695,7 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       getMailbox: () => client.getMailbox!("tenant-1"),
       connectMailbox: () => client.connectMailbox!("tenant-1", "microsoft"),
       disconnectMailbox: () => client.disconnectMailbox!("tenant-1"),
+      getTeamsChannels: () => client.getTeamsChannels!("tenant-1"),
       getCaseMail: () => client.getCaseMail!("tenant-1", "case-1"),
       sendCaseEmail: () => client.sendCaseEmail!("tenant-1", "case-1", 0, 1),
       acceptInboundMail: () => client.acceptInboundMail!("tenant-1", "case-1", "m-1", 1, "en"),

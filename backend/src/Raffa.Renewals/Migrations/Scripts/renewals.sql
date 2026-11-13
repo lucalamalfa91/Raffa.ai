@@ -844,3 +844,60 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113131934_AddMailboxReadingAndScopes') THEN
+    ALTER TABLE mailbox_connection ADD scopes character varying(2000);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113131934_AddMailboxReadingAndScopes') THEN
+    CREATE TABLE case_mail_watch (
+        id uuid NOT NULL,
+        tenant_id uuid NOT NULL,
+        case_id uuid NOT NULL,
+        user_identity character varying(200) NOT NULL,
+        provider character varying(20) NOT NULL,
+        conversation_id character varying(500) NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        last_checked_at timestamp with time zone,
+        active_until timestamp with time zone NOT NULL,
+        CONSTRAINT pk_case_mail_watch PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113131934_AddMailboxReadingAndScopes') THEN
+    CREATE INDEX ix_case_mail_watch_active_until ON case_mail_watch (active_until);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113131934_AddMailboxReadingAndScopes') THEN
+    CREATE INDEX ix_case_mail_watch_tenant_id ON case_mail_watch (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113131934_AddMailboxReadingAndScopes') THEN
+    CREATE UNIQUE INDEX ix_case_mail_watch_tenant_id_case_id_conversation_id ON case_mail_watch (tenant_id, case_id, conversation_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113131934_AddMailboxReadingAndScopes') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261113131934_AddMailboxReadingAndScopes', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

@@ -73,7 +73,7 @@ public sealed partial class CaseMailService(
             .OrderByDescending(x => x.ReceivedAt).Take(50).ToListAsync(ct).ConfigureAwait(false);
         return new CaseMailStatus(
             address,
-            mailbox is null ? null : MailboxService.Info(mailbox),
+            mailbox is null ? null : mailboxes.InfoOf(mailbox),
             mailboxes.Available,
             inbound.Select(Item).ToList());
     }
@@ -187,9 +187,10 @@ public sealed partial class CaseMailService(
             email.Subject,
             email.Body,
             attachments);
+        SentMail sent;
         try
         {
-            await mailboxes.SendAsync(tenantId, connection, mail, ct).ConfigureAwait(false);
+            sent = await mailboxes.SendAsync(tenantId, connection, mail, ct).ConfigureAwait(false);
         }
         catch (MailboxSendException ex)
         {
@@ -204,6 +205,11 @@ public sealed partial class CaseMailService(
         }
 
         var now = clock.UtcNow;
+        if (sent.ConversationId is { Length: > 0 } conversation)
+        {
+            await WatchAsync(tenantId, record.Id, identity, connection.Provider, conversation, ct).ConfigureAwait(false);
+        }
+
         var at = CaseFormat.Date(DateOnly.FromDateTime(now.UtcDateTime)) + " · " + now.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture);
         return await cases.ActManyAsync(tenantId, identity, caseId, null, _ =>
         [
@@ -256,6 +262,13 @@ public sealed partial class CaseMailService(
             return new InboundOutcome("unmatched");
         }
 
+        return await StorePendingAsync(tenantId, record, mail, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Stores an email for the case as pending (raw message in object storage) and notifies the
+    /// owner and the delegates; the same provider message twice is stored once. Inside the tenant scope.</summary>
+    private async Task<InboundOutcome> StorePendingAsync(TenantId tenantId, RenewalCaseRecord record, InboundMail mail, CancellationToken ct)
+    {
         if (await db.CaseInboundMails.AnyAsync(x => x.Provider == mail.Provider && x.ProviderMessageId == mail.ProviderMessageId, ct).ConfigureAwait(false))
         {
             return new InboundOutcome("duplicate", record.Id.Value);
@@ -296,7 +309,7 @@ public sealed partial class CaseMailService(
         }
         catch (DbUpdateException)
         {
-            // The provider delivered the same message twice at once: the unique index kept one.
+            // Delivered (or read) twice at once: the unique index kept one.
             db.ChangeTracker.Clear();
             await storage.DeleteAsync(tenantId, path, CancellationToken.None).ConfigureAwait(false);
             return new InboundOutcome("duplicate", record.Id.Value);
@@ -304,6 +317,134 @@ public sealed partial class CaseMailService(
 
         await NotifyAsync(tenantId, record, ct).ConfigureAwait(false);
         return new InboundOutcome("matched", record.Id.Value);
+    }
+
+    /// <summary>How long Raffa keeps reading a conversation it started (unless the case closes first).</summary>
+    public static readonly TimeSpan WatchLifetime = TimeSpan.FromDays(120);
+
+    private async Task WatchAsync(TenantId tenantId, EntityId caseId, string identity, string provider, string conversationId, CancellationToken ct)
+    {
+        var existing = await db.CaseMailWatches
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CaseId == caseId && x.ConversationId == conversationId, ct).ConfigureAwait(false);
+        var until = clock.UtcNow.Add(WatchLifetime);
+        if (existing is not null)
+        {
+            existing.ActiveUntil = until;
+            existing.UserIdentity = identity;
+        }
+        else
+        {
+            db.CaseMailWatches.Add(new CaseMailWatchRecord
+            {
+                TenantId = tenantId,
+                CaseId = caseId,
+                UserIdentity = identity,
+                Provider = provider,
+                ConversationId = conversationId,
+                CreatedAt = clock.UtcNow,
+                ActiveUntil = until,
+            });
+        }
+
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The background reader (plan F3, mailbox): for every conversation Raffa started from a connected mailbox,
+    /// reads the messages that arrived since the last check (only that conversation, never the rest of the
+    /// mailbox), skips the person's own, and stores each new one as a pending email of the case with a
+    /// notification. Watches of closed cases and expired watches stop. <paramref name="read"/> extracts the
+    /// new text and the attachment names of a raw message (the host's reader). Returns how many emails were added.
+    /// </summary>
+    public async Task<int> PollMailboxesAsync(Func<byte[], (string Preview, IReadOnlyList<string> Attachments)> read, CancellationToken ct = default)
+    {
+        var now = clock.UtcNow;
+        var due = now.AddMinutes(-2);
+        // The watch table has no row-level security: it is read before any workspace is known.
+        var watches = await db.CaseMailWatches
+            .Where(x => x.ActiveUntil > now && (x.LastCheckedAt == null || x.LastCheckedAt < due))
+            .OrderBy(x => x.LastCheckedAt)
+            .Take(200)
+            .ToListAsync(ct).ConfigureAwait(false);
+        var added = 0;
+        foreach (var group in watches.GroupBy(w => (w.TenantId, w.UserIdentity)))
+        {
+            var (tenantId, identity) = group.Key;
+            try
+            {
+                added += await PollPersonAsync(tenantId, identity, group.ToList(), read, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                if (logger is not null)
+                {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Reading the case conversations of a connected mailbox failed.");
+                }
+            }
+        }
+
+        return added;
+    }
+
+    private async Task<int> PollPersonAsync(
+        TenantId tenantId, string identity, List<CaseMailWatchRecord> watches, Func<byte[], (string Preview, IReadOnlyList<string> Attachments)> read, CancellationToken ct)
+    {
+        var connection = await mailboxes.ConnectionAsync(tenantId, identity, ct).ConfigureAwait(false);
+        var provider = connection is null ? null : mailboxes.ProviderOf(connection);
+        var now = clock.UtcNow;
+        if (connection is null || provider is null || !provider.CanReceive(connection.Scopes) || connection.LastError == "reconnect")
+        {
+            watches.ForEach(w => w.LastCheckedAt = now);
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            return 0;
+        }
+
+        var added = 0;
+        await mailboxes.WithTokenAsync(tenantId, connection, async (p, token) =>
+        {
+            using var scope = tenantContext.BeginScope(tenantId);
+            foreach (var watch in watches)
+            {
+                var record = await db.RenewalCases.AsNoTracking().FirstOrDefaultAsync(x => x.Id == watch.CaseId, ct).ConfigureAwait(false);
+                if (record is null || record.ClosedAt is not null)
+                {
+                    watch.ActiveUntil = now;
+                    continue;
+                }
+
+                var since = (watch.LastCheckedAt ?? watch.CreatedAt).AddMinutes(-10);
+                var messages = await p.ConversationAsync(token, watch.ConversationId, since, ct).ConfigureAwait(false);
+                foreach (var m in messages.Where(m => !string.Equals(m.FromAddress, connection.Address, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var id = string.IsNullOrEmpty(m.InternetMessageId) ? m.Id : m.InternetMessageId;
+                    if (await db.CaseInboundMails.AnyAsync(x => x.Provider == p.Name && x.ProviderMessageId == id, ct).ConfigureAwait(false))
+                    {
+                        continue;
+                    }
+
+                    var raw = await p.RawAsync(token, m.Id, ct).ConfigureAwait(false);
+                    if (raw is null || raw.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var (preview, attachments) = read(raw);
+                    var from = string.IsNullOrWhiteSpace(m.FromName) ? m.FromAddress : m.FromName + " <" + m.FromAddress + ">";
+                    var outcome = await StorePendingAsync(tenantId, record,
+                        new InboundMail(p.Name, id, [], from, m.Subject, m.ReceivedAt, preview, attachments, raw), ct).ConfigureAwait(false);
+                    if (outcome.Result == "matched")
+                    {
+                        added++;
+                    }
+                }
+
+                watch.LastCheckedAt = now;
+            }
+
+            return true;
+        }, ct).ConfigureAwait(false);
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        return added;
     }
 
     private async Task NotifyAsync(TenantId tenantId, RenewalCaseRecord record, CancellationToken ct)

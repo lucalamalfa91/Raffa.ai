@@ -43,6 +43,21 @@ public static class OutreachEndpointExtensions
             return Results.Redirect(outcome.RedirectUrl);
         });
 
+        endpoints.MapGet("/api/mailbox/teams-channels", (HttpRequest r, MailboxService s, ICallerContext cc, CancellationToken ct) =>
+            WithCaller(r, cc, ct, async caller =>
+            {
+                try
+                {
+                    return await s.TeamsChannelsAsync(caller.TenantId, caller.Identity!, ct).ConfigureAwait(false) is { } channels
+                        ? Results.Ok(channels)
+                        : Results.BadRequest(new CaseErrorBody("teams_unavailable", "Connect your Microsoft account (again) to choose a Teams channel.", null, null));
+                }
+                catch (MailboxSendException)
+                {
+                    return Results.BadRequest(new CaseErrorBody("mailbox_reconnect", "Connect your Microsoft account again.", null, null));
+                }
+            }));
+
         endpoints.MapDelete("/api/mailbox", (HttpRequest r, MailboxService s, ICallerContext cc, CancellationToken ct) =>
             WithCaller(r, cc, ct, async caller =>
                 await s.DisconnectAsync(caller.TenantId, caller.Identity!, ct).ConfigureAwait(false) ? Results.NoContent() : Results.NotFound()));

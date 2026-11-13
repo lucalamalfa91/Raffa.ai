@@ -124,14 +124,16 @@ export function CaseMail({ apiClient, tenantId, caseId, version, canWork, email,
                 {busy === "send" ? t("Sending…") : t("Send from {address}", { address: mailbox.address })}
               </button>
               <span className="p4-muted">
-                {status.caseAddress
-                  ? t("Raffa sends this exact version from your mailbox, with the contract attached and {address} in copy: the supplier's reply comes back to this case.", { address: status.caseAddress })
-                  : t("Raffa sends this exact version from your mailbox, with the contract attached.")}
+                {mailbox.canReceive
+                  ? t("Raffa sends this exact version from your mailbox, with the contract attached; the supplier's replies in this conversation come back to this case to confirm.")
+                  : status.caseAddress
+                    ? t("Raffa sends this exact version from your mailbox, with the contract attached and {address} in copy: the supplier's reply comes back to this case.", { address: status.caseAddress })
+                    : t("Raffa sends this exact version from your mailbox, with the contract attached.")}
               </span>
             </>
           ) : status.mailboxAvailable ? (
             <span className="p4-muted">
-              {mailbox?.needsReconnect ? t("Your mailbox connection has expired.") : t("Send it from Raffa with your company address:")}{" "}
+              {mailbox?.needsReconnect ? t("Your mailbox connection has expired.") : t("Optional: send it from Raffa with your company address —")}{" "}
               <Link to="/settings/notifications">{mailbox?.needsReconnect ? t("Connect it again") : t("connect your mailbox")}</Link>
             </span>
           ) : null}

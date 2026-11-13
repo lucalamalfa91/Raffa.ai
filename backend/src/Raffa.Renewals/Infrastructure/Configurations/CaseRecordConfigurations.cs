@@ -134,6 +134,7 @@ public sealed class MailboxConnectionRecordConfiguration : IEntityTypeConfigurat
         builder.Property(e => e.DisplayName).HasMaxLength(200);
         builder.Property(e => e.RefreshTokenProtected).IsRequired();
         builder.Property(e => e.LastError).HasMaxLength(200);
+        builder.Property(e => e.Scopes).HasMaxLength(2000);
         builder.HasIndex(e => new { e.TenantId, e.UserIdentity }).IsUnique();
     }
 }
@@ -151,6 +152,24 @@ public sealed class CaseMailAddressRecordConfiguration : IEntityTypeConfiguratio
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.Token).IsUnique();
         builder.HasIndex(e => new { e.TenantId, e.CaseId }).IsUnique();
+    }
+}
+
+public sealed class CaseMailWatchRecordConfiguration : IEntityTypeConfiguration<CaseMailWatchRecord>
+{
+    public void Configure(EntityTypeBuilder<CaseMailWatchRecord> builder)
+    {
+        builder.ToTable("case_mail_watch");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).HasConversion(ValueConverters.EntityIdConverter).ValueGeneratedNever();
+        builder.Property(e => e.TenantId).HasConversion(ValueConverters.TenantIdConverter);
+        builder.Property(e => e.CaseId).HasConversion(ValueConverters.EntityIdConverter);
+        builder.Property(e => e.UserIdentity).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.Provider).IsRequired().HasMaxLength(20);
+        builder.Property(e => e.ConversationId).IsRequired().HasMaxLength(500);
+        builder.HasIndex(e => e.TenantId);
+        builder.HasIndex(e => new { e.TenantId, e.CaseId, e.ConversationId }).IsUnique();
+        builder.HasIndex(e => e.ActiveUntil);
     }
 }
 

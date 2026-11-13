@@ -54,7 +54,7 @@ import { createCoalescingFetch, type CoalescingFetch } from "./coalescingFetch";
 import { getActiveLang, LANG_HEADER } from "../i18n/activeLang";
 import type { CaseActionPayload, CaseCallResult, CaseEnvelope, CaseFile, RenewalsBoard, TodayFeed } from "./renewalCases";
 import type { CompanyRulesBody, PolicyProposal, RuleInterviewReply, RuleTurn } from "./companyRules";
-import type { CaseMailStatus, MailboxStatus, NotificationChannel, NotificationChannelKind, NotificationFeed, NotificationSettings } from "./outreach";
+import type { CaseMailStatus, MailboxStatus, NotificationChannel, NotificationChannelKind, NotificationFeed, NotificationSettings, TeamsChannel } from "./outreach";
 import type { SpendReport, SpendReportQuery } from "./spend";
 
 /** See this file's own header comment ("Task E18/F01/US02/T01", NW-05). Returns a bearer access
@@ -2022,6 +2022,8 @@ export interface ApiClient {
   getMailbox?(tenantId: string): Promise<CaseCallResult<MailboxStatus>>;
   /** `POST /api/mailbox/connect` -- the provider's consent page to open. */
   connectMailbox?(tenantId: string, provider: string, loginHint?: string | null): Promise<CaseCallResult<{ url: string }>>;
+  /** `GET /api/mailbox/teams-channels` -- the Teams channels the caller's Microsoft account can post to. */
+  getTeamsChannels?(tenantId: string): Promise<CaseCallResult<TeamsChannel[]>>;
   /** `DELETE /api/mailbox` -- disconnects the caller's mailbox. */
   disconnectMailbox?(tenantId: string): Promise<CaseCallResult<unknown>>;
   /** `GET /api/renewals/{caseId}/mail` -- the case address, the caller's mailbox, the emails that reached the case. */
@@ -4519,6 +4521,10 @@ export function createApiClient(
 
     connectMailbox(tenantId, provider, loginHint) {
       return caseCall<{ url: string }>(apiFetch, baseUrl, getAccessToken, tenantId, "POST", "/api/mailbox/connect", { provider, loginHint: loginHint ?? null });
+    },
+
+    getTeamsChannels(tenantId) {
+      return caseCall<TeamsChannel[]>(apiFetch, baseUrl, getAccessToken, tenantId, "GET", "/api/mailbox/teams-channels");
     },
 
     disconnectMailbox(tenantId) {

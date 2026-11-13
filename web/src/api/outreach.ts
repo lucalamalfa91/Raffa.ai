@@ -12,6 +12,20 @@ export interface MailboxInfo {
   lastUsedAt: string | null;
   /** The grant expired or was revoked: connect again before sending. */
   needsReconnect: boolean;
+  /** Raffa may read the supplier's replies (only the conversations it started). */
+  canReceive?: boolean;
+  /** Raffa may post notifications to a Teams channel the person chooses. */
+  canPostToTeams?: boolean;
+  /** Connected before reading replies / Teams existed: connecting again grants them. */
+  needsUpgrade?: boolean;
+}
+
+/** A Teams channel the person belongs to (`GET /api/mailbox/teams-channels`). */
+export interface TeamsChannel {
+  teamId: string;
+  teamName: string;
+  channelId: string;
+  channelName: string;
 }
 
 /** `GET /api/mailbox`. */
@@ -63,7 +77,7 @@ export interface NotificationFeed {
   unread: number;
 }
 
-export type NotificationChannelKind = "webpush" | "email" | "teams" | "slack";
+export type NotificationChannelKind = "webpush" | "email" | "teams" | "slack" | "teams_account";
 
 export interface NotificationChannel {
   id: string;

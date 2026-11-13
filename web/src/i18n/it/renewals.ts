@@ -233,4 +233,18 @@ export const IT_RENEWALS: Readonly<Record<string, string>> = {
   "Mark all read": "Segna tutte come lette",
   "No notifications yet.": "Nessuna notifica per ora.",
   "Email and notifications settings": "Impostazioni email e notifiche",
+  // Renewal plan F3 (mailbox): reading replies from the connected mailbox, Teams with the Microsoft account.
+  "Connect again to let Raffa also read the supplier's replies and post to Teams.": "Ricollega la casella per permettere a Raffa di leggere anche le risposte del fornitore e pubblicare su Teams.",
+  "Raffa sends the approved emails from this mailbox and reads only the replies to the emails it sent for a case — never the rest of your mail. Each reply waits for you to confirm it belongs to the case.": "Raffa invia le email approvate da questa casella e legge solo le risposte alle email inviate per una pratica — mai il resto della tua posta. Ogni risposta attende la tua conferma prima di entrare nella pratica.",
+  "Raffa sends the approved emails from this mailbox. The supplier's replies are added by hand (paste or upload the email).": "Raffa invia le email approvate da questa casella. Le risposte del fornitore si aggiungono a mano (incolla o carica l’email).",
+  "Optional. Connect your company mailbox and Raffa sends the approved emails from your address and brings the supplier's replies into the case. Without it you keep copying the email and pasting or uploading the reply.": "Facoltativo. Collega la tua casella aziendale: Raffa invia le email approvate dal tuo indirizzo e porta nella pratica le risposte del fornitore. Senza collegamento continui a copiare l’email e a incollare o caricare la risposta.",
+  "Microsoft Teams: Raffa posts the notices in a channel you choose, with your Microsoft account.": "Microsoft Teams: Raffa pubblica gli avvisi in un canale che scegli, con il tuo account Microsoft.",
+  "Your Microsoft account is in no Teams channel.": "Il tuo account Microsoft non fa parte di nessun canale Teams.",
+  "Choose a Teams channel": "Scegli un canale Teams",
+  "Teams channel": "Canale Teams",
+  "Choose…": "Scegli…",
+  "Connect your Microsoft account again (above) to choose a Teams channel.": "Ricollega il tuo account Microsoft (sopra) per scegliere un canale Teams.",
+  "Connect your Microsoft account (above) to choose a Teams channel.": "Collega il tuo account Microsoft (sopra) per scegliere un canale Teams.",
+  "Raffa sends this exact version from your mailbox, with the contract attached; the supplier's replies in this conversation come back to this case to confirm.": "Raffa invia esattamente questa versione dalla tua casella, con il contratto allegato; le risposte del fornitore in questa conversazione tornano in questa pratica da confermare.",
+  "Optional: send it from Raffa with your company address —": "Facoltativo: inviala da Raffa con il tuo indirizzo aziendale —",
 };
