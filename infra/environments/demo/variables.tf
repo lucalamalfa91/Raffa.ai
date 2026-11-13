@@ -144,3 +144,91 @@ variable "mail_use_custom_sender" {
   type        = bool
   default     = false
 }
+
+# ---------------------------------------------------------------------------------------------------------
+# Renewal plan F2/F3/F3b: company mailboxes, inbound supplier mail and notifications. All optional: empty
+# keeps the feature off (the copy / paste / upload-the-email path keeps working).
+# ---------------------------------------------------------------------------------------------------------
+variable "case_mail_inbound_domain" {
+  description = "Sub-domain where case addresses live (r-<token>@<this>), a Resend receiving domain, e.g. in.example.com. Empty = no inbound mail."
+  type        = string
+  default     = ""
+}
+
+variable "case_mail_inbound_mx" {
+  description = "MX host Resend gives for the receiving domain; written as the MX of case_mail_inbound_domain when that sits in mail_dns_zone_name. Empty = manage the MX elsewhere."
+  type        = string
+  default     = ""
+}
+
+variable "case_mail_api_public_base_url" {
+  description = "Public https base of the API (the OAuth redirect is <this>/api/mailbox/callback/{microsoft|google}; register it with both providers). Empty = no mailbox connection."
+  type        = string
+  default     = ""
+}
+
+variable "case_mail_microsoft_client_id" {
+  description = "Client id of the multi-tenant Entra app with delegated Mail.Send + User.Read (company mailboxes on Microsoft 365)."
+  type        = string
+  default     = ""
+}
+
+variable "case_mail_google_client_id" {
+  description = "Client id of the Google OAuth web client with the gmail.send scope (company mailboxes on Google Workspace)."
+  type        = string
+  default     = ""
+}
+
+variable "notifications_vapid_subject" {
+  description = "VAPID subject for browser notifications (mailto: or https URL). Empty = no browser notifications."
+  type        = string
+  default     = ""
+}
+
+variable "notifications_vapid_public_key" {
+  description = "VAPID public key (base64url) for browser notifications."
+  type        = string
+  default     = ""
+}
+
+variable "case_mail_token_key" {
+  description = "Base64 of 32 random bytes: encrypts mailbox tokens and notification targets, signs the OAuth state. Empty = mailboxes and external notifications off."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "case_mail_microsoft_client_secret" {
+  description = "Client secret of the Microsoft 365 mailbox app."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "case_mail_google_client_secret" {
+  description = "Client secret of the Google mailbox OAuth client."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "case_mail_resend_api_key" {
+  description = "Resend API key able to read received emails."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "case_mail_resend_webhook_secret" {
+  description = "Signing secret (whsec_...) of the Resend webhook pointing at <api>/api/webhooks/resend."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "notifications_vapid_private_key" {
+  description = "VAPID private key (base64url) for browser notifications."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

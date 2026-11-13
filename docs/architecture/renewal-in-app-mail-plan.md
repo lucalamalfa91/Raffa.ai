@@ -281,3 +281,39 @@ F1 è indipendente e si può iniziare subito; F2 e F3 sono il cuore della richie
 5. **Allegati in uscita**: quali documenti Raffa può allegare automaticamente (contratto attuale, piano, RFQ)?
 6. **Notifiche**: anteprima del contenuto ammessa su Teams/Slack aziendali o sempre solo "nuovo messaggio + link"?
    WhatsApp tramite Meta diretto o tramite un provider (Twilio / ACS Advanced Messaging)?
+
+
+### Stato F2 / F3 / F3b (implementate, 13 nov 2026)
+
+**Cosa fa**
+
+- **Casella aziendale** (*Impostazioni → Email e notifiche*): l'utente collega Microsoft 365 / Outlook o Google
+  Workspace / Gmail con il solo permesso di invio. Token cifrati; stato OAuth firmato e con scadenza.
+- **Invio dalla pratica**: sull'email approvata compare *Invia da &lt;indirizzo aziendale&gt;*. Raffa invia
+  esattamente la versione approvata dalla casella dell'utente (resta nella sua posta inviata), con il contratto
+  allegato e l'indirizzo della pratica in CC e Reply-To, poi registra l'invio (*Inviata da … dalla casella …*).
+  Un collegamento scaduto chiede di ricollegare la casella e non invia nulla.
+- **Risposte del fornitore**: arrivano all'indirizzo della pratica (Resend, webhook firmato), restano *in attesa*,
+  il responsabile e i delegati ricevono una notifica; nella pratica *È di questa trattativa — aggiungila* la
+  registra come risposta (mittente, data, testo nuovo, allegati salvati), *Non è di questa pratica* la scarta.
+- **Notifiche**: campanella in alto (in italiano), push del browser, email, Teams e Slack via webhook incollato;
+  notifica anche quando un'email attende approvazione. Fuori da Raffa solo fornitore, pratica e link.
+
+**Da configurare per accenderle** (tutto opzionale; vuoto = funzione spenta, il percorso manuale resta)
+
+| Cosa | Dove | Note |
+|---|---|---|
+| Chiave di cifratura | `case_mail_token_key` (HCP, segreto) → `CaseMail__TokenKey` | `openssl rand -base64 32` |
+| URL pubblico API | `case_mail_api_public_base_url` | Redirect OAuth: `<api>/api/mailbox/callback/microsoft` e `/google` |
+| Microsoft 365 | `case_mail_microsoft_client_id` / `_secret` | App Entra **multi-tenant**, permessi delegati `Mail.Send`, `User.Read`, `offline_access` |
+| Google | `case_mail_google_client_id` / `_secret` | Client OAuth "Web", scope `gmail.send` (sensibile: richiede la verifica dell'app Google per utenti esterni) |
+| Ricezione | `case_mail_inbound_domain` (es. `in.<dominio>`), `case_mail_inbound_mx`, `case_mail_resend_api_key`, `case_mail_resend_webhook_secret` | In Resend: dominio con *receiving* abilitato, webhook `email.received` → `<api>/api/webhooks/resend`. L'MX viene scritto da Terraform se il sottodominio è nella zona DNS `mail_dns_zone_name` |
+| Push browser | `notifications_vapid_subject`, `notifications_vapid_public_key`, `notifications_vapid_private_key` | Chiavi VAPID (es. `npx web-push generate-vapid-keys`) |
+| Email di notifica | già presente | Usa il mittente ACS degli inviti (`Invitations__Mail__*`) |
+
+**Limiti noti**
+
+- La coda di consegna delle notifiche esterne è in memoria: un riavvio può perdere un'eco esterna (la notifica
+  in-app resta sempre).
+- Una mail arrivata a un indirizzo di pratica sconosciuto viene scartata (registrata solo nel log).
+- WhatsApp rimandato (decisione dell'intervista).

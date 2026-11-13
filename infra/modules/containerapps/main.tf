@@ -99,6 +99,18 @@ resource "azurerm_container_app" "api" {
     }
   }
 
+  # Renewal plan F2/F3/F3b: the outreach secrets that exist in this
+  # environment's vault (env var name -> versionless id) -- API app only.
+  dynamic "secret" {
+    for_each = nonsensitive(toset(keys(var.outreach_secret_ids)))
+
+    content {
+      name                = lower(replace(secret.value, "__", "-"))
+      key_vault_secret_id = var.outreach_secret_ids[secret.value]
+      identity            = var.workload_identity_id
+    }
+  }
+
   template {
     # Warm floor, default 0 (scale-to-zero). Only the `demo` root raises it
     # (ADR-005 amendment footer); the worker below stays at 0.
@@ -275,6 +287,33 @@ resource "azurerm_container_app" "api" {
       env {
         name  = "Invitations__AcceptUrlBase"
         value = "https://${var.spa_host_name}"
+      }
+
+      # Renewal plan F2/F3/F3b: company mailboxes, inbound supplier mail and
+      # notifications. The web base is this environment's SPA host (where the
+      # browser returns after connecting a mailbox, and the links in
+      # notifications); the rest is optional and empty keeps it off.
+      env {
+        name  = "CaseMail__WebPublicBaseUrl"
+        value = "https://${var.spa_host_name}"
+      }
+
+      dynamic "env" {
+        for_each = { for name, value in var.outreach_env : name => value if value != "" }
+
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = nonsensitive(toset(keys(var.outreach_secret_ids)))
+
+        content {
+          name        = env.value
+          secret_name = lower(replace(env.value, "__", "-"))
+        }
       }
 
       # Portal admin: the Super Admin allowlist as one comma-separated value

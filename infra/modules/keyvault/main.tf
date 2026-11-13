@@ -169,3 +169,21 @@ resource "azurerm_key_vault_secret" "jev_api_key" {
     azurerm_role_assignment.workload_secrets_user,
   ]
 }
+
+# Renewal plan F2/F3/F3b (docs/architecture/renewal-in-app-mail-plan.md): the
+# company-mailbox, inbound-mail and notification secrets. One secret per
+# non-empty entry (the map keys are the vault secret names, never secret
+# themselves); an environment that leaves them empty still applies and keeps
+# those features off. API app only (modules/containerapps outreach_secret_ids).
+resource "azurerm_key_vault_secret" "outreach" {
+  for_each = nonsensitive(toset([for name, value in var.outreach_secrets : name if value != ""]))
+
+  name         = each.key
+  value        = var.outreach_secrets[each.key]
+  key_vault_id = azurerm_key_vault.this.id
+
+  depends_on = [
+    azurerm_role_assignment.deployer_secrets_officer,
+    azurerm_role_assignment.workload_secrets_user,
+  ]
+}

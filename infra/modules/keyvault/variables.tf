@@ -97,3 +97,11 @@ variable "jev_api_key" {
   sensitive   = true
   default     = ""
 }
+
+# Renewal plan F2/F3/F3b: vault secret name -> value (empty = not created).
+variable "outreach_secrets" {
+  description = "Company-mailbox, inbound-mail and notification secrets, keyed by vault secret name (casemail-token-key, casemail-ms-client-secret, casemail-google-client-secret, casemail-resend-api-key, casemail-resend-webhook-secret, notifications-vapid-private-key). Empty values create nothing."
+  type        = map(string)
+  sensitive   = true
+  default     = {}
+}
