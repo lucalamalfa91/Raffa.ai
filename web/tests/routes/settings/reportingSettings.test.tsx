@@ -16,7 +16,10 @@ const body = (over: Partial<WorkspaceSettingsBody> = {}): WorkspaceSettingsBody 
   reportingCurrencySet: false,
   fiscalYearStartMonth: null,
   budgetRates: { EUR: 0.95 },
-  supportedCurrencies: ["CHF", "EUR", "GBP", "USD"],
+  marketRates: { EUR: 0.9232, USD: 0.8331, GBP: 1.1044 },
+  marketRatesDate: "2026-11-12",
+  marketRatesSource: "ECB",
+  supportedCurrencies: ["AED", "CHF", "EUR", "GBP", "USD"],
   ...over,
 });
 const ok = (settings: WorkspaceSettingsBody): GetWorkspaceSettingsResult => ({ ok: true, statusCode: 200, settings, error: null });
@@ -49,11 +52,13 @@ describe("Impostazioni — Spesa e risparmi", () => {
 
     const user = userEvent.setup();
     await user.selectOptions(await screen.findByLabelText("L’anno fiscale inizia a"), "4");
-    await user.click(screen.getByRole("button", { name: "Aggiungi un cambio di budget" }));
-    const rows = screen.getByRole("group", { name: "Cambi di budget" });
+    await user.click(screen.getByRole("button", { name: "Aggiungi un tasso manuale" }));
+    const rows = screen.getByRole("group", { name: "Tassi manuali (facoltativi)" });
     const codes = within(rows).getAllByLabelText("Valuta");
     await user.selectOptions(codes[1]!, "GBP");
-    await user.type(within(rows).getAllByLabelText("Cambio in CHF")[1]!, "1,12");
+    const gbp = within(rows).getAllByLabelText("Tasso in CHF")[1]!;
+    await user.clear(gbp);
+    await user.type(gbp, "1,12");
     await user.click(screen.getByRole("button", { name: "Salva le impostazioni" }));
 
     expect(updateWorkspaceSettings).toHaveBeenCalledWith(TENANT, { fiscalYearStartMonth: 4, budgetRates: { EUR: 0.95, GBP: 1.12 } });
@@ -68,8 +73,8 @@ describe("Impostazioni — Spesa e risparmi", () => {
     const user = userEvent.setup();
     await user.selectOptions(await screen.findByLabelText("Valuta di riferimento"), "EUR");
 
-    expect(screen.getByText("I cambi di budget erano rispetto a CHF: inseriscili di nuovo rispetto a EUR.")).toBeTruthy();
-    expect(screen.queryByLabelText("Cambio in EUR")).toBeNull();
+    expect(screen.getByText("I tassi manuali erano rispetto a CHF: inseriscili di nuovo rispetto a EUR.")).toBeTruthy();
+    expect(screen.queryByLabelText("Tasso in EUR")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Salva le impostazioni" }));
     expect(updateWorkspaceSettings).toHaveBeenCalledWith(TENANT, { reportingCurrency: "EUR", budgetRates: {} });
     expect(missing).toEqual([]);
@@ -80,13 +85,40 @@ describe("Impostazioni — Spesa e risparmi", () => {
     renderSection({ getWorkspaceSettings: vi.fn().mockResolvedValue(ok(body())), updateWorkspaceSettings });
 
     const user = userEvent.setup();
-    const rate = await screen.findByLabelText("Cambio in CHF");
+    const rate = await screen.findByLabelText("Tasso in CHF");
     await user.clear(rate);
     await user.type(rate, "0");
 
     expect((screen.getByRole("button", { name: "Salva le impostazioni" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("Ogni cambio richiede una valuta e un numero maggiore di 0.")).toBeTruthy();
+    expect(screen.getByText("Ogni tasso richiede una valuta e un numero maggiore di 0.")).toBeTruthy();
     expect(updateWorkspaceSettings).not.toHaveBeenCalled();
+  });
+
+  it("shows the ECB reference rates, marks the overridden ones and lists the currencies without one", async () => {
+    renderSection({ getWorkspaceSettings: vi.fn().mockResolvedValue(ok(body())), updateWorkspaceSettings: vi.fn() });
+
+    const list = await screen.findByRole("list", { name: "Tassi di riferimento in CHF" });
+    const items = within(list).getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["1 EUR=0.9232 CHFsostituito", "1 GBP=1.1044 CHF", "1 USD=0.8331 CHF"]);
+    expect(screen.getByText(/tassi del 12 novembre 2026/)).toBeTruthy();
+    expect(screen.getByText("Nessun tasso di riferimento per AED: aggiungi un tasso manuale per includerle nei totali.")).toBeTruthy();
+    expect(missing).toEqual([]);
+  });
+
+  it("starts an override from the reference rate and ignores a row left blank", async () => {
+    const updateWorkspaceSettings = vi.fn().mockResolvedValue(ok(body({ budgetRates: { EUR: 0.95, USD: 0.8331 } })));
+    renderSection({ getWorkspaceSettings: vi.fn().mockResolvedValue(ok(body())), updateWorkspaceSettings });
+
+    const user = userEvent.setup();
+    const add = await screen.findByRole("button", { name: "Aggiungi un tasso manuale" });
+    await user.click(add);
+    await user.click(add);
+    const rows = screen.getByRole("group", { name: "Tassi manuali (facoltativi)" });
+    await user.selectOptions(within(rows).getAllByLabelText("Valuta")[1]!, "USD");
+    expect((within(rows).getAllByLabelText("Tasso in CHF")[1] as HTMLInputElement).value).toBe("0.8331");
+
+    await user.click(screen.getByRole("button", { name: "Salva le impostazioni" }));
+    expect(updateWorkspaceSettings).toHaveBeenCalledWith(TENANT, { budgetRates: { EUR: 0.95, USD: 0.8331 } });
   });
 
   it("shows the settings read-only to a member who is not Admin", async () => {

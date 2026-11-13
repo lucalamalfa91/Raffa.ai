@@ -960,7 +960,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { webResearchEnabled: boolean; webResearchAvailable?: boolean; canEdit: boolean; reportingCurrency?: string; reportingCurrencySet?: boolean; fiscalYearStartMonth?: number | null; budgetRates?: unknown; supportedCurrencies?: (string)[] };
+          "application/json": { webResearchEnabled: boolean; webResearchAvailable?: boolean; canEdit: boolean; reportingCurrency?: string; reportingCurrencySet?: boolean; fiscalYearStartMonth?: number | null; budgetRates?: unknown; marketRates?: unknown; marketRatesDate?: string | null; marketRatesSource?: string | null; supportedCurrencies?: (string)[] };
         };
       };
       401: {

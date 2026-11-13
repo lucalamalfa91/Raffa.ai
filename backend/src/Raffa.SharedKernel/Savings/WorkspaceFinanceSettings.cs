@@ -2,8 +2,9 @@ namespace Raffa.SharedKernel.Savings;
 
 /// <summary>
 /// How a workspace reports money (Spesa e risparmi): the currency every total is in, the month its
-/// fiscal year starts, and the budget rates the admin fixed to convert other currencies. A currency
-/// without a rate is never converted by Raffa: its contracts stay out of the totals and are listed.
+/// fiscal year starts, and the rates to convert other currencies: the ECB reference rates downloaded
+/// every morning, overridden by any rate the admin fixed. A currency without a rate is never
+/// converted by Raffa: its contracts stay out of the totals and are listed.
 /// </summary>
 /// <param name="ReportingCurrency">ISO 4217 code, chosen by the admin (default: the workspace's currency).</param>
 /// <param name="FiscalYearStartMonth">1 (January) to 12.</param>

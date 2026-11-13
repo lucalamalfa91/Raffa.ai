@@ -36,6 +36,7 @@ public static class WorkspaceSettingsEndpointExtensions
         IdentityWorkspaceDbContext dbContext,
         ITenantContext tenantContext,
         WorkspaceSettingsService settingsService,
+        FxReferenceRateStore fxRates,
         WebResearchOptions webResearchOptions,
         CancellationToken cancellationToken)
     {
@@ -60,7 +61,13 @@ public static class WorkspaceSettingsEndpointExtensions
         }
 
         var settings = await settingsService.GetAsync(routeTenantId, cancellationToken).ConfigureAwait(false);
-        return settings is null ? Results.NotFound() : Results.Ok(ToJson(settings, callerRole.Value, webResearchOptions));
+        if (settings is null)
+        {
+            return Results.NotFound();
+        }
+
+        var market = await fxRates.GetLatestAsync(cancellationToken).ConfigureAwait(false);
+        return Results.Ok(ToJson(settings, market, callerRole.Value, webResearchOptions));
     }
 
     private static async Task<IResult> PatchSettingsAsync(
@@ -70,6 +77,7 @@ public static class WorkspaceSettingsEndpointExtensions
         IdentityWorkspaceDbContext dbContext,
         ITenantContext tenantContext,
         WorkspaceSettingsService settingsService,
+        FxReferenceRateStore fxRates,
         WebResearchOptions webResearchOptions,
         CancellationToken cancellationToken)
     {
@@ -113,10 +121,17 @@ public static class WorkspaceSettingsEndpointExtensions
             return Results.BadRequest(error);
         }
 
-        return settings is null ? Results.NotFound() : Results.Ok(ToJson(settings, callerRole.Value, webResearchOptions));
+        if (settings is null)
+        {
+            return Results.NotFound();
+        }
+
+        var market = await fxRates.GetLatestAsync(cancellationToken).ConfigureAwait(false);
+        return Results.Ok(ToJson(settings, market, callerRole.Value, webResearchOptions));
     }
 
-    private static object ToJson(WorkspaceSettingsResult settings, WorkspaceRoleName callerRole, WebResearchOptions webResearchOptions) => new
+    private static object ToJson(
+        WorkspaceSettingsResult settings, FxReferenceRates market, WorkspaceRoleName callerRole, WebResearchOptions webResearchOptions) => new
     {
         webResearchEnabled = settings.WebResearchEnabled,
         webResearchAvailable = webResearchOptions.Enabled,
@@ -130,6 +145,13 @@ public static class WorkspaceSettingsEndpointExtensions
         reportingCurrencySet = settings.ReportingCurrencySet,
         fiscalYearStartMonth = settings.FiscalYearStartMonth,
         budgetRates = settings.BudgetRates ?? new Dictionary<string, decimal>(),
+        // The official reference rates (ECB) downloaded every morning, crossed into the reporting
+        // currency: used for every currency the Admin set no rate for (an Admin rate always wins).
+        marketRates = market.RatesInto(settings.ReportingCurrency)
+            .Where(kv => WorkspaceProvisioningService.SupportedCurrencies.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value),
+        marketRatesDate = market.RateDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        marketRatesSource = market.RateDate is null ? null : "ECB",
         supportedCurrencies = WorkspaceProvisioningService.SupportedCurrencies.Order(StringComparer.Ordinal).ToList(),
     };
 

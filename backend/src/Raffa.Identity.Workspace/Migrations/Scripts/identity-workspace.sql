@@ -421,3 +421,28 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113070000_AddFxReferenceRates') THEN
+    CREATE TABLE fx_reference_rate (
+        currency     character varying(3) PRIMARY KEY,
+        per_eur      numeric(20,8) NOT NULL,
+        rate_date    date NOT NULL,
+        source       character varying(20) NOT NULL,
+        fetched_at   timestamp with time zone NOT NULL,
+        CONSTRAINT ck_fx_reference_rate_positive CHECK (per_eur > 0)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113070000_AddFxReferenceRates') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261113070000_AddFxReferenceRates', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

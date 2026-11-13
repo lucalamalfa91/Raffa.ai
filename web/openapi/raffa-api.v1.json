@@ -10685,7 +10685,28 @@
                       "additionalProperties": {
                         "type": "number"
                       },
-                      "description": "Spesa e risparmi: the Admin's budget rates, units of reportingCurrency per one unit of each keyed ISO 4217 currency. A currency without a rate is never converted."
+                      "description": "Spesa e risparmi: the Admin's budget rates (manual overrides), units of reportingCurrency per one unit of each keyed ISO 4217 currency. An override wins over the reference rate."
+                    },
+                    "marketRates": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      },
+                      "description": "Spesa e risparmi: the official ECB reference rates downloaded every morning, crossed into reportingCurrency (units of reportingCurrency per one unit of each keyed supported currency). Used for every currency without a budget rate; a currency in neither map is never converted."
+                    },
+                    "marketRatesDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The day (yyyy-MM-dd) the reference rates were published; null while none were ever downloaded."
+                    },
+                    "marketRatesSource": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Where the reference rates come from (\"ECB\"); null while none were ever downloaded."
                     },
                     "supportedCurrencies": {
                       "type": "array",
