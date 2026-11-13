@@ -33,10 +33,16 @@ public sealed class MailboxConnectionRecord : TenantScopedEntity
 /// <c>case_mail_address</c>: the address of a case (<c>r-&lt;token&gt;@&lt;inbound domain&gt;</c>), put in CC
 /// and Reply-To of every email Raffa sends, so the supplier's reply reaches the case. The table only routes
 /// an incoming message to its workspace and case — it holds no customer content — and is read before any
-/// workspace is known (the inbound webhook), so it carries no row-level security policy.
+/// workspace is known (the inbound webhook), so it carries no row-level security policy — and is deliberately
+/// not a <see cref="TenantScopedEntity"/> (like the platform registry tables), which the ADR-009 checks would
+/// otherwise require to have one.
 /// </summary>
-public sealed class CaseMailAddressRecord : TenantScopedEntity
+public sealed class CaseMailAddressRecord
 {
+    public EntityId Id { get; set; } = EntityId.New();
+
+    public required TenantId TenantId { get; set; }
+
     public required EntityId CaseId { get; set; }
 
     /// <summary>Random, lower-case, unguessable local-part suffix.</summary>
