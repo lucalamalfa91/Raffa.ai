@@ -190,7 +190,10 @@ public sealed class WorkspaceSettingsEndpointTests : IClassFixture<RaffaApiFacto
             .GetAsync(new TenantId(tenantId));
         Assert.Equal("CHF", finance.ReportingCurrency);
         Assert.Equal(4, finance.FiscalYearStartMonth);
-        Assert.Equal(0.95m, finance.RateFor("EUR"));
+        // Rates come only from the ECB reference rates (none stored on this in-memory host): a legacy
+        // budget rate converts nothing.
+        Assert.Equal(1m, finance.RateFor("CHF"));
+        Assert.Null(finance.RateFor("EUR"));
         Assert.Null(finance.RateFor("USD"));
     }
 

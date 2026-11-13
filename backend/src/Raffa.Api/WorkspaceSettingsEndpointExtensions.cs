@@ -146,7 +146,7 @@ public static class WorkspaceSettingsEndpointExtensions
         fiscalYearStartMonth = settings.FiscalYearStartMonth,
         budgetRates = settings.BudgetRates ?? new Dictionary<string, decimal>(),
         // The official reference rates (ECB) downloaded every morning, crossed into the reporting
-        // currency: used for every currency the Admin set no rate for (an Admin rate always wins).
+        // currency: the only rates Spend and savings converts with.
         marketRates = market.RatesInto(settings.ReportingCurrency)
             .Where(kv => WorkspaceProvisioningService.SupportedCurrencies.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value),
