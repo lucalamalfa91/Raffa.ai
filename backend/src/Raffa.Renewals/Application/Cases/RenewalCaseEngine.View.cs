@@ -906,6 +906,7 @@ public static partial class RenewalCaseEngine
             EmailStates.ToApprove => B("To approve — waiting for {who}", "Da approvare — in attesa di {who}", ("who", apw0)),
             EmailStates.Approved => B("Approved v{ver} by {who} — to copy and send", "Approvata v{ver} da {who} — da copiare e inviare", ("ver", e.ApprovedVer), ("who", e.ApprovedBy)),
             EmailStates.Copied => B("Copied — send from your mailbox, then confirm", "Copiata — invia dalla tua casella, poi conferma"),
+            EmailStates.Sent when e.Sent?.Via is { } via => B("Sent by {who} from {mailbox} on {at}", "Inviata da {who} dalla casella {mailbox} il {at}", ("who", e.Sent.By), ("mailbox", via), ("at", e.Sent.At)),
             EmailStates.Sent => B("Send confirmed by {who} on {at}", "Invio confermato da {who} il {at}", ("who", e.Sent?.By), ("at", e.Sent?.At)),
             _ => B("Superseded — a newer reply arrived", "Superata — è arrivata una nuova risposta"),
         };

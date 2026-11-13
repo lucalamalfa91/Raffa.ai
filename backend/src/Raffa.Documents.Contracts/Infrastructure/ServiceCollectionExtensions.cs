@@ -199,6 +199,7 @@ public static class ServiceCollectionExtensions
         // Raffa.Renewals replaces it (services.Replace).
         services.AddScoped<Raffa.SharedKernel.Contracts.IContractTermWriter, Application.Facts.ContractTermWriter>();
         services.AddScoped<Raffa.SharedKernel.Contracts.IContractDocumentAttacher, Application.ContractDocumentAttacher>();
+        services.AddScoped<Raffa.SharedKernel.Contracts.IContractDocumentFiles, Application.ContractDocumentFiles>();
         services.TryAddScoped<Raffa.SharedKernel.Contracts.IContractCaseStatusReader, Raffa.SharedKernel.Contracts.NoContractCaseStatusReader>();
         services.TryAddScoped<Raffa.SharedKernel.Contracts.IContractSituationAssessor, Raffa.SharedKernel.Contracts.RulesContractSituationAssessor>();
         services.AddScoped<Application.V4.ContractDecisionPointService>();

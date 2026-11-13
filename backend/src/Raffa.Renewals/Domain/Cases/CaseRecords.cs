@@ -87,6 +87,9 @@ public sealed class CaseEmailRecord : TenantScopedEntity
     /// <summary>The text the user says was actually sent (may differ from the approved body).</summary>
     public string? SentBody { get; set; }
 
+    /// <summary>The connected mailbox Raffa sent it from (null: sent outside Raffa, declared by the user).</summary>
+    public string? SentVia { get; set; }
+
     public required DateTimeOffset CreatedAt { get; set; }
 
     public required DateTimeOffset UpdatedAt { get; set; }

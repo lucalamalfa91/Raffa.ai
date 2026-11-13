@@ -943,10 +943,14 @@ public static partial class RenewalCaseEngine
                     To = e.To,
                     Edited = c.Ui.SentEdited,
                     Text = c.Ui.SentEdited && !string.IsNullOrEmpty(c.Ui.SentText) ? c.Ui.SentText : null,
+                    Via = c.Ui.SentVia,
                 };
                 e.State = EmailStates.Sent;
                 c.Ui.SentOpen = null;
-                Log(c, ctx, v, e.Sent.Edited
+                c.Ui.SentVia = null;
+                Log(c, ctx, v, e.Sent.Via is { } via
+                    ? B("Sent by Raffa from {mailbox}", "Inviata da Raffa dalla casella {mailbox}", ("mailbox", via))
+                    : e.Sent.Edited
                     ? B("Send confirmed (declared by user) — text edited after approval", "Invio confermato (dichiarato dall’utente) — testo modificato dopo l’approvazione")
                     : B("Send confirmed (declared by user)", "Invio confermato (dichiarato dall’utente)"));
                 AfterSent(c, ctx, e);
@@ -1623,6 +1627,7 @@ public static partial class RenewalCaseEngine
             case "sentDate": c.Ui.SentDate = s; break;
             case "sentEdited": c.Ui.SentEdited = p.ValueBool(); break;
             case "sentText": c.Ui.SentText = s; break;
+            case "sentVia": c.Ui.SentVia = s.Length == 0 ? null : s; break;
             case "replyText": c.Ui.ReplyText = s; break;
             case "replyOpen": c.Ui.ReplyOpen = p.ValueBool(); break;
             case "auth": c.Ui.Auth = s; break;

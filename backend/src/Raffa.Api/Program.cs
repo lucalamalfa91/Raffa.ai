@@ -380,6 +380,23 @@ builder.Services.AddRenewalsModule(renewalsConnectionString);
 
 // AskRaffa 4.0 renewal case (slices 2+3): the case service, its cross-module ports (honest defaults,
 // replaced by the modules that own them) and the workspace members a case can name.
+// Renewal plan F2/F3/F3b: company mailboxes (Microsoft 365, Google), inbound supplier mail (Resend) and
+// notification delivery (browser push, email, Teams, Slack) -- host adapters registered before
+// AddRenewalCases, whose own defaults are TryAdd. Each stays off until configured (CaseMail__*, Notifications__*).
+builder.Services.AddHttpClient(Raffa.Api.Infrastructure.OAuthMailboxProvider.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient(Raffa.Api.Infrastructure.ResendInboundMailFetcher.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient(Raffa.Api.Infrastructure.WebhookPost.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<Raffa.Renewals.Application.Outreach.IMailboxProvider, Raffa.Api.Infrastructure.MicrosoftMailboxProvider>();
+builder.Services.AddScoped<Raffa.Renewals.Application.Outreach.IMailboxProvider, Raffa.Api.Infrastructure.GoogleMailboxProvider>();
+builder.Services.AddScoped<Raffa.Api.Infrastructure.IInboundMailFetcher, Raffa.Api.Infrastructure.ResendInboundMailFetcher>();
+builder.Services.AddSingleton<Raffa.Api.Infrastructure.NotificationQueue>();
+builder.Services.AddSingleton<Raffa.Renewals.Application.Notifications.INotificationDispatcher>(sp => sp.GetRequiredService<Raffa.Api.Infrastructure.NotificationQueue>());
+builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.Api.Infrastructure.TeamsWebhookSender>();
+builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.Api.Infrastructure.SlackWebhookSender>();
+builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.Api.Infrastructure.EmailNotificationSender>();
+builder.Services.AddScoped<Raffa.Api.Infrastructure.INotificationSender, Raffa.Api.Infrastructure.WebPushSender>();
+builder.Services.AddHostedService<Raffa.Api.Infrastructure.NotificationDeliveryService>();
 builder.Services.AddRenewalCases();
 builder.Services.AddScoped<Raffa.Renewals.Application.CaseWork.ICaseMemberDirectory, WorkspaceCaseMemberDirectory>();
 // Spesa e risparmi: the workspace's reporting currency, fiscal year and budget rates (Identity owns them).
@@ -576,6 +593,7 @@ app.MapRenewalsEndpoints();
 
 // AskRaffa 4.0 (slices 2+3): renewal case, Today feed, reminders.
 app.MapRenewalCaseEndpoints();
+app.MapOutreachEndpoints();
 app.MapCompanyRulesEndpoints();
 
 // Task E04/F02/US02/T01 (savings-opportunity, AC-1): GET /api/savings (list) and PATCH

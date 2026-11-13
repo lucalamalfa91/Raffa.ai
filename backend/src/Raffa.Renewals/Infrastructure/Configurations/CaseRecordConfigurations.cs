@@ -51,6 +51,7 @@ public sealed class CaseEmailRecordConfiguration : IEntityTypeConfiguration<Case
         builder.Property(e => e.Kind).IsRequired().HasMaxLength(40);
         builder.Property(e => e.State).IsRequired().HasMaxLength(20);
         builder.Property(e => e.ToAddress).HasMaxLength(320);
+        builder.Property(e => e.SentVia).HasMaxLength(320);
         builder.Property(e => e.Subject).IsRequired();
         builder.Property(e => e.Body).IsRequired();
         builder.Property(e => e.AttachmentsJson).HasColumnType("jsonb");
@@ -119,6 +120,81 @@ public sealed class CaseFileRecordConfiguration : IEntityTypeConfiguration<CaseF
         builder.Property(e => e.Vendor).HasMaxLength(200);
         builder.Property(e => e.UploadedBy).IsRequired().HasMaxLength(200);
         builder.HasIndex(e => new { e.TenantId, e.CaseId });
+    }
+}
+
+public sealed class MailboxConnectionRecordConfiguration : IEntityTypeConfiguration<MailboxConnectionRecord>
+{
+    public void Configure(EntityTypeBuilder<MailboxConnectionRecord> builder)
+    {
+        CaseTableMapping.Ids(builder, "mailbox_connection");
+        builder.Property(e => e.UserIdentity).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.Provider).IsRequired().HasMaxLength(20);
+        builder.Property(e => e.Address).IsRequired().HasMaxLength(320);
+        builder.Property(e => e.DisplayName).HasMaxLength(200);
+        builder.Property(e => e.RefreshTokenProtected).IsRequired();
+        builder.Property(e => e.LastError).HasMaxLength(200);
+        builder.HasIndex(e => new { e.TenantId, e.UserIdentity }).IsUnique();
+    }
+}
+
+public sealed class CaseMailAddressRecordConfiguration : IEntityTypeConfiguration<CaseMailAddressRecord>
+{
+    public void Configure(EntityTypeBuilder<CaseMailAddressRecord> builder)
+    {
+        CaseTableMapping.Ids(builder, "case_mail_address");
+        builder.Property(e => e.CaseId).HasConversion(ValueConverters.EntityIdConverter);
+        builder.Property(e => e.Token).IsRequired().HasMaxLength(40);
+        builder.HasIndex(e => e.Token).IsUnique();
+        builder.HasIndex(e => new { e.TenantId, e.CaseId }).IsUnique();
+    }
+}
+
+public sealed class CaseInboundMailRecordConfiguration : IEntityTypeConfiguration<CaseInboundMailRecord>
+{
+    public void Configure(EntityTypeBuilder<CaseInboundMailRecord> builder)
+    {
+        CaseTableMapping.Ids(builder, "case_inbound_mail");
+        builder.Property(e => e.CaseId).HasConversion(ValueConverters.EntityIdConverter);
+        builder.Property(e => e.Provider).IsRequired().HasMaxLength(20);
+        builder.Property(e => e.ProviderMessageId).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.FromAddress).IsRequired().HasMaxLength(400);
+        builder.Property(e => e.Subject).IsRequired().HasMaxLength(500);
+        builder.Property(e => e.Preview).IsRequired();
+        builder.Property(e => e.AttachmentNamesJson).HasColumnType("jsonb");
+        builder.Property(e => e.RawStoragePath).IsRequired().HasMaxLength(1024);
+        builder.Property(e => e.State).IsRequired().HasMaxLength(20);
+        builder.Property(e => e.DecidedBy).HasMaxLength(200);
+        builder.HasIndex(e => new { e.TenantId, e.Provider, e.ProviderMessageId }).IsUnique();
+        builder.HasIndex(e => new { e.TenantId, e.CaseId });
+    }
+}
+
+public sealed class NotificationRecordConfiguration : IEntityTypeConfiguration<NotificationRecord>
+{
+    public void Configure(EntityTypeBuilder<NotificationRecord> builder)
+    {
+        CaseTableMapping.Ids(builder, "notification");
+        builder.Property(e => e.UserIdentity).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.Kind).IsRequired().HasMaxLength(40);
+        builder.Property(e => e.Title).IsRequired().HasMaxLength(300);
+        builder.Property(e => e.Body).IsRequired().HasMaxLength(1000);
+        builder.Property(e => e.Link).HasMaxLength(500);
+        builder.HasIndex(e => new { e.TenantId, e.UserIdentity, e.CreatedAt });
+    }
+}
+
+public sealed class NotificationChannelRecordConfiguration : IEntityTypeConfiguration<NotificationChannelRecord>
+{
+    public void Configure(EntityTypeBuilder<NotificationChannelRecord> builder)
+    {
+        CaseTableMapping.Ids(builder, "notification_channel");
+        builder.Property(e => e.UserIdentity).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.Kind).IsRequired().HasMaxLength(20);
+        builder.Property(e => e.TargetProtected).IsRequired();
+        builder.Property(e => e.Label).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.LastError).HasMaxLength(300);
+        builder.HasIndex(e => new { e.TenantId, e.UserIdentity });
     }
 }
 

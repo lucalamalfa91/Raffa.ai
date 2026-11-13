@@ -90,6 +90,7 @@
          provider SDK (ADR-002). -->
     <PackageReference Include="MimeKit" Version="5.0.0" />
     <PackageReference Include="MsgReader" Version="6.2.1" />
+    <PackageReference Include="WebPush" Version="1.0.13" />
   </ItemGroup>
 
 </Project>

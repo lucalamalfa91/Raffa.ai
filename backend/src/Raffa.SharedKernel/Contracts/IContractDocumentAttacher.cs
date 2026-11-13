@@ -21,3 +21,17 @@ public interface IContractDocumentAttacher
     /// <returns>The id of the document (an existing one when the same file is already in the workspace).</returns>
     Task<Guid> AttachSignedAsync(TenantId tenantId, SignedContractDocument document, CancellationToken cancellationToken = default);
 }
+
+/// <summary>A document file of a contract (name, type, bytes).</summary>
+public sealed record ContractDocumentFile(string FileName, string MimeType, byte[] Content);
+
+/// <summary>
+/// Reads a contract's document by file name — the attachment a case email names (the contract the
+/// renewal is about), so Raffa can attach it when it sends the email from the person's mailbox.
+/// Implemented by <c>Raffa.Documents.Contracts</c>.
+/// </summary>
+public interface IContractDocumentFiles
+{
+    /// <returns>The file, or null when the contract has no readable document with that name.</returns>
+    Task<ContractDocumentFile?> LoadAsync(TenantId tenantId, Guid contractId, string fileName, CancellationToken cancellationToken = default);
+}

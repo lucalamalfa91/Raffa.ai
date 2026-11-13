@@ -35,7 +35,7 @@ internal sealed class WorkspaceCaseMemberDirectory(IdentityWorkspaceDbContext db
                 var title = isAdmin ? "Head of Procurement"
                     : roles.Contains(WorkspaceRoleName.Procurement) ? "Buyer"
                     : roles.First().ToString();
-                return new CaseMember(first.Id.Value, first.ExternalSubjectId, string.IsNullOrWhiteSpace(first.DisplayName) ? first.Email : first.DisplayName!, title, isAdmin);
+                return new CaseMember(first.Id.Value, first.ExternalSubjectId, string.IsNullOrWhiteSpace(first.DisplayName) ? first.Email : first.DisplayName!, title, isAdmin, first.Email);
             })
             .OrderBy(m => m.Name, StringComparer.Ordinal)
             .ToList();

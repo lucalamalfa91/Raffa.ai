@@ -619,3 +619,227 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    ALTER TABLE case_email ADD sent_via character varying(320);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE TABLE case_inbound_mail (
+        id uuid NOT NULL,
+        case_id uuid NOT NULL,
+        provider character varying(20) NOT NULL,
+        provider_message_id character varying(200) NOT NULL,
+        from_address character varying(400) NOT NULL,
+        subject character varying(500) NOT NULL,
+        received_at timestamp with time zone NOT NULL,
+        preview text NOT NULL,
+        attachment_names_json jsonb,
+        raw_storage_path character varying(1024) NOT NULL,
+        state character varying(20) NOT NULL,
+        decided_by character varying(200),
+        decided_at timestamp with time zone,
+        reply_index integer,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_case_inbound_mail PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE TABLE case_mail_address (
+        id uuid NOT NULL,
+        case_id uuid NOT NULL,
+        token character varying(40) NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        disabled_at timestamp with time zone,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_case_mail_address PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE TABLE mailbox_connection (
+        id uuid NOT NULL,
+        user_identity character varying(200) NOT NULL,
+        provider character varying(20) NOT NULL,
+        address character varying(320) NOT NULL,
+        display_name character varying(200),
+        refresh_token_protected text NOT NULL,
+        connected_at timestamp with time zone NOT NULL,
+        last_used_at timestamp with time zone,
+        last_error character varying(200),
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_mailbox_connection PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE TABLE notification (
+        id uuid NOT NULL,
+        user_identity character varying(200) NOT NULL,
+        kind character varying(40) NOT NULL,
+        title character varying(300) NOT NULL,
+        body character varying(1000) NOT NULL,
+        link character varying(500),
+        case_id uuid,
+        created_at timestamp with time zone NOT NULL,
+        read_at timestamp with time zone,
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_notification PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE TABLE notification_channel (
+        id uuid NOT NULL,
+        user_identity character varying(200) NOT NULL,
+        kind character varying(20) NOT NULL,
+        target_protected text NOT NULL,
+        label character varying(200) NOT NULL,
+        enabled boolean NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        last_delivered_at timestamp with time zone,
+        last_error character varying(300),
+        tenant_id uuid NOT NULL,
+        CONSTRAINT pk_notification_channel PRIMARY KEY (id)
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE INDEX ix_case_inbound_mail_tenant_id ON case_inbound_mail (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE INDEX ix_case_inbound_mail_tenant_id_case_id ON case_inbound_mail (tenant_id, case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE UNIQUE INDEX ix_case_inbound_mail_tenant_id_provider_provider_message_id ON case_inbound_mail (tenant_id, provider, provider_message_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE INDEX ix_case_mail_address_tenant_id ON case_mail_address (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE UNIQUE INDEX ix_case_mail_address_tenant_id_case_id ON case_mail_address (tenant_id, case_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE UNIQUE INDEX ix_case_mail_address_token ON case_mail_address (token);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE INDEX ix_mailbox_connection_tenant_id ON mailbox_connection (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE UNIQUE INDEX ix_mailbox_connection_tenant_id_user_identity ON mailbox_connection (tenant_id, user_identity);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE INDEX ix_notification_tenant_id ON notification (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE INDEX ix_notification_tenant_id_user_identity_created_at ON notification (tenant_id, user_identity, created_at);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE INDEX ix_notification_channel_tenant_id ON notification_channel (tenant_id);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    CREATE INDEX ix_notification_channel_tenant_id_user_identity ON notification_channel (tenant_id, user_identity);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    ALTER TABLE "mailbox_connection" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "mailbox_connection" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "mailbox_connection"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    ALTER TABLE "case_inbound_mail" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "case_inbound_mail" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "case_inbound_mail"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    ALTER TABLE "notification" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "notification" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "notification"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    ALTER TABLE "notification_channel" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE "notification_channel" FORCE ROW LEVEL SECURITY;
+    CREATE POLICY tenant_isolation ON "notification_channel"
+        USING (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)
+        WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261113112119_AddMailOutreachAndNotifications') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261113112119_AddMailOutreachAndNotifications', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

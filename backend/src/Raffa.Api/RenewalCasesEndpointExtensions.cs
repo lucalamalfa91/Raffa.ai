@@ -95,18 +95,18 @@ public static class RenewalCasesEndpointExtensions
         return Results.Ok(await service.BoardAsync(caller.TenantId, caller.Identity, ct).ConfigureAwait(false));
     }
 
-    private static IResult Map(CaseResult r) => r.Kind switch
+    internal static IResult Map(CaseResult r) => r.Kind switch
     {
         CaseResultKind.Ok => Results.Ok(r.Envelope),
-        CaseResultKind.NotFound => Results.NotFound(new CaseErrorBody("not_found", r.Error, null, null)),
-        CaseResultKind.BadRequest => Results.BadRequest(new CaseErrorBody("bad_request", r.Error, null, null)),
+        CaseResultKind.NotFound => Results.NotFound(new CaseErrorBody(r.Code ?? "not_found", r.Error, null, null)),
+        CaseResultKind.BadRequest => Results.BadRequest(new CaseErrorBody(r.Code ?? "bad_request", r.Error, r.Envelope, null)),
         CaseResultKind.Conflict => Results.Conflict(new CaseErrorBody("stale_version", r.Error, r.Envelope, null)),
         CaseResultKind.Duplicate => Results.Conflict(new CaseErrorBody("duplicate_reply", r.Error, r.Envelope, r.ExistingMessageId)),
         CaseResultKind.Forbidden => Results.Json(new CaseErrorBody("forbidden", r.Error, r.Envelope, null), statusCode: StatusCodes.Status403Forbidden),
         _ => Results.StatusCode(StatusCodes.Status500InternalServerError),
     };
 
-    private static async Task<IResult> WithCaller(HttpRequest request, ICallerContext callerContext, CancellationToken ct, Func<CallerTenantResult, Task<IResult>> run)
+    internal static async Task<IResult> WithCaller(HttpRequest request, ICallerContext callerContext, CancellationToken ct, Func<CallerTenantResult, Task<IResult>> run)
     {
         var caller = await callerContext.ResolveTenantAsync(request, ct).ConfigureAwait(false);
         if (caller.Failure is not null)
