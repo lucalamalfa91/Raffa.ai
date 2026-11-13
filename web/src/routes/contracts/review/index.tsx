@@ -6,7 +6,8 @@ import { useFixtureSession } from "../../../fixtures/FixtureSessionContext";
 import { useI18n } from "../../../i18n/I18nProvider";
 import type { Translate } from "../../../i18n/translate";
 import { announceContractsChanged, tx, useTenantId } from "../contracts4";
-import { useContractUpload } from "../useContractUpload";
+import { reviewPath, useContractUpload } from "../useContractUpload";
+import ReviewPagePane, { type PageHighlight } from "./ReviewPagePane";
 import "../contracts4.css";
 
 export interface ReviewRouteProps {
@@ -15,6 +16,24 @@ export interface ReviewRouteProps {
 
 /** While the document is being read (prototype: one stage every 600 ms). */
 const POLL_MS = 300;
+/** Once a contract is validated, how long before the next one to verify opens by itself. */
+export const ADVANCE_SECONDS = 4;
+
+type ReadingBasisBody = NonNullable<ReadingFieldBody["basis"]>;
+
+/** What is still waiting after this document: the next one to open and how many are left. */
+interface Queue {
+  /** Documents still to validate (waiting for review or being read), this one included while it is open. */
+  remaining: number;
+  /** The next document to open, other than this one. */
+  next: { documentId: string; file: string } | null;
+}
+
+const BASIS_KIND: Record<ReadingBasisBody["kind"], string> = {
+  stated: "Written in the contract",
+  derived: "Worked out from other passages",
+  notStated: "Not written in the contract",
+};
 
 /**
  * `/contracts/review/:documentId` — AskRaffa 4.0 Revisione. `new` starts an upload (the sample in
@@ -101,6 +120,9 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
   const [corrected, setCorrected] = useState("");
   const [busy, setBusy] = useState(false);
   const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [queue, setQueue] = useState<Queue | null>(null);
+  const [page, setPage] = useState(1);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -126,6 +148,54 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
 
   const field: ReadingFieldBody | undefined = reading?.fields.find((f) => f.decision === null);
   const index = reading && field ? reading.fields.indexOf(field) : -1;
+  const fieldKey = field?.key;
+  const fieldPage = field?.page ?? null;
+
+  // Each field opens on the page it was read on.
+  useEffect(() => {
+    if (fieldKey !== undefined) setPage(fieldPage ?? 1);
+  }, [fieldKey, fieldPage]);
+
+  /** The Contratti banner's counts: what is still to validate and which document comes next. */
+  const loadQueue = useCallback(async () => {
+    if (!tenantId) return;
+    const result = await apiClient.listContractsV4(tenantId);
+    const doc = result.ok ? result.data?.document : null;
+    if (!doc) {
+      setQueue({ remaining: 0, next: null });
+      return;
+    }
+    const remaining = Math.max((doc.toReview ?? 0) + (doc.reading ?? 0), 1);
+    setQueue({ remaining, next: doc.documentId === documentId ? null : { documentId: doc.documentId, file: doc.file } });
+  }, [apiClient, tenantId, documentId]);
+
+  const status = reading?.status;
+  useEffect(() => {
+    if (status === "review" || status === "done") void loadQueue();
+  }, [status, loadQueue]);
+
+  // Validated with more to do: the next contract opens by itself after a short pause.
+  const nextId = status === "done" ? queue?.next?.documentId ?? null : null;
+  useEffect(() => {
+    if (nextId === null) {
+      setCountdown(null);
+      return undefined;
+    }
+    setCountdown(ADVANCE_SECONDS);
+    const timer = window.setInterval(() => {
+      setCountdown((c) => (c === null ? null : c - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [nextId]);
+  useEffect(() => {
+    if (countdown === 0 && nextId !== null) navigate(reviewPath(nextId));
+  }, [countdown, nextId, navigate]);
+
+  const highlights: PageHighlight[] = [];
+  if (field?.box && field.page) highlights.push({ key: field.key, page: field.page, box: field.box, tone: "field" });
+  for (const source of field?.basis?.sources ?? []) {
+    if (source.box && source.page) highlights.push({ key: `src-${source.key}`, page: source.page, box: source.box, tone: "source" });
+  }
 
   const decide = async (decision: "accept" | "correct") => {
     if (!tenantId || !reading || !field || busy) return;
@@ -138,7 +208,11 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
       setReading(result.data);
       setCorrecting(false);
       setCorrected("");
-      if (result.data.status === "done") announceContractsChanged();
+      if (result.data.status === "done") {
+        // The queue read during the review counted this document: read it again once validated.
+        setQueue(null);
+        announceContractsChanged();
+      }
     } else {
       // A server failure saved nothing (the reading stays in review): say so plainly, not the raw response.
       setDecisionError(result.statusCode !== null && result.statusCode >= 500 ? "" : (result.error ?? ""));
@@ -164,6 +238,11 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
             {t("Document · {file}", { file: reading.file })}
           </h6>
           <h2>{heading}</h2>
+          {queue && queue.remaining > 1 && reading.status !== "done" ? (
+            <div className="c4-queue" data-testid="review-queue">
+              {t("{n} contracts to validate, this one included", { n: queue.remaining })}
+            </div>
+          ) : null}
         </>
       ) : null}
 
@@ -204,6 +283,7 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
       ) : null}
 
       {reading?.status === "review" && field ? (
+        <div className="c4-review-grid">
         <div className="c4-field">
           <div className="c4-field-kicker">
             {t("Field {n} of {total} · to verify", { n: index + 1, total: reading.fields.length })}
@@ -217,12 +297,23 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
             <span className="c4-label">{t("What to check")}</span> {tx(t, field.why)}
           </div>
           {field.quote ? (
-            <div className="c4-quote">
-              {field.quote.before}
-              <mark>{field.quote.mark}</mark>
-              {field.quote.after}
+            <div className="c4-passage">
+              <div className="c4-passage-head">
+                <span className="c4-label">{t("The passage I read")}</span>
+                {field.page ? (
+                  <button type="button" className="btn btn-ghost c4-page-link" onClick={() => setPage(field.page ?? 1)}>
+                    {t("see page {page}", { page: field.page })}
+                  </button>
+                ) : null}
+              </div>
+              <div className="c4-quote">
+                {field.quote.before}
+                <mark>{field.quote.mark}</mark>
+                {field.quote.after}
+              </div>
             </div>
           ) : null}
+          {field.basis ? <Basis t={t} basis={field.basis} onPage={setPage} /> : null}
           {correcting ? (
             <input
               className="input c4-correct-input"
@@ -260,6 +351,17 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
             </button>
           </div>
         </div>
+        {tenantId ? (
+          <ReviewPagePane
+            apiClient={apiClient}
+            tenantId={tenantId}
+            documentId={reading.documentId}
+            page={page}
+            onPage={setPage}
+            highlights={highlights}
+          />
+        ) : null}
+        </div>
       ) : null}
 
       {reading?.status === "done" ? (
@@ -268,19 +370,85 @@ function Review({ apiClient, documentId }: ReviewRouteProps & { documentId: stri
           <div className="c4-done-text">
             {t("From now on it feeds Today, Renewals and Contracts. Its notice deadline is already among your priorities.")}
           </div>
+          {queue?.next ? (
+            <div className="c4-queue-next" aria-live="polite" data-testid="review-next">
+              <strong>
+                {queue.remaining === 1
+                  ? t("1 contract still to validate")
+                  : t("{n} contracts still to validate", { n: queue.remaining })}
+              </strong>
+              {" · "}
+              {t("next: {file}", { file: queue.next.file })}
+              {countdown !== null && countdown > 0 ? (
+                <> · {t("it opens in {s} s", { s: countdown })}</>
+              ) : null}
+            </div>
+          ) : queue ? (
+            <div className="c4-queue-next" data-testid="review-all-done">
+              <strong>{t("All your contracts are validated.")}</strong>
+            </div>
+          ) : null}
           <div className="c4-done-actions">
+            {queue?.next ? (
+              <button type="button" className="btn btn-primary" onClick={() => navigate(reviewPath(queue.next!.documentId))}>
+                {t("Next contract now")}
+              </button>
+            ) : null}
             <button
               type="button"
-              className="btn btn-primary"
+              className={queue?.next ? "btn btn-secondary" : "btn btn-primary"}
               onClick={() => reading.contractId && navigate(`/contracts/${encodeURIComponent(reading.contractId)}`)}
             >
               {t("Open the contract")}
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => navigate("/today")}>
-              {t("Back to Today")}
-            </button>
+            {queue && !queue.next ? (
+              <button type="button" className="btn btn-secondary" onClick={() => navigate("/contracts")}>
+                {t("Back to contracts")}
+              </button>
+            ) : null}
           </div>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Raffa's reasoning behind the value: written in the passage, worked out from other passages (each
+ * one quoted, with a link to its page), or not written anywhere. It tells the user what to compare.
+ */
+function Basis({ t, basis, onPage }: { t: Translate; basis: ReadingBasisBody; onPage: (page: number) => void }) {
+  return (
+    <div className={`c4-basis is-${basis.kind}`} data-testid="review-basis">
+      <div className="c4-basis-head">
+        <span className="c4-label">{t("How I read it")}</span>
+        <span className="c4-basis-kind">{t(BASIS_KIND[basis.kind])}</span>
+      </div>
+      <p className="c4-basis-text">{tx(t, basis.explanation)}</p>
+      {basis.sources.length > 0 ? (
+        <ul className="c4-sources">
+          {basis.sources.map((source) => (
+            <li key={source.key} className="c4-source">
+              <div className="c4-source-head">
+                <span>
+                  {tx(t, source.label)}: <strong>{source.value}</strong>
+                </span>
+                {source.page ? (
+                  <button type="button" className="btn btn-ghost c4-page-link" onClick={() => onPage(source.page ?? 1)}>
+                    {t("see page {page}", { page: source.page })}
+                  </button>
+                ) : null}
+              </div>
+              {source.quote ? (
+                <div className="c4-quote is-source">
+                  {source.quote.before}
+                  <mark>{source.quote.mark}</mark>
+                  {source.quote.after}
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   );

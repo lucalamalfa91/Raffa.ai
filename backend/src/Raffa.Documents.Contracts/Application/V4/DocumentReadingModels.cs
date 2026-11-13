@@ -37,7 +37,31 @@ public sealed record ReadingField(
     ReadingQuote? Quote,
     bool Critical,
     string? Decision,
-    string? CorrectedValue);
+    string? CorrectedValue,
+    ReadingBox? Box = null,
+    ReadingBasis? Basis = null);
+
+/// <summary>Pixel-space rectangle of the quoted words on the rendered page image (the evidence box).</summary>
+public sealed record ReadingBox(double X, double Y, double Width, double Height);
+
+/// <summary>How Raffa arrived at a field's value (<see cref="ReadingBasis.Kind"/>).</summary>
+public static class BasisKinds
+{
+    /// <summary>Written in the contract: the highlighted words are the value.</summary>
+    public const string Stated = "stated";
+
+    /// <summary>Not written as such: worked out from other passages (e.g. end of term minus notice period).</summary>
+    public const string Derived = "derived";
+
+    /// <summary>No passage of the contract states it: inferred, so the user must confirm it.</summary>
+    public const string NotStated = "notStated";
+}
+
+/// <summary>Another passage the value rests on (e.g. the end of the term behind a notice deadline).</summary>
+public sealed record ReadingSource(string Key, object Label, string Value, int? Page, ReadingQuote? Quote, ReadingBox? Box);
+
+/// <summary>Raffa's reasoning behind a field: what kind of reading it is, in words, and the passages it rests on.</summary>
+public sealed record ReadingBasis(string Kind, ContractMessage Explanation, IReadOnlyList<ReadingSource> Sources);
 
 /// <summary><c>GET /api/documents/{id}/reading</c>: where the reading of one document is.</summary>
 public sealed record DocumentReadingView(

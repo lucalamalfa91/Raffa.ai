@@ -960,7 +960,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { webResearchEnabled: boolean; webResearchAvailable?: boolean; canEdit: boolean; reportingCurrency?: string; reportingCurrencySet?: boolean; fiscalYearStartMonth?: number | null; budgetRates?: unknown; supportedCurrencies?: (string)[] };
+          "application/json": { webResearchEnabled: boolean; webResearchAvailable?: boolean; canEdit: boolean; reportingCurrency?: string; reportingCurrencySet?: boolean; fiscalYearStartMonth?: number | null; budgetRates?: unknown; marketRates?: unknown; marketRatesDate?: string | null; marketRatesSource?: string | null; supportedCurrencies?: (string)[] };
         };
       };
       401: {
@@ -1568,7 +1568,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { documentId: string; contractId: string | null; file: string; supplier: string | null; status: "processing" | "review" | "done" | "failed"; stage: number; stageLabel: { id: string; vars?: unknown }; failure: { id: string; vars?: unknown } | null; fields: ({ key: string; label: unknown; value: string; page: number | null; src: string; why: unknown; flagReason: { id: string; vars?: unknown } | null; quote: { before: string; mark: string; after: string } | null; critical: boolean; decision: "accept" | "correct" | null; correctedValue: string | null })[] };
+          "application/json": { documentId: string; contractId: string | null; file: string; supplier: string | null; status: "processing" | "review" | "done" | "failed"; stage: number; stageLabel: { id: string; vars?: unknown }; failure: { id: string; vars?: unknown } | null; fields: ({ key: string; label: unknown; value: string; page: number | null; src: string; why: unknown; flagReason: { id: string; vars?: unknown } | null; quote: { before: string; mark: string; after: string } | null; critical: boolean; decision: "accept" | "correct" | null; correctedValue: string | null; box?: { x: number; y: number; width: number; height: number } | null; basis?: { kind: "stated" | "derived" | "notStated"; explanation: { id: string; vars?: unknown }; sources: ({ key: string; label: unknown; value: string; page: number | null; quote: { before: string; mark: string; after: string } | null; box: { x: number; y: number; width: number; height: number } | null })[] } | null })[] };
         };
       };
       400: {
@@ -1589,7 +1589,7 @@ export interface operations {
     responses: {
       200: {
         content: {
-          "application/json": { documentId: string; contractId: string | null; file: string; supplier: string | null; status: "processing" | "review" | "done" | "failed"; stage: number; stageLabel: { id: string; vars?: unknown }; failure: { id: string; vars?: unknown } | null; fields: ({ key: string; label: unknown; value: string; page: number | null; src: string; why: unknown; flagReason: { id: string; vars?: unknown } | null; quote: { before: string; mark: string; after: string } | null; critical: boolean; decision: "accept" | "correct" | null; correctedValue: string | null })[] };
+          "application/json": { documentId: string; contractId: string | null; file: string; supplier: string | null; status: "processing" | "review" | "done" | "failed"; stage: number; stageLabel: { id: string; vars?: unknown }; failure: { id: string; vars?: unknown } | null; fields: ({ key: string; label: unknown; value: string; page: number | null; src: string; why: unknown; flagReason: { id: string; vars?: unknown } | null; quote: { before: string; mark: string; after: string } | null; critical: boolean; decision: "accept" | "correct" | null; correctedValue: string | null; box?: { x: number; y: number; width: number; height: number } | null; basis?: { kind: "stated" | "derived" | "notStated"; explanation: { id: string; vars?: unknown }; sources: ({ key: string; label: unknown; value: string; page: number | null; quote: { before: string; mark: string; after: string } | null; box: { x: number; y: number; width: number; height: number } | null })[] } | null })[] };
         };
       };
       400: {

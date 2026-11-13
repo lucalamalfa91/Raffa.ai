@@ -10685,7 +10685,28 @@
                       "additionalProperties": {
                         "type": "number"
                       },
-                      "description": "Spesa e risparmi: the Admin's budget rates, units of reportingCurrency per one unit of each keyed ISO 4217 currency. A currency without a rate is never converted."
+                      "description": "Legacy: manual budget rates stored before the ECB reference rates. No longer used for any conversion."
+                    },
+                    "marketRates": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      },
+                      "description": "Spesa e risparmi: the official ECB reference rates downloaded every morning, crossed into reportingCurrency (units of reportingCurrency per one unit of each keyed supported currency). The only rates Spend and savings converts with; a currency not in this map is never converted."
+                    },
+                    "marketRatesDate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "The day (yyyy-MM-dd) the reference rates were published; null while none were ever downloaded."
+                    },
+                    "marketRatesSource": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Where the reference rates come from (\"ECB\"); null while none were ever downloaded."
                     },
                     "supportedCurrencies": {
                       "type": "array",
@@ -13123,6 +13144,151 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "box": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "x",
+                              "y",
+                              "width",
+                              "height"
+                            ],
+                            "properties": {
+                              "x": {
+                                "type": "number"
+                              },
+                              "y": {
+                                "type": "number"
+                              },
+                              "width": {
+                                "type": "number"
+                              },
+                              "height": {
+                                "type": "number"
+                              }
+                            },
+                            "description": "Pixel-space rectangle of the quoted words on the rendered page image (GET /api/documents/{id}/preview?page=n); null when the page has no layout geometry."
+                          },
+                          "basis": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "kind",
+                              "explanation",
+                              "sources"
+                            ],
+                            "description": "How Raffa arrived at the value: stated in the highlighted passage, derived from other passages (sources), or not stated anywhere.",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "derived",
+                                  "notStated"
+                                ]
+                              },
+                              "explanation": {
+                                "type": "object",
+                                "required": [
+                                  "id"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "vars": {
+                                    "type": "object",
+                                    "description": "Placeholder values (string, number or a nested message)."
+                                  }
+                                },
+                                "description": "A message the client translates: {id, vars}."
+                              },
+                              "sources": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "label",
+                                    "value",
+                                    "page",
+                                    "quote",
+                                    "box"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "description": "The field's label: a message {id, vars} or a plain string."
+                                    },
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "page": {
+                                      "type": [
+                                        "integer",
+                                        "null"
+                                      ]
+                                    },
+                                    "quote": {
+                                      "type": [
+                                        "object",
+                                        "null"
+                                      ],
+                                      "required": [
+                                        "before",
+                                        "mark",
+                                        "after"
+                                      ],
+                                      "properties": {
+                                        "before": {
+                                          "type": "string"
+                                        },
+                                        "mark": {
+                                          "type": "string"
+                                        },
+                                        "after": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "box": {
+                                      "type": [
+                                        "object",
+                                        "null"
+                                      ],
+                                      "required": [
+                                        "x",
+                                        "y",
+                                        "width",
+                                        "height"
+                                      ],
+                                      "properties": {
+                                        "x": {
+                                          "type": "number"
+                                        },
+                                        "y": {
+                                          "type": "number"
+                                        },
+                                        "width": {
+                                          "type": "number"
+                                        },
+                                        "height": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "description": "Pixel-space rectangle of the quoted words on the rendered page image (GET /api/documents/{id}/preview?page=n); null when the page has no layout geometry."
+                                    }
+                                  }
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -13394,6 +13560,151 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "box": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "x",
+                              "y",
+                              "width",
+                              "height"
+                            ],
+                            "properties": {
+                              "x": {
+                                "type": "number"
+                              },
+                              "y": {
+                                "type": "number"
+                              },
+                              "width": {
+                                "type": "number"
+                              },
+                              "height": {
+                                "type": "number"
+                              }
+                            },
+                            "description": "Pixel-space rectangle of the quoted words on the rendered page image (GET /api/documents/{id}/preview?page=n); null when the page has no layout geometry."
+                          },
+                          "basis": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "kind",
+                              "explanation",
+                              "sources"
+                            ],
+                            "description": "How Raffa arrived at the value: stated in the highlighted passage, derived from other passages (sources), or not stated anywhere.",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "derived",
+                                  "notStated"
+                                ]
+                              },
+                              "explanation": {
+                                "type": "object",
+                                "required": [
+                                  "id"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "vars": {
+                                    "type": "object",
+                                    "description": "Placeholder values (string, number or a nested message)."
+                                  }
+                                },
+                                "description": "A message the client translates: {id, vars}."
+                              },
+                              "sources": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "label",
+                                    "value",
+                                    "page",
+                                    "quote",
+                                    "box"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "description": "The field's label: a message {id, vars} or a plain string."
+                                    },
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "page": {
+                                      "type": [
+                                        "integer",
+                                        "null"
+                                      ]
+                                    },
+                                    "quote": {
+                                      "type": [
+                                        "object",
+                                        "null"
+                                      ],
+                                      "required": [
+                                        "before",
+                                        "mark",
+                                        "after"
+                                      ],
+                                      "properties": {
+                                        "before": {
+                                          "type": "string"
+                                        },
+                                        "mark": {
+                                          "type": "string"
+                                        },
+                                        "after": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    "box": {
+                                      "type": [
+                                        "object",
+                                        "null"
+                                      ],
+                                      "required": [
+                                        "x",
+                                        "y",
+                                        "width",
+                                        "height"
+                                      ],
+                                      "properties": {
+                                        "x": {
+                                          "type": "number"
+                                        },
+                                        "y": {
+                                          "type": "number"
+                                        },
+                                        "width": {
+                                          "type": "number"
+                                        },
+                                        "height": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "description": "Pixel-space rectangle of the quoted words on the rendered page image (GET /api/documents/{id}/preview?page=n); null when the page has no layout geometry."
+                                    }
+                                  }
+                                }
+                              }
+                            }
                           }
                         }
                       }

@@ -50,7 +50,9 @@ export const FLOW_ZERO: Step[] = [
   { shot: '03-revisione-campo-1', run: async p => { await expect(btn(p, /Accetta: è corretto/)).toBeVisible({ timeout: 8000 }); } },
   { shot: '04-revisione-campo-2', run: async p => { await btn(p, /Accetta: è corretto/).click(); } },
   { shot: '05-contratto-validato', run: async p => { await btn(p, /Accetta: è corretto/).click(); } },
-  { shot: '06-oggi-focus-card', run: async p => { await btn(p, /Torna a Oggi/).click(); } },
+  // Approved deviation D11 (PARITY.md): a validated contract no longer offers "Torna a Oggi" (it moves on
+  // to the next contract, or back to Contratti), so the path reaches Oggi through its tab, on the prototype too.
+  { shot: '06-oggi-focus-card', run: async p => { await tab(p, 'Oggi').click(); } },
   { shot: '07-rinnovo-intervista', run: async p => { await btn(p, /Me ne occupo io/).click(); } },
   { shot: '08-rinnovo-scheda-aperta', run: async p => { await btn(p, /^Scheda:/).click(); } },
   { shot: '09-rinnovi-lista', run: async p => { await tab(p, 'Rinnovi').click(); } },

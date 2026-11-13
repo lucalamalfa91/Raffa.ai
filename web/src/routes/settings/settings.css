@@ -82,6 +82,9 @@
 .v4 .st-rate > .input.st-rate-code { width: 110px; }
 .v4 .st-rate > .input.st-rate-value { width: 130px; }
 .st-rate-add { align-self: flex-start; }
+/* Reference rates (ECB): a compact read-only grid, "1 USD = 0.8331 CHF". */
+.st-market { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 16px; }
+.st-market-rate { display: flex; align-items: baseline; gap: 6px; font-size: 14px; color: var(--color-neutral-700); font-variant-numeric: tabular-nums; }
 
 /* — Email and notifications (renewal plan F2/F3b) — */
 .st-error { border-left-color: var(--color-accent); }

@@ -401,6 +401,13 @@ builder.Services.AddRenewalCases();
 builder.Services.AddScoped<Raffa.Renewals.Application.CaseWork.ICaseMemberDirectory, WorkspaceCaseMemberDirectory>();
 // Spesa e risparmi: the workspace's reporting currency, fiscal year and budget rates (Identity owns them).
 builder.Services.AddScoped<Raffa.SharedKernel.Savings.IWorkspaceFinanceSettingsReader, WorkspaceFinanceSettingsReader>();
+// The ECB reference rates, downloaded every morning into fx_reference_rate (FxRates section): the
+// reader above converts with them wherever the Admin set no budget rate of their own.
+var fxRateOptions = builder.Configuration.GetSection(FxReferenceRateOptions.SectionName).Get<FxReferenceRateOptions>()
+    ?? new FxReferenceRateOptions();
+builder.Services.AddSingleton(fxRateOptions);
+builder.Services.AddHttpClient<EcbReferenceRateClient>(client => client.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHostedService<FxReferenceRateRefreshService>();
 
 // Task E03/F02/US01/T02 (renewal-alerts, parent story us-01-threshold-scheduler AC-3):
 // RenewalAlertRecomputeService is host-composition wiring, the same kind as

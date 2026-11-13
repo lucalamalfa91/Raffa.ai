@@ -7,12 +7,6 @@ export interface ReportingSettingsProps {
   tenantId: string;
 }
 
-interface RateRow {
-  key: number;
-  code: string;
-  value: string;
-}
-
 const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 /** "Gennaio" / "January": the month's name in the UI language, capitalised. */
@@ -21,46 +15,52 @@ function monthName(month: number, lang: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/** The body's budget rates, read defensively (the generated type cannot describe a map). */
-function ratesOf(body: WorkspaceSettingsBody | null): Record<string, number> {
-  const raw = body?.budgetRates;
+/** A map of positive rates, read defensively (the generated type cannot describe a map). */
+function mapOf(raw: unknown): Record<string, number> {
   if (!raw || typeof raw !== "object") return {};
   return Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, number] => typeof e[1] === "number" && e[1] > 0));
 }
 
-/** A stable text of a set of rates, to tell whether it changed. */
-function rateKey(rates: Record<string, number>): string {
-  return Object.keys(rates)
-    .sort()
-    .map((k) => `${k}:${rates[k]}`)
-    .join(",");
+/**
+ * The reference rates (ECB, downloaded every morning) as units of `currency` per unit of each other
+ * currency. The server crosses them into the saved reporting currency; while the Admin is picking another
+ * one they are crossed again here, through the saved one.
+ */
+function marketInto(body: WorkspaceSettingsBody | null, currency: string): Record<string, number> {
+  const market = mapOf(body?.marketRates);
+  const saved = body?.reportingCurrency ?? "CHF";
+  if (currency === saved) return market;
+  const pivot = market[currency];
+  if (!pivot) return {};
+  const crossed: Record<string, number> = { [saved]: 1 / pivot };
+  for (const [code, rate] of Object.entries(market)) if (code !== currency) crossed[code] = rate / pivot;
+  return crossed;
 }
 
-function rowsOf(rates: Record<string, number>): RateRow[] {
-  return Object.entries(rates)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([code, value], i) => ({ key: i, code, value: String(value) }));
+/** A rate for display and as a starting value: at most 6 significant digits, no exponent. */
+function formatRate(rate: number, lang: string): string {
+  return new Intl.NumberFormat(lang === "it" ? "it-CH" : "en-GB", { maximumSignificantDigits: 6, useGrouping: false }).format(rate);
 }
 
-/** A rate the user typed ("0.95" or "0,95"), or NaN. */
-function parseRate(text: string): number {
-  const n = Number(text.trim().replace(",", "."));
-  return text.trim() === "" ? Number.NaN : n;
+/** "2026-11-12" → "12 novembre 2026" / "12 November 2026". */
+function formatDay(day: string, lang: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  if (!y || !m || !d) return day;
+  return new Intl.DateTimeFormat(lang === "it" ? "it-CH" : "en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(Date.UTC(y, m - 1, d));
 }
 
 /**
  * Impostazioni, Spesa e risparmi: the currency every total is in, the month the fiscal year starts,
- * and the budget rates used to convert contracts in other currencies. All three are the workspace's
- * (`/api/workspaces/{id}/settings`); only an Admin changes them. Raffa never converts at a guessed
- * rate: a contract in a currency without a rate stays out of the totals and is listed.
+ * and the exchange rates used to convert contracts in other currencies: the ECB reference rates Raffa
+ * downloads every morning, shown read-only. The settings are the workspace's
+ * (`/api/workspaces/{id}/settings`); only an Admin changes them. A contract in a currency without a
+ * reference rate stays out of the totals and is listed.
  */
 export default function ReportingSettings({ apiClient, tenantId }: ReportingSettingsProps) {
   const { t, lang } = useI18n();
   const [loaded, setLoaded] = useState<WorkspaceSettingsBody | null>(null);
   const [currency, setCurrency] = useState("");
   const [month, setMonth] = useState("");
-  const [rates, setRates] = useState<RateRow[]>([]);
-  const [nextKey, setNextKey] = useState(100);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -69,7 +69,6 @@ export default function ReportingSettings({ apiClient, tenantId }: ReportingSett
     setLoaded(body);
     setCurrency(body.reportingCurrency ?? "CHF");
     setMonth(body.fiscalYearStartMonth ? String(body.fiscalYearStartMonth) : "");
-    setRates(rowsOf(ratesOf(body)));
   }, []);
 
   useEffect(() => {
@@ -90,27 +89,23 @@ export default function ReportingSettings({ apiClient, tenantId }: ReportingSett
   const supported = useMemo(() => [...(loaded?.supportedCurrencies ?? [])].sort(), [loaded]);
   const currencyChanged = loaded !== null && currency !== (loaded.reportingCurrency ?? "CHF");
 
-  const invalidRate = rates.some((r) => !r.code || !(parseRate(r.value) > 0));
-  const duplicate = new Set(rates.map((r) => r.code)).size !== rates.length;
-  const nextRates = Object.fromEntries(rates.filter((r) => r.code).map((r) => [r.code, parseRate(r.value)]));
-  const ratesChanged = loaded !== null && rateKey(nextRates) !== rateKey(ratesOf(loaded));
+  const market = useMemo(() => marketInto(loaded, currency), [loaded, currency]);
+  const marketCodes = supported.filter((c) => c !== currency && market[c] > 0);
+  const uncovered = supported.filter((c) => c !== currency && !(market[c] > 0));
+  const marketDate = loaded?.marketRatesDate ?? null;
   const monthChanged = loaded !== null && month !== "" && Number(month) !== (loaded.fiscalYearStartMonth ?? 0);
-  const dirty = currencyChanged || monthChanged || ratesChanged;
+  const dirty = currencyChanged || monthChanged;
 
   const pickCurrency = (code: string) => {
     setCurrency(code);
     setSaved(null);
-    // Rates are relative to the reporting currency: a new currency needs new rates.
-    if (loaded && code !== (loaded.reportingCurrency ?? "CHF")) setRates([]);
-    else if (loaded) setRates(rowsOf(ratesOf(loaded)));
   };
 
   const save = async () => {
-    if (!dirty || invalidRate || duplicate) return;
+    if (!dirty) return;
     const request: UpdateWorkspaceSettingsRequest = {};
     if (currencyChanged) request.reportingCurrency = currency;
     if (monthChanged) request.fiscalYearStartMonth = Number(month);
-    if (ratesChanged || currencyChanged) request.budgetRates = nextRates;
     setSaving(true);
     setError(null);
     const r = await apiClient.updateWorkspaceSettings(tenantId, request);
@@ -136,15 +131,13 @@ export default function ReportingSettings({ apiClient, tenantId }: ReportingSett
     ) : null;
   }
 
-  const candidates = (current: string) => supported.filter((c) => c !== currency && (c === current || !rates.some((r) => r.code === c)));
-
   return (
     <section className="st-card st-reporting" aria-labelledby="st-reporting-h">
       <h3 id="st-reporting-h" className="st-h">
         {t("Spend and savings")}
       </h3>
       <p className="st-p">
-        {t("How Spend and savings reports money: the currency of every total, when your fiscal year starts, and the budget rates for contracts in other currencies.")}
+        {t("How Spend and savings reports money: the currency of every total, when your fiscal year starts, and the exchange rates for contracts in other currencies.")}
       </p>
       {!canEdit ? <div className="st-note">{t("Only a Workspace Admin can change these settings.")}</div> : null}
 
@@ -188,87 +181,45 @@ export default function ReportingSettings({ apiClient, tenantId }: ReportingSett
         </div>
       </div>
 
-      <div className="st-rates" role="group" aria-labelledby="st-rates-h">
-        <div id="st-rates-h" className="st-label">
-          {t("Budget rates")}
+      <div className="st-rates" role="group" aria-labelledby="st-market-h">
+        <div id="st-market-h" className="st-label">
+          {t("Exchange rates")}
         </div>
-        {currencyChanged && Object.keys(ratesOf(loaded)).length > 0 ? (
-          <div className="st-note" role="status">
-            {t("The budget rates were relative to {old}: enter them again against {new}.", { old: loaded.reportingCurrency ?? "CHF", new: currency })}
+        {marketDate ? (
+          <div className="st-hint">
+            {t("Updated automatically every morning from the European Central Bank reference rates (rates of {date}).", { date: formatDay(marketDate, lang) })}
+          </div>
+        ) : (
+          <div className="st-hint">{t("The European Central Bank reference rates are downloaded every morning: they will show here after the first download.")}</div>
+        )}
+        {marketCodes.length > 0 ? (
+          <ul className="st-market" aria-label={t("Reference rates in {currency}", { currency })}>
+            {marketCodes.map((c) => (
+              <li key={c} className="st-market-rate">
+                <span>1 {c}</span>
+                <span className="st-rate-eq">=</span>
+                <span className="st-market-value">
+                  {formatRate(market[c], lang)} {currency}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {uncovered.length > 0 ? (
+          <div className="st-hint">
+            {t("No reference rate for {currencies}: contracts in these currencies stay out of the totals, listed apart.", { currencies: uncovered.join(", ") })}
           </div>
         ) : null}
-        {rates.length === 0 ? <div className="st-hint">{t("No budget rates: contracts in other currencies stay out of the totals, listed apart.")}</div> : null}
-        {rates.map((r) => (
-          <div key={r.key} className="st-rate">
-            <span className="st-rate-one">1</span>
-            <select
-              className="input st-rate-code"
-              aria-label={t("Currency")}
-              value={r.code}
-              disabled={!canEdit}
-              onChange={(e) => {
-                setRates((list) => list.map((x) => (x.key === r.key ? { ...x, code: e.target.value } : x)));
-                setSaved(null);
-              }}
-            >
-              <option value="">—</option>
-              {candidates(r.code).map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <span className="st-rate-eq">=</span>
-            <input
-              className="input st-rate-value"
-              inputMode="decimal"
-              aria-label={t("Rate in {currency}", { currency })}
-              aria-invalid={!(parseRate(r.value) > 0)}
-              value={r.value}
-              disabled={!canEdit}
-              onChange={(e) => {
-                setRates((list) => list.map((x) => (x.key === r.key ? { ...x, value: e.target.value } : x)));
-                setSaved(null);
-              }}
-            />
-            <span className="st-rate-cur">{currency}</span>
-            {canEdit ? (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                aria-label={t("Remove the {currency} rate", { currency: r.code || "—" })}
-                onClick={() => setRates((list) => list.filter((x) => x.key !== r.key))}
-              >
-                {t("Remove")}
-              </button>
-            ) : null}
-          </div>
-        ))}
-        {canEdit && candidates("").length > 0 ? (
-          <button
-            type="button"
-            className="btn btn-secondary st-rate-add"
-            onClick={() => {
-              setRates((list) => [...list, { key: nextKey, code: "", value: "" }]);
-              setNextKey((k) => k + 1);
-              setSaved(null);
-            }}
-          >
-            {t("Add a budget rate")}
-          </button>
-        ) : null}
-        <div className="st-hint">{t("Raffa never converts at a guessed rate: these are yours, used as you enter them.")}</div>
       </div>
 
       {canEdit ? (
         <div className="st-actions">
-          <button type="button" className="btn btn-primary" disabled={!dirty || invalidRate || duplicate || saving} onClick={() => void save()}>
+          <button type="button" className="btn btn-primary" disabled={!dirty || saving} onClick={() => void save()}>
             {saving ? t("Saving…") : t("Save the settings")}
           </button>
           <button type="button" className="btn btn-ghost" disabled={!dirty || saving} onClick={() => apply(loaded)}>
             {t("Discard changes")}
           </button>
-          {invalidRate ? <span className="st-hint">{t("Each rate needs a currency and a number greater than 0.")}</span> : null}
           {saved ? (
             <span className="st-saved" role="status">
               {saved}
