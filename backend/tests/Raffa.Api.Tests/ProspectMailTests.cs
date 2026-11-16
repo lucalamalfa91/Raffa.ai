@@ -18,16 +18,38 @@ public sealed class ProspectMailTests
     }
 
     [Fact]
-    public void The_logo_is_one_image_hosted_on_the_links_own_host_with_its_name_as_alt()
+    public void The_logo_is_one_inline_image_with_its_name_as_alt_and_a_url_fallback()
     {
-        var html = AcsInvitationMailer.ComposeProspectHtml("https://demo.example.com/prospect/accept#abc", Expiry);
+        var inline = AcsInvitationMailer.ComposeProspectHtml("https://demo.example.com/prospect/accept#abc", Expiry, "cid:raffa-logo");
+        Assert.Contains("src=\"cid:raffa-logo\"", inline, StringComparison.Ordinal);
+        Assert.Contains("alt=\"Raffa.ai\"", inline, StringComparison.Ordinal);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(inline, "<img "));
 
-        Assert.Contains("src=\"https://demo.example.com/brand/raffa-logo.png\"", html, StringComparison.Ordinal);
-        Assert.Contains("alt=\"Raffa.ai\"", html, StringComparison.Ordinal);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<img "));
-        Assert.Contains("<title>", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("!", html.Replace("<!doctype html>", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+        var hosted = AcsInvitationMailer.ComposeProspectHtml("https://demo.example.com/prospect/accept#abc", Expiry);
+        Assert.Contains("src=\"https://demo.example.com/brand/raffa-logo.png\"", hosted, StringComparison.Ordinal);
+        Assert.Contains("<title>", hosted, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_invitation_sells_the_product_and_states_who_sends_it_and_why()
+    {
+        var html = AcsInvitationMailer.ComposeProspectHtml("https://demo.example.com/prospect/accept#abc", Expiry, "cid:raffa-logo");
+
+        Assert.Contains("Never miss a contract renewal again.", html, StringComparison.Ordinal);
+        Assert.Contains("Know every deadline", html, StringComparison.Ordinal);
+        Assert.Contains("Stay in control", html, StringComparison.Ordinal);
+        Assert.Contains("administrator of Raffa.ai entered your address", html, StringComparison.Ordinal);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "Create my workspace"));
+        Assert.Contains("Never miss a contract renewal again.", AcsInvitationMailer.ComposeProspectBody("https://demo.example.com/x", Expiry), StringComparison.Ordinal);
         Assert.Contains("Your invitation to Raffa.ai", AcsInvitationMailer.ComposeProspectSubject(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_logo_is_embedded_in_the_assembly()
+    {
+        var logo = AcsInvitationMailer.Logo();
+        Assert.NotNull(logo);
+        Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, logo!.Take(4).ToArray());
     }
 
     [Fact]
