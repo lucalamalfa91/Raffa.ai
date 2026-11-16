@@ -114,12 +114,27 @@ internal sealed class AcsInvitationMailer(
         var content = new EmailContent(ComposeProspectSubject())
         {
             PlainText = ComposeProspectBody(acceptUrl, expiresAt),
-            Html = ComposeProspectHtml(acceptUrl, expiresAt),
         };
+        var logo = Logo();
+        if (logo is not null)
+        {
+            content.Html = ComposeProspectHtml(acceptUrl, expiresAt, "cid:" + LogoContentId);
+        }
+        else
+        {
+            content.Html = ComposeProspectHtml(acceptUrl, expiresAt);
+        }
+
+        var message = new EmailMessage(options.Mail.SenderAddress, email, content);
+        if (logo is not null)
+        {
+            message.Attachments.Add(new EmailAttachment("raffa-logo.png", "image/png", BinaryData.FromBytes(logo)) { ContentId = LogoContentId });
+        }
+
         try
         {
             var operation = await client
-                .SendAsync(WaitUntil.Started, new EmailMessage(options.Mail.SenderAddress, email, content), cancellationToken)
+                .SendAsync(WaitUntil.Started, message, cancellationToken)
                 .ConfigureAwait(false);
             logger.LogInformation("Prospect invitation mail accepted for delivery (ACS operation {OperationId})", operation.Id);
             return true;
@@ -136,34 +151,67 @@ internal sealed class AcsInvitationMailer(
         }
     }
 
-    /// <summary>The same invitation as <see cref="ComposeProspectBody"/>, with the Raffa.ai logo and a button. Inline styles
-    /// only (mail clients ignore stylesheets); every variable part is HTML-encoded. Written to read as a one-to-one
-    /// message, not a campaign: the sender and the reason are stated, one image (the logo, hosted on the same host as
-    /// the link, with its text as alt), one button, no promotional wording, a hidden preview line.</summary>
-    public static string ComposeProspectHtml(string acceptUrl, DateTimeOffset expiresAt)
+    /// <summary>Content id of the inline logo (<c>cid:raffa-logo</c>).</summary>
+    internal const string LogoContentId = "raffa-logo";
+
+    private static byte[]? logoBytes;
+
+    /// <summary>The logo PNG embedded in the assembly, or null when it is missing.</summary>
+    internal static byte[]? Logo()
+    {
+        if (logoBytes is not null)
+        {
+            return logoBytes;
+        }
+
+        using var stream = typeof(AcsInvitationMailer).Assembly.GetManifestResourceStream("Raffa.Api.Resources.raffa-logo.png");
+        if (stream is null)
+        {
+            return null;
+        }
+
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return logoBytes = buffer.ToArray();
+    }
+
+    /// <summary>
+    /// The invitation as a designed, table-based HTML mail (inline styles only; every variable part is HTML-encoded):
+    /// the logo, a large friendly headline, a short warm line about what Raffa.ai does, one big button, three
+    /// reasons to try it, and an honest footer saying who sends it and why. The logo is attached inline
+    /// (<c>cid:raffa-logo</c>) so it shows even where remote images are blocked; <paramref name="logoSource"/> is
+    /// that cid, or an absolute URL when the mail is composed without the attachment.
+    /// </summary>
+    public static string ComposeProspectHtml(string acceptUrl, DateTimeOffset expiresAt, string? logoSource = null)
     {
         var expiry = expiresAt.UtcDateTime.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
         var link = System.Net.WebUtility.HtmlEncode(acceptUrl);
-        var logo = Uri.TryCreate(acceptUrl, UriKind.Absolute, out var uri)
-            ? System.Net.WebUtility.HtmlEncode($"{uri.Scheme}://{uri.Authority}/brand/raffa-logo.png")
-            : string.Empty;
+        var logo = logoSource ?? (Uri.TryCreate(acceptUrl, UriKind.Absolute, out var uri) ? $"{uri.Scheme}://{uri.Authority}/brand/raffa-logo.png" : string.Empty);
         var logoBlock = logo.Length == 0
-            ? "<span style=\"font-size:22px;font-weight:bold;color:#201e1d\">Raffa.ai</span>"
-            : $"<img src=\"{logo}\" width=\"160\" height=\"32\" alt=\"Raffa.ai\" style=\"display:block;border:0;outline:none;height:32px;width:160px\">";
+            ? "<span style=\"font-size:24px;font-weight:bold;color:#201e1d\">Raffa.ai</span>"
+            : $"<img src=\"{System.Net.WebUtility.HtmlEncode(logo)}\" width=\"150\" height=\"30\" alt=\"Raffa.ai\" style=\"display:block;border:0;outline:none;height:30px;width:150px\">";
+        const string point = "padding:0 0 18px 0;font-size:15px;line-height:22px;color:#444444";
         return $"""
             <!doctype html>
-            <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your Raffa.ai invitation</title></head>
-            <body style="margin:0;padding:24px;background:#f3f2f2;font-family:Arial,Helvetica,sans-serif;color:#201e1d">
-            <div style="display:none;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px">Your invitation to create a Raffa.ai workspace. The link works once and expires {expiry}.</div>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-            <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;padding:32px">
-            <tr><td>{logoBlock}</td></tr>
-            <tr><td style="padding-top:28px;font-size:20px;font-weight:bold;line-height:26px">Your invitation to Raffa.ai</td></tr>
-            <tr><td style="padding-top:12px;font-size:15px;line-height:23px">Hello,<br><br>the Raffa.ai team has invited you to try Raffa.ai, the assistant that reads your supplier contracts and tells you what to renew and when. The link below creates your own company workspace.</td></tr>
-            <tr><td style="padding-top:24px"><a href="{link}" style="display:inline-block;background:#ee2d12;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 24px">Create my workspace</a></td></tr>
-            <tr><td style="padding-top:24px;font-size:14px;line-height:21px;color:#444444">You sign in with this email address: Microsoft sends you a one-time code, no new password. The link can be used once and expires on {expiry}.</td></tr>
-            <tr><td style="padding-top:16px;font-size:12px;line-height:18px;color:#6a6666">If the button does not open, paste this address into your browser:<br><span style="word-break:break-all">{link}</span></td></tr>
-            <tr><td style="padding-top:24px;border-top:1px solid #dddddd;margin-top:24px;font-size:12px;line-height:18px;color:#6a6666">You are receiving this single message because an administrator of Raffa.ai entered your address to invite you. If you do not know Raffa.ai, ignore it: nothing happens unless you open the link, and you will not be contacted again.<br>Raffa.ai · askraffa.com</td></tr>
+            <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Your invitation to Raffa.ai</title></head>
+            <body style="margin:0;padding:0;background:#f3f2f2;font-family:Arial,Helvetica,sans-serif;color:#201e1d">
+            <div style="display:none;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px">Raffa.ai reads your supplier contracts and tells you what renews, and when to act. Your invitation works once and expires {expiry}.</div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f2f2"><tr><td align="center" style="padding:24px 12px">
+            <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#ffffff">
+            <tr><td style="padding:28px 40px 20px 40px">{logoBlock}</td></tr>
+            <tr><td style="padding:0 40px"><div style="height:3px;background:#ec3013;line-height:3px;font-size:3px">&nbsp;</div></td></tr>
+            <tr><td style="padding:36px 40px 8px 40px;font-size:32px;line-height:38px;font-weight:bold;color:#201e1d">Never miss a contract renewal again.</td></tr>
+            <tr><td style="padding:12px 40px 8px 40px;font-size:17px;line-height:26px;color:#444444">Hello, you are invited to try Raffa.ai. Upload your supplier contracts and Raffa tells you what renews, when you have to act, and where you can save.</td></tr>
+            <tr><td style="padding:24px 40px 12px 40px"><a href="{link}" style="display:inline-block;background:#ee2d12;color:#ffffff;text-decoration:none;font-weight:bold;font-size:17px;line-height:20px;padding:16px 32px">Create my workspace</a></td></tr>
+            <tr><td style="padding:0 40px 28px 40px;font-size:13px;line-height:19px;color:#6a6666">Takes about two minutes. You sign in with this email address — Microsoft sends you a one-time code, no new password.</td></tr>
+            <tr><td style="padding:8px 40px 0 40px;font-size:13px;letter-spacing:1px;font-weight:bold;color:#ec3013">WHY TRY IT</td></tr>
+            <tr><td style="padding:12px 40px 0 40px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr><td style="{point}"><strong style="color:#201e1d">Know every deadline.</strong> Raffa reads your contracts and flags notice dates before they pass.</td></tr>
+            <tr><td style="{point}"><strong style="color:#201e1d">Negotiate with facts.</strong> See what you pay today and where a renewal could cost less.</td></tr>
+            <tr><td style="{point}"><strong style="color:#201e1d">Stay in control.</strong> Your documents stay in your own workspace, and nothing is sent to a supplier without your approval.</td></tr>
+            </table></td></tr>
+            <tr><td style="padding:12px 40px 28px 40px;font-size:12px;line-height:18px;color:#6a6666">The button works once and the invitation expires on {expiry}. If it does not open, paste this address into your browser:<br><span style="word-break:break-all">{link}</span></td></tr>
+            <tr><td style="padding:20px 40px 28px 40px;border-top:1px solid #dddddd;font-size:12px;line-height:18px;color:#6a6666">You are receiving this single message because an administrator of Raffa.ai entered your address to invite you. If you do not know Raffa.ai, ignore it: nothing happens unless you open the link, and you will not be contacted again.<br><br>Raffa.ai · askraffa.com</td></tr>
             </table></td></tr></table></body></html>
             """;
     }
@@ -175,10 +223,12 @@ internal sealed class AcsInvitationMailer(
         var expiry = expiresAt.UtcDateTime.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
         return string.Join(
             "\r\n\r\n",
-            "Hello,",
-            "the Raffa.ai team has invited you to try Raffa.ai, the assistant that reads your supplier contracts and tells you what to renew and when. The link below creates your own company workspace.",
+            "Never miss a contract renewal again.",
+            "Hello, you are invited to try Raffa.ai. Upload your supplier contracts and Raffa tells you what renews, when you have to act, and where you can save.",
             $"Create my workspace: {acceptUrl}",
-            $"You sign in with this email address: Microsoft sends you a one-time code, no new password. The link can be used once and expires on {expiry}.",
+            "Takes about two minutes. You sign in with this email address — Microsoft sends you a one-time code, no new password.",
+            "- Know every deadline: Raffa flags notice dates before they pass.\r\n- Negotiate with facts: see what you pay today and where a renewal could cost less.\r\n- Stay in control: nothing is sent to a supplier without your approval.",
+            $"The link works once and the invitation expires on {expiry}.",
             "You are receiving this single message because an administrator of Raffa.ai entered your address to invite you. If you do not know Raffa.ai, ignore it: nothing happens unless you open the link, and you will not be contacted again.",
             "Raffa.ai · askraffa.com");
     }
