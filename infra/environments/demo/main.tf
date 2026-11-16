@@ -553,6 +553,21 @@ resource "azurerm_dns_txt_record" "mail_apex" {
   }
 }
 
+# DMARC: tells receivers how to treat mail that fails SPF/DKIM (p=none: only observe). Big providers (Outlook,
+# Gmail) weigh a domain that publishes one; without it a new sender domain lands in junk more often.
+resource "azurerm_dns_txt_record" "dmarc" {
+  count = var.demo_dns_zone_name == "" || var.mail_custom_domain == null ? 0 : 1
+
+  name                = "_dmarc"
+  zone_name           = azurerm_dns_zone.site[0].name
+  resource_group_name = azurerm_resource_group.this.name
+  ttl                 = 3600
+
+  record {
+    value = "v=DMARC1; p=none; adkim=r; aspf=r; pct=100"
+  }
+}
+
 output "demo_dns_name_servers" {
   description = "Name servers of the demo DNS zone: set them at the domain's registrar to move the domain to Azure DNS. Empty without demo_dns_zone_name."
   value       = var.demo_dns_zone_name == "" ? [] : azurerm_dns_zone.site[0].name_servers
