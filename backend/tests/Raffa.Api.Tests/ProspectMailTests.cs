@@ -12,9 +12,22 @@ public sealed class ProspectMailTests
         var html = AcsInvitationMailer.ComposeProspectHtml("https://app.example/prospect/accept#abc&x=\"1\"", Expiry);
 
         Assert.Contains("href=\"https://app.example/prospect/accept#abc&amp;x=&quot;1&quot;\"", html, StringComparison.Ordinal);
-        Assert.Contains("Accept your invitation", html, StringComparison.Ordinal);
+        Assert.Contains("Create my workspace", html, StringComparison.Ordinal);
         Assert.Contains("10/11/2026", html, StringComparison.Ordinal);
         Assert.DoesNotContain("x=\"1\"", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_logo_is_one_image_hosted_on_the_links_own_host_with_its_name_as_alt()
+    {
+        var html = AcsInvitationMailer.ComposeProspectHtml("https://demo.example.com/prospect/accept#abc", Expiry);
+
+        Assert.Contains("src=\"https://demo.example.com/brand/raffa-logo.png\"", html, StringComparison.Ordinal);
+        Assert.Contains("alt=\"Raffa.ai\"", html, StringComparison.Ordinal);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "<img "));
+        Assert.Contains("<title>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("!", html.Replace("<!doctype html>", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.Contains("Your invitation to Raffa.ai", AcsInvitationMailer.ComposeProspectSubject(), StringComparison.Ordinal);
     }
 
     [Fact]
