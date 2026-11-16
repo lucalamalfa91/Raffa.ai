@@ -438,7 +438,7 @@ resource "azurerm_container_app" "api" {
     # (Chromium caps at 2 h); without it Chromium keeps it for 5 s, so a 2 s poll repeats the
     # preflight in front of every GET.
     cors {
-      allowed_origins           = ["https://${var.spa_host_name}"]
+      allowed_origins           = concat(["https://${var.spa_host_name}"], var.extra_cors_origins)
       allowed_methods           = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
       allowed_headers           = ["*"]
       allow_credentials_enabled = false

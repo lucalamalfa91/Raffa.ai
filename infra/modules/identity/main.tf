@@ -148,7 +148,7 @@ resource "azuread_application" "public_client" {
   sign_in_audience = "AzureADMyOrg"
 
   single_page_application {
-    redirect_uris = [local.web_redirect_uri]
+    redirect_uris = concat([local.web_redirect_uri], var.extra_web_redirect_uris)
   }
 
   public_client {

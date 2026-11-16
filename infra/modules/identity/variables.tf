@@ -24,6 +24,12 @@ variable "web_redirect_uri" {
   type        = string
 }
 
+variable "extra_web_redirect_uris" {
+  description = "Further SPA redirect URIs (a custom host of the web app, next to the default one), each origin-only with a trailing slash."
+  type        = list(string)
+  default     = []
+}
+
 # Task E16/F01/US01/T01 (NW-67, ADR-015 clause 4): default false so a
 # missing apply-plane Graph permission degrades this feature instead of
 # blocking the w15 apply. dev flipped true at w15; demo followed on

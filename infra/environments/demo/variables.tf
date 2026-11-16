@@ -232,3 +232,33 @@ variable "notifications_vapid_private_key" {
   sensitive   = true
   default     = ""
 }
+
+# ---------------------------------------------------------------------------------------------------------
+# The demo site's own domain and invitation sender. All optional; empty/null keeps today's behaviour.
+# Rollout: (1) demo_dns_zone_name + mail_custom_domain/mail_dns_zone_name (zone, DKIM, verification), then
+# switch the registrar's name servers to demo_dns_name_servers; (2) web_custom_hostname once demo.<domain>
+# resolves; (3) mail_use_custom_sender once Azure shows all four verifications as Verified.
+# ---------------------------------------------------------------------------------------------------------
+variable "demo_dns_zone_name" {
+  description = "Domain whose DNS is hosted in Azure for demo (a domain bought elsewhere), e.g. example.com. Empty = no zone."
+  type        = string
+  default     = ""
+}
+
+variable "demo_dns_apex_a_records" {
+  description = "IPv4 addresses the domain's apex and www pointed at before the move (kept as they were). Empty = write none."
+  type        = list(string)
+  default     = []
+}
+
+variable "web_custom_hostname" {
+  description = "Custom host name of the demo web app (a sub-domain of demo_dns_zone_name, e.g. demo.example.com). Set only once its DNS resolves. Empty = default host only."
+  type        = string
+  default     = ""
+}
+
+variable "mail_sender_username" {
+  description = "Local part of the invitation sender on the custom domain (admin -> admin@<domain>)."
+  type        = string
+  default     = "admin"
+}

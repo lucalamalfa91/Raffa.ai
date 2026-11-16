@@ -26,3 +26,11 @@ output "manual_dns_records" {
     ["DMARC (TXT) name=_dmarc value=v=DMARC1; p=none; rua=mailto:dmarc@${var.custom_domain} [suggested, optional; skip if a _dmarc record already exists]"],
   ) : []
 }
+
+# The values of the apex TXT records Azure asks for (domain verification and SPF), for a root that owns the
+# DNS zone and writes them as ONE record set (a TXT set at the apex is a single object, so the module itself
+# never writes it). Empty without a custom_domain.
+output "apex_txt_values" {
+  description = "Domain-verification and SPF TXT values of the custom domain, to be written together at the zone apex by the caller. Empty when no custom_domain is set."
+  value       = [for key, record in local.txt_candidates : record.value]
+}

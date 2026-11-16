@@ -298,3 +298,9 @@ variable "outreach_secret_ids" {
   sensitive   = true
   default     = {}
 }
+
+variable "extra_cors_origins" {
+  description = "Further browser origins allowed to call the API (a custom host of the web app, next to spa_host_name)."
+  type        = list(string)
+  default     = []
+}
