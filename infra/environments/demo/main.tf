@@ -91,6 +91,8 @@ module "identity" {
   location            = var.location
   resource_group_name = azurerm_resource_group.this.name
   web_redirect_uri    = "https://${module.staticwebapp.default_host_name}/"
+  # Next to the default host, the custom one (sign-in works from either).
+  extra_web_redirect_uris = var.web_custom_hostname == "" ? [] : ["https://${var.web_custom_hostname}/"]
   # Task E16/F01/US01/T01 (NW-67): true since the owner's ruling of
   # 2026-09-22 (ADR-016 w20 footer) -- the w15 clause-14 flip, done.
   guest_provisioning_enabled = var.guest_provisioning_enabled
@@ -153,6 +155,10 @@ module "communication" {
   dns_zone_name                = var.mail_dns_zone_name
   dns_zone_resource_group_name = var.mail_dns_zone_resource_group_name
   use_custom_sender            = var.mail_use_custom_sender
+  sender_username              = var.mail_sender_username
+
+  # The zone is created in this same apply: read it only once it exists.
+  depends_on = [azurerm_dns_zone.site]
 }
 
 # ADR-005: Container Apps Environment (consumption-only workload
@@ -173,7 +179,9 @@ module "containerapps" {
   acr_login_server              = module.acr.login_server
   postgres_connection_secret_id = module.keyvault.postgres_connection_secret_versionless_id
   storage_connection_secret_id  = module.keyvault.storage_connection_secret_versionless_id
-  spa_host_name                 = module.staticwebapp.default_host_name
+  # Invitation links and the sign-in origin are the site's own host once it has one.
+  spa_host_name      = var.web_custom_hostname != "" ? var.web_custom_hostname : module.staticwebapp.default_host_name
+  extra_cors_origins = var.web_custom_hostname != "" ? ["https://${module.staticwebapp.default_host_name}"] : []
   # Task E10/F02/US01/T01 (foundry-ocr-ca): this root's OWN module.foundry
   # instance only -- never dev's.
   ai_gateway_endpoint                         = module.foundry.ai_services_endpoint
@@ -458,4 +466,94 @@ module "mailboxapp" {
 
   environment         = "demo"
   api_public_base_url = var.case_mail_api_public_base_url
+}
+
+# ---------------------------------------------------------------------------------------------------------
+# The demo site's own domain (docs/architecture/renewal-in-app-mail-plan.md, "invite testers"): an Azure DNS
+# zone for a domain bought elsewhere (its registrar's name servers are switched to this zone's once), the
+# site's host name, and the records Azure Communication Services needs to send invitations from
+# <mail_sender_username>@<domain>. All off until demo_dns_zone_name is set.
+# ---------------------------------------------------------------------------------------------------------
+resource "azurerm_dns_zone" "site" {
+  count = var.demo_dns_zone_name == "" ? 0 : 1
+
+  name                = var.demo_dns_zone_name
+  resource_group_name = azurerm_resource_group.this.name
+}
+
+# What the domain pointed at before the move (its registrar's parking / hosting page), kept so nothing that
+# answered there stops answering.
+resource "azurerm_dns_a_record" "apex" {
+  count = var.demo_dns_zone_name == "" || length(var.demo_dns_apex_a_records) == 0 ? 0 : 1
+
+  name                = "@"
+  zone_name           = azurerm_dns_zone.site[0].name
+  resource_group_name = azurerm_resource_group.this.name
+  ttl                 = 3600
+  records             = var.demo_dns_apex_a_records
+}
+
+resource "azurerm_dns_a_record" "www" {
+  count = var.demo_dns_zone_name == "" || length(var.demo_dns_apex_a_records) == 0 ? 0 : 1
+
+  name                = "www"
+  zone_name           = azurerm_dns_zone.site[0].name
+  resource_group_name = azurerm_resource_group.this.name
+  ttl                 = 3600
+  records             = var.demo_dns_apex_a_records
+}
+
+# <web host> -> the Static Web App's default host. Written as soon as the zone exists; the custom domain
+# resource (var.web_custom_hostname) is switched on after the name servers have moved.
+resource "azurerm_dns_cname_record" "web" {
+  count = var.demo_dns_zone_name == "" || var.web_custom_hostname == "" ? 0 : 1
+
+  name                = trimsuffix(var.web_custom_hostname, ".${var.demo_dns_zone_name}")
+  zone_name           = azurerm_dns_zone.site[0].name
+  resource_group_name = azurerm_resource_group.this.name
+  ttl                 = 3600
+  record              = module.staticwebapp.default_host_name
+
+  lifecycle {
+    precondition {
+      condition     = endswith(var.web_custom_hostname, ".${var.demo_dns_zone_name}")
+      error_message = "web_custom_hostname must be a sub-domain of demo_dns_zone_name."
+    }
+  }
+}
+
+# Phase 2 of the site's own domain: the custom host name, validated through the CNAME above. Switch it on
+# (web_custom_hostname) only once the registrar's name servers point at this zone, or validation fails.
+# Azure issues and renews the certificate.
+resource "azurerm_static_web_app_custom_domain" "web" {
+  count = var.demo_dns_zone_name == "" || var.web_custom_hostname == "" ? 0 : 1
+
+  static_web_app_id = module.staticwebapp.id
+  domain_name       = var.web_custom_hostname
+  validation_type   = "cname-delegation"
+
+  depends_on = [azurerm_dns_cname_record.web]
+}
+
+# Domain verification + SPF for the sender domain, as the one TXT record set the zone apex can hold.
+resource "azurerm_dns_txt_record" "mail_apex" {
+  count = var.demo_dns_zone_name == "" || var.mail_custom_domain == null ? 0 : 1
+
+  name                = "@"
+  zone_name           = azurerm_dns_zone.site[0].name
+  resource_group_name = azurerm_resource_group.this.name
+  ttl                 = 3600
+
+  dynamic "record" {
+    for_each = module.communication.apex_txt_values
+
+    content {
+      value = record.value
+    }
+  }
+}
+
+output "demo_dns_name_servers" {
+  description = "Name servers of the demo DNS zone: set them at the domain's registrar to move the domain to Azure DNS. Empty without demo_dns_zone_name."
+  value       = var.demo_dns_zone_name == "" ? [] : azurerm_dns_zone.site[0].name_servers
 }

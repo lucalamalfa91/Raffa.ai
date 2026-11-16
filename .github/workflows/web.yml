@@ -181,6 +181,13 @@ jobs:
             API_FQDN=$(az containerapp show --name "$API_NAME" --resource-group "$RG" \
               --query "properties.configuration.ingress.fqdn || configuration.ingress.fqdn || properties.latestRevisionFqdn || latestRevisionFqdn" -o tsv | tr -d '\r')
           fi
+          # A validated custom host name of the site (infra: demo_dns_zone_name + web_custom_hostname) is the
+          # address people use, so sign-in returns to it; without one the default host stays.
+          CUSTOM_HOST=$(az staticwebapp hostname list --name "$SWA_NAME" --resource-group "$RG" \
+            --query "[?status=='Ready'].name | [0]" -o tsv 2>/dev/null | tr -d '\r' || true)
+          if [[ -n "$CUSTOM_HOST" ]]; then
+            SWA_HOST="$CUSTOM_HOST"
+          fi
           CLIENT_ID=$(az identity show --name "$UAI_NAME" --resource-group "$RG" \
             --query "tags.oidcPublicClientId" -o tsv | tr -d '\r')
           if [[ -z "$SWA_HOST" ]]; then
