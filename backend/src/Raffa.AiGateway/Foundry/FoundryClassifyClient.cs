@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -29,7 +30,7 @@ public sealed class FoundryClassifyClient(
             return Result<AiClassificationResult>.Failure("Classification requires non-empty document text.");
         }
 
-        var model = modelOptions.Classify;
+        var model = PlaygroundScope.ModelFor("classify", modelOptions.Classify);
         var maxChars = Math.Max(1, foundryOptions.ClassifyMaxInputChars);
         var documentText = request.DocumentText.Length <= maxChars
             ? request.DocumentText

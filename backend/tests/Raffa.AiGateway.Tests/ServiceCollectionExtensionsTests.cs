@@ -223,7 +223,9 @@ public class ServiceCollectionExtensionsTests
 
         var gateway = scope.ServiceProvider.GetRequiredService<IAiGateway>();
 
-        Assert.IsType<LoggingAiGateway>(gateway);
+        // The playground trace recorder is the outermost wrap; it is inert without a PlaygroundTrace.
+        Assert.IsType<TraceRecordingAiGateway>(gateway);
+        Assert.IsType<LoggingAiGateway>(Unwrap(gateway));
         Assert.IsType<FixtureAiGateway>(GetInnerGateway(gateway));
     }
 
@@ -249,7 +251,7 @@ public class ServiceCollectionExtensionsTests
 
         var gateway = scope.ServiceProvider.GetRequiredService<IAiGateway>();
 
-        Assert.IsType<LoggingAiGateway>(gateway);
+        Assert.IsType<LoggingAiGateway>(Unwrap(gateway));
         Assert.IsType<FoundryAiGateway>(GetInnerGateway(gateway));
     }
 
@@ -351,8 +353,11 @@ public class ServiceCollectionExtensionsTests
         var field = typeof(LoggingAiGateway).GetField("_inner", BindingFlags.NonPublic | BindingFlags.Instance)
             ?? throw new InvalidOperationException("LoggingAiGateway._inner not found — has it been renamed?");
 
-        return (IAiGateway)field.GetValue(gateway)!;
+        return (IAiGateway)field.GetValue(Unwrap(gateway))!;
     }
+
+    /// <summary>The audit-logging gateway under the playground's trace recorder.</summary>
+    private static IAiGateway Unwrap(IAiGateway gateway) => gateway is TraceRecordingAiGateway recorder ? recorder.Inner : gateway;
 
     private sealed class FixedTimeClock : IClock
     {

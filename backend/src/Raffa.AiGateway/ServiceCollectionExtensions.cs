@@ -249,12 +249,14 @@ public static class ServiceCollectionExtensions
                 inner = new JevAiGateway(inner, sp.GetRequiredService<JevClassifyClient>(), jevOptions);
             }
 
-            return new LoggingAiGateway(
+            // The playground trace recorder is the outermost wrap: it sees exactly what the caller sent and got
+            // back, and does nothing unless a Super Admin playground run opened a PlaygroundTrace.
+            return new TraceRecordingAiGateway(new LoggingAiGateway(
                 inner,
                 sp.GetRequiredService<IAuditWriter>(),
                 sp.GetRequiredService<ITenantContext>(),
                 sp.GetRequiredService<AiGatewayComplianceOptions>(),
-                sp.GetRequiredService<IQueryHasher>());
+                sp.GetRequiredService<IQueryHasher>()));
         });
 
         // Plan A-01: the agent step runner. Scoped with the Scoped IAiGateway it calls (one per

@@ -433,6 +433,10 @@ public sealed class FixtureAiGateway(
             using var doc = JsonDocument.Parse(request.InputJson);
             payload = doc.RootElement.TryGetProperty("rules", out var rules) ? rules.GetRawText() : "{}";
         }
+        else if (string.Equals(request.AgentName, PlaygroundJudgeAgentName, StringComparison.OrdinalIgnoreCase))
+        {
+            payload = BuildFixtureJudgement(request.InputJson);
+        }
         else if (isPlanner)
         {
             payload = BuildFixtureOfferPlan(items);
@@ -517,6 +521,32 @@ public sealed class FixtureAiGateway(
     /// fact item (title plus its values, formatted the way the numeric guard reads them back —
     /// <see cref="FormatFixturePackValue"/>), the plan's asks verbatim, a fixed closing. No
     /// inline marker, no link, no key in the text; <c>usedCitationKeys</c> lists what it used.</summary>
+    /// <summary>The playground judge's agent name (kept equal to <c>PlaygroundJudge.AgentName</c> in Raffa.AiFlows, which a test checks).</summary>
+    public const string PlaygroundJudgeAgentName = "playground-judge";
+
+    /// <summary>The judge's double: every criterion scores 4 and the longest answer is preferred, so the playground's
+    /// judging flow can be exercised without a model.</summary>
+    private static string BuildFixtureJudgement(string inputJson)
+    {
+        using var document = JsonDocument.Parse(inputJson);
+        var criteria = document.RootElement.GetProperty("criteria").EnumerateArray().Select(c => c.GetProperty("id").GetString()!).ToList();
+        var answers = document.RootElement.GetProperty("answers").EnumerateArray()
+            .Select(a => (Label: a.GetProperty("label").GetString()!, Length: a.GetProperty("content").GetString()?.Length ?? 0))
+            .ToList();
+        var preferred = answers.OrderByDescending(a => a.Length).ThenBy(a => a.Label, StringComparer.Ordinal).First().Label;
+        return JsonSerializer.Serialize(new
+        {
+            answers = answers.Select(a => new
+            {
+                label = a.Label,
+                scores = criteria.Select(id => new { criterionId = id, score = a.Label == preferred ? 5 : 3, rationale = "fixture rationale" }),
+                summary = "fixture summary",
+            }),
+            preferred,
+            reasoning = "fixture judge prefers the longest answer",
+        }, PackJsonOptions);
+    }
+
     private static string BuildFixtureEmailDraft(FixtureAnalysisInput input, IReadOnlyList<FixturePackItem> items)
     {
         var supplier = string.IsNullOrWhiteSpace(input.Supplier) ? "supplier" : input.Supplier.Trim();

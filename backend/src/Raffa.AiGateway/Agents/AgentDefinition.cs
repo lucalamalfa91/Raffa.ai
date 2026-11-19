@@ -192,8 +192,16 @@ public sealed partial class AgentDefinition
             : SystemPrompt;
 
     /// <summary>The system prompt actually sent: <see cref="Prompt"/>, then the language directive.</summary>
-    public string SystemPrompt =>
-        LanguageDirective is null ? Prompt : Prompt + Environment.NewLine + Environment.NewLine + LanguageDirective;
+    public string SystemPrompt
+    {
+        get
+        {
+            // Playground variant (Super Admin only; null on every normal call): the variant's text replaces the
+            // registered prompt of this agent, for that run only. The registered prompt and its hash are untouched.
+            var prompt = Raffa.AiGateway.Telemetry.PlaygroundScope.PromptFor(Name) ?? Prompt;
+            return LanguageDirective is null ? prompt : prompt + Environment.NewLine + Environment.NewLine + LanguageDirective;
+        }
+    }
 
     /// <summary>
     /// The problems that would make this definition fail in production or drift silently, empty when

@@ -38,7 +38,7 @@ public sealed class StepRunnerRegistrationTests
 
         Assert.Same(a1, a2);
         Assert.NotSame(a1, b);
-        Assert.IsType<LoggingAiGateway>(scopeA.ServiceProvider.GetRequiredService<IAiGateway>());
+        Assert.IsType<LoggingAiGateway>(Assert.IsType<TraceRecordingAiGateway>(scopeA.ServiceProvider.GetRequiredService<IAiGateway>()).Inner);
         // The options are one immutable singleton.
         Assert.Same(
             provider.GetRequiredService<AgentRunnerOptions>(),

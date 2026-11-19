@@ -446,3 +446,151 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119090000_AddPlaygroundTables') THEN
+    ALTER TABLE platform_workspace ADD COLUMN is_sandbox boolean NOT NULL DEFAULT false;
+
+    CREATE TABLE playground_run (
+        id                 uuid PRIMARY KEY,
+        workflow           character varying(40) NOT NULL,
+        sandbox_kind       character varying(40) NOT NULL,
+        created_by         character varying(200) NOT NULL,
+        created_at         timestamp with time zone NOT NULL,
+        duration_ms        integer NOT NULL,
+        status             character varying(20) NOT NULL,
+        prompt_tokens      integer NOT NULL,
+        completion_tokens  integer NOT NULL,
+        estimated_cost_usd numeric(12,6) NULL,
+        input              jsonb NOT NULL,
+        output             jsonb NOT NULL,
+        trace              jsonb NOT NULL
+    );
+
+    CREATE INDEX ix_playground_run_created_at ON playground_run (created_at DESC);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119090000_AddPlaygroundTables') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119090000_AddPlaygroundTables', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119120000_AddPlaygroundVariants') THEN
+    CREATE TABLE playground_variant (
+        id          uuid PRIMARY KEY,
+        name        character varying(120) NOT NULL,
+        description character varying(500) NULL,
+        overrides   jsonb NOT NULL,
+        created_by  character varying(200) NOT NULL,
+        created_at  timestamp with time zone NOT NULL,
+        updated_at  timestamp with time zone NOT NULL,
+        archived    boolean NOT NULL DEFAULT false
+    );
+
+    ALTER TABLE playground_run ADD COLUMN variant_id uuid NULL;
+    ALTER TABLE playground_run ADD COLUMN variant_name character varying(120) NULL;
+    ALTER TABLE playground_run ADD COLUMN comparison_id uuid NULL;
+    CREATE INDEX ix_playground_run_comparison ON playground_run (comparison_id) WHERE comparison_id IS NOT NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119120000_AddPlaygroundVariants') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119120000_AddPlaygroundVariants', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119150000_AddPlaygroundJudging') THEN
+    CREATE TABLE playground_rubric (
+        id         uuid PRIMARY KEY,
+        workflow   character varying(40) NOT NULL,
+        name       character varying(120) NOT NULL,
+        criteria   jsonb NOT NULL,
+        created_by character varying(200) NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        updated_at timestamp with time zone NOT NULL,
+        archived   boolean NOT NULL DEFAULT false
+    );
+
+    CREATE TABLE playground_judgement (
+        id                 uuid PRIMARY KEY,
+        comparison_id      uuid NULL,
+        run_ids            jsonb NOT NULL,
+        workflow           character varying(40) NOT NULL,
+        rubric             jsonb NOT NULL,
+        judge_model        character varying(120) NULL,
+        passes             integer NOT NULL,
+        created_by         character varying(200) NOT NULL,
+        created_at         timestamp with time zone NOT NULL,
+        prompt_tokens      integer NOT NULL,
+        completion_tokens  integer NOT NULL,
+        estimated_cost_usd numeric(12,6) NULL,
+        result             jsonb NOT NULL,
+        trace              jsonb NOT NULL
+    );
+
+    CREATE INDEX ix_playground_judgement_comparison ON playground_judgement (comparison_id) WHERE comparison_id IS NOT NULL;
+    CREATE INDEX ix_playground_judgement_created_at ON playground_judgement (created_at DESC);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119150000_AddPlaygroundJudging') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119150000_AddPlaygroundJudging', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119180000_AddPlaygroundExports') THEN
+    CREATE TABLE playground_export (
+        id           uuid PRIMARY KEY,
+        variant_id   uuid NOT NULL,
+        variant_name character varying(120) NOT NULL,
+        target       character varying(20) NOT NULL,
+        status       character varying(20) NOT NULL,
+        branch       character varying(200) NULL,
+        pr_number    integer NULL,
+        pr_url       character varying(500) NULL,
+        error        character varying(1000) NULL,
+        files        jsonb NOT NULL,
+        created_by   character varying(200) NOT NULL,
+        created_at   timestamp with time zone NOT NULL
+    );
+
+    CREATE INDEX ix_playground_export_variant ON playground_export (variant_id, created_at DESC);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119180000_AddPlaygroundExports') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119180000_AddPlaygroundExports', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

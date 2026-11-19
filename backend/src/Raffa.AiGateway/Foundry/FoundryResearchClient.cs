@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -88,7 +89,7 @@ public sealed class FoundryResearchClient(
             return Result<AiResearchResult>.Failure("Research refuses a query that carries context-pack content (ADR-030).");
         }
 
-        var model = modelOptions.Research;
+        var model = modelOptions.Research is { } configuredResearch ? PlaygroundScope.ModelFor("research", configuredResearch) : null;
         if (model is null)
         {
             return Result<AiResearchResult>.Failure(

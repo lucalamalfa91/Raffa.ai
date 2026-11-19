@@ -88,8 +88,13 @@ public sealed class AgenticAskTurn(
     internal async Task<AgenticTurnResult?> RunAsync(AskToolContext context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
-        var definitions = toolList.Select(t => new AiToolDefinition(t.Name, t.Description, t.ParametersSchemaJson)).ToList();
-        var byName = toolList.ToDictionary(t => t.Name, StringComparer.Ordinal);
+        // Playground variant (Super Admin only; null on every normal turn): tools taken away, a different
+        // tool-call limit and a different prompt. The prompt version names a modified run in the audit row.
+        var activeTools = toolList.Where(t => !PlaygroundScope.IsToolDisabled(t.Name)).ToList();
+        var maxToolCalls = PlaygroundScope.MaxToolCallsOr(settings.AgenticMaxToolCalls);
+        var promptVersion = PlaygroundScope.HasPrompt("agent") ? AgentPrompt.Version + "-playground" : AgentPrompt.Version;
+        var definitions = activeTools.Select(t => new AiToolDefinition(t.Name, t.Description, t.ParametersSchemaJson)).ToList();
+        var byName = activeTools.ToDictionary(t => t.Name, StringComparer.Ordinal);
 
         var messages = BuildHistory(context);
         messages.Add(AiConversationMessage.User(context.Question));
@@ -115,8 +120,8 @@ public sealed class AgenticAskTurn(
         {
             while (true)
             {
-                var forceFinal = forceFinalNext || calls >= settings.AgenticMaxToolCalls;
-                var request = new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, AgentPrompt.Version, forceFinal);
+                var forceFinal = forceFinalNext || calls >= maxToolCalls;
+                var request = new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, promptVersion, forceFinal);
                 var step = await aiGateway.ConverseAsync(request, token).ConfigureAwait(false);
                 if (step.IsFailure && calls > 0 && !request.ForceFinal && !retriedAfterTools)
                 {
@@ -154,7 +159,7 @@ public sealed class AgenticAskTurn(
 
                 // The model asked for tools: run them in order, append its own message and one tool
                 // message per call, in the order it asked.
-                var toolCalls = step.Value.ToolCalls.Take(Math.Max(1, settings.AgenticMaxToolCalls - calls)).ToList();
+                var toolCalls = step.Value.ToolCalls.Take(Math.Max(1, maxToolCalls - calls)).ToList();
                 messages.Add(AiConversationMessage.AssistantToolCalls(toolCalls));
                 // One at a time: the tools share this request's scoped services (one EF DbContext per module,
                 // the turn's tenant scope, the context's focus), and a DbContext must never run two queries at
@@ -213,6 +218,7 @@ public sealed class AgenticAskTurn(
 
         if (final is null)
         {
+            PlaygroundTrace.Record("guard", "no-final-answer", ok: false, note: string.Join("; ", failures));
             // The loop ended without an answer (a failed step twice, the deadline): the honest "service
             // busy" with the recovery actions -- never a deterministic digest in the model's place.
             return new AgenticTurnResult(
@@ -237,6 +243,9 @@ public sealed class AgenticAskTurn(
         var unverified = false;
         var grounding = GroundingGuard.Validate(result, pack, allowUncitedGuidance: true);
         var verdict = grounding.Passed ? NumericGuard.Validate(result.AnswerMarkdown, pack, result.CitationKeys) : grounding;
+        PlaygroundTrace.Record(
+            "guard", grounding.Passed ? "numeric-guard" : "grounding-guard", ok: verdict.Passed,
+            note: verdict.Passed ? $"{pack.Count} pack item(s), {result.CitationKeys?.Count ?? 0} citation(s)" : verdict.Violation);
         if (!verdict.Passed && grounding.Passed)
         {
             // R-ASK-06 as a detector, not a censor. A figure the pack does not hold verbatim (a computed
@@ -256,10 +265,11 @@ public sealed class AgenticAskTurn(
             // citations dropped and the turn marked unverified -- never a deterministic digest.
             guardIntervened = true;
             logger?.LogWarning("Agent answer cited a source outside the pack, regenerating once: {Violation}", verdict.Violation);
+            PlaygroundTrace.Record("guard", "regenerate-once", ok: false, note: verdict.Violation);
             messages.Add(AiConversationMessage.Assistant(final.FinalJson!));
             messages.Add(AiConversationMessage.User(RegenerateOnce.BuildRetryInstruction(verdict.Violation!)));
             var retry = await aiGateway.ConverseAsync(
-                    new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, AgentPrompt.Version, ForceFinal: true), cancellationToken)
+                    new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, promptVersion, ForceFinal: true), cancellationToken)
                 .ConfigureAwait(false);
             var retried = retry.IsSuccess && retry.Value.IsFinal ? Parse(retry.Value.FinalJson!, retry.Value.Metadata) : null;
             var retryVerdict = retried is null ? null : Validate(retried.Value.Result, pack);
@@ -337,6 +347,7 @@ public sealed class AgenticAskTurn(
     {
         if (!byName.TryGetValue(call.Name, out var tool))
         {
+            PlaygroundTrace.Record("tool_call", call.Name, ok: false, input: call.ArgumentsJson, note: "unknown tool");
             return AskToolResult.Error($"Unknown tool '{call.Name}'.");
         }
 
@@ -352,9 +363,14 @@ public sealed class AgenticAskTurn(
         }
 
         using var step = RunContext.BeginStep(tool.Name);
+        var toolClock = Stopwatch.StartNew();
         try
         {
-            return await tool.ExecuteAsync(arguments, context, cancellationToken).ConfigureAwait(false);
+            var outcome = await tool.ExecuteAsync(arguments, context, cancellationToken).ConfigureAwait(false);
+            PlaygroundTrace.Record(
+                "tool_call", call.Name, toolClock.ElapsedMilliseconds, outcome.Failure is null,
+                input: call.ArgumentsJson, output: outcome.ResultJson, note: outcome.Failure);
+            return outcome;
         }
         catch (OperationCanceledException)
         {
@@ -363,6 +379,7 @@ public sealed class AgenticAskTurn(
         catch (Exception ex)
         {
             logger?.LogWarning(ex, "Ask tool {Tool} failed; the turn continues without it.", tool.Name);
+            PlaygroundTrace.Record("tool_call", call.Name, toolClock.ElapsedMilliseconds, ok: false, input: call.ArgumentsJson, note: ex.GetType().Name);
             return AskToolResult.Error($"The tool failed: {ex.GetType().Name}. Answer from what the other tools returned.");
         }
     }
@@ -470,7 +487,7 @@ public sealed class AgenticAskTurn(
 
     private static string BuildSystemPrompt(AskToolContext context)
     {
-        var sb = new System.Text.StringBuilder(AgentPrompt.SystemPrompt);
+        var sb = new System.Text.StringBuilder(PlaygroundScope.PromptFor("agent") ?? AgentPrompt.SystemPrompt);
         sb.AppendLine();
         if (Raffa.SharedKernel.Language.ResponseLanguage.Directive is { } directive)
         {

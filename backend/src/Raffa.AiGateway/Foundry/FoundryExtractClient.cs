@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -18,6 +19,9 @@ namespace Raffa.AiGateway.Foundry;
 public sealed class FoundryExtractClient(
     FoundryChatCompletionsClient chatClient, AiGatewayModelOptions modelOptions, IClock clock)
 {
+    /// <summary>Name under which a playground variant replaces the extraction system prompt.</summary>
+    public const string ExtractPromptAgent = "extract";
+
     public async Task<Result<AiExtractionResult>> ExtractAsync(
         AiExtractionRequest request, CancellationToken cancellationToken)
     {
@@ -52,14 +56,16 @@ public sealed class FoundryExtractClient(
                 $"structured outputs — {strictness.Error}");
         }
 
-        var model = modelOptions.Extract;
+        var model = PlaygroundScope.ModelFor("extract", modelOptions.Extract);
 
         var completion = await chatClient.CompleteAsync(
                 "Extract",
                 model,
-                request.DocumentFirst
-                    ? ExtractPromptTemplate.SharedSystemPrompt()
-                    : ExtractPromptTemplate.SystemPrompt(request.StageName),
+                // Playground variant (Super Admin only): the "extract" prompt replaces the system prompt of every stage.
+                PlaygroundScope.PromptFor(ExtractPromptAgent)
+                    ?? (request.DocumentFirst
+                        ? ExtractPromptTemplate.SharedSystemPrompt()
+                        : ExtractPromptTemplate.SystemPrompt(request.StageName)),
                 request.DocumentFirst
                     ? ExtractPromptTemplate.DocumentFirstUserMessage(request.DocumentText, request.StageName)
                     : request.DocumentText,

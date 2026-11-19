@@ -870,7 +870,7 @@ public static class ConversationsEndpointExtensions
         answered,
     };
 
-    private static object ToCitationJson(ReplyCitation citation) => new
+    internal static object ToCitationJson(ReplyCitation citation) => new
     {
         n = citation.N,
         corpus = citation.Corpus,
@@ -886,7 +886,7 @@ public static class ConversationsEndpointExtensions
         recordId = citation.RecordId,
     };
 
-    private static object ToActionJson(CopilotAction action) => new
+    internal static object ToActionJson(CopilotAction action) => new
     {
         label = action.Label,
         href = action.Href,

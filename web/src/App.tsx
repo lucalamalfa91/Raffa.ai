@@ -283,6 +283,7 @@ export default function App({ appConfig, apiClient }: AppProps) {
         <Route path="/prospect/accept" element={<ProspectAcceptRoute apiClient={apiClient} appConfig={appConfig} />} />
         {/* Super Admin portal, outside any workspace (opened from the workspace picker). */}
         <Route path="/admin" element={<AdminPage apiClient={apiClient} />} />
+        <Route path="/admin/playground" element={<AdminPage apiClient={apiClient} initialTab="playground" />} />
         <Route
           path="/*"
           element={

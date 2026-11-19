@@ -128,6 +128,13 @@ builder.Services.AddScoped<ICallerIdentity, TokenCallerIdentity>();
 builder.Services.Configure<Raffa.Api.Infrastructure.PlatformAdminOptions>(
     builder.Configuration.GetSection(Raffa.Api.Infrastructure.PlatformAdminOptions.SectionName));
 builder.Services.AddScoped<Raffa.Api.Infrastructure.PlatformAdminGuard>();
+// Super Admin agent playground: sandbox workspaces, run history, token pricing (Playground:Pricing).
+builder.Services.AddScoped<Raffa.Api.Infrastructure.PlaygroundSandboxSeeder>();
+builder.Services.AddScoped<Raffa.Api.Infrastructure.PlaygroundCatalog>();
+builder.Services.AddScoped<Raffa.AiFlows.Playground.PlaygroundWorkflowRunner>();
+builder.Services.AddScoped<Raffa.AiFlows.Playground.PlaygroundJudge>();
+builder.Services.Configure<Raffa.Api.Infrastructure.PlaygroundPricingOptions>(
+    builder.Configuration.GetSection(Raffa.Api.Infrastructure.PlaygroundPricingOptions.SectionName));
 
 // Task E18/F01/US01/T01 (wave w15, NW-05; ADR-022 w15 footer clause 2; ADR-025 §I/Rule B1): the
 // request-scoped tenant selector every tenant-scoped endpoint now consumes instead of hand-parsing
@@ -311,6 +318,13 @@ if (feedbackHostOptions.GitHubPublishingActive)
     {
         client.BaseAddress = new Uri("https://api.github.com/");
         client.Timeout = TimeSpan.FromSeconds(10);
+    });
+
+    // Super Admin playground: the same repository and token open a draft pull request for a variant's proposal.
+    builder.Services.AddHttpClient<GitHubPullRequestPublisher>(client =>
+    {
+        client.BaseAddress = new Uri("https://api.github.com/");
+        client.Timeout = TimeSpan.FromSeconds(30);
     });
 }
 
@@ -556,6 +570,9 @@ app.MapHealthChecks("/health");
 // WorkspaceEndpointExtensions for the endpoints themselves.
 app.MapWorkspaceEndpoints();
 app.MapPlatformAdminEndpoints();
+app.MapPlaygroundEndpoints();
+app.MapPlaygroundJudgeEndpoints();
+app.MapPlaygroundExportEndpoints();
 
 // Task E01/F06/US01/T01 (us-01-document-upload, AC-1) and E01/F06/US01/T02 (AC-3) first mapped
 // POST /api/documents and GET /api/documents/{id} inline here; task E02/F06/US01/T01

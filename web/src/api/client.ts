@@ -160,6 +160,248 @@ export interface AdminCallResult<T> {
   error: string | null;
 }
 
+// Super Admin agent playground (docs/architecture/admin-agent-playground-plan.md). Hand-written like the
+// admin types above: `/api/admin/playground/*` is not in web/openapi/raffa-api.v1.json.
+export type PlaygroundSandboxKind = "empty" | "seeded" | "needs-review";
+
+export interface PlaygroundSandboxBody {
+  kind: PlaygroundSandboxKind;
+  tenantId: string;
+  description: string;
+  contracts: number;
+}
+
+/** One step the agent took: a model call, a tool call or a guard check. `input`/`output` are raw JSON or text. */
+export interface PlaygroundTraceEvent {
+  seq: number;
+  kind: "model_call" | "tool_call" | "guard" | "note";
+  name: string;
+  at: string;
+  durationMs: number;
+  ok: boolean;
+  model: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  cachedTokens: number | null;
+  input: string | null;
+  output: string | null;
+  note: string | null;
+}
+
+export interface PlaygroundUsage {
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  /** null when a model used has no configured price: never shown as zero. */
+  estimatedCostUsd: number | null;
+  unpricedModels: string[];
+  modelCalls: number;
+  toolCalls: number;
+}
+
+export interface PlaygroundReplyBody {
+  kind: string;
+  answerMarkdown: string;
+  citations: unknown[];
+  actions: unknown[];
+  followUps: string[];
+  provenance: { modelId?: string | null; promptVersion?: string | null; unverified?: boolean };
+}
+
+/** The agentic workflows the playground runs. `ask` is the chat turn; the others take the input described on {@link PlaygroundWorkflowInput}. */
+export type PlaygroundWorkflow = "ask" | "council" | "drafting" | "research" | "extraction";
+
+export interface PlaygroundWorkflowInput {
+  /** council, drafting: a supplier of the sandbox. */
+  supplier?: string;
+  goal?: string;
+  question?: string;
+  language?: "it" | "en";
+  /** research */
+  query?: string;
+  purpose?: string;
+  /** extraction: pasted text, or an uploaded file as base64. */
+  text?: string;
+  fileBase64?: string;
+  fileName?: string;
+  mimeType?: string;
+  documentFirst?: boolean;
+}
+
+export interface PlaygroundRunBody {
+  runId: string;
+  workflow?: PlaygroundWorkflow;
+  /** What the workflow returned (null for `ask`, whose answer is {@link reply}). Shape depends on the workflow. */
+  result?: unknown;
+  sandbox: PlaygroundSandboxKind;
+  variantId?: string | null;
+  variantName?: string | null;
+  comparisonId?: string | null;
+  status: "ok" | "error";
+  error: string | null;
+  durationMs: number;
+  reply: PlaygroundReplyBody | null;
+  usage: PlaygroundUsage;
+  trace: PlaygroundTraceEvent[];
+}
+
+export interface PlaygroundHistoryTurn {
+  role: "you" | "raffa";
+  markdown: string;
+}
+
+/** One role's model knobs a variant changes; a null field keeps the configured value. */
+export interface PlaygroundModelOverride {
+  modelId: string | null;
+  reasoningEffort: string | null;
+  maxCompletionTokens: number | null;
+  temperature: number | null;
+}
+
+/** What a variant changes on top of what production runs (see the playground plan). */
+export interface PlaygroundOverrides {
+  prompts: Record<string, string>;
+  models: Record<string, PlaygroundModelOverride>;
+  disabledTools: string[];
+  maxToolCalls: number | null;
+}
+
+export interface PlaygroundVariantBody {
+  id: string;
+  name: string;
+  description: string | null;
+  overrides: PlaygroundOverrides;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlaygroundBaselineBody {
+  prompts: Array<{ agent: string; flow: string; version: string; text: string }>;
+  models: Array<{
+    role: string;
+    configured: boolean;
+    fallbackOf: string | null;
+    modelId: string | null;
+    modelVersion: string | null;
+    reasoningEffort: string | null;
+    maxCompletionTokens: number | null;
+    temperature: number | null;
+  }>;
+  allowedModelIds: string[];
+  reasoningEfforts: string[];
+  maxTemperature: number;
+  tools: Array<{ name: string; description: string }>;
+  maxToolCalls: number;
+  agentic: boolean;
+}
+
+export interface PlaygroundRunSummaryBody {
+  id: string;
+  workflow: PlaygroundWorkflow;
+  sandbox: PlaygroundSandboxKind;
+  createdAt: string;
+  variantId: string | null;
+  variantName: string | null;
+  comparisonId: string | null;
+  durationMs: number;
+  status: string;
+  promptTokens: number;
+  completionTokens: number;
+  estimatedCostUsd: number | null;
+  input: { question?: string };
+}
+
+/** A stored run: the reply and usage as returned when it ran, plus its trace. */
+export interface PlaygroundStoredRunBody {
+  id: string;
+  sandbox: PlaygroundSandboxKind;
+  variantName: string | null;
+  durationMs: number;
+  status: string;
+  workflow?: PlaygroundWorkflow;
+  input: { question?: string };
+  output: { reply: PlaygroundReplyBody | null; result?: unknown; error: string | null; usage: PlaygroundUsage };
+  trace: PlaygroundTraceEvent[];
+}
+
+/** One thing the judge scores; `weight` (1-5) is how much it counts in the total. */
+export interface PlaygroundCriterionBody {
+  id: string;
+  label: string;
+  description: string;
+  weight: number;
+}
+
+/** A judging rubric: built-in (`default:<workflow>`, read-only) or custom. */
+export interface PlaygroundRubricBody {
+  id: string;
+  name: string;
+  workflow: PlaygroundWorkflow;
+  isDefault: boolean;
+  criteria: PlaygroundCriterionBody[];
+}
+
+export interface PlaygroundJudgementBody {
+  judgementId: string;
+  workflow: PlaygroundWorkflow;
+  comparisonId: string | null;
+  createdAt: string;
+  rubric: PlaygroundRubricBody;
+  judgeModel: string | null;
+  passes: number;
+  runs: Array<{ runId: string; variantId: string | null; variantName: string }>;
+  answers: Array<{
+    runId: string;
+    variantName: string;
+    weighted: number;
+    summary: string;
+    scores: Array<{ criterionId: string; score: number; rationale: string | null }>;
+  }>;
+  /** null with one answer or a tie. */
+  preferredRunId: string | null;
+  tie: boolean;
+  /** False when the two passes (answers in opposite orders) preferred different answers: do not trust the vote. */
+  passesAgreed: boolean;
+  passDetails: Array<{ order: string[]; preferredRunId: string | null; tie: boolean; reasoning: string }>;
+  failures: string[];
+  usage: { promptTokens: number; completionTokens: number; estimatedCostUsd: number | null };
+  trace?: PlaygroundTraceEvent[];
+}
+
+/** Whether this environment can open a pull request (GitHub connected and on); a bundle download always works. */
+export interface PlaygroundExportCapabilities {
+  pullRequest: boolean;
+  repository: string | null;
+}
+
+export interface PlaygroundExportResult {
+  exportId: string;
+  target: "pull_request" | "bundle";
+  status: string;
+  files: string[];
+  prUrl?: string;
+  prNumber?: number;
+  branch?: string;
+  /** Things the pull request could not do (for instance a prompt that has to be applied by hand). */
+  notes?: string[];
+  fileName?: string;
+  /** The bundle: a zip with the proposal's files at their repository paths. */
+  zipBase64?: string;
+}
+
+export interface PlaygroundExportRecord {
+  id: string;
+  target: "pull_request" | "bundle";
+  status: string;
+  branch: string | null;
+  prNumber: number | null;
+  prUrl: string | null;
+  error: string | null;
+  files: string[];
+  createdAt: string;
+}
+
 export interface AdminOverviewBody {
   totalWorkspaces: number;
   activeWorkspaces: number;
@@ -1561,6 +1803,54 @@ export interface ApiClient {
   regenerateAdminInvitation?(id: string): Promise<AdminCallResult<AdminIssuedInvitationBody>>;
   revokeAdminInvitation?(id: string): Promise<AdminCallResult<null>>;
   listAdminUsers?(): Promise<AdminCallResult<{ users: AdminUserBody[] }>>;
+  /** `GET /api/admin/playground/sandboxes`: the three synthetic workspaces (created on first use). */
+  listPlaygroundSandboxes?(): Promise<AdminCallResult<{ sandboxes: PlaygroundSandboxBody[] }>>;
+  /** `POST /api/admin/playground/runs`: one Ask turn on a sandbox, with the full trace. `history` carries earlier turns. */
+  runPlayground?(input: {
+    sandbox: PlaygroundSandboxKind;
+    question: string;
+    history: PlaygroundHistoryTurn[];
+    /** Absent = what production runs (the baseline). */
+    variantId?: string;
+    /** Groups the runs of one side-by-side comparison. */
+    comparisonId?: string;
+    /** Absent = `ask`. */
+    workflow?: PlaygroundWorkflow;
+    input?: PlaygroundWorkflowInput;
+  }): Promise<AdminCallResult<PlaygroundRunBody>>;
+  getPlaygroundBaseline?(): Promise<AdminCallResult<PlaygroundBaselineBody>>;
+  listPlaygroundVariants?(): Promise<AdminCallResult<{ variants: PlaygroundVariantBody[] }>>;
+  /** Creates the variant (`id` null) or replaces name, description and overrides of an existing one. */
+  savePlaygroundVariant?(
+    id: string | null,
+    variant: { name: string; description: string | null; overrides: Partial<PlaygroundOverrides> },
+  ): Promise<AdminCallResult<PlaygroundVariantBody>>;
+  archivePlaygroundVariant?(id: string): Promise<AdminCallResult<null>>;
+  listPlaygroundRuns?(limit?: number): Promise<AdminCallResult<{ runs: PlaygroundRunSummaryBody[] }>>;
+  getPlaygroundRun?(id: string): Promise<AdminCallResult<PlaygroundStoredRunBody>>;
+  listPlaygroundRubrics?(): Promise<AdminCallResult<{ rubrics: PlaygroundRubricBody[] }>>;
+  /** Creates the rubric (`id` null) or replaces a custom one. Criterion ids are made from the labels by the server. */
+  savePlaygroundRubric?(
+    id: string | null,
+    rubric: { name: string; workflow: PlaygroundWorkflow; criteria: Array<{ label: string; description: string; weight: number }> },
+  ): Promise<AdminCallResult<PlaygroundRubricBody>>;
+  archivePlaygroundRubric?(id: string): Promise<AdminCallResult<null>>;
+  /** Scores the runs of a comparison (or 1-3 runs of the same workflow and question) blind, with a rubric. */
+  judgePlayground?(input: {
+    comparisonId?: string;
+    runIds?: string[];
+    rubricId?: string;
+    judgeModelId?: string;
+    passes?: 1 | 2;
+  }): Promise<AdminCallResult<PlaygroundJudgementBody>>;
+  listPlaygroundJudgements?(filter: { comparisonId?: string; runId?: string }): Promise<AdminCallResult<{ judgements: PlaygroundJudgementBody[] }>>;
+  getPlaygroundExportCapabilities?(): Promise<AdminCallResult<PlaygroundExportCapabilities>>;
+  /**
+   * Proposes a variant to the repository: a draft pull request (report, proposed prompts, diffs, and the orchestrator prompt as a
+   * new version) or a zip with the same files. Raffa never merges it.
+   */
+  exportPlaygroundVariant?(variantId: string, target: "pull_request" | "bundle"): Promise<AdminCallResult<PlaygroundExportResult>>;
+  listPlaygroundExports?(variantId: string): Promise<AdminCallResult<{ exports: PlaygroundExportRecord[] }>>;
   /** `POST /api/platform/invitations/accept`: a signed-in prospect redeems the secret from their link. */
   acceptProspectInvitation?(token: string): Promise<AdminCallResult<null>>;
   /**
@@ -2240,7 +2530,7 @@ export function createApiClient(
 
   /** One portal-admin call (no tenant header): 2xx → `body` (null on 204), anything else → `error`. Never throws. */
   async function adminCall<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
     body?: unknown,
     extraHeaders: Record<string, string> = {},
@@ -2458,6 +2748,37 @@ export function createApiClient(
       adminCall<AdminIssuedInvitationBody>("POST", `/api/admin/invitations/${encodeURIComponent(id)}/regenerate`),
     revokeAdminInvitation: (id) => adminCall<null>("DELETE", `/api/admin/invitations/${encodeURIComponent(id)}`),
     listAdminUsers: () => adminCall<{ users: AdminUserBody[] }>("GET", "/api/admin/users"),
+    listPlaygroundSandboxes: () =>
+      adminCall<{ sandboxes: PlaygroundSandboxBody[] }>("GET", "/api/admin/playground/sandboxes"),
+    runPlayground: (input) => adminCall<PlaygroundRunBody>("POST", "/api/admin/playground/runs", input),
+    getPlaygroundBaseline: () => adminCall<PlaygroundBaselineBody>("GET", "/api/admin/playground/baseline"),
+    listPlaygroundVariants: () => adminCall<{ variants: PlaygroundVariantBody[] }>("GET", "/api/admin/playground/variants"),
+    savePlaygroundVariant: (id, variant) =>
+      id === null
+        ? adminCall<PlaygroundVariantBody>("POST", "/api/admin/playground/variants", variant)
+        : adminCall<PlaygroundVariantBody>("PUT", `/api/admin/playground/variants/${encodeURIComponent(id)}`, variant),
+    archivePlaygroundVariant: (id) => adminCall<null>("DELETE", `/api/admin/playground/variants/${encodeURIComponent(id)}`),
+    listPlaygroundRuns: (limit = 30) =>
+      adminCall<{ runs: PlaygroundRunSummaryBody[] }>("GET", `/api/admin/playground/runs?limit=${limit}`),
+    getPlaygroundRun: (id) => adminCall<PlaygroundStoredRunBody>("GET", `/api/admin/playground/runs/${encodeURIComponent(id)}`),
+    listPlaygroundRubrics: () => adminCall<{ rubrics: PlaygroundRubricBody[] }>("GET", "/api/admin/playground/rubrics"),
+    savePlaygroundRubric: (id, rubric) =>
+      id === null
+        ? adminCall<PlaygroundRubricBody>("POST", "/api/admin/playground/rubrics", rubric)
+        : adminCall<PlaygroundRubricBody>("PUT", `/api/admin/playground/rubrics/${encodeURIComponent(id)}`, rubric),
+    archivePlaygroundRubric: (id) => adminCall<null>("DELETE", `/api/admin/playground/rubrics/${encodeURIComponent(id)}`),
+    judgePlayground: (input) => adminCall<PlaygroundJudgementBody>("POST", "/api/admin/playground/judgements", input),
+    getPlaygroundExportCapabilities: () => adminCall<PlaygroundExportCapabilities>("GET", "/api/admin/playground/export"),
+    exportPlaygroundVariant: (variantId, target) =>
+      adminCall<PlaygroundExportResult>("POST", `/api/admin/playground/variants/${encodeURIComponent(variantId)}/export`, { target }),
+    listPlaygroundExports: (variantId) =>
+      adminCall<{ exports: PlaygroundExportRecord[] }>("GET", `/api/admin/playground/variants/${encodeURIComponent(variantId)}/exports`),
+    listPlaygroundJudgements: (filter) => {
+      const query = new URLSearchParams();
+      if (filter.comparisonId) query.set("comparisonId", filter.comparisonId);
+      if (filter.runId) query.set("runId", filter.runId);
+      return adminCall<{ judgements: PlaygroundJudgementBody[] }>("GET", `/api/admin/playground/judgements?${query.toString()}`);
+    },
     acceptProspectInvitation: (token) =>
       adminCall<null>("POST", "/api/platform/invitations/accept", undefined, { "X-Platform-Invitation-Token": token }),
 

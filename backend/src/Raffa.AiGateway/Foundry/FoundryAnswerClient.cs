@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using System.Text;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
@@ -40,7 +41,7 @@ public sealed class FoundryAnswerClient(
             return Result<AiAnswerResult>.Failure("A question is required.");
         }
 
-        var model = modelOptions.Answer;
+        var model = PlaygroundScope.ModelFor("answer", modelOptions.Answer);
         var usesDefaultPrompt = string.IsNullOrWhiteSpace(request.SystemPrompt);
         var promptVersion = ResolvePromptVersion(request, usesDefaultPrompt);
         var hasPack = !string.IsNullOrWhiteSpace(request.PackJson);

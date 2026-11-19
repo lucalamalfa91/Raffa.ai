@@ -8,18 +8,20 @@ import type {
   AdminWorkspaceBody,
   ApiClient,
 } from "../../api/client";
+import PlaygroundPanel from "./PlaygroundPanel";
 import "./admin.css";
 
 export interface AdminRouteProps {
   apiClient: ApiClient;
 }
 
-type Tab = "overview" | "workspaces" | "invitations" | "users";
+type Tab = "overview" | "workspaces" | "invitations" | "users" | "playground";
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "workspaces", label: "Workspaces" },
   { id: "invitations", label: "Invitations" },
   { id: "users", label: "Users" },
+  { id: "playground", label: "Playground" },
 ];
 
 const DELIVERY_COPY: Record<AdminIssuedInvitationBody["deliveryOutcome"], string> = {
@@ -81,14 +83,14 @@ function useAdminData<T>(load: (() => Promise<AdminCallResult<T>>) | undefined) 
 
 /**
  * Pannello admin (Raffa staff; route `/admin`). Super Admin only: overview, workspace registry (metadata
- * only, with suspend/reactivate), prospect invitations and the people who accepted one. It never opens a
+ * only, with suspend/reactivate), prospect invitations, the people who accepted one and the agent playground. It never opens a
  * customer workspace and shows no customer content. The server answers 404 to anyone who is not a
  * platform admin, so this screen is only a view over what the API allows.
  */
-export default function AdminRoute({ apiClient }: AdminRouteProps) {
-  const [tab, setTab] = useState<Tab>("overview");
+export default function AdminRoute({ apiClient, initialTab = "overview" }: AdminRouteProps & { initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   return (
-    <div className="admin-screen">
+    <div className={tab === "playground" ? "admin-screen is-wide" : "admin-screen"}>
       <header className="screen-header">
         <div className="screen-kicker">Raffa staff</div>
         <h1 className="screen-title">Pannello admin</h1>
@@ -110,6 +112,7 @@ export default function AdminRoute({ apiClient }: AdminRouteProps) {
       {tab === "workspaces" ? <WorkspacesPanel apiClient={apiClient} /> : null}
       {tab === "invitations" ? <InvitationsPanel apiClient={apiClient} /> : null}
       {tab === "users" ? <UsersPanel apiClient={apiClient} /> : null}
+      {tab === "playground" ? <PlaygroundPanel apiClient={apiClient} /> : null}
     </div>
   );
 }

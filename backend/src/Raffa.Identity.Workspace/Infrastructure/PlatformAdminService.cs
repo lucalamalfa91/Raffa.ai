@@ -92,7 +92,7 @@ public sealed class PlatformAdminService(
             $"""
             SELECT tenant_id AS "tenant_id", name AS "name", admin_email AS "admin_email",
                    created_at AS "created_at", status AS "status"
-            FROM platform_workspace ORDER BY created_at DESC
+            FROM platform_workspace WHERE NOT is_sandbox ORDER BY created_at DESC
             """).ToListAsync(ct);
 
     /// <summary>True when the workspace is registered and suspended. Unregistered = not suspended.</summary>
@@ -274,9 +274,9 @@ public sealed class PlatformAdminService(
         var rows = await db.Database.SqlQuery<PlatformOverview>(
             $"""
             SELECT
-              (SELECT count(*) FROM platform_workspace)::int AS "total_workspaces",
-              (SELECT count(*) FROM platform_workspace WHERE status = 'active')::int AS "active_workspaces",
-              (SELECT count(*) FROM platform_workspace WHERE status = 'suspended')::int AS "suspended_workspaces",
+              (SELECT count(*) FROM platform_workspace WHERE NOT is_sandbox)::int AS "total_workspaces",
+              (SELECT count(*) FROM platform_workspace WHERE status = 'active' AND NOT is_sandbox)::int AS "active_workspaces",
+              (SELECT count(*) FROM platform_workspace WHERE status = 'suspended' AND NOT is_sandbox)::int AS "suspended_workspaces",
               (SELECT count(*) FROM platform_invitation WHERE accepted_at IS NOT NULL)::int AS "registered_users",
               (SELECT count(*) FROM platform_invitation
                  WHERE accepted_at IS NULL AND revoked_at IS NULL AND expires_at > {now})::int AS "pending_invitations"
