@@ -325,6 +325,50 @@ export interface PlaygroundStoredRunBody {
   trace: PlaygroundTraceEvent[];
 }
 
+/** One thing the judge scores; `weight` (1-5) is how much it counts in the total. */
+export interface PlaygroundCriterionBody {
+  id: string;
+  label: string;
+  description: string;
+  weight: number;
+}
+
+/** A judging rubric: built-in (`default:<workflow>`, read-only) or custom. */
+export interface PlaygroundRubricBody {
+  id: string;
+  name: string;
+  workflow: PlaygroundWorkflow;
+  isDefault: boolean;
+  criteria: PlaygroundCriterionBody[];
+}
+
+export interface PlaygroundJudgementBody {
+  judgementId: string;
+  workflow: PlaygroundWorkflow;
+  comparisonId: string | null;
+  createdAt: string;
+  rubric: PlaygroundRubricBody;
+  judgeModel: string | null;
+  passes: number;
+  runs: Array<{ runId: string; variantId: string | null; variantName: string }>;
+  answers: Array<{
+    runId: string;
+    variantName: string;
+    weighted: number;
+    summary: string;
+    scores: Array<{ criterionId: string; score: number; rationale: string | null }>;
+  }>;
+  /** null with one answer or a tie. */
+  preferredRunId: string | null;
+  tie: boolean;
+  /** False when the two passes (answers in opposite orders) preferred different answers: do not trust the vote. */
+  passesAgreed: boolean;
+  passDetails: Array<{ order: string[]; preferredRunId: string | null; tie: boolean; reasoning: string }>;
+  failures: string[];
+  usage: { promptTokens: number; completionTokens: number; estimatedCostUsd: number | null };
+  trace?: PlaygroundTraceEvent[];
+}
+
 export interface AdminOverviewBody {
   totalWorkspaces: number;
   activeWorkspaces: number;
@@ -1751,6 +1795,22 @@ export interface ApiClient {
   archivePlaygroundVariant?(id: string): Promise<AdminCallResult<null>>;
   listPlaygroundRuns?(limit?: number): Promise<AdminCallResult<{ runs: PlaygroundRunSummaryBody[] }>>;
   getPlaygroundRun?(id: string): Promise<AdminCallResult<PlaygroundStoredRunBody>>;
+  listPlaygroundRubrics?(): Promise<AdminCallResult<{ rubrics: PlaygroundRubricBody[] }>>;
+  /** Creates the rubric (`id` null) or replaces a custom one. Criterion ids are made from the labels by the server. */
+  savePlaygroundRubric?(
+    id: string | null,
+    rubric: { name: string; workflow: PlaygroundWorkflow; criteria: Array<{ label: string; description: string; weight: number }> },
+  ): Promise<AdminCallResult<PlaygroundRubricBody>>;
+  archivePlaygroundRubric?(id: string): Promise<AdminCallResult<null>>;
+  /** Scores the runs of a comparison (or 1-3 runs of the same workflow and question) blind, with a rubric. */
+  judgePlayground?(input: {
+    comparisonId?: string;
+    runIds?: string[];
+    rubricId?: string;
+    judgeModelId?: string;
+    passes?: 1 | 2;
+  }): Promise<AdminCallResult<PlaygroundJudgementBody>>;
+  listPlaygroundJudgements?(filter: { comparisonId?: string; runId?: string }): Promise<AdminCallResult<{ judgements: PlaygroundJudgementBody[] }>>;
   /** `POST /api/platform/invitations/accept`: a signed-in prospect redeems the secret from their link. */
   acceptProspectInvitation?(token: string): Promise<AdminCallResult<null>>;
   /**
@@ -2661,6 +2721,19 @@ export function createApiClient(
     listPlaygroundRuns: (limit = 30) =>
       adminCall<{ runs: PlaygroundRunSummaryBody[] }>("GET", `/api/admin/playground/runs?limit=${limit}`),
     getPlaygroundRun: (id) => adminCall<PlaygroundStoredRunBody>("GET", `/api/admin/playground/runs/${encodeURIComponent(id)}`),
+    listPlaygroundRubrics: () => adminCall<{ rubrics: PlaygroundRubricBody[] }>("GET", "/api/admin/playground/rubrics"),
+    savePlaygroundRubric: (id, rubric) =>
+      id === null
+        ? adminCall<PlaygroundRubricBody>("POST", "/api/admin/playground/rubrics", rubric)
+        : adminCall<PlaygroundRubricBody>("PUT", `/api/admin/playground/rubrics/${encodeURIComponent(id)}`, rubric),
+    archivePlaygroundRubric: (id) => adminCall<null>("DELETE", `/api/admin/playground/rubrics/${encodeURIComponent(id)}`),
+    judgePlayground: (input) => adminCall<PlaygroundJudgementBody>("POST", "/api/admin/playground/judgements", input),
+    listPlaygroundJudgements: (filter) => {
+      const query = new URLSearchParams();
+      if (filter.comparisonId) query.set("comparisonId", filter.comparisonId);
+      if (filter.runId) query.set("runId", filter.runId);
+      return adminCall<{ judgements: PlaygroundJudgementBody[] }>("GET", `/api/admin/playground/judgements?${query.toString()}`);
+    },
     acceptProspectInvitation: (token) =>
       adminCall<null>("POST", "/api/platform/invitations/accept", undefined, { "X-Platform-Invitation-Token": token }),
 

@@ -64,7 +64,7 @@ public static class PlaygroundEndpointExtensions
 
     public sealed record PlaygroundVariantRequest(string? Name, string? Description, PlaygroundOverrides? Overrides);
 
-    private static async Task<IResult> RunAsync(ICallerIdentity callerIdentity, PlatformAdminGuard guard, Func<Task<IResult>> action)
+    internal static async Task<IResult> RunAsync(ICallerIdentity callerIdentity, PlatformAdminGuard guard, Func<Task<IResult>> action)
     {
         if (callerIdentity.Resolve() is null)
         {

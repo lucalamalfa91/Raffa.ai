@@ -52,12 +52,19 @@ export function Inspector({ run, title }: { run: Pick<PlaygroundRunBody, "durati
         </div>
       </dl>
       {usage.unpricedModels.length > 0 ? <p className="hint">No price configured for: {usage.unpricedModels.join(", ")}.</p> : null}
-      <ol className="pg-trace" aria-label="Trace">
-        {run.trace.map((e) => (
-          <TraceStep key={e.seq} event={e} />
-        ))}
-      </ol>
+      <TraceList events={run.trace} />
     </>
+  );
+}
+
+/** Every step of a trace, collapsed, with its raw request and result inside. */
+export function TraceList({ events }: { events: PlaygroundTraceEvent[] }) {
+  return (
+    <ol className="pg-trace" aria-label="Trace">
+      {events.map((e) => (
+        <TraceStep key={e.seq} event={e} />
+      ))}
+    </ol>
   );
 }
 

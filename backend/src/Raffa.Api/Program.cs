@@ -132,6 +132,7 @@ builder.Services.AddScoped<Raffa.Api.Infrastructure.PlatformAdminGuard>();
 builder.Services.AddScoped<Raffa.Api.Infrastructure.PlaygroundSandboxSeeder>();
 builder.Services.AddScoped<Raffa.Api.Infrastructure.PlaygroundCatalog>();
 builder.Services.AddScoped<Raffa.AiFlows.Playground.PlaygroundWorkflowRunner>();
+builder.Services.AddScoped<Raffa.AiFlows.Playground.PlaygroundJudge>();
 builder.Services.Configure<Raffa.Api.Infrastructure.PlaygroundPricingOptions>(
     builder.Configuration.GetSection(Raffa.Api.Infrastructure.PlaygroundPricingOptions.SectionName));
 
@@ -563,6 +564,7 @@ app.MapHealthChecks("/health");
 app.MapWorkspaceEndpoints();
 app.MapPlatformAdminEndpoints();
 app.MapPlaygroundEndpoints();
+app.MapPlaygroundJudgeEndpoints();
 
 // Task E01/F06/US01/T01 (us-01-document-upload, AC-1) and E01/F06/US01/T02 (AC-3) first mapped
 // POST /api/documents and GET /api/documents/{id} inline here; task E02/F06/US01/T01

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ApiClient, PlaygroundRunSummaryBody, PlaygroundStoredRunBody } from "../../api/client";
+import type { ApiClient, PlaygroundJudgementBody, PlaygroundRunSummaryBody, PlaygroundStoredRunBody } from "../../api/client";
 import { Inspector, formatCost, formatDuration } from "./TraceInspector";
+import JudgementView from "./JudgementView";
 import WorkflowResult, { workflowLabel } from "./WorkflowResult";
 
 /** The last runs, newest first; opening one shows its stored answer and trace. */
@@ -8,6 +9,7 @@ export default function PlaygroundHistory({ apiClient }: { apiClient: ApiClient 
   const [runs, setRuns] = useState<PlaygroundRunSummaryBody[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<PlaygroundStoredRunBody | null>(null);
+  const [judgements, setJudgements] = useState<PlaygroundJudgementBody[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -24,8 +26,11 @@ export default function PlaygroundHistory({ apiClient }: { apiClient: ApiClient 
 
   const show = async (id: string) => {
     const result = await apiClient.getPlaygroundRun?.(id);
-    if (result?.ok && result.body) setOpen(result.body);
-    else setError(result?.error ?? "Could not open the run.");
+    if (result?.ok && result.body) {
+      setOpen(result.body);
+      const judged = await apiClient.listPlaygroundJudgements?.({ runId: id });
+      setJudgements(judged?.ok && judged.body ? judged.body.judgements : []);
+    } else setError(result?.error ?? "Could not open the run.");
   };
 
   if (error) {
@@ -90,6 +95,14 @@ export default function PlaygroundHistory({ apiClient }: { apiClient: ApiClient 
             </p>
           ) : null}
           <Inspector run={{ durationMs: open.durationMs, trace: open.trace, usage: open.output.usage }} title={open.variantName ?? "Baseline"} />
+          {judgements.length > 0 ? (
+            <details aria-label="Judgements of this run">
+              <summary>Judgements of this run ({judgements.length})</summary>
+              {judgements.map((j) => (
+                <JudgementView key={j.judgementId} judgement={j} />
+              ))}
+            </details>
+          ) : null}
         </section>
       ) : null}
     </div>

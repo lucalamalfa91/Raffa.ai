@@ -11,7 +11,9 @@ import type {
   PlaygroundWorkflow,
   PlaygroundWorkflowInput,
 } from "../../api/client";
+import JudgePanel from "./JudgePanel";
 import PlaygroundHistory from "./PlaygroundHistory";
+import RubricsView from "./RubricsView";
 import { Inspector, formatDuration } from "./TraceInspector";
 import VariantEditor from "./VariantEditor";
 import WorkflowInputs from "./WorkflowInputs";
@@ -29,10 +31,11 @@ interface Turn {
   error: string | null;
 }
 
-type View = "compare" | "variants" | "history";
+type View = "compare" | "variants" | "rubrics" | "history";
 const VIEWS: ReadonlyArray<{ id: View; label: string }> = [
   { id: "compare", label: "Compare" },
   { id: "variants", label: "Variants" },
+  { id: "rubrics", label: "Rubrics" },
   { id: "history", label: "History" },
 ];
 
@@ -221,6 +224,14 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
 
   const selectedRun = selected ? (turns[selected.lane] ?? []).find((t) => t.id === selected.turnId)?.run ?? null : null;
   const selectedLaneName = selected ? laneName(selected.lane === BASELINE ? null : selected.lane) : "";
+  // The answers to the selected question, one per lane, that finished: what the judge scores together.
+  const judgeTargets = selected
+    ? lanes.flatMap((lane) => {
+        const run = (turns[laneKey(lane)] ?? []).find((t) => t.id === selected.turnId)?.run;
+        return run && run.status === "ok" ? [{ runId: run.runId, name: laneName(lane) }] : [];
+      })
+    : [];
+  const judgeComparison = selected ? (turns[selected.lane] ?? []).find((t) => t.id === selected.turnId)?.run?.comparisonId ?? null : null;
 
   return (
     <section className="pg-root" aria-label="Playground">
@@ -239,6 +250,8 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
       </nav>
 
       {view === "history" ? <PlaygroundHistory apiClient={apiClient} /> : null}
+
+      {view === "rubrics" ? <RubricsView apiClient={apiClient} /> : null}
 
       {view === "variants" ? (
         <div className="pg-variants">
@@ -432,6 +445,8 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
                 onRun={(input) => void run(summaryOf(workflow, input), input)}
               />
             )}
+
+            {!busy ? <JudgePanel apiClient={apiClient} workflow={workflow} comparisonId={judgeComparison} targets={judgeTargets} baseline={baseline} /> : null}
 
             <aside className="pg-inspector" aria-label="Inspector">
               <h2 className="pg-heading">Inspector</h2>

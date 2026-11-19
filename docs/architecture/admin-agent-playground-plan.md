@@ -1,6 +1,6 @@
 # Pannello admin: Playground degli agenti
 
-Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace), PR 2 (varianti e confronto) e PR 3 (altri workflow) implementate; vedi "Stato della consegna" in fondo.
+Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace), PR 2 (varianti e confronto) e PR 3 (altri workflow) e PR 4 (giudice LLM) implementate; vedi "Stato della consegna" in fondo.
 
 ## Perché
 
@@ -223,6 +223,19 @@ ogni agente registrato (council, capability gaps, drafting, contract situation, 
 `GET /baseline` li elenca con flow, versione e testo di produzione. La UI ha il selettore di workflow, i form di
 input e i renderer dei risultati (leve del council, email, fonti, payload per stadio).
 
+**PR 4 (fatta):** tabelle `playground_rubric` e `playground_judgement` (migration `AddPlaygroundJudging`);
+rubriche predefinite per ogni workflow (`PlaygroundRubrics`, derivate da `ANNOTATION_RUBRIC.md`, in codice quindi
+non modificabili: si copiano) e rubriche custom modificabili; `PlaygroundJudge` (prompt `playground-judge-v1`, schema
+strict): vede le risposte **anonime** (A, B, C in ordine casuale) con l'evidenza da cui sono nate (risultati dei tool
+per Ask, pack per council e drafting, fonti per la ricerca, testo del documento per l'estrazione) e dà un punteggio
+1-5 per criterio con motivazione; con 2 passaggi la seconda lettura inverte l'ordine, i punteggi si mediano e un
+verdetto che cambia con l'ordine è segnalato come inaffidabile; la preferenza si calcola dai punteggi pesati (con
+margine di pareggio), non dalla parola del giudice. Il modello del giudice si sceglie fra i deployment configurati
+(applicato solo a quella chiamata). Ogni giudizio salva uno snapshot della rubrica, la trace delle chiamate del
+giudice e il costo. API: `GET|POST|PUT|DELETE /rubrics`, `POST /judgements` (`comparisonId` o 1-3 `runIds`),
+`GET /judgements?comparisonId=|runId=`. UI: pannello *Judge* sotto le corsie, sezione *Rubrics*, giudizi di una run
+nella *History*.
+
 Scostamenti dalla spec, da chiudere nelle PR successive:
 - La risposta di `POST /runs` è un JSON unico a fine turno, **non ancora SSE**: la trace compare tutta insieme.
 - Gli override coprono prompt (tutti gli agenti registrati, orchestratore ed estrazione), modelli per ruolo, tool e
@@ -233,7 +246,9 @@ Scostamenti dalla spec, da chiudere nelle PR successive:
   playground legge testo o file in memoria e rilancia gli stadi. Mancano quindi verifica degli span, validazione fra
   stadi e diff contro i valori del contratto, che dipendono dal run store. Va aggiunto se serve confrontare con un
   contratto già validato.
-- Nessuna rubrica né giudice (PR 4) e nessun export (PR 5).
+- Le rubriche si modificano sul posto (non c'è una cronologia di versioni): la riproducibilità è garantita dallo
+  snapshot salvato in ogni giudizio. Il prompt del giudice non è fra quelli sostituibili da una variante.
+- Nessun export verso il repo (PR 5).
 - I prezzi in `appsettings.json` coprono `gpt-5.4` e `gpt-5.4-nano` (listino Azure, North Europe, DataZone
   Standard). `gpt-5.6-terra` e `gpt-6-astra` non risultano nel listino pubblico per North Europe: finché non
   si configura un prezzo il loro costo è "n/d".

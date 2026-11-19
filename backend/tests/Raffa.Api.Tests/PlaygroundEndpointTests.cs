@@ -376,6 +376,176 @@ public sealed class PlaygroundEndpointTests(RaffaApiFactory factory) : IClassFix
         Assert.False(string.IsNullOrWhiteSpace(prompts["contract-analyst"].GetProperty("text").GetString()));
     }
 
+    private static async Task<(Guid Baseline, Guid Variant, Guid Comparison)> RunComparisonAsync(HttpClient client, string question = "Quando scade il contratto Salesforce?")
+    {
+        var variantId = await CreateVariantAsync(client, new { maxToolCalls = 4 }, "Secret variant name");
+        var comparison = Guid.NewGuid();
+        using var baseline = await JsonOf(await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff,
+            new { sandbox = "seeded", question, comparisonId = comparison }));
+        using var variant = await JsonOf(await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff,
+            new { sandbox = "seeded", question, variantId, comparisonId = comparison }));
+        return (baseline.RootElement.GetProperty("runId").GetGuid(), variant.RootElement.GetProperty("runId").GetGuid(), comparison);
+    }
+
+    [Fact]
+    public async Task The_judge_surfaces_are_for_the_platform_admin_only()
+    {
+        var client = Host().CreateClient();
+
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, "/api/admin/playground/rubrics", Customer)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Post, "/api/admin/playground/judgements", Customer, new { comparisonId = Guid.NewGuid() })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, $"/api/admin/playground/judgements?comparisonId={Guid.NewGuid()}", Customer)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Rubrics_are_built_in_per_workflow_and_custom_ones_can_be_saved_edited_and_archived()
+    {
+        var client = Host().CreateClient();
+
+        using var initial = await JsonOf(await SendAsync(client, HttpMethod.Get, "/api/admin/playground/rubrics", Staff));
+        var defaults = initial.RootElement.GetProperty("rubrics").EnumerateArray().Where(r => r.GetProperty("isDefault").GetBoolean()).ToList();
+        Assert.Equal(new[] { "default:ask", "default:council", "default:drafting", "default:extraction", "default:research" }, defaults.Select(r => r.GetProperty("id").GetString()!).Order().ToArray());
+        Assert.All(defaults, r => Assert.NotEmpty(r.GetProperty("criteria").EnumerateArray()));
+
+        var created = await SendAsync(client, HttpMethod.Post, "/api/admin/playground/rubrics", Staff, new
+        {
+            name = "Strict grounding",
+            workflow = "ask",
+            criteria = new object[] { new { label = "Grounding", description = "Only facts from the evidence", weight = 5 }, new { label = "Grounding", description = "again", weight = 1 } },
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var rubric = await JsonOf(created);
+        var id = rubric.RootElement.GetProperty("id").GetGuid();
+        // Criterion ids come from the label and are unique inside the rubric.
+        Assert.Equal(new[] { "grounding", "grounding_2" }, rubric.RootElement.GetProperty("criteria").EnumerateArray().Select(c => c.GetProperty("id").GetString()!).ToArray());
+
+        var edited = await SendAsync(client, HttpMethod.Put, $"/api/admin/playground/rubrics/{id}", Staff,
+            new { name = "Strict grounding v2", workflow = "ask", criteria = new[] { new { label = "Grounding", description = "x", weight = 4 } } });
+        Assert.Equal(HttpStatusCode.OK, edited.StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(client, HttpMethod.Delete, $"/api/admin/playground/rubrics/{id}", Staff)).StatusCode);
+        using var after = await JsonOf(await SendAsync(client, HttpMethod.Get, "/api/admin/playground/rubrics", Staff));
+        Assert.DoesNotContain(after.RootElement.GetProperty("rubrics").EnumerateArray(), r => r.GetProperty("id").GetString() == id.ToString());
+    }
+
+    [Fact]
+    public async Task A_rubric_that_is_not_valid_is_refused_with_the_reason()
+    {
+        var client = Host().CreateClient();
+
+        async Task<HttpStatusCode> TryAsync(object body) =>
+            (await SendAsync(client, HttpMethod.Post, "/api/admin/playground/rubrics", Staff, body)).StatusCode;
+
+        var ok = new[] { new { label = "A", description = "d", weight = 3 } };
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { name = " ", workflow = "ask", criteria = ok }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { name = "n", workflow = "poetry", criteria = ok }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { name = "n", workflow = "ask", criteria = Array.Empty<object>() }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { name = "n", workflow = "ask", criteria = new[] { new { label = "A", description = "d", weight = 9 } } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { name = "n", workflow = "ask", criteria = new[] { new { label = "", description = "d", weight = 3 } } }));
+    }
+
+    [Fact]
+    public async Task The_judge_scores_the_runs_of_a_comparison_blind_and_never_sees_the_variant()
+    {
+        var client = Host().CreateClient();
+        var (baseline, variant, comparison) = await RunComparisonAsync(client);
+
+        var response = await SendAsync(client, HttpMethod.Post, "/api/admin/playground/judgements", Staff, new { comparisonId = comparison, passes = 2 });
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.OK, $"{response.StatusCode}: {raw}");
+        using var judgement = JsonDocument.Parse(raw);
+        var root = judgement.RootElement;
+
+        Assert.Equal("ask", root.GetProperty("workflow").GetString());
+        Assert.Equal("default:ask", root.GetProperty("rubric").GetProperty("id").GetString());
+        var answers = root.GetProperty("answers").EnumerateArray().ToList();
+        Assert.Equal(new[] { baseline, variant }.Order().ToArray(), answers.Select(a => a.GetProperty("runId").GetGuid()).Order().ToArray());
+        Assert.All(answers, a => Assert.Equal(root.GetProperty("rubric").GetProperty("criteria").GetArrayLength(), a.GetProperty("scores").GetArrayLength()));
+        Assert.Contains(root.GetProperty("answers").EnumerateArray().Select(a => a.GetProperty("variantName").GetString()), n => n == "Secret variant name");
+
+        // Two passes, the second in the reverse order; the preference is computed from the weighted scores.
+        var passes = root.GetProperty("passDetails").EnumerateArray().ToList();
+        Assert.Equal(2, passes.Count);
+        Assert.Equal(passes[0].GetProperty("order").EnumerateArray().Select(o => o.GetString()).Reverse().ToArray(), passes[1].GetProperty("order").EnumerateArray().Select(o => o.GetString()).ToArray());
+
+        // What the judge was sent: anonymous labels, never a variant name or a run id.
+        var judgeCalls = root.GetProperty("trace").EnumerateArray().Where(e => e.GetProperty("name").GetString() == "analyze:playground-judge").ToList();
+        Assert.Equal(2, judgeCalls.Count);
+        foreach (var call in judgeCalls)
+        {
+            // The recorded request is the gateway call as JSON; the judge's own input is its inputJson field.
+            using var recorded = JsonDocument.Parse(call.GetProperty("input").GetString()!);
+            var sent = recorded.RootElement.GetProperty("inputJson").GetString()!;
+            Assert.Contains("\"label\":\"A\"", sent, StringComparison.Ordinal);
+            Assert.DoesNotContain("Secret variant name", sent, StringComparison.Ordinal);
+            Assert.DoesNotContain(baseline.ToString(), sent, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(variant.ToString(), sent, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // It is stored and found again by comparison and by run.
+        using var byComparison = await JsonOf(await SendAsync(client, HttpMethod.Get, $"/api/admin/playground/judgements?comparisonId={comparison}", Staff));
+        Assert.Single(byComparison.RootElement.GetProperty("judgements").EnumerateArray());
+        using var byRun = await JsonOf(await SendAsync(client, HttpMethod.Get, $"/api/admin/playground/judgements?runId={baseline}", Staff));
+        Assert.Single(byRun.RootElement.GetProperty("judgements").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task A_custom_rubric_is_applied_and_kept_as_a_snapshot_of_the_judgement()
+    {
+        var client = Host().CreateClient();
+        var (baseline, variant, _) = await RunComparisonAsync(client);
+        var created = await SendAsync(client, HttpMethod.Post, "/api/admin/playground/rubrics", Staff,
+            new { name = "Only tone", workflow = "ask", criteria = new[] { new { label = "Tone", description = "Direct and concrete", weight = 5 } } });
+        using var rubric = await JsonOf(created);
+        var rubricId = rubric.RootElement.GetProperty("id").GetString();
+
+        using var judgement = await JsonOf(await SendAsync(client, HttpMethod.Post, "/api/admin/playground/judgements", Staff, new { runIds = new[] { baseline, variant }, rubricId }));
+
+        Assert.Equal("Only tone", judgement.RootElement.GetProperty("rubric").GetProperty("name").GetString());
+        Assert.All(judgement.RootElement.GetProperty("answers").EnumerateArray(), a =>
+            Assert.Equal(new[] { "tone" }, a.GetProperty("scores").EnumerateArray().Select(s => s.GetProperty("criterionId").GetString()!).ToArray()));
+
+        // Archiving the rubric afterwards does not change the stored judgement.
+        await SendAsync(client, HttpMethod.Delete, $"/api/admin/playground/rubrics/{rubricId}", Staff);
+        using var stored = await JsonOf(await SendAsync(client, HttpMethod.Get, $"/api/admin/playground/judgements?runId={baseline}", Staff));
+        Assert.Equal("Only tone", stored.RootElement.GetProperty("judgements")[0].GetProperty("rubric").GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Judging_is_refused_for_runs_that_cannot_be_compared()
+    {
+        var client = Host().CreateClient();
+        var (baseline, _, comparison) = await RunComparisonAsync(client);
+        using var other = await RunWorkflowAsync(client, "council", new { supplier = "Salesforce" });
+        var otherRun = other.RootElement.GetProperty("runId").GetGuid();
+        using var otherQuestion = await JsonOf(await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff, new { sandbox = "seeded", question = "Un'altra domanda su Salesforce?" }));
+        var otherQuestionRun = otherQuestion.RootElement.GetProperty("runId").GetGuid();
+
+        async Task<HttpStatusCode> TryAsync(object body) =>
+            (await SendAsync(client, HttpMethod.Post, "/api/admin/playground/judgements", Staff, body)).StatusCode;
+
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { runIds = new[] { baseline, otherRun } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { runIds = new[] { baseline, otherQuestionRun } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { comparisonId = comparison, rubricId = "default:council" }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { comparisonId = comparison, judgeModelId = "gpt-not-deployed" }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { }));
+        Assert.Equal(HttpStatusCode.NotFound, await TryAsync(new { comparisonId = Guid.NewGuid() }));
+    }
+
+    [Fact]
+    public async Task Any_workflow_can_be_judged_with_its_own_default_rubric()
+    {
+        var client = Host().CreateClient();
+        using var council = await RunWorkflowAsync(client, "council", new { supplier = "Salesforce" });
+
+        using var judgement = await JsonOf(await SendAsync(client, HttpMethod.Post, "/api/admin/playground/judgements", Staff,
+            new { runIds = new[] { council.RootElement.GetProperty("runId").GetGuid() } }));
+
+        Assert.Equal("default:council", judgement.RootElement.GetProperty("rubric").GetProperty("id").GetString());
+        Assert.Single(judgement.RootElement.GetProperty("answers").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, judgement.RootElement.GetProperty("preferredRunId").ValueKind);
+    }
+
     [Fact]
     public async Task A_run_with_an_unknown_variant_is_not_found()
     {

@@ -514,3 +514,50 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119150000_AddPlaygroundJudging') THEN
+    CREATE TABLE playground_rubric (
+        id         uuid PRIMARY KEY,
+        workflow   character varying(40) NOT NULL,
+        name       character varying(120) NOT NULL,
+        criteria   jsonb NOT NULL,
+        created_by character varying(200) NOT NULL,
+        created_at timestamp with time zone NOT NULL,
+        updated_at timestamp with time zone NOT NULL,
+        archived   boolean NOT NULL DEFAULT false
+    );
+
+    CREATE TABLE playground_judgement (
+        id                 uuid PRIMARY KEY,
+        comparison_id      uuid NULL,
+        run_ids            jsonb NOT NULL,
+        workflow           character varying(40) NOT NULL,
+        rubric             jsonb NOT NULL,
+        judge_model        character varying(120) NULL,
+        passes             integer NOT NULL,
+        created_by         character varying(200) NOT NULL,
+        created_at         timestamp with time zone NOT NULL,
+        prompt_tokens      integer NOT NULL,
+        completion_tokens  integer NOT NULL,
+        estimated_cost_usd numeric(12,6) NULL,
+        result             jsonb NOT NULL,
+        trace              jsonb NOT NULL
+    );
+
+    CREATE INDEX ix_playground_judgement_comparison ON playground_judgement (comparison_id) WHERE comparison_id IS NOT NULL;
+    CREATE INDEX ix_playground_judgement_created_at ON playground_judgement (created_at DESC);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119150000_AddPlaygroundJudging') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119150000_AddPlaygroundJudging', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

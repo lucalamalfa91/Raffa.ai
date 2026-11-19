@@ -104,6 +104,7 @@ public sealed class PlaygroundWorkflowRunner(
             usedCitationKeys = outcome.UsedCitationKeys,
             toneFindings = outcome.ToneFindings ?? [],
             failures = outcome.Failures,
+            evidence = pack.Select(Item),
         });
     }
 
@@ -209,6 +210,8 @@ public sealed class PlaygroundWorkflowRunner(
             pages = pages.Count,
             characters = text.Length,
             documentFirst,
+            // The text the stages read (cut at 30,000 characters): the evidence a judge needs to check the fields.
+            sourceText = text.Length > 30_000 ? text[..30_000] : text,
             durationMs = clock.ElapsedMilliseconds,
             stages = order.Where(results.ContainsKey).Select(s => results[s]),
         });

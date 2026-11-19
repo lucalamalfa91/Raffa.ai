@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ApiClient, PlaygroundBaselineBody, PlaygroundRunBody, PlaygroundVariantBody } from "../../api/client";
+import type { ApiClient, PlaygroundBaselineBody, PlaygroundJudgementBody, PlaygroundRubricBody, PlaygroundRunBody, PlaygroundVariantBody } from "../../api/client";
 import PlaygroundPanel, { formatCost, prettyPayload } from "./PlaygroundPanel";
 
 const SANDBOXES = [
@@ -246,11 +246,13 @@ describe("PlaygroundPanel", () => {
         output: { reply: run().reply, error: null, usage: run().usage }, trace: run().trace,
       },
     });
+    const listPlaygroundJudgements = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { judgements: [judgement()] }, error: null });
     render(
       <PlaygroundPanel
         apiClient={client(vi.fn(), {
           listPlaygroundRuns: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { runs: [summary] }, error: null }),
           getPlaygroundRun,
+          listPlaygroundJudgements,
         })}
       />,
     );
@@ -263,6 +265,8 @@ describe("PlaygroundPanel", () => {
     expect(getPlaygroundRun).toHaveBeenCalledWith("r9");
     expect(await screen.findByLabelText("Stored run")).toHaveTextContent("Scade il 15 gennaio 2027 [1].");
     expect(screen.getByRole("list", { name: "Trace" })).toHaveTextContent("get_contract");
+    expect(screen.getByLabelText("Judgements of this run")).toHaveTextContent("Judgements of this run (1)");
+    expect(listPlaygroundJudgements).toHaveBeenCalledWith({ runId: "r9" });
   });
 
   it("runs the council on a sandbox supplier and shows its plays, with no chat history", async () => {
@@ -381,6 +385,190 @@ describe("PlaygroundPanel", () => {
       null,
       expect.objectContaining({ overrides: expect.objectContaining({ prompts: { "contract-analyst": "Be sharper." } }) }),
     );
+  });
+
+  const RUBRICS: PlaygroundRubricBody[] = [
+    {
+      id: "default:ask",
+      name: "Ask answer",
+      workflow: "ask",
+      isDefault: true,
+      criteria: [
+        { id: "grounding", label: "Grounding", description: "From the evidence", weight: 5 },
+        { id: "tone", label: "Tone", description: "Direct", weight: 2 },
+      ],
+    },
+    {
+      id: "rb-1",
+      name: "My rubric",
+      workflow: "ask",
+      isDefault: false,
+      criteria: [{ id: "usefulness", label: "Usefulness", description: "Actionable", weight: 4 }],
+    },
+  ];
+
+  function judgement(overrides: Partial<PlaygroundJudgementBody> = {}): PlaygroundJudgementBody {
+    return {
+      judgementId: "j1",
+      workflow: "ask",
+      comparisonId: "cmp",
+      createdAt: "2026-11-19T10:00:00Z",
+      rubric: RUBRICS[0],
+      judgeModel: "gpt-5.4-dev",
+      passes: 1,
+      runs: [
+        { runId: "run-base", variantId: null, variantName: "Baseline" },
+        { runId: "run-v1", variantId: "v1", variantName: "Short prompt" },
+      ],
+      answers: [
+        { runId: "run-base", variantName: "Baseline", weighted: 3.1, summary: "Adequate.", scores: [{ criterionId: "grounding", score: 3, rationale: "One figure unsupported." }, { criterionId: "tone", score: 4, rationale: "Direct." }] },
+        { runId: "run-v1", variantName: "Short prompt", weighted: 4.6, summary: "Better grounded.", scores: [{ criterionId: "grounding", score: 5, rationale: "All figures in evidence." }, { criterionId: "tone", score: 4, rationale: "Direct." }] },
+      ],
+      preferredRunId: "run-v1",
+      tie: false,
+      passesAgreed: true,
+      passDetails: [{ order: ["run-v1", "run-base"], preferredRunId: "run-v1", tie: false, reasoning: "The second answer is grounded." }],
+      failures: [],
+      usage: { promptTokens: 3000, completionTokens: 400, estimatedCostUsd: 0.004 },
+      trace: [],
+      ...overrides,
+    };
+  }
+
+  /** Runs one question on two lanes (baseline and "Short prompt") with distinct run ids, ready to be judged. */
+  async function twoLaneRun(judgePlayground: ApiClient["judgePlayground"]) {
+    const runPlayground = vi.fn().mockImplementation(async (input: { variantId?: string; comparisonId: string }) => ({
+      ok: true,
+      statusCode: 200,
+      error: null,
+      body: run({ runId: input.variantId ? "run-v1" : "run-base", comparisonId: input.comparisonId }),
+    }));
+    render(
+      <PlaygroundPanel
+        apiClient={client(runPlayground, {
+          listPlaygroundRubrics: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { rubrics: RUBRICS }, error: null }),
+          judgePlayground,
+        })}
+      />,
+    );
+    await screen.findByText("Four validated contracts.");
+    await userEvent.click(screen.getByLabelText("Short prompt"));
+    await userEvent.type(screen.getByLabelText("Question"), "Quando scade?");
+    await userEvent.click(screen.getByRole("button", { name: "Send to 2 variants" }));
+    await screen.findAllByText("Scade il 15 gennaio 2027 [1].");
+    return runPlayground;
+  }
+
+  it("judges the answers of the selected question and shows scores, the preferred variant and the cost", async () => {
+    const judgePlayground = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: judgement(), error: null });
+    await twoLaneRun(judgePlayground);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Judge" }));
+
+    expect(judgePlayground).toHaveBeenCalledWith({ runIds: ["run-base", "run-v1"], rubricId: "default:ask", passes: 1 });
+    const panel = await screen.findByLabelText("Judgement");
+    expect(panel).toHaveTextContent("Preferred: Short prompt");
+    expect(panel).toHaveTextContent("$0.0040");
+    const scores = within(panel).getByRole("table", { name: "Scores" });
+    expect(scores).toHaveTextContent("Weighted (1–5)");
+    expect(scores).toHaveTextContent("4.60");
+    expect(scores).toHaveTextContent("3.10");
+    expect(panel).toHaveTextContent("All figures in evidence.");
+  });
+
+  it("sends the chosen rubric, judge model and two passes, and warns when the verdict depends on the order", async () => {
+    const judgePlayground = vi
+      .fn()
+      .mockResolvedValue({ ok: true, statusCode: 200, body: judgement({ passes: 2, passesAgreed: false, tie: true, preferredRunId: null }), error: null });
+    await twoLaneRun(judgePlayground);
+
+    await userEvent.selectOptions(await screen.findByLabelText("Rubric"), "rb-1");
+    await userEvent.selectOptions(screen.getByLabelText("Judge model"), "gpt-5.4-dev");
+    await userEvent.click(screen.getByLabelText(/Check order bias/));
+    await userEvent.click(screen.getByRole("button", { name: "Judge" }));
+
+    expect(judgePlayground).toHaveBeenCalledWith({ runIds: ["run-base", "run-v1"], rubricId: "rb-1", judgeModelId: "gpt-5.4-dev", passes: 2 });
+    const panel = await screen.findByLabelText("Judgement");
+    expect(panel).toHaveTextContent("Tie");
+    expect(within(panel).getByRole("alert")).toHaveTextContent("depends on the order");
+  });
+
+  it("shows the earlier judgement of a comparison and why a judge call failed", async () => {
+    const judgePlayground = vi.fn().mockResolvedValue({ ok: false, statusCode: 400, body: null, error: "The runs must be of the same workflow." });
+    const runPlayground = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, error: null, body: run({ comparisonId: "cmp" }) });
+    render(
+      <PlaygroundPanel
+        apiClient={client(runPlayground, {
+          judgePlayground,
+          listPlaygroundJudgements: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { judgements: [judgement()] }, error: null }),
+        })}
+      />,
+    );
+    await screen.findByText("Four validated contracts.");
+    await userEvent.type(screen.getByLabelText("Question"), "Ciao");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("Scade il 15 gennaio 2027 [1].");
+
+    expect(await screen.findByLabelText("Judgement")).toHaveTextContent("Preferred: Short prompt");
+    await userEvent.click(screen.getByRole("button", { name: "Judge again" }));
+    expect(await screen.findByText("The runs must be of the same workflow.")).toBeInTheDocument();
+  });
+
+  it("lists built-in and custom rubrics and saves a copy of a built-in one as a custom rubric", async () => {
+    const savePlaygroundRubric = vi.fn().mockResolvedValue({ ok: true, statusCode: 201, body: RUBRICS[1], error: null });
+    render(
+      <PlaygroundPanel
+        apiClient={client(vi.fn(), {
+          listPlaygroundRubrics: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { rubrics: RUBRICS }, error: null }),
+          savePlaygroundRubric,
+        })}
+      />,
+    );
+    await screen.findByText("Four validated contracts.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Rubrics" }));
+    const table = await screen.findByLabelText("Rubrics");
+    expect(table).toHaveTextContent("Ask answer");
+    expect(table).toHaveTextContent("My rubric");
+    expect(table).toHaveTextContent("Grounding ×5, Tone ×2");
+
+    await userEvent.click(screen.getByRole("button", { name: "Copy and edit" }));
+    expect(screen.getByLabelText("Name")).toHaveValue("Ask answer (custom)");
+    await userEvent.selectOptions(screen.getByLabelText("Criterion 2 weight"), "5");
+    await userEvent.click(screen.getByRole("button", { name: "Save rubric" }));
+
+    expect(savePlaygroundRubric).toHaveBeenCalledWith(null, {
+      name: "Ask answer (custom)",
+      workflow: "ask",
+      criteria: [
+        { label: "Grounding", description: "From the evidence", weight: 5 },
+        { label: "Tone", description: "Direct", weight: 5 },
+      ],
+    });
+  });
+
+  it("edits a custom rubric in place and refuses to save one with an empty criterion", async () => {
+    const savePlaygroundRubric = vi.fn().mockResolvedValue({ ok: false, statusCode: 400, body: null, error: "A criterion needs a label." });
+    render(
+      <PlaygroundPanel
+        apiClient={client(vi.fn(), {
+          listPlaygroundRubrics: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { rubrics: RUBRICS }, error: null }),
+          savePlaygroundRubric,
+        })}
+      />,
+    );
+    await screen.findByText("Four validated contracts.");
+    await userEvent.click(screen.getByRole("button", { name: "Rubrics" }));
+    await screen.findByLabelText("Rubrics");
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add criterion" }));
+    expect(screen.getByRole("button", { name: "Save rubric" })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Criterion 2 label"), "Brevity");
+    await userEvent.click(screen.getByRole("button", { name: "Save rubric" }));
+
+    expect(savePlaygroundRubric).toHaveBeenCalledWith("rb-1", expect.objectContaining({ name: "My rubric" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("A criterion needs a label.");
   });
 
   it("shows n/a, never zero, when a model has no price", () => {
