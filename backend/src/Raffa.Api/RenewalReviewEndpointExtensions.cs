@@ -203,7 +203,7 @@ public static partial class RenewalReviewEndpointExtensions
 
 /// <summary>The landing form's JSON body. Every field is optional here so a missing one reads as a 400 from
 /// validation, not a deserialization failure; <c>Website</c> is the honeypot.</summary>
-public sealed record RenewalReviewSubmission
+internal sealed record RenewalReviewSubmission
 {
     public string? Name { get; init; }
     public string? Email { get; init; }
