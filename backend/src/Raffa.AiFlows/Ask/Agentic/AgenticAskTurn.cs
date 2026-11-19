@@ -88,8 +88,13 @@ public sealed class AgenticAskTurn(
     internal async Task<AgenticTurnResult?> RunAsync(AskToolContext context, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(context);
-        var definitions = toolList.Select(t => new AiToolDefinition(t.Name, t.Description, t.ParametersSchemaJson)).ToList();
-        var byName = toolList.ToDictionary(t => t.Name, StringComparer.Ordinal);
+        // Playground variant (Super Admin only; null on every normal turn): tools taken away, a different
+        // tool-call limit and a different prompt. The prompt version names a modified run in the audit row.
+        var activeTools = toolList.Where(t => !PlaygroundScope.IsToolDisabled(t.Name)).ToList();
+        var maxToolCalls = PlaygroundScope.MaxToolCallsOr(settings.AgenticMaxToolCalls);
+        var promptVersion = PlaygroundScope.HasPrompt("agent") ? AgentPrompt.Version + "-playground" : AgentPrompt.Version;
+        var definitions = activeTools.Select(t => new AiToolDefinition(t.Name, t.Description, t.ParametersSchemaJson)).ToList();
+        var byName = activeTools.ToDictionary(t => t.Name, StringComparer.Ordinal);
 
         var messages = BuildHistory(context);
         messages.Add(AiConversationMessage.User(context.Question));
@@ -115,8 +120,8 @@ public sealed class AgenticAskTurn(
         {
             while (true)
             {
-                var forceFinal = forceFinalNext || calls >= settings.AgenticMaxToolCalls;
-                var request = new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, AgentPrompt.Version, forceFinal);
+                var forceFinal = forceFinalNext || calls >= maxToolCalls;
+                var request = new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, promptVersion, forceFinal);
                 var step = await aiGateway.ConverseAsync(request, token).ConfigureAwait(false);
                 if (step.IsFailure && calls > 0 && !request.ForceFinal && !retriedAfterTools)
                 {
@@ -154,7 +159,7 @@ public sealed class AgenticAskTurn(
 
                 // The model asked for tools: run them in order, append its own message and one tool
                 // message per call, in the order it asked.
-                var toolCalls = step.Value.ToolCalls.Take(Math.Max(1, settings.AgenticMaxToolCalls - calls)).ToList();
+                var toolCalls = step.Value.ToolCalls.Take(Math.Max(1, maxToolCalls - calls)).ToList();
                 messages.Add(AiConversationMessage.AssistantToolCalls(toolCalls));
                 // One at a time: the tools share this request's scoped services (one EF DbContext per module,
                 // the turn's tenant scope, the context's focus), and a DbContext must never run two queries at
@@ -264,7 +269,7 @@ public sealed class AgenticAskTurn(
             messages.Add(AiConversationMessage.Assistant(final.FinalJson!));
             messages.Add(AiConversationMessage.User(RegenerateOnce.BuildRetryInstruction(verdict.Violation!)));
             var retry = await aiGateway.ConverseAsync(
-                    new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, AgentPrompt.Version, ForceFinal: true), cancellationToken)
+                    new AiConversationRequest(AgentName, systemPrompt, messages, definitions, FinalSchema, promptVersion, ForceFinal: true), cancellationToken)
                 .ConfigureAwait(false);
             var retried = retry.IsSuccess && retry.Value.IsFinal ? Parse(retry.Value.FinalJson!, retry.Value.Metadata) : null;
             var retryVerdict = retried is null ? null : Validate(retried.Value.Result, pack);
@@ -482,7 +487,7 @@ public sealed class AgenticAskTurn(
 
     private static string BuildSystemPrompt(AskToolContext context)
     {
-        var sb = new System.Text.StringBuilder(AgentPrompt.SystemPrompt);
+        var sb = new System.Text.StringBuilder(PlaygroundScope.PromptFor("agent") ?? AgentPrompt.SystemPrompt);
         sb.AppendLine();
         if (Raffa.SharedKernel.Language.ResponseLanguage.Directive is { } directive)
         {

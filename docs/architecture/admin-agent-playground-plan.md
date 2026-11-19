@@ -1,6 +1,6 @@
 # Pannello admin: Playground degli agenti
 
-Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace) implementata; vedi "Stato della consegna" in fondo.
+Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace) e PR 2 (varianti e confronto) implementate; vedi "Stato della consegna" in fondo.
 
 ## Perché
 
@@ -199,10 +199,22 @@ richiesta esatta e risposta grezza, token, durata) ed eventi di tool e guard in 
 `/api/admin/playground/{sandboxes,runs}` dietro `PlatformAdminGuard`; costo stimato da `Playground:Pricing`;
 tab Playground nel Pannello admin con conversazione multi-turno e ispettore della trace.
 
+**PR 2 (fatta):** tabella `playground_variant` e colonne `variant_id`/`variant_name`/`comparison_id` su
+`playground_run` (migration `AddPlaygroundVariants`); `PlaygroundScope` con i tre punti di override: testo del
+prompt dell'orchestratore, deployment e knob di ogni ruolo (`agent`, `answer`, `analyst`, `extract`, `classify`,
+`research`) nei client Foundry, tool disattivati e limite di tool call in `AgenticAskTurn`;
+`PlaygroundCatalog` che rifiuta con il motivo una variante che nomina un deployment, un tool o un valore che
+l'ambiente non ha; `GET /baseline`, CRUD `/variants` (la cancellazione archivia), `POST /runs` con `variantId` e
+`comparisonId`; UI con tre sezioni (Compare, Variants, History): fino a 3 corsie affiancate che ricevono la
+stessa domanda in parallelo, editor di variante con diff del prompt contro la produzione, storico con riapertura
+della trace. Ogni run conserva la copia degli override usati, quindi modificare o archiviare una variante non
+cambia le run passate.
+
 Scostamenti dalla spec, da chiudere nelle PR successive:
 - La risposta di `POST /runs` è un JSON unico a fine turno, **non ancora SSE**: la trace compare tutta insieme.
-- Le run girano con la configurazione dell'ambiente (flag `Chat:AskTurn:Agentic` incluso): gli override di
-  prompt/modello/tool/flag arrivano con la PR 2.
+- Gli override coprono prompt dell'orchestratore, modelli per ruolo, tool e limite di tool call. Gli altri prompt
+  (council, estrazione, web research, drafting) e i flag di `AiFlows` arrivano con la PR 3, insieme ai rispettivi
+  workflow. Il flag `Chat:AskTurn:Agentic` resta quello dell'ambiente.
 - Nessuna rubrica né giudice (PR 4) e nessun export (PR 5).
 - I prezzi in `appsettings.json` coprono `gpt-5.4` e `gpt-5.4-nano` (listino Azure, North Europe, DataZone
   Standard). `gpt-5.6-terra` e `gpt-6-astra` non risultano nel listino pubblico per North Europe: finché non

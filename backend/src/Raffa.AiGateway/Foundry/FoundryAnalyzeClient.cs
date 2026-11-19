@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -55,7 +56,7 @@ public sealed class FoundryAnalyzeClient(
                 $"AiAnalysisRequest.JsonSchema for agent '{request.AgentName}' is not accepted by Azure structured outputs — {strictness.Error}");
         }
 
-        var model = modelOptions.Analyst ?? modelOptions.Answer;
+        var model = PlaygroundScope.ModelFor("analyst", modelOptions.Analyst ?? modelOptions.Answer);
 
         var completion = await chatClient.CompleteAsync(
                 "Analyst",

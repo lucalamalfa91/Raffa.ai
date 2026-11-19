@@ -482,3 +482,35 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119120000_AddPlaygroundVariants') THEN
+    CREATE TABLE playground_variant (
+        id          uuid PRIMARY KEY,
+        name        character varying(120) NOT NULL,
+        description character varying(500) NULL,
+        overrides   jsonb NOT NULL,
+        created_by  character varying(200) NOT NULL,
+        created_at  timestamp with time zone NOT NULL,
+        updated_at  timestamp with time zone NOT NULL,
+        archived    boolean NOT NULL DEFAULT false
+    );
+
+    ALTER TABLE playground_run ADD COLUMN variant_id uuid NULL;
+    ALTER TABLE playground_run ADD COLUMN variant_name character varying(120) NULL;
+    ALTER TABLE playground_run ADD COLUMN comparison_id uuid NULL;
+    CREATE INDEX ix_playground_run_comparison ON playground_run (comparison_id) WHERE comparison_id IS NOT NULL;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119120000_AddPlaygroundVariants') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119120000_AddPlaygroundVariants', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

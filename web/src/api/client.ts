@@ -211,6 +211,9 @@ export interface PlaygroundReplyBody {
 export interface PlaygroundRunBody {
   runId: string;
   sandbox: PlaygroundSandboxKind;
+  variantId?: string | null;
+  variantName?: string | null;
+  comparisonId?: string | null;
   status: "ok" | "error";
   error: string | null;
   durationMs: number;
@@ -222,6 +225,80 @@ export interface PlaygroundRunBody {
 export interface PlaygroundHistoryTurn {
   role: "you" | "raffa";
   markdown: string;
+}
+
+/** One role's model knobs a variant changes; a null field keeps the configured value. */
+export interface PlaygroundModelOverride {
+  modelId: string | null;
+  reasoningEffort: string | null;
+  maxCompletionTokens: number | null;
+  temperature: number | null;
+}
+
+/** What a variant changes on top of what production runs (see the playground plan). */
+export interface PlaygroundOverrides {
+  prompts: Record<string, string>;
+  models: Record<string, PlaygroundModelOverride>;
+  disabledTools: string[];
+  maxToolCalls: number | null;
+}
+
+export interface PlaygroundVariantBody {
+  id: string;
+  name: string;
+  description: string | null;
+  overrides: PlaygroundOverrides;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlaygroundBaselineBody {
+  prompts: Array<{ agent: string; version: string; text: string }>;
+  models: Array<{
+    role: string;
+    configured: boolean;
+    fallbackOf: string | null;
+    modelId: string | null;
+    modelVersion: string | null;
+    reasoningEffort: string | null;
+    maxCompletionTokens: number | null;
+    temperature: number | null;
+  }>;
+  allowedModelIds: string[];
+  reasoningEfforts: string[];
+  maxTemperature: number;
+  tools: Array<{ name: string; description: string }>;
+  maxToolCalls: number;
+  agentic: boolean;
+}
+
+export interface PlaygroundRunSummaryBody {
+  id: string;
+  workflow: string;
+  sandbox: PlaygroundSandboxKind;
+  createdAt: string;
+  variantId: string | null;
+  variantName: string | null;
+  comparisonId: string | null;
+  durationMs: number;
+  status: string;
+  promptTokens: number;
+  completionTokens: number;
+  estimatedCostUsd: number | null;
+  input: { question?: string };
+}
+
+/** A stored run: the reply and usage as returned when it ran, plus its trace. */
+export interface PlaygroundStoredRunBody {
+  id: string;
+  sandbox: PlaygroundSandboxKind;
+  variantName: string | null;
+  durationMs: number;
+  status: string;
+  input: { question?: string };
+  output: { reply: PlaygroundReplyBody | null; error: string | null; usage: PlaygroundUsage };
+  trace: PlaygroundTraceEvent[];
 }
 
 export interface AdminOverviewBody {
@@ -1632,7 +1709,21 @@ export interface ApiClient {
     sandbox: PlaygroundSandboxKind;
     question: string;
     history: PlaygroundHistoryTurn[];
+    /** Absent = what production runs (the baseline). */
+    variantId?: string;
+    /** Groups the runs of one side-by-side comparison. */
+    comparisonId?: string;
   }): Promise<AdminCallResult<PlaygroundRunBody>>;
+  getPlaygroundBaseline?(): Promise<AdminCallResult<PlaygroundBaselineBody>>;
+  listPlaygroundVariants?(): Promise<AdminCallResult<{ variants: PlaygroundVariantBody[] }>>;
+  /** Creates the variant (`id` null) or replaces name, description and overrides of an existing one. */
+  savePlaygroundVariant?(
+    id: string | null,
+    variant: { name: string; description: string | null; overrides: Partial<PlaygroundOverrides> },
+  ): Promise<AdminCallResult<PlaygroundVariantBody>>;
+  archivePlaygroundVariant?(id: string): Promise<AdminCallResult<null>>;
+  listPlaygroundRuns?(limit?: number): Promise<AdminCallResult<{ runs: PlaygroundRunSummaryBody[] }>>;
+  getPlaygroundRun?(id: string): Promise<AdminCallResult<PlaygroundStoredRunBody>>;
   /** `POST /api/platform/invitations/accept`: a signed-in prospect redeems the secret from their link. */
   acceptProspectInvitation?(token: string): Promise<AdminCallResult<null>>;
   /**
@@ -2312,7 +2403,7 @@ export function createApiClient(
 
   /** One portal-admin call (no tenant header): 2xx → `body` (null on 204), anything else → `error`. Never throws. */
   async function adminCall<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
     body?: unknown,
     extraHeaders: Record<string, string> = {},
@@ -2533,6 +2624,16 @@ export function createApiClient(
     listPlaygroundSandboxes: () =>
       adminCall<{ sandboxes: PlaygroundSandboxBody[] }>("GET", "/api/admin/playground/sandboxes"),
     runPlayground: (input) => adminCall<PlaygroundRunBody>("POST", "/api/admin/playground/runs", input),
+    getPlaygroundBaseline: () => adminCall<PlaygroundBaselineBody>("GET", "/api/admin/playground/baseline"),
+    listPlaygroundVariants: () => adminCall<{ variants: PlaygroundVariantBody[] }>("GET", "/api/admin/playground/variants"),
+    savePlaygroundVariant: (id, variant) =>
+      id === null
+        ? adminCall<PlaygroundVariantBody>("POST", "/api/admin/playground/variants", variant)
+        : adminCall<PlaygroundVariantBody>("PUT", `/api/admin/playground/variants/${encodeURIComponent(id)}`, variant),
+    archivePlaygroundVariant: (id) => adminCall<null>("DELETE", `/api/admin/playground/variants/${encodeURIComponent(id)}`),
+    listPlaygroundRuns: (limit = 30) =>
+      adminCall<{ runs: PlaygroundRunSummaryBody[] }>("GET", `/api/admin/playground/runs?limit=${limit}`),
+    getPlaygroundRun: (id) => adminCall<PlaygroundStoredRunBody>("GET", `/api/admin/playground/runs/${encodeURIComponent(id)}`),
     acceptProspectInvitation: (token) =>
       adminCall<null>("POST", "/api/platform/invitations/accept", undefined, { "X-Platform-Invitation-Token": token }),
 

@@ -45,7 +45,9 @@ Users (people who accepted an invitation).
 talks to Ask Raffa on one of three synthetic sandbox workspaces (`empty`, `seeded`, `needs-review`, created on
 first use, never listed as customers and never a customer workspace) and sees, for each answer, the full trace:
 every model call (exact request and raw answer), every tool call (arguments and result), the guards that fired,
-tokens and estimated cost. Runs are stored in `playground_run`. Design and roadmap:
+tokens and estimated cost. Runs are stored in `playground_run`. **Variants** (`playground_variant`) change the
+orchestrator prompt, the model of each role, the tools or the tool-call limit for playground runs only; up to three
+variants answer the same question side by side. Production changes only through a reviewed pull request. Design and roadmap:
 `docs/architecture/admin-agent-playground-plan.md`. Token prices for the cost estimate are read from
 `Playground:Pricing:Models:<deployment prefix>` (USD per 1M tokens, from the Azure retail price list); a model
 with no configured price shows its cost as "n/a", never zero.

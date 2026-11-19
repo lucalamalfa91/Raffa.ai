@@ -118,6 +118,130 @@ public sealed class PlaygroundEndpointTests(RaffaApiFactory factory) : IClassFix
         Assert.Contains(runId.ToString(), await list.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
     }
 
+    private static async Task<JsonDocument> JsonOf(HttpResponseMessage response) =>
+        JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+    private static async Task<Guid> CreateVariantAsync(HttpClient client, object overrides, string name = "Variant")
+    {
+        var response = await SendAsync(client, HttpMethod.Post, "/api/admin/playground/variants", Staff, new { name, overrides });
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.Created, $"{response.StatusCode}: {raw}");
+        using var json = JsonDocument.Parse(raw);
+        return json.RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static JsonElement ConverseCall(JsonDocument run) =>
+        run.RootElement.GetProperty("trace").EnumerateArray().First(e => e.GetProperty("name").GetString() == "converse:ask-orchestrator");
+
+    [Fact]
+    public async Task The_baseline_lists_the_prompt_models_and_tools_a_variant_can_change()
+    {
+        var client = Host().CreateClient();
+
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, "/api/admin/playground/baseline", Customer)).StatusCode);
+        using var baseline = await JsonOf(await SendAsync(client, HttpMethod.Get, "/api/admin/playground/baseline", Staff));
+
+        var prompt = baseline.RootElement.GetProperty("prompts")[0];
+        Assert.Equal("agent", prompt.GetProperty("agent").GetString());
+        Assert.Contains("senior procurement consultant", prompt.GetProperty("text").GetString());
+        Assert.Contains(baseline.RootElement.GetProperty("tools").EnumerateArray(), t => t.GetProperty("name").GetString() == "get_contract");
+        Assert.Contains(baseline.RootElement.GetProperty("models").EnumerateArray(), m => m.GetProperty("role").GetString() == "agent");
+        Assert.NotEmpty(baseline.RootElement.GetProperty("allowedModelIds").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task A_variant_is_refused_when_it_names_something_this_environment_does_not_have()
+    {
+        var client = Host().CreateClient();
+
+        async Task<HttpStatusCode> TryAsync(object overrides) =>
+            (await SendAsync(client, HttpMethod.Post, "/api/admin/playground/variants", Staff, new { name = "x", overrides })).StatusCode;
+
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { prompts = new { nobody = "text" } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { models = new { agent = new { modelId = "gpt-not-deployed" } } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { models = new { agent = new { temperature = 0.9 } } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { models = new { agent = new { reasoningEffort = "extreme" } } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { disabledTools = new[] { "no_such_tool" } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { maxToolCalls = 99 }));
+        Assert.Equal(
+            HttpStatusCode.BadRequest,
+            (await SendAsync(client, HttpMethod.Post, "/api/admin/playground/variants", Staff, new { name = " ", overrides = new { } })).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsync(client, HttpMethod.Post, "/api/admin/playground/variants", Customer, new { name = "x", overrides = new { } })).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_variant_can_be_saved_edited_listed_and_archived()
+    {
+        var client = Host().CreateClient();
+        var id = await CreateVariantAsync(client, new { maxToolCalls = 3 }, "Short loop");
+
+        var edited = await SendAsync(client, HttpMethod.Put, $"/api/admin/playground/variants/{id}", Staff,
+            new { name = "Shorter loop", description = "two tool calls at most", overrides = new { maxToolCalls = 2 } });
+        Assert.Equal(HttpStatusCode.OK, edited.StatusCode);
+
+        using var list = await JsonOf(await SendAsync(client, HttpMethod.Get, "/api/admin/playground/variants", Staff));
+        var saved = list.RootElement.GetProperty("variants").EnumerateArray().Single(v => v.GetProperty("id").GetGuid() == id);
+        Assert.Equal("Shorter loop", saved.GetProperty("name").GetString());
+        Assert.Equal(2, saved.GetProperty("overrides").GetProperty("maxToolCalls").GetInt32());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(client, HttpMethod.Delete, $"/api/admin/playground/variants/{id}", Staff)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Put, $"/api/admin/playground/variants/{id}", Staff, new { name = "x", overrides = new { } })).StatusCode);
+        using var after = await JsonOf(await SendAsync(client, HttpMethod.Get, "/api/admin/playground/variants", Staff));
+        Assert.DoesNotContain(after.RootElement.GetProperty("variants").EnumerateArray(), v => v.GetProperty("id").GetGuid() == id);
+    }
+
+    [Fact]
+    public async Task A_variant_changes_what_the_model_is_sent_and_the_baseline_does_not()
+    {
+        var client = Host().CreateClient();
+        var variantId = await CreateVariantAsync(
+            client,
+            new { prompts = new { agent = "CUSTOM PLAYGROUND PROMPT" }, disabledTools = new[] { "web_research", "get_contract" } },
+            "No contract tool");
+        var comparisonId = Guid.NewGuid();
+
+        using var baseline = await JsonOf(await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff,
+            new { sandbox = "seeded", question = "Quando scade il contratto Salesforce?", comparisonId }));
+        using var variant = await JsonOf(await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff,
+            new { sandbox = "seeded", question = "Quando scade il contratto Salesforce?", variantId, comparisonId }));
+
+        var baselineRequest = ConverseCall(baseline).GetProperty("input").GetString()!;
+        var variantRequest = ConverseCall(variant).GetProperty("input").GetString()!;
+        Assert.DoesNotContain("CUSTOM PLAYGROUND PROMPT", baselineRequest, StringComparison.Ordinal);
+        Assert.Contains("senior procurement consultant", baselineRequest, StringComparison.Ordinal);
+        Assert.Contains("CUSTOM PLAYGROUND PROMPT", variantRequest, StringComparison.Ordinal);
+        Assert.DoesNotContain("senior procurement consultant", variantRequest, StringComparison.Ordinal);
+        Assert.Contains("\"get_contract\"", baselineRequest, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"get_contract\"", variantRequest, StringComparison.Ordinal);
+        Assert.Contains("playground", ConverseCall(variant).GetProperty("note").GetString(), StringComparison.Ordinal);
+
+        Assert.Equal(variantId, variant.RootElement.GetProperty("variantId").GetGuid());
+        Assert.Equal(comparisonId, variant.RootElement.GetProperty("comparisonId").GetGuid());
+        Assert.Equal(JsonValueKind.Null, baseline.RootElement.GetProperty("variantId").ValueKind);
+
+        // A variant never leaks into the next run: the override ended with the request that opened it.
+        using var again = await JsonOf(await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff,
+            new { sandbox = "seeded", question = "Quando scade il contratto Salesforce?" }));
+        Assert.DoesNotContain("CUSTOM PLAYGROUND PROMPT", ConverseCall(again).GetProperty("input").GetString()!, StringComparison.Ordinal);
+
+        // The run keeps its own copy of the variant it used.
+        using var stored = await JsonOf(await SendAsync(client, HttpMethod.Get, $"/api/admin/playground/runs/{variant.RootElement.GetProperty("runId").GetGuid()}", Staff));
+        Assert.Equal("No contract tool", stored.RootElement.GetProperty("variantName").GetString());
+        Assert.Equal("CUSTOM PLAYGROUND PROMPT", stored.RootElement.GetProperty("input").GetProperty("variant").GetProperty("overrides").GetProperty("prompts").GetProperty("agent").GetString());
+    }
+
+    [Fact]
+    public async Task A_run_with_an_unknown_variant_is_not_found()
+    {
+        var client = Host().CreateClient();
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff, new { sandbox = "seeded", question = "Ciao", variantId = Guid.NewGuid() })).StatusCode);
+    }
+
     [Fact]
     public async Task A_run_on_an_unknown_sandbox_or_without_a_question_is_a_bad_request()
     {

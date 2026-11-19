@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -71,7 +72,7 @@ public sealed class FoundryAgentClient(
             tools.Add(new AgentTool(FunctionToolType, new AgentFunctionDefinition(tool.Name, tool.Description, parameters.Value, Strict: true)));
         }
 
-        var model = modelOptions.Agent ?? modelOptions.Answer;
+        var model = PlaygroundScope.ModelFor("agent", modelOptions.Agent ?? modelOptions.Answer);
 
         string? reasoningEffort = null;
         if (!string.IsNullOrWhiteSpace(model.ReasoningEffort))

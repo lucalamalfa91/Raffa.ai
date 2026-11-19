@@ -1,3 +1,4 @@
+using Raffa.AiGateway.Telemetry;
 using System.Text.Json;
 using Raffa.AiGateway.Configuration;
 using Raffa.AiGateway.Contracts;
@@ -52,7 +53,7 @@ public sealed class FoundryExtractClient(
                 $"structured outputs — {strictness.Error}");
         }
 
-        var model = modelOptions.Extract;
+        var model = PlaygroundScope.ModelFor("extract", modelOptions.Extract);
 
         var completion = await chatClient.CompleteAsync(
                 "Extract",
