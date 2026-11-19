@@ -304,6 +304,44 @@ jobs:
             echo "PGSSLMODE=$PGSSLMODE"
           } >> "$GITHUB_ENV"
 
+      # The server's only standing firewall rule is "Allow Azure services"
+      # (infra/modules/postgres, 0.0.0.0), which does not reliably cover
+      # GitHub-hosted runner IPs: demo-v35 and the dev deploy of #381 both
+      # timed out connecting here, leaving the new image running on an old
+      # schema (the playground tables missing -> HTTP 500). Open a rule for
+      # this runner's own public IP for the duration of the job only; the
+      # "Close Postgres firewall" step below removes it whatever happens.
+      - name: Open Postgres firewall for this runner (ADR-021)
+        run: |
+          set -euo pipefail
+          PG_SERVER="${PGHOST%%.*}"
+          RUNNER_IP=$(curl -fsS --retry 3 https://api.ipify.org)
+          if ! [[ "$RUNNER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::could not resolve this runner's public IPv4 (got '$RUNNER_IP')"
+            exit 1
+          fi
+          RULE="gh-runner-${{ github.run_id }}-${{ github.run_attempt }}"
+          echo "PG_FIREWALL_RULE=$RULE" >> "$GITHUB_ENV"
+          echo "PG_SERVER=$PG_SERVER" >> "$GITHUB_ENV"
+          az postgres flexible-server firewall-rule create \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$PG_SERVER" \
+            --rule-name "$RULE" \
+            --start-ip-address "$RUNNER_IP" \
+            --end-ip-address "$RUNNER_IP" \
+            --output none
+          # The rule can take a few seconds to take effect: wait for a real
+          # connection before the schema apply starts.
+          for attempt in $(seq 1 12); do
+            if PGCONNECT_TIMEOUT=10 psql -Atqc 'SELECT 1' >/dev/null 2>&1; then
+              echo "Postgres reachable from $RUNNER_IP (attempt $attempt)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Postgres $PGHOST still unreachable from $RUNNER_IP after opening firewall rule $RULE"
+          exit 1
+
       - name: Apply schema (ADR-021)
         run: |
           set -euo pipefail
@@ -361,3 +399,13 @@ jobs:
           done
           psql -Atqc 'SELECT migration_id FROM "__EFMigrationsHistory" ORDER BY migration_id;' \
             | python3 scripts/schema_apply_verify.py "${SCRIPT_ARGS[@]}" --applied-ids-file -
+
+      - name: Close Postgres firewall for this runner (ADR-021)
+        if: always() && env.PG_FIREWALL_RULE != ''
+        run: |
+          az postgres flexible-server firewall-rule delete \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$PG_SERVER" \
+            --rule-name "$PG_FIREWALL_RULE" \
+            --yes --output none \
+            || echo "::warning::could not delete firewall rule $PG_FIREWALL_RULE on $PG_SERVER; remove it by hand"
