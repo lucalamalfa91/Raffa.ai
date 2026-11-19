@@ -12,7 +12,7 @@ import "./admin.css";
  * normal sign-in at `/`. The portal itself shows platform metadata only; the API answers 404 to anyone
  * who is not a platform admin.
  */
-export default function AdminPage({ apiClient }: { apiClient: ApiClient }) {
+export default function AdminPage({ apiClient, initialTab }: { apiClient: ApiClient; initialTab?: "playground" }) {
   const { instance, accounts, inProgress } = useMsal();
   // After a full page load MSAL is still starting up (`inProgress` is not `None`) and `accounts` can be
   // empty for a moment: redirecting then sent a signed-in admin straight back to the workspace picker.
@@ -40,7 +40,7 @@ export default function AdminPage({ apiClient }: { apiClient: ApiClient }) {
           Sign out
         </button>
       </header>
-      <AdminRoute apiClient={apiClient} />
+      <AdminRoute apiClient={apiClient} initialTab={initialTab} />
     </div>
   );
 }

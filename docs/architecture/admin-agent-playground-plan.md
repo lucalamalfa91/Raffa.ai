@@ -1,6 +1,6 @@
 # Pannello admin: Playground degli agenti
 
-Stato: spec, 2026-11-19. Da approvare prima della PR 1.
+Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace) implementata; vedi "Stato della consegna" in fondo.
 
 ## Perché
 
@@ -189,3 +189,21 @@ dei prompt invariato, trace senza dati di tenant non sandbox.
 3. **Concorrenza col Worker**: un confronto a 3 varianti sull'estrazione triplica le chiamate; il playground usa
    il proprio pacing (`TokensPerMinuteLimit`) per non sottrarre quota al Worker, da tarare in dev.
 4. **Conservazione**: per ora le run si tengono indefinitamente; valutare un TTL se le trace diventano grandi.
+
+## Stato della consegna
+
+**PR 1 (fatta):** tabelle `playground_run` e flag `platform_workspace.is_sandbox` (migration
+`AddPlaygroundTables`); i tre workspace sandbox sintetici creati al primo uso (`PlaygroundSandboxSeeder`, dati
+allineati ai fixture del golden set); `PlaygroundTrace` + `TraceRecordingAiGateway` (ogni chiamata al modello con
+richiesta esatta e risposta grezza, token, durata) ed eventi di tool e guard in `AgenticAskTurn`;
+`/api/admin/playground/{sandboxes,runs}` dietro `PlatformAdminGuard`; costo stimato da `Playground:Pricing`;
+tab Playground nel Pannello admin con conversazione multi-turno e ispettore della trace.
+
+Scostamenti dalla spec, da chiudere nelle PR successive:
+- La risposta di `POST /runs` è un JSON unico a fine turno, **non ancora SSE**: la trace compare tutta insieme.
+- Le run girano con la configurazione dell'ambiente (flag `Chat:AskTurn:Agentic` incluso): gli override di
+  prompt/modello/tool/flag arrivano con la PR 2.
+- Nessuna rubrica né giudice (PR 4) e nessun export (PR 5).
+- I prezzi in `appsettings.json` coprono `gpt-5.4` e `gpt-5.4-nano` (listino Azure, North Europe, DataZone
+  Standard). `gpt-5.6-terra` e `gpt-6-astra` non risultano nel listino pubblico per North Europe: finché non
+  si configura un prezzo il loro costo è "n/d".

@@ -446,3 +446,39 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119090000_AddPlaygroundTables') THEN
+    ALTER TABLE platform_workspace ADD COLUMN is_sandbox boolean NOT NULL DEFAULT false;
+
+    CREATE TABLE playground_run (
+        id                 uuid PRIMARY KEY,
+        workflow           character varying(40) NOT NULL,
+        sandbox_kind       character varying(40) NOT NULL,
+        created_by         character varying(200) NOT NULL,
+        created_at         timestamp with time zone NOT NULL,
+        duration_ms        integer NOT NULL,
+        status             character varying(20) NOT NULL,
+        prompt_tokens      integer NOT NULL,
+        completion_tokens  integer NOT NULL,
+        estimated_cost_usd numeric(12,6) NULL,
+        input              jsonb NOT NULL,
+        output             jsonb NOT NULL,
+        trace              jsonb NOT NULL
+    );
+
+    CREATE INDEX ix_playground_run_created_at ON playground_run (created_at DESC);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119090000_AddPlaygroundTables') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119090000_AddPlaygroundTables', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

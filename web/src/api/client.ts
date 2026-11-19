@@ -160,6 +160,70 @@ export interface AdminCallResult<T> {
   error: string | null;
 }
 
+// Super Admin agent playground (docs/architecture/admin-agent-playground-plan.md). Hand-written like the
+// admin types above: `/api/admin/playground/*` is not in web/openapi/raffa-api.v1.json.
+export type PlaygroundSandboxKind = "empty" | "seeded" | "needs-review";
+
+export interface PlaygroundSandboxBody {
+  kind: PlaygroundSandboxKind;
+  tenantId: string;
+  description: string;
+  contracts: number;
+}
+
+/** One step the agent took: a model call, a tool call or a guard check. `input`/`output` are raw JSON or text. */
+export interface PlaygroundTraceEvent {
+  seq: number;
+  kind: "model_call" | "tool_call" | "guard" | "note";
+  name: string;
+  at: string;
+  durationMs: number;
+  ok: boolean;
+  model: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  cachedTokens: number | null;
+  input: string | null;
+  output: string | null;
+  note: string | null;
+}
+
+export interface PlaygroundUsage {
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  /** null when a model used has no configured price: never shown as zero. */
+  estimatedCostUsd: number | null;
+  unpricedModels: string[];
+  modelCalls: number;
+  toolCalls: number;
+}
+
+export interface PlaygroundReplyBody {
+  kind: string;
+  answerMarkdown: string;
+  citations: unknown[];
+  actions: unknown[];
+  followUps: string[];
+  provenance: { modelId?: string | null; promptVersion?: string | null; unverified?: boolean };
+}
+
+export interface PlaygroundRunBody {
+  runId: string;
+  sandbox: PlaygroundSandboxKind;
+  status: "ok" | "error";
+  error: string | null;
+  durationMs: number;
+  reply: PlaygroundReplyBody | null;
+  usage: PlaygroundUsage;
+  trace: PlaygroundTraceEvent[];
+}
+
+export interface PlaygroundHistoryTurn {
+  role: "you" | "raffa";
+  markdown: string;
+}
+
 export interface AdminOverviewBody {
   totalWorkspaces: number;
   activeWorkspaces: number;
@@ -1561,6 +1625,14 @@ export interface ApiClient {
   regenerateAdminInvitation?(id: string): Promise<AdminCallResult<AdminIssuedInvitationBody>>;
   revokeAdminInvitation?(id: string): Promise<AdminCallResult<null>>;
   listAdminUsers?(): Promise<AdminCallResult<{ users: AdminUserBody[] }>>;
+  /** `GET /api/admin/playground/sandboxes`: the three synthetic workspaces (created on first use). */
+  listPlaygroundSandboxes?(): Promise<AdminCallResult<{ sandboxes: PlaygroundSandboxBody[] }>>;
+  /** `POST /api/admin/playground/runs`: one Ask turn on a sandbox, with the full trace. `history` carries earlier turns. */
+  runPlayground?(input: {
+    sandbox: PlaygroundSandboxKind;
+    question: string;
+    history: PlaygroundHistoryTurn[];
+  }): Promise<AdminCallResult<PlaygroundRunBody>>;
   /** `POST /api/platform/invitations/accept`: a signed-in prospect redeems the secret from their link. */
   acceptProspectInvitation?(token: string): Promise<AdminCallResult<null>>;
   /**
@@ -2458,6 +2530,9 @@ export function createApiClient(
       adminCall<AdminIssuedInvitationBody>("POST", `/api/admin/invitations/${encodeURIComponent(id)}/regenerate`),
     revokeAdminInvitation: (id) => adminCall<null>("DELETE", `/api/admin/invitations/${encodeURIComponent(id)}`),
     listAdminUsers: () => adminCall<{ users: AdminUserBody[] }>("GET", "/api/admin/users"),
+    listPlaygroundSandboxes: () =>
+      adminCall<{ sandboxes: PlaygroundSandboxBody[] }>("GET", "/api/admin/playground/sandboxes"),
+    runPlayground: (input) => adminCall<PlaygroundRunBody>("POST", "/api/admin/playground/runs", input),
     acceptProspectInvitation: (token) =>
       adminCall<null>("POST", "/api/platform/invitations/accept", undefined, { "X-Platform-Invitation-Token": token }),
 

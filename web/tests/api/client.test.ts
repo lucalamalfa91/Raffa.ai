@@ -2600,6 +2600,8 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       regenerateAdminInvitation: () => client.regenerateAdminInvitation!("inv-1"),
       revokeAdminInvitation: () => client.revokeAdminInvitation!("inv-1"),
       listAdminUsers: () => client.listAdminUsers!(),
+      listPlaygroundSandboxes: () => client.listPlaygroundSandboxes!(),
+      runPlayground: () => client.runPlayground!({ sandbox: "seeded", question: "Ciao", history: [] }),
       acceptProspectInvitation: () => client.acceptProspectInvitation!("secret"),
       getWorkspaceMembers: () => client.getWorkspaceMembers("tenant-1"),
       getWorkspaceSettings: () => client.getWorkspaceSettings("tenant-1"),

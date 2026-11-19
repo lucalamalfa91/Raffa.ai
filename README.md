@@ -41,6 +41,15 @@ Signed in as one, the workspace picker ("Choose a workspace") shows **Pannello a
 administrator, created, status; suspend / reactivate), Invitations (create, copy, regenerate, revoke) and
 Users (people who accepted an invitation).
 
+**Playground (agenti).** The same Pannello admin has a **Playground** tab (`/admin/playground`): the Super Admin
+talks to Ask Raffa on one of three synthetic sandbox workspaces (`empty`, `seeded`, `needs-review`, created on
+first use, never listed as customers and never a customer workspace) and sees, for each answer, the full trace:
+every model call (exact request and raw answer), every tool call (arguments and result), the guards that fired,
+tokens and estimated cost. Runs are stored in `playground_run`. Design and roadmap:
+`docs/architecture/admin-agent-playground-plan.md`. Token prices for the cost estimate are read from
+`Playground:Pricing:Models:<deployment prefix>` (USD per 1M tokens, from the Azure retail price list); a model
+with no configured price shows its cost as "n/a", never zero.
+
 **Prospect flow.** The Super Admin creates an invitation for an email address and copies the link
 (`/prospect/accept#<secret>`). The prospect signs in with that address, accepts, and creates their own
 workspace with the normal first-run screen, becoming its Admin; their Admin then invites colleagues from

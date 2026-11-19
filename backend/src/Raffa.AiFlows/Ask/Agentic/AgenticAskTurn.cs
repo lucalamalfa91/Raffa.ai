@@ -213,6 +213,7 @@ public sealed class AgenticAskTurn(
 
         if (final is null)
         {
+            PlaygroundTrace.Record("guard", "no-final-answer", ok: false, note: string.Join("; ", failures));
             // The loop ended without an answer (a failed step twice, the deadline): the honest "service
             // busy" with the recovery actions -- never a deterministic digest in the model's place.
             return new AgenticTurnResult(
@@ -237,6 +238,9 @@ public sealed class AgenticAskTurn(
         var unverified = false;
         var grounding = GroundingGuard.Validate(result, pack, allowUncitedGuidance: true);
         var verdict = grounding.Passed ? NumericGuard.Validate(result.AnswerMarkdown, pack, result.CitationKeys) : grounding;
+        PlaygroundTrace.Record(
+            "guard", grounding.Passed ? "numeric-guard" : "grounding-guard", ok: verdict.Passed,
+            note: verdict.Passed ? $"{pack.Count} pack item(s), {result.CitationKeys?.Count ?? 0} citation(s)" : verdict.Violation);
         if (!verdict.Passed && grounding.Passed)
         {
             // R-ASK-06 as a detector, not a censor. A figure the pack does not hold verbatim (a computed
@@ -256,6 +260,7 @@ public sealed class AgenticAskTurn(
             // citations dropped and the turn marked unverified -- never a deterministic digest.
             guardIntervened = true;
             logger?.LogWarning("Agent answer cited a source outside the pack, regenerating once: {Violation}", verdict.Violation);
+            PlaygroundTrace.Record("guard", "regenerate-once", ok: false, note: verdict.Violation);
             messages.Add(AiConversationMessage.Assistant(final.FinalJson!));
             messages.Add(AiConversationMessage.User(RegenerateOnce.BuildRetryInstruction(verdict.Violation!)));
             var retry = await aiGateway.ConverseAsync(
@@ -337,6 +342,7 @@ public sealed class AgenticAskTurn(
     {
         if (!byName.TryGetValue(call.Name, out var tool))
         {
+            PlaygroundTrace.Record("tool_call", call.Name, ok: false, input: call.ArgumentsJson, note: "unknown tool");
             return AskToolResult.Error($"Unknown tool '{call.Name}'.");
         }
 
@@ -352,9 +358,14 @@ public sealed class AgenticAskTurn(
         }
 
         using var step = RunContext.BeginStep(tool.Name);
+        var toolClock = Stopwatch.StartNew();
         try
         {
-            return await tool.ExecuteAsync(arguments, context, cancellationToken).ConfigureAwait(false);
+            var outcome = await tool.ExecuteAsync(arguments, context, cancellationToken).ConfigureAwait(false);
+            PlaygroundTrace.Record(
+                "tool_call", call.Name, toolClock.ElapsedMilliseconds, outcome.Failure is null,
+                input: call.ArgumentsJson, output: outcome.ResultJson, note: outcome.Failure);
+            return outcome;
         }
         catch (OperationCanceledException)
         {
@@ -363,6 +374,7 @@ public sealed class AgenticAskTurn(
         catch (Exception ex)
         {
             logger?.LogWarning(ex, "Ask tool {Tool} failed; the turn continues without it.", tool.Name);
+            PlaygroundTrace.Record("tool_call", call.Name, toolClock.ElapsedMilliseconds, ok: false, input: call.ArgumentsJson, note: ex.GetType().Name);
             return AskToolResult.Error($"The tool failed: {ex.GetType().Name}. Answer from what the other tools returned.");
         }
     }
