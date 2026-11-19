@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ApiClient, PlaygroundRunSummaryBody, PlaygroundStoredRunBody } from "../../api/client";
 import { Inspector, formatCost, formatDuration } from "./TraceInspector";
+import WorkflowResult, { workflowLabel } from "./WorkflowResult";
 
 /** The last runs, newest first; opening one shows its stored answer and trace. */
 export default function PlaygroundHistory({ apiClient }: { apiClient: ApiClient }) {
@@ -46,6 +47,7 @@ export default function PlaygroundHistory({ apiClient }: { apiClient: ApiClient 
             <thead>
               <tr>
                 <th>When</th>
+                <th>Workflow</th>
                 <th>Sandbox</th>
                 <th>Variant</th>
                 <th>Question</th>
@@ -60,6 +62,7 @@ export default function PlaygroundHistory({ apiClient }: { apiClient: ApiClient 
               {runs.map((r) => (
                 <tr key={r.id}>
                   <td>{new Date(r.createdAt).toLocaleString()}</td>
+                  <td>{workflowLabel(r.workflow)}</td>
                   <td>{r.sandbox}</td>
                   <td>{r.variantName ?? "Baseline"}</td>
                   <td>{r.input.question ?? ""}</td>
@@ -80,6 +83,7 @@ export default function PlaygroundHistory({ apiClient }: { apiClient: ApiClient 
         <section className="admin-card" aria-label="Stored run">
           <p className="pg-you">{open.input.question}</p>
           {open.output.reply ? <p className="pg-reply-text">{open.output.reply.answerMarkdown}</p> : null}
+          {open.output.result ? <WorkflowResult workflow={open.workflow ?? "ask"} result={open.output.result} /> : null}
           {open.output.error ? (
             <p role="alert" className="admin-error">
               {open.output.error}

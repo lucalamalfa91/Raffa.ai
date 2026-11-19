@@ -1,6 +1,6 @@
 # Pannello admin: Playground degli agenti
 
-Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace) e PR 2 (varianti e confronto) implementate; vedi "Stato della consegna" in fondo.
+Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace), PR 2 (varianti e confronto) e PR 3 (altri workflow) implementate; vedi "Stato della consegna" in fondo.
 
 ## Perché
 
@@ -210,11 +210,29 @@ stessa domanda in parallelo, editor di variante con diff del prompt contro la pr
 della trace. Ogni run conserva la copia degli override usati, quindi modificare o archiviare una variante non
 cambia le run passate.
 
+**PR 3 (fatta):** `PlaygroundWorkflowRunner` (pubblico, in `Raffa.AiFlows/Playground`) porta nel playground gli
+altri workflow con gli stessi oggetti di produzione: **council** (pack di leve e controllo dati di mercato sul
+contratto della sandbox, poi i tre agenti), **drafting** (stesso pack, poi lo scrittore con template, controllo di
+tono), **web research** (il composer di ricerca, con la stessa sanificazione della query del consenso di produzione:
+dalla sandbox esce solo la query pulita, mostrata nel risultato; non si applicano opt-in del workspace e budget
+giornaliero, perché qui il consenso è dell'admin) ed **estrazione** (testo incollato, oppure un file .txt/.md/.pdf/
+immagine letto in memoria con l'OCR del gateway: gli stadi girano e ognuno restituisce il payload grezzo del
+modello). `POST /runs` prende `workflow` e `input`; ogni workflow ha la stessa trace, variante, costo e storico.
+I prompt sostituibili da una variante sono ora tutti: orchestratore, prompt di sistema dell'estrazione (`extract`) e
+ogni agente registrato (council, capability gaps, drafting, contract situation, market ingestion...).
+`GET /baseline` li elenca con flow, versione e testo di produzione. La UI ha il selettore di workflow, i form di
+input e i renderer dei risultati (leve del council, email, fonti, payload per stadio).
+
 Scostamenti dalla spec, da chiudere nelle PR successive:
 - La risposta di `POST /runs` è un JSON unico a fine turno, **non ancora SSE**: la trace compare tutta insieme.
-- Gli override coprono prompt dell'orchestratore, modelli per ruolo, tool e limite di tool call. Gli altri prompt
-  (council, estrazione, web research, drafting) e i flag di `AiFlows` arrivano con la PR 3, insieme ai rispettivi
-  workflow. Il flag `Chat:AskTurn:Agentic` resta quello dell'ambiente.
+- Gli override coprono prompt (tutti gli agenti registrati, orchestratore ed estrazione), modelli per ruolo, tool e
+  limite di tool call. I flag di `AiFlows` (es. `SpanVerification`, `Chat:AskTurn:Agentic`) restano quelli
+  dell'ambiente: non sono ancora sostituibili. Non sono sostituibili nemmeno il prompt della risposta Ask (`answer`)
+  e quello della ricerca web, che non sono agenti registrati.
+- **Estrazione:** non passa dalla sandbox `uploads` né dalla pipeline documenti (storage, Worker, run store): il
+  playground legge testo o file in memoria e rilancia gli stadi. Mancano quindi verifica degli span, validazione fra
+  stadi e diff contro i valori del contratto, che dipendono dal run store. Va aggiunto se serve confrontare con un
+  contratto già validato.
 - Nessuna rubrica né giudice (PR 4) e nessun export (PR 5).
 - I prezzi in `appsettings.json` coprono `gpt-5.4` e `gpt-5.4-nano` (listino Azure, North Europe, DataZone
   Standard). `gpt-5.6-terra` e `gpt-6-astra` non risultano nel listino pubblico per North Europe: finché non

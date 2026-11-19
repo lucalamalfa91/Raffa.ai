@@ -1,5 +1,8 @@
 using Raffa.AiFlows.Ask.Agentic;
+using Raffa.AiGateway.Agents;
 using Raffa.AiGateway.Configuration;
+using Raffa.AiGateway.Foundry;
+using Raffa.AiGateway.Foundry.Prompts;
 using Raffa.AiGateway.Telemetry;
 
 namespace Raffa.Api.Infrastructure;
@@ -10,13 +13,28 @@ namespace Raffa.Api.Infrastructure;
 /// that names a deployment nobody configured, an unknown tool or an out-of-range knob is refused with the
 /// reason, never silently dropped.
 /// </summary>
-internal sealed class PlaygroundCatalog(AiGatewayModelOptions models, IEnumerable<IAskTool> tools)
+internal sealed class PlaygroundCatalog(AiGatewayModelOptions models, IEnumerable<IAskTool> tools, AgentRegistry agents)
 {
     public const int MaxPromptChars = 40_000;
     public const double MaxTemperature = 0.2;
 
-    /// <summary>Agents whose system prompt a variant can replace (grows with each playground release).</summary>
-    public static IReadOnlyList<string> PromptAgents { get; } = ["agent"];
+    /// <summary>The orchestrator's prompt and the extraction system prompt (both live in code, not in the registry).</summary>
+    public const string OrchestratorAgent = "agent";
+
+    public const string ExtractAgent = FoundryExtractClient.ExtractPromptAgent;
+
+    /// <summary>Agents whose system prompt a variant can replace: the orchestrator, extraction, and every registered
+    /// agent (negotiation council, capability gaps, drafting, contract situation, market ingestion...).</summary>
+    public IReadOnlyList<string> PromptAgents() =>
+        [OrchestratorAgent, ExtractAgent, .. agents.All.Select(a => a.Definition.Name)];
+
+    /// <summary>Every replaceable prompt with the flow it belongs to, its version and the text production uses.</summary>
+    public IReadOnlyList<(string Agent, string Flow, string Version, string Text)> PromptCatalog() =>
+    [
+        (OrchestratorAgent, "ask", Raffa.AiFlows.Ask.Agentic.AgentPrompt.Version, Raffa.AiFlows.Ask.Agentic.AgentPrompt.SystemPrompt),
+        (ExtractAgent, "document-extraction", ExtractPromptTemplate.Version, ExtractPromptTemplate.SharedSystemPrompt()),
+        .. agents.All.Select(a => (a.Definition.Name, a.Flow, a.Definition.Version, a.Definition.Prompt)),
+    ];
 
     public static IReadOnlyList<string> Roles { get; } = ["agent", "answer", "analyst", "extract", "classify", "research"];
 
@@ -57,9 +75,9 @@ internal sealed class PlaygroundCatalog(AiGatewayModelOptions models, IEnumerabl
         var prompts = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (agent, text) in overrides.Prompts ?? new Dictionary<string, string>())
         {
-            if (!PromptAgents.Contains(agent, StringComparer.Ordinal))
+            if (!PromptAgents().Contains(agent, StringComparer.Ordinal))
             {
-                return ($"Prompt override for unknown agent '{agent}'. Known: {string.Join(", ", PromptAgents)}.", empty);
+                return ($"Prompt override for unknown agent '{agent}'. Known: {string.Join(", ", PromptAgents())}.", empty);
             }
 
             if (string.IsNullOrWhiteSpace(text) || text.Length > MaxPromptChars)

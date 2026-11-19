@@ -208,8 +208,31 @@ export interface PlaygroundReplyBody {
   provenance: { modelId?: string | null; promptVersion?: string | null; unverified?: boolean };
 }
 
+/** The agentic workflows the playground runs. `ask` is the chat turn; the others take the input described on {@link PlaygroundWorkflowInput}. */
+export type PlaygroundWorkflow = "ask" | "council" | "drafting" | "research" | "extraction";
+
+export interface PlaygroundWorkflowInput {
+  /** council, drafting: a supplier of the sandbox. */
+  supplier?: string;
+  goal?: string;
+  question?: string;
+  language?: "it" | "en";
+  /** research */
+  query?: string;
+  purpose?: string;
+  /** extraction: pasted text, or an uploaded file as base64. */
+  text?: string;
+  fileBase64?: string;
+  fileName?: string;
+  mimeType?: string;
+  documentFirst?: boolean;
+}
+
 export interface PlaygroundRunBody {
   runId: string;
+  workflow?: PlaygroundWorkflow;
+  /** What the workflow returned (null for `ask`, whose answer is {@link reply}). Shape depends on the workflow. */
+  result?: unknown;
   sandbox: PlaygroundSandboxKind;
   variantId?: string | null;
   variantName?: string | null;
@@ -254,7 +277,7 @@ export interface PlaygroundVariantBody {
 }
 
 export interface PlaygroundBaselineBody {
-  prompts: Array<{ agent: string; version: string; text: string }>;
+  prompts: Array<{ agent: string; flow: string; version: string; text: string }>;
   models: Array<{
     role: string;
     configured: boolean;
@@ -275,7 +298,7 @@ export interface PlaygroundBaselineBody {
 
 export interface PlaygroundRunSummaryBody {
   id: string;
-  workflow: string;
+  workflow: PlaygroundWorkflow;
   sandbox: PlaygroundSandboxKind;
   createdAt: string;
   variantId: string | null;
@@ -296,8 +319,9 @@ export interface PlaygroundStoredRunBody {
   variantName: string | null;
   durationMs: number;
   status: string;
+  workflow?: PlaygroundWorkflow;
   input: { question?: string };
-  output: { reply: PlaygroundReplyBody | null; error: string | null; usage: PlaygroundUsage };
+  output: { reply: PlaygroundReplyBody | null; result?: unknown; error: string | null; usage: PlaygroundUsage };
   trace: PlaygroundTraceEvent[];
 }
 
@@ -1713,6 +1737,9 @@ export interface ApiClient {
     variantId?: string;
     /** Groups the runs of one side-by-side comparison. */
     comparisonId?: string;
+    /** Absent = `ask`. */
+    workflow?: PlaygroundWorkflow;
+    input?: PlaygroundWorkflowInput;
   }): Promise<AdminCallResult<PlaygroundRunBody>>;
   getPlaygroundBaseline?(): Promise<AdminCallResult<PlaygroundBaselineBody>>;
   listPlaygroundVariants?(): Promise<AdminCallResult<{ variants: PlaygroundVariantBody[] }>>;

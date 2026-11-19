@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Raffa.AiFlows.Ask.Orchestration;
 using Raffa.AiFlows.Ask.Agentic;
+using Raffa.AiFlows.Playground;
 using Raffa.AiGateway.Telemetry;
 using Raffa.Chat.Application.Reply;
 using Raffa.Api.Infrastructure;
@@ -32,8 +33,8 @@ public static class PlaygroundEndpointExtensions
             RunAsync(id, guard, () => SandboxesAsync(seeder, ct)));
         endpoints.MapPost("/api/admin/playground/runs", (PlaygroundRunRequest? body, ICallerIdentity id, PlatformAdminGuard guard, PlaygroundSandboxSeeder seeder,
                 PlaygroundStore store, AskCopilotService ask, ITenantContext tenantContext, IClock clock, IOptions<PlaygroundPricingOptions> pricing,
-                PlaygroundCatalog catalog, CancellationToken ct) =>
-            RunAsync(id, guard, () => StartRunAsync(body, id.Resolve()!, seeder, store, ask, tenantContext, clock, pricing.Value, catalog, ct)));
+                PlaygroundCatalog catalog, PlaygroundWorkflowRunner runner, CancellationToken ct) =>
+            RunAsync(id, guard, () => StartRunAsync(body, id.Resolve()!, seeder, store, ask, tenantContext, clock, pricing.Value, catalog, runner, ct)));
         endpoints.MapGet("/api/admin/playground/baseline", (ICallerIdentity id, PlatformAdminGuard guard, PlaygroundCatalog catalog, AskTurnOptions turnOptions) =>
             RunAsync(id, guard, () => Task.FromResult(Baseline(catalog, turnOptions))));
         endpoints.MapGet("/api/admin/playground/variants", (ICallerIdentity id, PlatformAdminGuard guard, PlaygroundStore store, CancellationToken ct) =>
@@ -55,8 +56,11 @@ public static class PlaygroundEndpointExtensions
 
     public sealed record PlaygroundHistoryTurn(string? Role, string? Markdown);
 
+    /// <param name="Workflow"><c>ask</c> (default), <c>council</c>, <c>drafting</c>, <c>research</c> or <c>extraction</c>.</param>
+    /// <param name="Input">The workflow's own input (supplier and goal, a web query, a document); <c>ask</c> uses Question and History.</param>
     public sealed record PlaygroundRunRequest(
-        string? Sandbox, string? Question, IReadOnlyList<PlaygroundHistoryTurn>? History, Guid? VariantId = null, Guid? ComparisonId = null);
+        string? Sandbox, string? Question, IReadOnlyList<PlaygroundHistoryTurn>? History, Guid? VariantId = null, Guid? ComparisonId = null,
+        string? Workflow = null, JsonElement? Input = null);
 
     public sealed record PlaygroundVariantRequest(string? Name, string? Description, PlaygroundOverrides? Overrides);
 
@@ -90,18 +94,27 @@ public static class PlaygroundEndpointExtensions
 
     private static async Task<IResult> StartRunAsync(
         PlaygroundRunRequest? body, string actor, PlaygroundSandboxSeeder seeder, PlaygroundStore store, AskCopilotService ask,
-        ITenantContext tenantContext, IClock clock, PlaygroundPricingOptions pricing, PlaygroundCatalog catalog, CancellationToken ct)
+        ITenantContext tenantContext, IClock clock, PlaygroundPricingOptions pricing, PlaygroundCatalog catalog, PlaygroundWorkflowRunner runner,
+        CancellationToken ct)
     {
         if (PlaygroundSandboxKinds.TenantOf(body?.Sandbox) is not { } tenantId)
         {
             return Results.BadRequest($"'sandbox' must be one of: {string.Join(", ", PlaygroundSandboxKinds.All)}.");
         }
 
-        var question = body?.Question?.Trim();
-        if (string.IsNullOrEmpty(question) || question.Length > MaxQuestionChars)
+        var workflow = string.IsNullOrWhiteSpace(body?.Workflow) ? "ask" : body.Workflow.Trim().ToLowerInvariant();
+        if (!Workflows.Contains(workflow))
         {
-            return Results.BadRequest($"'question' is required and at most {MaxQuestionChars} characters.");
+            return Results.BadRequest($"'workflow' must be one of: {string.Join(", ", Workflows)}.");
         }
+
+        var plan = Plan(workflow, body!);
+        if (plan.Problem is not null)
+        {
+            return Results.BadRequest(plan.Problem);
+        }
+
+        var question = plan.Summary;
 
         // Defence in depth: whatever the kind maps to, the tenant must be registered as a sandbox.
         await seeder.EnsureAsync(body!.Sandbox!, ct).ConfigureAwait(false);
@@ -141,6 +154,7 @@ public static class PlaygroundEndpointExtensions
         var startedAt = clock.UtcNow;
         var clock2 = Stopwatch.StartNew();
         CopilotReply? copilotReply = null;
+        object? result = null;
         string status = "ok";
         string? error = null;
         PlaygroundTraceCollector collector;
@@ -150,7 +164,21 @@ public static class PlaygroundEndpointExtensions
         {
             try
             {
-                copilotReply = await ask.AskAsync(tenantId, question, history, actor, cancellationToken: ct).ConfigureAwait(false);
+                if (workflow == "ask")
+                {
+                    copilotReply = await ask.AskAsync(tenantId, question, history, actor, cancellationToken: ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    var outcome = await RunWorkflowAsync(workflow, plan, tenantId, actor, runner, ct).ConfigureAwait(false);
+                    result = outcome.Output;
+                    if (outcome.Error is not null)
+                    {
+                        status = "error";
+                        error = outcome.Error;
+                        collector.Add("note", "workflow-failed", 0, ok: false, note: error);
+                    }
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -189,7 +217,7 @@ public static class PlaygroundEndpointExtensions
         await store.SaveRunAsync(new PlaygroundRunRow
         {
             Id = runId,
-            Workflow = "ask",
+            Workflow = workflow,
             SandboxKind = body.Sandbox!,
             CreatedBy = actor,
             CreatedAt = startedAt,
@@ -203,15 +231,164 @@ public static class PlaygroundEndpointExtensions
             EstimatedCostUsd = cost,
             Input = JsonSerializer.Serialize(new
             {
+                workflow,
                 question,
+                input = plan.StoredInput,
                 history = history.Select(h => new { role = h.Role, markdown = h.Markdown }),
                 variant = variant is null ? null : new { id = variant.Id, name = variant.Name, overrides = ParseOverrides(variant.Overrides) },
             }, Json),
-            Output = JsonSerializer.Serialize(new { reply, error, usage }, Json),
+            Output = JsonSerializer.Serialize(new { reply, result, error, usage }, Json),
             Trace = JsonSerializer.Serialize(events, Json),
         }, ct).ConfigureAwait(false);
 
-        return Results.Ok(new { runId, sandbox = body.Sandbox, variantId = variant?.Id, variantName = variant?.Name, comparisonId = body.ComparisonId, status, error, durationMs = clock2.ElapsedMilliseconds, reply, usage, trace = events });
+        return Results.Ok(new { runId, workflow, sandbox = body.Sandbox, variantId = variant?.Id, variantName = variant?.Name, comparisonId = body.ComparisonId, status, error, durationMs = clock2.ElapsedMilliseconds, reply, result, usage, trace = events });
+    }
+
+    private static readonly string[] Workflows = ["ask", "council", "drafting", "research", "extraction"];
+
+    private const long MaxUploadBytes = 8 * 1024 * 1024;
+
+    private static readonly string[] UploadMimeTypes = ["application/pdf", "image/png", "image/jpeg", "image/tiff"];
+
+    /// <summary>One run's validated input: <see cref="Summary"/> is the line the history shows; <see cref="StoredInput"/> is what is
+    /// kept (a file is kept as its name and size, never its bytes).</summary>
+    private sealed record WorkflowPlan(
+        string? Problem, string Summary, object? StoredInput, string? Supplier = null, string? Goal = null, string? Question = null,
+        string Language = "en", string? Query = null, string Purpose = "Open", string? Text = null, string? FileName = null,
+        string? MimeType = null, byte[]? File = null, bool DocumentFirst = true);
+
+    private static string? Text(JsonElement? input, string name) =>
+        input is { ValueKind: JsonValueKind.Object } o && o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+            ? v.GetString()?.Trim()
+            : null;
+
+    private static WorkflowPlan Bad(string problem) => new(problem, string.Empty, null);
+
+    private static WorkflowPlan Plan(string workflow, PlaygroundRunRequest body)
+    {
+        var language = Text(body.Input, "language") is "it" ? "it" : "en";
+        switch (workflow)
+        {
+            case "ask":
+            {
+                var question = body.Question?.Trim();
+                return string.IsNullOrEmpty(question) || question.Length > MaxQuestionChars
+                    ? Bad($"'question' is required and at most {MaxQuestionChars} characters.")
+                    : new WorkflowPlan(null, question, null);
+            }
+
+            case "council":
+            case "drafting":
+            {
+                var supplier = Text(body.Input, "supplier");
+                if (string.IsNullOrEmpty(supplier) || supplier.Length > 200)
+                {
+                    return Bad("'input.supplier' is required (a supplier of the sandbox).");
+                }
+
+                var goal = Text(body.Input, "goal");
+                var question = Text(body.Input, "question");
+                if (goal is { Length: > 500 } || question is { Length: > MaxQuestionChars })
+                {
+                    return Bad("'input.goal' is at most 500 characters and 'input.question' at most " + MaxQuestionChars + ".");
+                }
+
+                question = string.IsNullOrEmpty(question)
+                    ? (workflow == "council" ? $"Negotiation strategy for {supplier}" : $"Draft the renewal negotiation email to {supplier}")
+                    : question;
+                var summary = $"[{workflow}] {supplier}" + (string.IsNullOrEmpty(goal) ? string.Empty : $" · {goal}");
+                return new WorkflowPlan(null, summary, new { supplier, goal, question, language }, supplier, goal, question, language);
+            }
+
+            case "research":
+            {
+                var query = Text(body.Input, "query");
+                if (string.IsNullOrEmpty(query) || query.Length > 500)
+                {
+                    return Bad("'input.query' is required and at most 500 characters.");
+                }
+
+                var purpose = Text(body.Input, "purpose") ?? "Open";
+                return PlaygroundWorkflowRunner.WebPurposes.Contains(purpose, StringComparer.Ordinal)
+                    ? new WorkflowPlan(null, $"[research] {query}", new { query, purpose, language }, Query: query, Purpose: purpose, Language: language)
+                    : Bad($"'input.purpose' must be one of: {string.Join(", ", PlaygroundWorkflowRunner.WebPurposes)}.");
+            }
+
+            default: // extraction
+            {
+                var documentFirst = body.Input is { ValueKind: JsonValueKind.Object } o && o.TryGetProperty("documentFirst", out var df)
+                    ? df.ValueKind != JsonValueKind.False
+                    : true;
+                var base64 = Text(body.Input, "fileBase64");
+                if (!string.IsNullOrEmpty(base64))
+                {
+                    var fileName = Text(body.Input, "fileName") ?? "document";
+                    var mime = Text(body.Input, "mimeType") ?? string.Empty;
+                    if (!UploadMimeTypes.Contains(mime, StringComparer.OrdinalIgnoreCase))
+                    {
+                        return Bad($"'input.mimeType' must be one of: {string.Join(", ", UploadMimeTypes)}.");
+                    }
+
+                    byte[] bytes;
+                    try
+                    {
+                        bytes = Convert.FromBase64String(base64);
+                    }
+                    catch (FormatException)
+                    {
+                        return Bad("'input.fileBase64' is not valid base64.");
+                    }
+
+                    return bytes.Length == 0 || bytes.Length > MaxUploadBytes
+                        ? Bad($"The file must be between 1 byte and {(int)(MaxUploadBytes / (1024 * 1024))} MB.")
+                        : new WorkflowPlan(null, $"[extraction] {fileName}", new { fileName, mimeType = mime, bytes = bytes.Length, documentFirst },
+                            FileName: fileName, MimeType: mime, File: bytes, DocumentFirst: documentFirst);
+                }
+
+                var text = body.Input is { ValueKind: JsonValueKind.Object } t && t.TryGetProperty("text", out var tv) && tv.ValueKind == JsonValueKind.String
+                    ? tv.GetString()
+                    : null;
+                return string.IsNullOrWhiteSpace(text)
+                    ? Bad("'input.text' or 'input.fileBase64' is required.")
+                    : new WorkflowPlan(null, $"[extraction] {text.Trim()[..Math.Min(60, text.Trim().Length)]}…", new { characters = text.Length, documentFirst },
+                        Text: text, DocumentFirst: documentFirst);
+            }
+        }
+    }
+
+    private static async Task<PlaygroundWorkflowResult> RunWorkflowAsync(
+        string workflow, WorkflowPlan plan, Raffa.SharedKernel.TenantId tenantId, string actor, PlaygroundWorkflowRunner runner, CancellationToken ct)
+    {
+        switch (workflow)
+        {
+            case "council":
+                return await runner.RunCouncilAsync(tenantId, plan.Supplier!, plan.Goal, plan.Question!, actor, ct).ConfigureAwait(false);
+            case "drafting":
+                return await runner.RunDraftingAsync(tenantId, plan.Supplier!, plan.Goal, plan.Question!, plan.Language, actor, ct).ConfigureAwait(false);
+            case "research":
+                return await runner.RunWebResearchAsync(plan.Query!, plan.Purpose, plan.Language, ct).ConfigureAwait(false);
+            default:
+            {
+                IReadOnlyList<Raffa.Documents.Contracts.Application.Extraction.DocumentPageText> pages;
+                if (plan.File is not null)
+                {
+                    var (read, problem) = await runner.ReadFileAsync(plan.FileName!, plan.MimeType!, plan.File, ct).ConfigureAwait(false);
+                    if (read is null)
+                    {
+                        return PlaygroundWorkflowResult.Fail("The file could not be read: " + problem);
+                    }
+
+                    pages = read;
+                }
+                else
+                {
+                    // Plain text: a form feed starts a new page, otherwise it is one page.
+                    pages = [.. plan.Text!.Split('\f').Select((page, i) => new Raffa.Documents.Contracts.Application.Extraction.DocumentPageText(i + 1, page))];
+                }
+
+                return await runner.RunExtractionAsync(pages, plan.DocumentFirst, ct).ConfigureAwait(false);
+            }
+        }
     }
 
     private static PlaygroundOverrides? ParseOverrides(string json)
@@ -228,7 +405,7 @@ public static class PlaygroundEndpointExtensions
 
     private static IResult Baseline(PlaygroundCatalog catalog, AskTurnOptions turnOptions) => Results.Ok(new
     {
-        prompts = new[] { new { agent = "agent", version = AgentPrompt.Version, text = AgentPrompt.SystemPrompt } },
+        prompts = catalog.PromptCatalog().Select(p => new { agent = p.Agent, flow = p.Flow, version = p.Version, text = p.Text }),
         models = catalog.RoleSelections().Select(r => new
         {
             role = r.Role,

@@ -232,6 +232,150 @@ public sealed class PlaygroundEndpointTests(RaffaApiFactory factory) : IClassFix
         Assert.Equal("CUSTOM PLAYGROUND PROMPT", stored.RootElement.GetProperty("input").GetProperty("variant").GetProperty("overrides").GetProperty("prompts").GetProperty("agent").GetString());
     }
 
+    private static async Task<JsonDocument> RunWorkflowAsync(HttpClient client, string workflow, object input, string sandbox = "seeded", Guid? variantId = null)
+    {
+        var response = await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff, new { workflow, sandbox, input, variantId });
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.OK, $"{response.StatusCode}: {raw}");
+        return JsonDocument.Parse(raw);
+    }
+
+    private static IEnumerable<JsonElement> ModelCalls(JsonDocument run) =>
+        run.RootElement.GetProperty("trace").EnumerateArray().Where(e => e.GetProperty("kind").GetString() == "model_call");
+
+    [Fact]
+    public async Task The_council_runs_on_a_sandbox_contract_and_shows_the_analysts_and_their_evidence()
+    {
+        var client = Host().CreateClient();
+
+        using var run = await RunWorkflowAsync(client, "council", new { supplier = "salesforce", goal = "reduce 20k" });
+
+        Assert.Equal("ok", run.RootElement.GetProperty("status").GetString());
+        Assert.Equal("council", run.RootElement.GetProperty("workflow").GetString());
+        var result = run.RootElement.GetProperty("result");
+        Assert.Equal("Salesforce", result.GetProperty("supplier").GetString());
+        Assert.NotEmpty(result.GetProperty("evidence").EnumerateArray());
+        Assert.Contains(ModelCalls(run), e => e.GetProperty("name").GetString() == "analyze:contract-analyst");
+    }
+
+    [Fact]
+    public async Task A_workflow_on_a_supplier_the_sandbox_does_not_have_says_which_it_has()
+    {
+        var client = Host().CreateClient();
+
+        using var unknown = await RunWorkflowAsync(client, "council", new { supplier = "Initech" });
+        Assert.Equal("error", unknown.RootElement.GetProperty("status").GetString());
+        Assert.Contains("Salesforce", unknown.RootElement.GetProperty("error").GetString());
+
+        using var empty = await RunWorkflowAsync(client, "drafting", new { supplier = "Salesforce" }, sandbox: "empty");
+        Assert.Equal("error", empty.RootElement.GetProperty("status").GetString());
+        Assert.Contains("seeded", empty.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Drafting_returns_the_email_and_how_it_was_written()
+    {
+        var client = Host().CreateClient();
+
+        using var run = await RunWorkflowAsync(client, "drafting", new { supplier = "Salesforce", goal = "reduce 20k", language = "en" });
+
+        Assert.Equal("ok", run.RootElement.GetProperty("status").GetString());
+        var result = run.RootElement.GetProperty("result");
+        Assert.False(string.IsNullOrWhiteSpace(result.GetProperty("subject").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(result.GetProperty("body").GetString()));
+        Assert.Equal("Salesforce", result.GetProperty("supplier").GetString());
+    }
+
+    [Fact]
+    public async Task A_registered_agents_prompt_can_be_replaced_by_a_variant_and_only_for_that_run()
+    {
+        var client = Host().CreateClient();
+        var variantId = await CreateVariantAsync(client, new { prompts = new Dictionary<string, string> { ["contract-analyst"] = "PLAYGROUND ANALYST PROMPT" } }, "Analyst prompt");
+
+        using var changed = await RunWorkflowAsync(client, "council", new { supplier = "Salesforce" }, variantId: variantId);
+        using var plain = await RunWorkflowAsync(client, "council", new { supplier = "Salesforce" });
+
+        string AnalystRequest(JsonDocument run) => ModelCalls(run).First(e => e.GetProperty("name").GetString() == "analyze:contract-analyst").GetProperty("input").GetString()!;
+        Assert.Contains("PLAYGROUND ANALYST PROMPT", AnalystRequest(changed), StringComparison.Ordinal);
+        Assert.DoesNotContain("PLAYGROUND ANALYST PROMPT", AnalystRequest(plain), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Web_research_runs_the_research_core_and_validates_its_purpose()
+    {
+        var client = Host().CreateClient();
+
+        using var run = await RunWorkflowAsync(client, "research", new { query = "Salesforce price increases 2026", purpose = "SupplierNews", language = "en" });
+        Assert.Equal("research", run.RootElement.GetProperty("workflow").GetString());
+        Assert.True(run.RootElement.GetProperty("result").TryGetProperty("kind", out _));
+        // What leaves Raffa is the cleaned query (same sanitiser as the production consent gate).
+        Assert.Contains("Salesforce", run.RootElement.GetProperty("result").GetProperty("sentQuery").GetString());
+
+        using var tooShort = await RunWorkflowAsync(client, "research", new { query = "hi", purpose = "Open" });
+        Assert.Equal("error", tooShort.RootElement.GetProperty("status").GetString());
+        Assert.Contains(ModelCalls(run), e => e.GetProperty("name").GetString()!.StartsWith("research:", StringComparison.Ordinal));
+
+        var bad = await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff,
+            new { workflow = "research", sandbox = "seeded", input = new { query = "x y z", purpose = "Gossip" } });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+    }
+
+    [Fact]
+    public async Task Extraction_returns_each_stage_payload_for_pasted_text_and_for_an_uploaded_file()
+    {
+        var client = Host().CreateClient();
+        const string contract = "Master Services Agreement between Acme Ltd (supplier) and Globex SA. Start date 1 January 2026. " +
+            "End date 31 December 2028. Annual fee 48000 EUR. Payment terms Net 30. Governing law Italy.";
+
+        using var pasted = await RunWorkflowAsync(client, "extraction", new { text = contract });
+        var stages = pasted.RootElement.GetProperty("result").GetProperty("stages").EnumerateArray().ToList();
+        Assert.True(stages.Count >= 6, $"{stages.Count} stages");
+        Assert.Contains(stages, s => s.GetProperty("stage").GetString() == "Metadata");
+        Assert.All(stages, s => Assert.True(s.TryGetProperty("payload", out _)));
+        Assert.Contains(ModelCalls(pasted), e => e.GetProperty("name").GetString() == "extract:Metadata");
+
+        var pdf = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("%PDF-1.4 " + contract));
+        using var uploaded = await RunWorkflowAsync(client, "extraction", new { fileBase64 = pdf, fileName = "contract.pdf", mimeType = "application/pdf" });
+        Assert.Equal("ok", uploaded.RootElement.GetProperty("status").GetString());
+
+        // The file itself is never stored with the run: only its name and size.
+        var runId = uploaded.RootElement.GetProperty("runId").GetGuid();
+        var stored = await SendAsync(client, HttpMethod.Get, $"/api/admin/playground/runs/{runId}", Staff);
+        var storedText = await stored.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(pdf, storedText, StringComparison.Ordinal);
+        Assert.Contains("contract.pdf", storedText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_workflow_with_bad_input_is_a_bad_request()
+    {
+        var client = Host().CreateClient();
+
+        async Task<HttpStatusCode> TryAsync(object body) =>
+            (await SendAsync(client, HttpMethod.Post, "/api/admin/playground/runs", Staff, body)).StatusCode;
+
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { workflow = "poetry", sandbox = "seeded", question = "x" }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { workflow = "council", sandbox = "seeded", input = new { } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { workflow = "extraction", sandbox = "seeded", input = new { } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { workflow = "extraction", sandbox = "seeded", input = new { fileBase64 = "AAAA", mimeType = "text/html" } }));
+        Assert.Equal(HttpStatusCode.BadRequest, await TryAsync(new { workflow = "extraction", sandbox = "seeded", input = new { fileBase64 = "%%%", mimeType = "application/pdf" } }));
+    }
+
+    [Fact]
+    public async Task The_baseline_lists_every_replaceable_prompt_with_its_flow()
+    {
+        var client = Host().CreateClient();
+
+        using var baseline = await JsonOf(await SendAsync(client, HttpMethod.Get, "/api/admin/playground/baseline", Staff));
+
+        var prompts = baseline.RootElement.GetProperty("prompts").EnumerateArray().ToDictionary(p => p.GetProperty("agent").GetString()!);
+        Assert.Contains("agent", prompts.Keys);
+        Assert.Contains("extract", prompts.Keys);
+        Assert.Contains("contract-analyst", prompts.Keys);
+        Assert.Equal("document-extraction", prompts["extract"].GetProperty("flow").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(prompts["contract-analyst"].GetProperty("text").GetString()));
+    }
+
     [Fact]
     public async Task A_run_with_an_unknown_variant_is_not_found()
     {

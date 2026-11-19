@@ -28,7 +28,10 @@ function run(overrides: Partial<PlaygroundRunBody> = {}): PlaygroundRunBody {
 }
 
 const BASELINE: PlaygroundBaselineBody = {
-  prompts: [{ agent: "agent", version: "agent-v1.6", text: "You are Ask Raffa." }],
+  prompts: [
+    { agent: "agent", flow: "ask", version: "agent-v1.6", text: "You are Ask Raffa." },
+    { agent: "contract-analyst", flow: "negotiation", version: "council-v1", text: "You analyse contracts." },
+  ],
   models: [
     { role: "agent", configured: true, fallbackOf: "answer", modelId: "gpt-5.4-nano-dev", modelVersion: "1", reasoningEffort: "low", maxCompletionTokens: 4096, temperature: null },
     { role: "answer", configured: true, fallbackOf: null, modelId: "gpt-5.4-nano-dev", modelVersion: "1", reasoningEffort: null, maxCompletionTokens: 4096, temperature: null },
@@ -215,7 +218,7 @@ describe("PlaygroundPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Variants" }));
     await userEvent.click(screen.getByRole("button", { name: "New variant" }));
     await userEvent.type(screen.getByLabelText("Name"), "Edited");
-    const prompt = screen.getByLabelText(/Orchestrator prompt/);
+    const prompt = screen.getByLabelText(/Prompt text/);
     await userEvent.clear(prompt);
     await userEvent.type(prompt, "Be brief.");
     expect(screen.getByText("modified")).toBeInTheDocument();
@@ -260,6 +263,124 @@ describe("PlaygroundPanel", () => {
     expect(getPlaygroundRun).toHaveBeenCalledWith("r9");
     expect(await screen.findByLabelText("Stored run")).toHaveTextContent("Scade il 15 gennaio 2027 [1].");
     expect(screen.getByRole("list", { name: "Trace" })).toHaveTextContent("get_contract");
+  });
+
+  it("runs the council on a sandbox supplier and shows its plays, with no chat history", async () => {
+    const runPlayground = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      error: null,
+      body: run({
+        workflow: "council",
+        reply: null,
+        result: {
+          supplier: "Salesforce",
+          agentsRun: ["contract-analyst", "lever-strategist"],
+          failures: [],
+          playsDropped: 0,
+          plays: [{ citationKey: "calc:council:play[1]", title: "Cap the renewal uplift", snippet: "Ask for a 3% cap." }],
+          evidence: [{ citationKey: "k1" }],
+        },
+      }),
+    });
+    render(<PlaygroundPanel apiClient={client(runPlayground)} />);
+    await screen.findByText("Four validated contracts.");
+
+    await userEvent.selectOptions(screen.getByLabelText("Workflow"), "council");
+    expect(screen.queryByLabelText("Question")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/Supplier/), "Salesforce");
+    await userEvent.type(screen.getByLabelText(/Savings goal/), "reduce 20k");
+    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    expect(runPlayground).toHaveBeenCalledWith({
+      sandbox: "seeded",
+      question: "Salesforce · reduce 20k",
+      history: [],
+      comparisonId: expect.any(String),
+      workflow: "council",
+      input: { supplier: "Salesforce", goal: "reduce 20k", language: "en" },
+    });
+    expect(await screen.findByText("Cap the renewal uplift")).toBeInTheDocument();
+    expect(screen.getByLabelText("Council result")).toHaveTextContent("contract-analyst, lever-strategist");
+  });
+
+  it("sends a web query with its purpose, and extraction text with the layout choice", async () => {
+    const runPlayground = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      error: null,
+      body: run({
+        workflow: "research",
+        reply: null,
+        result: { kind: "Answered", markdown: "Prices rose 5%.", sourceCount: 2, citations: [], guardIntervened: false, figuresVerified: 1, figuresReported: 1, sentencesRemoved: 0 },
+      }),
+    });
+    render(<PlaygroundPanel apiClient={client(runPlayground)} />);
+    await screen.findByText("Four validated contracts.");
+
+    await userEvent.selectOptions(screen.getByLabelText("Workflow"), "research");
+    await userEvent.type(screen.getByLabelText("Web query"), "Salesforce price increases");
+    await userEvent.selectOptions(screen.getByLabelText("Purpose"), "SupplierNews");
+    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(runPlayground).toHaveBeenLastCalledWith(
+      expect.objectContaining({ workflow: "research", input: { query: "Salesforce price increases", purpose: "SupplierNews", language: "en" } }),
+    );
+    expect(await screen.findByText("Prices rose 5%.")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Workflow"), "extraction");
+    await userEvent.type(screen.getByLabelText(/Contract text/), "Supplier: Acme");
+    await userEvent.click(screen.getByLabelText(/Document-first/));
+    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+    expect(runPlayground).toHaveBeenLastCalledWith(expect.objectContaining({ workflow: "extraction", input: { text: "Supplier: Acme", documentFirst: false } }));
+  });
+
+  it("shows each extraction stage's raw payload and a drafted email", async () => {
+    const extraction = run({
+      workflow: "extraction",
+      reply: null,
+      result: {
+        pages: 1,
+        characters: 40,
+        documentFirst: true,
+        stages: [
+          { stage: "Metadata", ok: true, error: null, model: "gpt-5.4-nano-dev", payload: { supplierName: "Acme" } },
+          { stage: "Risk", ok: false, error: "JsonException: bad", model: null, payload: null },
+        ],
+      },
+    });
+    const runPlayground = vi.fn().mockResolvedValue({ ok: true, statusCode: 200, error: null, body: extraction });
+    render(<PlaygroundPanel apiClient={client(runPlayground)} />);
+    await screen.findByText("Four validated contracts.");
+
+    await userEvent.selectOptions(screen.getByLabelText("Workflow"), "extraction");
+    await userEvent.type(screen.getByLabelText(/Contract text/), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const result = await screen.findByLabelText("Extraction result");
+    expect(result).toHaveTextContent("Metadata");
+    expect(result).toHaveTextContent('"supplierName": "Acme"');
+    expect(result).toHaveTextContent("JsonException: bad");
+  });
+
+  it("changes any registered prompt in a variant, not only the orchestrator's", async () => {
+    const savePlaygroundVariant = vi.fn().mockResolvedValue({ ok: true, statusCode: 201, body: VARIANT, error: null });
+    render(<PlaygroundPanel apiClient={client(vi.fn(), { savePlaygroundVariant })} />);
+    await screen.findByText("Four validated contracts.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Variants" }));
+    await userEvent.click(screen.getByRole("button", { name: "New variant" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Sharper analyst");
+    await userEvent.selectOptions(screen.getByLabelText("Prompt to change"), "contract-analyst");
+    const prompt = screen.getByLabelText(/Prompt text/);
+    expect(prompt).toHaveValue("You analyse contracts.");
+    await userEvent.clear(prompt);
+    await userEvent.type(prompt, "Be sharper.");
+    await userEvent.click(screen.getByRole("button", { name: "Save variant" }));
+
+    expect(savePlaygroundVariant).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({ overrides: expect.objectContaining({ prompts: { "contract-analyst": "Be sharper." } }) }),
+    );
   });
 
   it("shows n/a, never zero, when a model has no price", () => {

@@ -6,8 +6,6 @@ import type {
   PlaygroundVariantBody,
 } from "../../api/client";
 
-const AGENT = "agent";
-
 interface ModelDraft {
   modelId: string;
   reasoningEffort: string;
@@ -32,7 +30,8 @@ function draftFrom(baseline: PlaygroundBaselineBody, variant: PlaygroundVariantB
   return {
     name: variant?.name ?? "",
     description: variant?.description ?? "",
-    prompt: o?.prompts?.[AGENT] ?? baseline.prompts.find((p) => p.agent === AGENT)?.text ?? "",
+    /** Only the prompts the variant changes (agent name -> full text). */
+    prompts: { ...(o?.prompts ?? {}) } as Record<string, string>,
     models,
     disabledTools: new Set(o?.disabledTools ?? []),
     maxToolCalls: o?.maxToolCalls?.toString() ?? "",
@@ -41,8 +40,11 @@ function draftFrom(baseline: PlaygroundBaselineBody, variant: PlaygroundVariantB
 
 /** The overrides a draft stands for: only what differs from what production runs. */
 export function overridesOf(baseline: PlaygroundBaselineBody, draft: ReturnType<typeof draftFrom>): Partial<PlaygroundOverrides> {
-  const basePrompt = baseline.prompts.find((p) => p.agent === AGENT)?.text ?? "";
-  const prompts: Record<string, string> = norm(draft.prompt) !== norm(basePrompt) && norm(draft.prompt) !== "" ? { [AGENT]: draft.prompt } : {};
+  const prompts: Record<string, string> = {};
+  for (const [agent, text] of Object.entries(draft.prompts)) {
+    const base = baseline.prompts.find((p) => p.agent === agent)?.text ?? "";
+    if (norm(text) !== "" && norm(text) !== norm(base)) prompts[agent] = text;
+  }
   const models: Record<string, PlaygroundModelOverride> = {};
   for (const [role, m] of Object.entries(draft.models)) {
     const change: PlaygroundModelOverride = {
@@ -76,8 +78,11 @@ export default function VariantEditor({
   const [draft, setDraft] = useState(() => draftFrom(baseline, variant));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const basePrompt = baseline.prompts.find((p) => p.agent === AGENT)?.text ?? "";
-  const promptModified = norm(draft.prompt) !== norm(basePrompt);
+  const [promptAgent, setPromptAgent] = useState(baseline.prompts[0]?.agent ?? "agent");
+  const basePrompt = baseline.prompts.find((p) => p.agent === promptAgent);
+  const promptText = draft.prompts[promptAgent] ?? basePrompt?.text ?? "";
+  const promptModified = norm(promptText) !== norm(basePrompt?.text ?? "");
+  const modifiedAgents = Object.keys(overridesOf(baseline, draft).prompts ?? {});
   const roles = useMemo(() => baseline.models.filter((m) => m.configured), [baseline]);
 
   const setModel = (role: string, patch: Partial<ModelDraft>) =>
@@ -126,22 +131,38 @@ export default function VariantEditor({
       </div>
 
       <div className="pg-field">
+        <label htmlFor="pg-variant-agent">Prompt to change</label>
+        <select id="pg-variant-agent" className="input" value={promptAgent} onChange={(e) => setPromptAgent(e.target.value)}>
+          {baseline.prompts.map((p) => (
+            <option key={p.agent} value={p.agent}>
+              {p.flow} · {p.agent} ({p.version}){modifiedAgents.includes(p.agent) ? " — modified" : ""}
+            </option>
+          ))}
+        </select>
         <label htmlFor="pg-variant-prompt">
-          Orchestrator prompt ({baseline.prompts.find((p) => p.agent === AGENT)?.version}){" "}
+          Prompt text ({promptAgent}){" "}
           {promptModified ? <span className="pg-chip pg-chip-warn">modified</span> : <span className="pg-chip">as in production</span>}
         </label>
         <textarea
           id="pg-variant-prompt"
           className="input pg-prompt"
           rows={14}
-          value={draft.prompt}
-          onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
+          value={promptText}
+          onChange={(e) => setDraft({ ...draft, prompts: { ...draft.prompts, [promptAgent]: e.target.value } })}
         />
         {promptModified ? (
-          <button type="button" className="btn btn-ghost" onClick={() => setDraft({ ...draft, prompt: basePrompt })}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              const { [promptAgent]: _removed, ...rest } = draft.prompts;
+              setDraft({ ...draft, prompts: rest });
+            }}
+          >
             Reset to production prompt
           </button>
         ) : null}
+        {modifiedAgents.length > 0 ? <p className="hint">Prompts changed in this variant: {modifiedAgents.join(", ")}.</p> : null}
       </div>
 
       <fieldset className="pg-field">

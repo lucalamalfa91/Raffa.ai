@@ -131,6 +131,7 @@ builder.Services.AddScoped<Raffa.Api.Infrastructure.PlatformAdminGuard>();
 // Super Admin agent playground: sandbox workspaces, run history, token pricing (Playground:Pricing).
 builder.Services.AddScoped<Raffa.Api.Infrastructure.PlaygroundSandboxSeeder>();
 builder.Services.AddScoped<Raffa.Api.Infrastructure.PlaygroundCatalog>();
+builder.Services.AddScoped<Raffa.AiFlows.Playground.PlaygroundWorkflowRunner>();
 builder.Services.Configure<Raffa.Api.Infrastructure.PlaygroundPricingOptions>(
     builder.Configuration.GetSection(Raffa.Api.Infrastructure.PlaygroundPricingOptions.SectionName));
 

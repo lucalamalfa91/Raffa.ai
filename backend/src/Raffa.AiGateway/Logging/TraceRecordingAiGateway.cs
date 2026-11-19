@@ -21,10 +21,10 @@ public sealed class TraceRecordingAiGateway(IAiGateway inner) : IAiGateway
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public Task<Result<AiClassificationResult>> ClassifyAsync(AiClassificationRequest request, CancellationToken cancellationToken = default) =>
-        inner.ClassifyAsync(request, cancellationToken);
+        RecordAsync("classify", "classify", request, () => inner.ClassifyAsync(request, cancellationToken), r => r.Metadata);
 
     public Task<Result<AiExtractionResult>> ExtractAsync(AiExtractionRequest request, CancellationToken cancellationToken = default) =>
-        inner.ExtractAsync(request, cancellationToken);
+        RecordAsync("extract", request.StageName, request, () => inner.ExtractAsync(request, cancellationToken), r => r.Metadata);
 
     public Task<Result<AiEmbeddingResult>> EmbedAsync(AiEmbeddingRequest request, CancellationToken cancellationToken = default) =>
         inner.EmbedAsync(request, cancellationToken);

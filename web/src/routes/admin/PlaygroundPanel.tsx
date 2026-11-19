@@ -8,10 +8,14 @@ import type {
   PlaygroundSandboxBody,
   PlaygroundSandboxKind,
   PlaygroundVariantBody,
+  PlaygroundWorkflow,
+  PlaygroundWorkflowInput,
 } from "../../api/client";
 import PlaygroundHistory from "./PlaygroundHistory";
 import { Inspector, formatDuration } from "./TraceInspector";
 import VariantEditor from "./VariantEditor";
+import WorkflowInputs from "./WorkflowInputs";
+import WorkflowResult, { workflowLabel } from "./WorkflowResult";
 
 export { formatCost, prettyPayload, formatDuration } from "./TraceInspector";
 
@@ -32,7 +36,22 @@ const VIEWS: ReadonlyArray<{ id: View; label: string }> = [
   { id: "history", label: "History" },
 ];
 
+const WORKFLOWS: PlaygroundWorkflow[] = ["ask", "council", "drafting", "research", "extraction"];
+
 const laneKey = (variantId: string | null): string => variantId ?? BASELINE;
+
+/** The line a non-chat run shows in its lane. */
+function summaryOf(workflow: PlaygroundWorkflow, input: PlaygroundWorkflowInput): string {
+  switch (workflow) {
+    case "council":
+    case "drafting":
+      return `${input.supplier ?? ""}${input.goal ? ` · ${input.goal}` : ""}`;
+    case "research":
+      return input.query ?? "";
+    default:
+      return input.fileName ?? `${(input.text ?? "").slice(0, 60)}…`;
+  }
+}
 
 function historyOf(turns: Turn[]): PlaygroundHistoryTurn[] {
   return turns.flatMap((t): PlaygroundHistoryTurn[] =>
@@ -68,6 +87,7 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
   const [loadError, setLoadError] = useState<string | null>(null);
   const [view, setView] = useState<View>("compare");
   const [sandbox, setSandbox] = useState<PlaygroundSandboxKind>("seeded");
+  const [workflow, setWorkflow] = useState<PlaygroundWorkflow>("ask");
   const [lanes, setLanes] = useState<Array<string | null>>([null]);
   const [turns, setTurns] = useState<Record<string, Turn[]>>({});
   const [selected, setSelected] = useState<{ lane: string; turnId: number } | null>(null);
@@ -126,14 +146,11 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
     resetConversation();
   };
 
-  const send = async (event: FormEvent) => {
-    event.preventDefault();
-    const text = question.trim();
-    if (!text || busy || !apiClient.runPlayground) return;
+  const run = async (text: string, input?: PlaygroundWorkflowInput) => {
+    if (busy || !apiClient.runPlayground) return;
     const id = Math.max(0, ...Object.values(turns).flatMap((t) => t.map((x) => x.id))) + 1;
     const comparisonId = newId();
     setBusy(true);
-    setQuestion("");
     setTurns((current) => {
       const next = { ...current };
       for (const lane of lanes) next[laneKey(lane)] = [...(current[laneKey(lane)] ?? []), { id, question: text, run: null, error: null }];
@@ -146,20 +163,34 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
         const result = await apiClient.runPlayground!({
           sandbox,
           question: text,
-          history: historyOf((turns[key] ?? []).filter((t) => t.id < id)),
+          history: workflow === "ask" ? historyOf((turns[key] ?? []).filter((t) => t.id < id)) : [],
           ...(lane ? { variantId: lane } : {}),
+          ...(workflow === "ask" ? {} : { workflow, input }),
           comparisonId,
         });
-        const run = result.ok ? result.body : null;
+        const body = result.ok ? result.body : null;
         setTurns((current) => ({
           ...current,
           [key]: (current[key] ?? []).map((t) =>
-            t.id === id ? { ...t, run, error: run ? run.error : (result.error ?? "The run failed.") } : t,
+            t.id === id ? { ...t, run: body, error: body ? body.error : (result.error ?? "The run failed.") } : t,
           ),
         }));
       }),
     );
     setBusy(false);
+  };
+
+  const send = async (event: FormEvent) => {
+    event.preventDefault();
+    const text = question.trim();
+    if (!text) return;
+    setQuestion("");
+    await run(text);
+  };
+
+  const changeWorkflow = (next: PlaygroundWorkflow) => {
+    setWorkflow(next);
+    resetConversation();
   };
 
   const saveVariant = async (variant: { name: string; description: string | null; overrides: Partial<PlaygroundOverrides> }) => {
@@ -270,6 +301,14 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
       {view === "compare" ? (
         <div className="pg">
           <aside className="pg-side" aria-label="Sandbox workspace">
+            <h2 className="pg-heading">Workflow</h2>
+            <select aria-label="Workflow" className="input" value={workflow} disabled={busy} onChange={(e) => changeWorkflow(e.target.value as PlaygroundWorkflow)}>
+              {WORKFLOWS.map((w) => (
+                <option key={w} value={w}>
+                  {workflowLabel(w)}
+                </option>
+              ))}
+            </select>
             <h2 className="pg-heading">Sandbox workspace</h2>
             <p className="hint">Synthetic data only. Customer workspaces are never available here.</p>
             {sandboxes.map((s) => (
@@ -316,7 +355,9 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
                     <h2 className="pg-heading">{laneName(lane)}</h2>
                     {lane ? <p className="hint">{describe(variantById.get(lane)?.overrides ?? { prompts: {}, models: {}, disabledTools: [], maxToolCalls: null })}</p> : null}
                     <ol className="pg-turns" aria-label={`Conversation ${laneName(lane)}`}>
-                      {laneTurns.length === 0 ? <li className="hint">Ask Raffa something about the sandbox portfolio.</li> : null}
+                      {laneTurns.length === 0 ? (
+                        <li className="hint">{workflow === "ask" ? "Ask Raffa something about the sandbox portfolio." : `Run the ${workflowLabel(workflow).toLowerCase()} below.`}</li>
+                      ) : null}
                       {laneTurns.map((t) => (
                         <li key={t.id} className={selected?.lane === key && selected.turnId === t.id ? "pg-turn is-selected" : "pg-turn"}>
                           <p className="pg-you">{t.question}</p>
@@ -326,6 +367,21 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
                               {t.error}
                             </p>
                           ) : null}
+                          {t.run && workflow !== "ask" ? (
+                            <button
+                              type="button"
+                              className="pg-reply"
+                              onClick={() => setSelected({ lane: key, turnId: t.id })}
+                              aria-label={`Inspect run ${t.id} of ${laneName(lane)}`}
+                            >
+                              <span className="pg-reply-meta">
+                                <span className="pg-chip">{t.run.status}</span>
+                                <span className="pg-chip">{formatDuration(t.run.durationMs)}</span>
+                                <span className="pg-chip">{t.run.usage.modelCalls} model calls</span>
+                              </span>
+                            </button>
+                          ) : null}
+                          {t.run && workflow !== "ask" && t.run.result ? <WorkflowResult workflow={workflow} result={t.run.result} /> : null}
                           {t.run?.reply ? (
                             <button
                               type="button"
@@ -350,26 +406,36 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
               })}
             </div>
 
-            <form onSubmit={(e) => void send(e)} className="pg-composer">
-              <label htmlFor="pg-question" className="visually-hidden">
-                Question
-              </label>
-              <textarea
-                id="pg-question"
-                className="input"
-                rows={3}
-                value={question}
-                placeholder="e.g. Quando scade il contratto Salesforce?"
-                onChange={(e) => setQuestion(e.target.value)}
+            {workflow === "ask" ? (
+              <form onSubmit={(e) => void send(e)} className="pg-composer">
+                <label htmlFor="pg-question" className="visually-hidden">
+                  Question
+                </label>
+                <textarea
+                  id="pg-question"
+                  className="input"
+                  rows={3}
+                  value={question}
+                  placeholder="e.g. Quando scade il contratto Salesforce?"
+                  onChange={(e) => setQuestion(e.target.value)}
+                />
+                <button type="submit" className="btn btn-primary" disabled={busy || question.trim().length === 0}>
+                  {busy ? "Running…" : lanes.length > 1 ? `Send to ${lanes.length} variants` : "Send"}
+                </button>
+              </form>
+            ) : (
+              <WorkflowInputs
+                key={workflow}
+                workflow={workflow}
+                busy={busy}
+                lanes={lanes.length}
+                onRun={(input) => void run(summaryOf(workflow, input), input)}
               />
-              <button type="submit" className="btn btn-primary" disabled={busy || question.trim().length === 0}>
-                {busy ? "Running…" : lanes.length > 1 ? `Send to ${lanes.length} variants` : "Send"}
-              </button>
-            </form>
+            )}
 
             <aside className="pg-inspector" aria-label="Inspector">
               <h2 className="pg-heading">Inspector</h2>
-              {selectedRun ? <Inspector run={selectedRun} title={selectedLaneName} /> : <p className="hint">Select an answer to see what the agent did.</p>}
+              {selectedRun ? <Inspector run={selectedRun} title={selectedLaneName} /> : <p className="hint">Select a result to see what the agent did.</p>}
             </aside>
           </div>
         </div>

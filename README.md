@@ -47,7 +47,9 @@ first use, never listed as customers and never a customer workspace) and sees, f
 every model call (exact request and raw answer), every tool call (arguments and result), the guards that fired,
 tokens and estimated cost. Runs are stored in `playground_run`. **Variants** (`playground_variant`) change the
 orchestrator prompt, the model of each role, the tools or the tool-call limit for playground runs only; up to three
-variants answer the same question side by side. Production changes only through a reviewed pull request. Design and roadmap:
+variants answer the same question side by side. Production changes only through a reviewed pull request. Besides Ask, the playground runs the **negotiation council**,
+**email drafting**, **web research** and **document extraction** (pasted text or a file read in memory), each with the
+same trace, variants and cost. Design and roadmap:
 `docs/architecture/admin-agent-playground-plan.md`. Token prices for the cost estimate are read from
 `Playground:Pricing:Models:<deployment prefix>` (USD per 1M tokens, from the Azure retail price list); a model
 with no configured price shows its cost as "n/a", never zero.
