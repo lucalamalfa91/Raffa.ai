@@ -502,6 +502,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<MarketRepriceSched
 
 builder.Services.AddHealthChecks();
 
+// The landing page's anonymous "Free renewal review" form: a per-IP fixed window on that one route only
+// (RenewalReviews section, see RenewalReviewEndpointExtensions).
+builder.Services.AddRenewalReviewRateLimiting(builder.Configuration);
+
 // Response compression for the JSON the SPA reads on every screen (portfolio, workspaces, documents
 // are tens of KB of repetitive property names). Brotli first, Gzip as the fallback a client that
 // does not advertise `br` gets; CompressionLevel.Fastest because the replica is 0.25 vCPU and the
@@ -563,6 +567,8 @@ app.Use(async (context, next) =>
 
 app.UseAuthentication();
 app.UseAuthorization();
+// Only endpoints that opt in (RequireRateLimiting) are limited: today the public renewal-review form.
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health");
 
@@ -573,6 +579,7 @@ app.MapPlatformAdminEndpoints();
 app.MapPlaygroundEndpoints();
 app.MapPlaygroundJudgeEndpoints();
 app.MapPlaygroundExportEndpoints();
+app.MapRenewalReviewEndpoints();
 
 // Task E01/F06/US01/T01 (us-01-document-upload, AC-1) and E01/F06/US01/T02 (AC-3) first mapped
 // POST /api/documents and GET /api/documents/{id} inline here; task E02/F06/US01/T01

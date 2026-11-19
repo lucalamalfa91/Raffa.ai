@@ -4,6 +4,7 @@ import type {
   AdminInvitationBody,
   AdminIssuedInvitationBody,
   AdminOverviewBody,
+  AdminRenewalReviewBody,
   AdminUserBody,
   AdminWorkspaceBody,
   ApiClient,
@@ -15,12 +16,13 @@ export interface AdminRouteProps {
   apiClient: ApiClient;
 }
 
-type Tab = "overview" | "workspaces" | "invitations" | "users" | "playground";
+type Tab = "overview" | "workspaces" | "invitations" | "users" | "reviews" | "playground";
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "workspaces", label: "Workspaces" },
   { id: "invitations", label: "Invitations" },
   { id: "users", label: "Users" },
+  { id: "reviews", label: "Renewal reviews" },
   { id: "playground", label: "Playground" },
 ];
 
@@ -112,6 +114,7 @@ export default function AdminRoute({ apiClient, initialTab = "overview" }: Admin
       {tab === "workspaces" ? <WorkspacesPanel apiClient={apiClient} /> : null}
       {tab === "invitations" ? <InvitationsPanel apiClient={apiClient} /> : null}
       {tab === "users" ? <UsersPanel apiClient={apiClient} /> : null}
+      {tab === "reviews" ? <RenewalReviewsPanel apiClient={apiClient} /> : null}
       {tab === "playground" ? <PlaygroundPanel apiClient={apiClient} /> : null}
     </div>
   );
@@ -340,6 +343,45 @@ function UsersPanel({ apiClient }: AdminRouteProps) {
                 <td>{u.email}</td>
                 <td>{formatDate(u.joinedAt)}</td>
                 <td>{u.hasWorkspace ? "Created" : "Not yet"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+/** Requests left on the public landing page's "Free renewal review" form, newest first. */
+function RenewalReviewsPanel({ apiClient }: AdminRouteProps) {
+  const { data, error } = useAdminData<{ items: AdminRenewalReviewBody[] }>(apiClient.listAdminRenewalReviews);
+  if (error) return <Problem message={error} />;
+  if (!data) return <p className="hint">Loading…</p>;
+  return (
+    <section className="admin-card" aria-label="Renewal reviews">
+      {data.items.length === 0 ? (
+        <p className="hint">No one has asked for a renewal review on the landing page yet.</p>
+      ) : (
+        <table className="table admin-table">
+          <thead>
+            <tr>
+              <th>Received</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Company</th>
+              <th>Next renewal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.items.map((item) => (
+              <tr key={item.id}>
+                <td>{formatDate(item.createdAt)}</td>
+                <td>{item.name}</td>
+                <td>
+                  <a href={`mailto:${item.email}`}>{item.email}</a>
+                </td>
+                <td>{item.company}</td>
+                <td>{item.renewal}</td>
               </tr>
             ))}
           </tbody>

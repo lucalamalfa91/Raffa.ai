@@ -43,7 +43,7 @@ type PortfolioBody = {
 };
 
 async function signInWithEntra(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/signin");
   await page.getByRole("button", { name: /continue with microsoft entra id/i }).click();
   await page.waitForURL(/login\.microsoftonline\.com/i, { timeout: 60_000 });
 

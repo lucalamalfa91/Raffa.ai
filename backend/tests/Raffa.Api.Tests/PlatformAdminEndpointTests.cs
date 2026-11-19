@@ -30,6 +30,7 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
                 {
                     builder.UseSetting("PlatformAdmin:ObjectIds:0", Staff);
                     builder.UseSetting("PlatformAdmin:RequireInvitationToCreateWorkspace", "true");
+                    builder.UseSetting("RenewalReviews:PermitLimit", "1000");
                 })
                 .CreateClient());
     }
@@ -41,7 +42,7 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
         Assert.True(await IsPlatformAdminAsync(Staff));
         Assert.False(await IsPlatformAdminAsync("someone@customer.example"));
 
-        foreach (var path in new[] { "/api/admin/overview", "/api/admin/workspaces", "/api/admin/invitations", "/api/admin/users", "/api/admin/market-network" })
+        foreach (var path in new[] { "/api/admin/overview", "/api/admin/workspaces", "/api/admin/invitations", "/api/admin/users", "/api/admin/market-network", "/api/admin/renewal-reviews" })
         {
             await AssertStatusAsync(HttpStatusCode.NotFound, await SendAsync(HttpMethod.Get, path, "someone@customer.example"));
             await AssertStatusAsync(HttpStatusCode.OK, await SendAsync(HttpMethod.Get, path, Staff));
@@ -131,6 +132,44 @@ public sealed class PlatformAdminEndpointTests : IClassFixture<InvitationLifecyc
 
         await AssertStatusAsync(HttpStatusCode.NoContent, await SendAsync(HttpMethod.Post, $"/api/admin/workspaces/{id}/reactivate", Staff));
         Assert.Equal("active", await RegistryStatusAsync(id));
+    }
+
+    [Fact]
+    public async Task A_landing_page_lead_is_stored_on_postgres_and_listed_newest_first()
+    {
+        var older = $"Lead Older {Guid.NewGuid():N}";
+        var newer = $"Lead Newer {Guid.NewGuid():N}";
+        foreach (var company in new[] { older, newer })
+        {
+            // Anonymous: no X-User-Id, no X-Tenant-Id.
+            var response = await _client.PostAsJsonAsync("/api/public/renewal-reviews", new
+            {
+                name = " Marco Bianchi ", email = "marco@lead.example", company, renewal = "3\u20136 months", consent = true, website = "",
+            });
+            await AssertStatusAsync(HttpStatusCode.Created, response);
+            await Task.Delay(20);
+        }
+
+        // The honeypot answers the same and writes nothing.
+        var bot = $"Lead Bot {Guid.NewGuid():N}";
+        await AssertStatusAsync(HttpStatusCode.Created, await _client.PostAsJsonAsync("/api/public/renewal-reviews", new
+        {
+            name = "Bot", email = "bot@spam.example", company = bot, renewal = "Not sure yet", consent = true, website = "x",
+        }));
+
+        await AssertStatusAsync(HttpStatusCode.NotFound, await SendAsync(HttpMethod.Get, "/api/admin/renewal-reviews", "someone@customer.example"));
+        using var json = await GetJsonAsync("/api/admin/renewal-reviews", Staff);
+        var items = json.RootElement.GetProperty("items").EnumerateArray().ToList();
+        var companies = items.Select(i => i.GetProperty("company").GetString()).ToList();
+        Assert.DoesNotContain(bot, companies);
+        Assert.True(companies.IndexOf(newer) >= 0 && companies.IndexOf(newer) < companies.IndexOf(older));
+
+        var lead = items.Single(i => i.GetProperty("company").GetString() == newer);
+        Assert.Equal("Marco Bianchi", lead.GetProperty("name").GetString());
+        Assert.Equal("marco@lead.example", lead.GetProperty("email").GetString());
+        Assert.Equal("3\u20136 months", lead.GetProperty("renewal").GetString());
+        Assert.NotEqual(Guid.Empty, lead.GetProperty("id").GetGuid());
+        Assert.Equal(TimeSpan.Zero, lead.GetProperty("createdAt").GetDateTimeOffset().Offset);
     }
 
     // ----- helpers -----

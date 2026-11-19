@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { InteractionStatus } from "@azure/msal-browser";
 import App from "../src/App";
@@ -171,7 +171,43 @@ describe("App", () => {
     window.sessionStorage.clear();
   });
 
+  describe("shows the public landing page at `/` to a visitor who is not signed in", () => {
+    afterEach(() => window.history.pushState({}, "", "/"));
+
+    it("renders the landing page, with a Sign in link to /signin, instead of the sign-in screen", async () => {
+      window.history.pushState({}, "", "/");
+      useMsalMock.mockReturnValue({
+        instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+        accounts: [],
+        inProgress: InteractionStatus.None,
+      });
+
+      render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+
+      expect(await screen.findByTestId("landing-page")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/signin");
+      expect(screen.queryByRole("button", { name: /continue with microsoft entra id/i })).not.toBeInTheDocument();
+    });
+
+    it("keeps the sign-in screen on every other path", () => {
+      window.history.pushState({}, "", "/renewals");
+      useMsalMock.mockReturnValue({
+        instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },
+        accounts: [],
+        inProgress: InteractionStatus.None,
+      });
+
+      render(<App appConfig={appConfig} apiClient={healthyClient()} />);
+
+      expect(screen.getByRole("button", { name: /continue with microsoft entra id/i })).toBeInTheDocument();
+      expect(screen.queryByTestId("landing-page")).not.toBeInTheDocument();
+    });
+  });
+
   describe("mounts the /signin route (SignInRoute; see tests/routes/signin for its own coverage)", () => {
+    beforeEach(() => window.history.pushState({}, "", "/signin"));
+    afterEach(() => window.history.pushState({}, "", "/"));
+
     it("shows the sign-in screen when unauthenticated", () => {
       useMsalMock.mockReturnValue({
         instance: { loginRedirect: vi.fn(), logoutRedirect: vi.fn() },

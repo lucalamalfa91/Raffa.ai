@@ -97,7 +97,7 @@ async function driveEntraPages(page: Page, email: string, password: string): Pro
 
 /** The app-wide sign-in: `routes/signin/index.tsx` → `loginRedirect`, back to the SPA when done. */
 async function signInWithEntra(page: Page, email: string, password: string): Promise<void> {
-  await page.goto("/");
+  await page.goto("/signin");
   await page.getByRole("button", { name: /continue with microsoft entra id/i }).click();
   await page.waitForURL(/login\.microsoftonline\.com/i, { timeout: 60_000 });
   await driveEntraPages(page, email, password);

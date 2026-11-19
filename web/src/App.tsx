@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
 import type { AccountInfo, IPublicClientApplication } from "@azure/msal-browser";
 import type { AppConfig } from "./config/appConfig";
@@ -13,6 +13,10 @@ import AcceptInvitationRoute from "./routes/invite/accept";
 import ProspectAcceptRoute from "./routes/prospect";
 import AdminPage from "./routes/admin/AdminPage";
 import { takeProspectToken } from "./routes/prospect/prospectToken";
+
+// The public landing page: `/` for a visitor who is not signed in. Loaded on demand so its styles and
+// images never reach the signed-in app (its "Sign in" link is a full page load to `/signin`).
+const LandingPage = lazy(() => import("./routes/landing/LandingPage"));
 
 interface AppProps {
   appConfig: AppConfig;
@@ -69,6 +73,7 @@ interface AuthenticatedGateProps {
  * into it.
  */
 function AuthenticatedGate({ account, instance, appConfig, apiClient }: AuthenticatedGateProps) {
+  const location = useLocation();
   const [resolution, setResolution] = useState<AppResolution>({ phase: "resolving" });
   const [hasResolvedOnce, setHasResolvedOnce] = useState(false);
 
@@ -172,6 +177,19 @@ function AuthenticatedGate({ account, instance, appConfig, apiClient }: Authenti
   }, [instance]);
 
   if (!account) {
+    if (location.pathname === "/") {
+      return (
+        <Suspense fallback={<main className="app-resolving" aria-busy="true" />}>
+          <LandingPage
+            submitReview={(request) =>
+              apiClient.submitRenewalReview
+                ? apiClient.submitRenewalReview(request)
+                : Promise.resolve({ ok: false as const, error: "Your request could not be saved. Please try again." })
+            }
+          />
+        </Suspense>
+      );
+    }
     return <SignInRoute appConfig={appConfig} apiClient={apiClient} picker={null} />;
   }
 
