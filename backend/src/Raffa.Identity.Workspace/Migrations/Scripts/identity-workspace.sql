@@ -594,3 +594,32 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119200000_AddRenewalReviewRequests') THEN
+    CREATE TABLE renewal_review_request (
+        id             uuid PRIMARY KEY,
+        name           character varying(120) NOT NULL,
+        email          character varying(254) NOT NULL,
+        company        character varying(160) NOT NULL,
+        renewal_timing character varying(40) NOT NULL,
+        consent        boolean NOT NULL,
+        created_at     timestamp with time zone NOT NULL,
+        source         character varying(40) NOT NULL DEFAULT 'landing'
+    );
+
+    CREATE INDEX ix_renewal_review_request_created_at ON renewal_review_request (created_at DESC);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119200000_AddRenewalReviewRequests') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119200000_AddRenewalReviewRequests', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+
