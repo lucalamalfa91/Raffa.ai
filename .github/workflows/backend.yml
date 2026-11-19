@@ -325,8 +325,8 @@ jobs:
           echo "PG_SERVER=$PG_SERVER" >> "$GITHUB_ENV"
           az postgres flexible-server firewall-rule create \
             --resource-group "$RESOURCE_GROUP" \
-            --name "$PG_SERVER" \
-            --rule-name "$RULE" \
+            --server-name "$PG_SERVER" \
+            --name "$RULE" \
             --start-ip-address "$RUNNER_IP" \
             --end-ip-address "$RUNNER_IP" \
             --output none
@@ -405,7 +405,7 @@ jobs:
         run: |
           az postgres flexible-server firewall-rule delete \
             --resource-group "$RESOURCE_GROUP" \
-            --name "$PG_SERVER" \
-            --rule-name "$PG_FIREWALL_RULE" \
+            --server-name "$PG_SERVER" \
+            --name "$PG_FIREWALL_RULE" \
             --yes --output none \
             || echo "::warning::could not delete firewall rule $PG_FIREWALL_RULE on $PG_SERVER; remove it by hand"
