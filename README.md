@@ -51,7 +51,10 @@ variants answer the same question side by side. Production changes only through 
 **email drafting**, **web research** and **document extraction** (pasted text or a file read in memory), each with the
 same trace, variants and cost. An **LLM judge** scores the answers of a comparison against a rubric (built-in per
 workflow, or a custom one): it sees them anonymised and in random order, optionally twice in opposite orders to expose
-order bias, and every judgement keeps the rubric it used. Design and roadmap:
+order bias, and every judgement keeps the rubric it used. A variant that works better is **proposed** to the repository from the
+Variants section: a draft pull request with the report, the proposed prompts and diffs (and the orchestrator prompt as a
+new version with its drift test), or a zip when GitHub is not connected. It uses the feedback GitHub connection
+(`Feedback__GitHub__*`), whose token needs Contents and Pull requests write access; Raffa never merges. Design and roadmap:
 `docs/architecture/admin-agent-playground-plan.md`. Token prices for the cost estimate are read from
 `Playground:Pricing:Models:<deployment prefix>` (USD per 1M tokens, from the Azure retail price list); a model
 with no configured price shows its cost as "n/a", never zero.

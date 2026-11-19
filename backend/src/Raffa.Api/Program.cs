@@ -319,6 +319,13 @@ if (feedbackHostOptions.GitHubPublishingActive)
         client.BaseAddress = new Uri("https://api.github.com/");
         client.Timeout = TimeSpan.FromSeconds(10);
     });
+
+    // Super Admin playground: the same repository and token open a draft pull request for a variant's proposal.
+    builder.Services.AddHttpClient<GitHubPullRequestPublisher>(client =>
+    {
+        client.BaseAddress = new Uri("https://api.github.com/");
+        client.Timeout = TimeSpan.FromSeconds(30);
+    });
 }
 
 builder.Services.AddChatModule(chatConnectionString);
@@ -565,6 +572,7 @@ app.MapWorkspaceEndpoints();
 app.MapPlatformAdminEndpoints();
 app.MapPlaygroundEndpoints();
 app.MapPlaygroundJudgeEndpoints();
+app.MapPlaygroundExportEndpoints();
 
 // Task E01/F06/US01/T01 (us-01-document-upload, AC-1) and E01/F06/US01/T02 (AC-3) first mapped
 // POST /api/documents and GET /api/documents/{id} inline here; task E02/F06/US01/T01

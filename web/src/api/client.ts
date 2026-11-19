@@ -369,6 +369,39 @@ export interface PlaygroundJudgementBody {
   trace?: PlaygroundTraceEvent[];
 }
 
+/** Whether this environment can open a pull request (GitHub connected and on); a bundle download always works. */
+export interface PlaygroundExportCapabilities {
+  pullRequest: boolean;
+  repository: string | null;
+}
+
+export interface PlaygroundExportResult {
+  exportId: string;
+  target: "pull_request" | "bundle";
+  status: string;
+  files: string[];
+  prUrl?: string;
+  prNumber?: number;
+  branch?: string;
+  /** Things the pull request could not do (for instance a prompt that has to be applied by hand). */
+  notes?: string[];
+  fileName?: string;
+  /** The bundle: a zip with the proposal's files at their repository paths. */
+  zipBase64?: string;
+}
+
+export interface PlaygroundExportRecord {
+  id: string;
+  target: "pull_request" | "bundle";
+  status: string;
+  branch: string | null;
+  prNumber: number | null;
+  prUrl: string | null;
+  error: string | null;
+  files: string[];
+  createdAt: string;
+}
+
 export interface AdminOverviewBody {
   totalWorkspaces: number;
   activeWorkspaces: number;
@@ -1811,6 +1844,13 @@ export interface ApiClient {
     passes?: 1 | 2;
   }): Promise<AdminCallResult<PlaygroundJudgementBody>>;
   listPlaygroundJudgements?(filter: { comparisonId?: string; runId?: string }): Promise<AdminCallResult<{ judgements: PlaygroundJudgementBody[] }>>;
+  getPlaygroundExportCapabilities?(): Promise<AdminCallResult<PlaygroundExportCapabilities>>;
+  /**
+   * Proposes a variant to the repository: a draft pull request (report, proposed prompts, diffs, and the orchestrator prompt as a
+   * new version) or a zip with the same files. Raffa never merges it.
+   */
+  exportPlaygroundVariant?(variantId: string, target: "pull_request" | "bundle"): Promise<AdminCallResult<PlaygroundExportResult>>;
+  listPlaygroundExports?(variantId: string): Promise<AdminCallResult<{ exports: PlaygroundExportRecord[] }>>;
   /** `POST /api/platform/invitations/accept`: a signed-in prospect redeems the secret from their link. */
   acceptProspectInvitation?(token: string): Promise<AdminCallResult<null>>;
   /**
@@ -2728,6 +2768,11 @@ export function createApiClient(
         : adminCall<PlaygroundRubricBody>("PUT", `/api/admin/playground/rubrics/${encodeURIComponent(id)}`, rubric),
     archivePlaygroundRubric: (id) => adminCall<null>("DELETE", `/api/admin/playground/rubrics/${encodeURIComponent(id)}`),
     judgePlayground: (input) => adminCall<PlaygroundJudgementBody>("POST", "/api/admin/playground/judgements", input),
+    getPlaygroundExportCapabilities: () => adminCall<PlaygroundExportCapabilities>("GET", "/api/admin/playground/export"),
+    exportPlaygroundVariant: (variantId, target) =>
+      adminCall<PlaygroundExportResult>("POST", `/api/admin/playground/variants/${encodeURIComponent(variantId)}/export`, { target }),
+    listPlaygroundExports: (variantId) =>
+      adminCall<{ exports: PlaygroundExportRecord[] }>("GET", `/api/admin/playground/variants/${encodeURIComponent(variantId)}/exports`),
     listPlaygroundJudgements: (filter) => {
       const query = new URLSearchParams();
       if (filter.comparisonId) query.set("comparisonId", filter.comparisonId);

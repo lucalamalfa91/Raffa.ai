@@ -561,3 +561,36 @@ BEGIN
 END $EF$;
 COMMIT;
 
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119180000_AddPlaygroundExports') THEN
+    CREATE TABLE playground_export (
+        id           uuid PRIMARY KEY,
+        variant_id   uuid NOT NULL,
+        variant_name character varying(120) NOT NULL,
+        target       character varying(20) NOT NULL,
+        status       character varying(20) NOT NULL,
+        branch       character varying(200) NULL,
+        pr_number    integer NULL,
+        pr_url       character varying(500) NULL,
+        error        character varying(1000) NULL,
+        files        jsonb NOT NULL,
+        created_by   character varying(200) NOT NULL,
+        created_at   timestamp with time zone NOT NULL
+    );
+
+    CREATE INDEX ix_playground_export_variant ON playground_export (variant_id, created_at DESC);
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20261119180000_AddPlaygroundExports') THEN
+    INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
+    VALUES ('20261119180000_AddPlaygroundExports', '10.0.4');
+    END IF;
+END $EF$;
+COMMIT;
+

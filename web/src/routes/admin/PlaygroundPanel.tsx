@@ -11,6 +11,7 @@ import type {
   PlaygroundWorkflow,
   PlaygroundWorkflowInput,
 } from "../../api/client";
+import ExportPanel from "./ExportPanel";
 import JudgePanel from "./JudgePanel";
 import PlaygroundHistory from "./PlaygroundHistory";
 import RubricsView from "./RubricsView";
@@ -97,6 +98,7 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<PlaygroundVariantBody | "new" | null>(null);
+  const [exporting, setExporting] = useState<PlaygroundVariantBody | null>(null);
 
   const reloadVariants = useCallback(async () => {
     const result = await apiClient.listPlaygroundVariants?.();
@@ -265,6 +267,7 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
             />
           ) : (
             <section className="admin-card" aria-label="Variants">
+              {exporting ? <ExportPanel key={exporting.id} apiClient={apiClient} variant={exporting} onClose={() => setExporting(null)} /> : null}
               <div className="pg-actions">
                 <button type="button" className="btn btn-primary" disabled={!baseline} onClick={() => setEditing("new")}>
                   New variant
@@ -296,6 +299,9 @@ export default function PlaygroundPanel({ apiClient }: { apiClient: ApiClient })
                         <td>
                           <button type="button" className="btn" onClick={() => setEditing(v)}>
                             Edit
+                          </button>
+                          <button type="button" className="btn" onClick={() => setExporting(v)}>
+                            Propose…
                           </button>
                           <button type="button" className="btn" onClick={() => void archive(v)}>
                             Archive

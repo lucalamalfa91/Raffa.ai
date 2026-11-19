@@ -571,6 +571,108 @@ describe("PlaygroundPanel", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("A criterion needs a label.");
   });
 
+  async function openExport(extra: Partial<ApiClient>, variant: PlaygroundVariantBody = VARIANT) {
+    render(
+      <PlaygroundPanel
+        apiClient={client(vi.fn(), {
+          listPlaygroundVariants: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { variants: [variant] }, error: null }),
+          listPlaygroundExports: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { exports: [] }, error: null }),
+          ...extra,
+        })}
+      />,
+    );
+    await screen.findByText("Four validated contracts.");
+    await userEvent.click(screen.getByRole("button", { name: "Variants" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Propose…" }));
+    return screen.findByLabelText("Export variant");
+  }
+
+  it("opens a draft pull request for a variant and links to it, saying what is and is not applied", async () => {
+    const exportPlaygroundVariant = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      error: null,
+      body: { exportId: "e1", target: "pull_request", status: "opened", prUrl: "https://github.com/acme/raffa/pull/7", prNumber: 7, branch: "playground/short-prompt-1", files: ["a", "b", "c"], notes: ["A prompt has to be applied by hand."] },
+    });
+    const panel = await openExport({
+      getPlaygroundExportCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { pullRequest: true, repository: "acme/raffa" }, error: null }),
+      exportPlaygroundVariant,
+    });
+
+    expect(panel).toHaveTextContent("Prompts: agent (the orchestrator becomes a new version in code)");
+    expect(panel).toHaveTextContent("a draft on a new branch that a person reviews");
+    await userEvent.click(await screen.findByRole("button", { name: "Open a draft pull request on acme/raffa" }));
+
+    expect(exportPlaygroundVariant).toHaveBeenCalledWith("v1", "pull_request");
+    const status = await screen.findByRole("status");
+    expect(within(status).getByRole("link", { name: "#7" })).toHaveAttribute("href", "https://github.com/acme/raffa/pull/7");
+    expect(status).toHaveTextContent("playground/short-prompt-1");
+    expect(status).toHaveTextContent("A prompt has to be applied by hand.");
+  });
+
+  it("offers only the bundle when GitHub is not connected, and downloads it", async () => {
+    const createObjectURL = vi.fn().mockReturnValue("blob:x");
+    const revokeObjectURL = vi.fn();
+    Object.assign(URL, { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const exportPlaygroundVariant = vi.fn().mockResolvedValue({
+      ok: true,
+      statusCode: 200,
+      error: null,
+      body: { exportId: "e2", target: "bundle", status: "created", files: ["README.md"], fileName: "2026-11-19-short-prompt.zip", zipBase64: btoa("PK") },
+    });
+    await openExport({
+      getPlaygroundExportCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { pullRequest: false, repository: null }, error: null }),
+      exportPlaygroundVariant,
+    });
+
+    expect(await screen.findByText(/GitHub is not connected here/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open a draft pull request/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Download bundle (.zip)" }));
+
+    expect(exportPlaygroundVariant).toHaveBeenCalledWith("v1", "bundle");
+    expect(await screen.findByRole("status")).toHaveTextContent("Bundle downloaded (1 files).");
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
+    click.mockRestore();
+  });
+
+  it("shows the reason GitHub refused, from the server's error body", async () => {
+    const exportPlaygroundVariant = vi.fn().mockResolvedValue({
+      ok: false,
+      statusCode: 502,
+      body: null,
+      error: JSON.stringify({ error: "GitHub answered 403 while trying to write x. The token needs Contents and Pull requests read and write.", exportId: "e3" }),
+    });
+    await openExport({
+      getPlaygroundExportCapabilities: vi.fn().mockResolvedValue({ ok: true, statusCode: 200, body: { pullRequest: true, repository: "acme/raffa" }, error: null }),
+      exportPlaygroundVariant,
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Open a draft pull request/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The token needs Contents and Pull requests read and write.");
+  });
+
+  it("has nothing to propose for a variant that changes nothing, and lists earlier exports", async () => {
+    const empty: PlaygroundVariantBody = { ...VARIANT, overrides: { prompts: {}, models: {}, disabledTools: [], maxToolCalls: null } };
+    const panel = await openExport(
+      {
+        listPlaygroundExports: vi.fn().mockResolvedValue({
+          ok: true,
+          statusCode: 200,
+          error: null,
+          body: { exports: [{ id: "e0", target: "pull_request", status: "opened", branch: "b", prNumber: 5, prUrl: "https://github.com/acme/raffa/pull/5", error: null, files: [], createdAt: "2026-11-18T10:00:00Z" }] },
+        }),
+      },
+      empty,
+    );
+
+    expect(panel).toHaveTextContent("changes nothing");
+    expect(screen.getByRole("button", { name: "Download bundle (.zip)" })).toBeDisabled();
+    expect(await screen.findByText(/Earlier exports of this variant \(1\)/)).toBeInTheDocument();
+  });
+
   it("shows n/a, never zero, when a model has no price", () => {
     expect(formatCost(null)).toBe("n/a");
     expect(formatCost(0.0021)).toBe("$0.0021");

@@ -88,6 +88,23 @@ public sealed class PlaygroundJudgementRow
     public string Trace { get; set; } = "[]";
 }
 
+/// <summary>One export of a variant: a draft pull request on the repository, or a downloaded bundle.</summary>
+public sealed class PlaygroundExportRow
+{
+    public Guid Id { get; set; }
+    public Guid VariantId { get; set; }
+    public string VariantName { get; set; } = string.Empty;
+    public string Target { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? Branch { get; set; }
+    public int? PrNumber { get; set; }
+    public string? PrUrl { get; set; }
+    public string? Error { get; set; }
+    public string Files { get; set; } = "[]";
+    public string CreatedBy { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 /// <summary>
 /// Platform-level storage of the Super Admin playground: the sandbox flag on <c>platform_workspace</c> and
 /// the <c>playground_run</c> history (see <c>AddPlaygroundTables</c>). No tenant content, no RLS. On a
@@ -101,6 +118,7 @@ public sealed class PlaygroundStore(IdentityWorkspaceDbContext db)
     private static readonly ConcurrentDictionary<Guid, PlaygroundVariantRow> LocalVariants = new();
     private static readonly ConcurrentDictionary<Guid, PlaygroundRubricRow> LocalRubrics = new();
     private static readonly ConcurrentDictionary<Guid, PlaygroundJudgementRow> LocalJudgements = new();
+    private static readonly ConcurrentDictionary<Guid, PlaygroundExportRow> LocalExports = new();
 
     private bool IsPostgres => db.Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true;
 
@@ -463,6 +481,40 @@ public sealed class PlaygroundStore(IdentityWorkspaceDbContext db)
                    prompt_tokens AS "prompt_tokens", completion_tokens AS "completion_tokens", estimated_cost_usd AS "estimated_cost_usd",
                    result::text AS "result", trace::text AS "trace"
             FROM playground_judgement WHERE run_ids @> to_jsonb({runText}::text) ORDER BY created_at DESC LIMIT {Limit}
+            """).ToListAsync(ct).ConfigureAwait(false);
+    }
+
+    // ----- exports -----
+
+    public async Task SaveExportAsync(PlaygroundExportRow e, CancellationToken ct = default)
+    {
+        if (!IsPostgres)
+        {
+            LocalExports[e.Id] = e;
+            return;
+        }
+
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            INSERT INTO playground_export (id, variant_id, variant_name, target, status, branch, pr_number, pr_url, error, files, created_by, created_at)
+            VALUES ({e.Id}, {e.VariantId}, {e.VariantName}, {e.Target}, {e.Status}, {e.Branch}, {e.PrNumber}, {e.PrUrl}, {e.Error},
+                    CAST({e.Files} AS jsonb), {e.CreatedBy}, {e.CreatedAt.ToUniversalTime()})
+            """, ct).ConfigureAwait(false);
+    }
+
+    public async Task<List<PlaygroundExportRow>> ListExportsAsync(Guid variantId, CancellationToken ct = default)
+    {
+        if (!IsPostgres)
+        {
+            return [.. LocalExports.Values.Where(e => e.VariantId == variantId).OrderByDescending(e => e.CreatedAt)];
+        }
+
+        return await db.Database.SqlQuery<PlaygroundExportRow>(
+            $"""
+            SELECT id AS "id", variant_id AS "variant_id", variant_name AS "variant_name", target AS "target", status AS "status",
+                   branch AS "branch", pr_number AS "pr_number", pr_url AS "pr_url", error AS "error", files::text AS "files",
+                   created_by AS "created_by", created_at AS "created_at"
+            FROM playground_export WHERE variant_id = {variantId} ORDER BY created_at DESC LIMIT 50
             """).ToListAsync(ct).ConfigureAwait(false);
     }
 }

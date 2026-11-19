@@ -1,6 +1,6 @@
 # Pannello admin: Playground degli agenti
 
-Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace), PR 2 (varianti e confronto) e PR 3 (altri workflow) e PR 4 (giudice LLM) implementate; vedi "Stato della consegna" in fondo.
+Stato: spec approvata 2026-11-19. PR 1 (fondamenta + Ask con trace), PR 2 (varianti e confronto) e PR 3 (altri workflow) e PR 4 (giudice LLM) e PR 5 (export) implementate: la consegna è completa; vedi "Stato della consegna" in fondo.
 
 ## Perché
 
@@ -236,6 +236,20 @@ giudice e il costo. API: `GET|POST|PUT|DELETE /rubrics`, `POST /judgements` (`co
 `GET /judgements?comparisonId=|runId=`. UI: pannello *Judge* sotto le corsie, sezione *Rubrics*, giudizi di una run
 nella *History*.
 
+**PR 5 (fatta):** tabella `playground_export` (migration `AddPlaygroundExports`); da una variante, "Propose…" nella
+sezione Variants produce una **proposta** in due forme. (1) Una **PR draft** su un branch nuovo
+(`playground/<variante>-<data>`), mai sul branch base e mai fusa da Raffa: contiene `docs/playground/proposals/<data>-<variante>/`
+con il report (cosa cambia, prove e voti del giudice che la motivano, con l'avviso se un voto cambiava con l'ordine delle
+risposte), il testo proposto di ogni prompt e il suo diff contro la produzione; per i modelli e i limiti l'elenco delle
+variabili `AiGateway__Models__<Ruolo>__...` / `Chat__AskTurn__AgenticMaxToolCalls` da impostare in
+`infra/environments/<env>/variables.tf` (non applicate), per i tool disattivati la nota che serve una modifica di codice. Per il
+**prompt dell'orchestratore** la PR fa anche la modifica di codice: nuovo `Prompts/agent/vN+1.md`, `AgentPrompt.cs` (versione,
+costante, note) e il test di drift puntato al file nuovo; la trasformazione è stata verificata ricompilando e facendo girare il
+vero test di drift sui file modificati. (2) Un **bundle** `.zip` con gli stessi file ai percorsi del repo e un `APPLY.md`,
+quando GitHub non è collegato. La PR usa la connessione GitHub già presente per il feedback (`Feedback__GitHub__Repository` e
+`Feedback__GitHub__Token`, spenta negli ambienti esposti): **al token servono i permessi Contents e Pull requests in lettura e
+scrittura**, un token solo-Issues riceve 403 e l'errore lo dice. Ogni export (anche fallito) è registrato.
+
 Scostamenti dalla spec, da chiudere nelle PR successive:
 - La risposta di `POST /runs` è un JSON unico a fine turno, **non ancora SSE**: la trace compare tutta insieme.
 - Gli override coprono prompt (tutti gli agenti registrati, orchestratore ed estrazione), modelli per ruolo, tool e
@@ -248,7 +262,11 @@ Scostamenti dalla spec, da chiudere nelle PR successive:
   contratto già validato.
 - Le rubriche si modificano sul posto (non c'è una cronologia di versioni): la riproducibilità è garantita dallo
   snapshot salvato in ogni giudizio. Il prompt del giudice non è fra quelli sostituibili da una variante.
-- Nessun export verso il repo (PR 5).
+- I prompt degli altri agenti (council, drafting, ricerca, estrazione...) non sono modificati nel codice dalla PR: il testo e
+  il diff sono nella proposta, con il nuovo hash da registrare. Ogni flow tiene versione, file e hash in modo diverso e una
+  riscrittura automatica generale sarebbe fragile; si applicano a mano (o si estende `OrchestratorPromptEdit` agente per agente).
+- Le righe di audit `platform.playground.*` previste in Sicurezza non sono scritte: run, giudizi ed export sono comunque
+  registrati nelle loro tabelle con l'autore e la data.
 - I prezzi in `appsettings.json` coprono `gpt-5.4` e `gpt-5.4-nano` (listino Azure, North Europe, DataZone
   Standard). `gpt-5.6-terra` e `gpt-6-astra` non risultano nel listino pubblico per North Europe: finché non
   si configura un prezzo il loro costo è "n/d".
