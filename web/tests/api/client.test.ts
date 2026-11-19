@@ -2600,6 +2600,16 @@ describe("createApiClient() Authorization header (task E18/F01/US02/T01, NW-05; 
       regenerateAdminInvitation: () => client.regenerateAdminInvitation!("inv-1"),
       revokeAdminInvitation: () => client.revokeAdminInvitation!("inv-1"),
       listAdminUsers: () => client.listAdminUsers!(),
+      listAdminRenewalReviews: () => client.listAdminRenewalReviews!(),
+      submitRenewalReview: () =>
+        client.submitRenewalReview!({
+          name: "Alex",
+          email: "alex@acme.example",
+          company: "Acme",
+          renewal: "Not sure yet",
+          consent: true,
+          website: "",
+        }),
       listPlaygroundSandboxes: () => client.listPlaygroundSandboxes!(),
       runPlayground: () => client.runPlayground!({ sandbox: "seeded", question: "Ciao", history: [] }),
       getPlaygroundBaseline: () => client.getPlaygroundBaseline!(),
@@ -2975,5 +2985,41 @@ describe("workspace settings (ADR-030 gate 2)", () => {
     expect(init.method).toBe("PATCH");
     expect(init.body).toBe(JSON.stringify({ webResearchEnabled: true }));
     expect(forbidden).toEqual({ ok: false, statusCode: 403, settings: null, error: "Only a Workspace Admin can change this setting." });
+  });
+});
+
+describe("createApiClient().submitRenewalReview (landing page form)", () => {
+  const request = { name: "Alex", email: "alex@acme.example", company: "Acme", renewal: "Not sure yet", consent: true, website: "" };
+
+  it("posts to the public endpoint and reads 201 as success", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createApiClient("https://api.dev.raffa.example").submitRenewalReview!(request);
+
+    expect(result).toEqual({ ok: true });
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(String(url)).toBe("https://api.dev.raffa.example/api/public/renewal-reviews");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual(request);
+  });
+
+  it("surfaces the server's own message on 400/429", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Please enter a valid work email." }), { status: 400 })),
+    );
+
+    const result = await createApiClient("https://api.dev.raffa.example").submitRenewalReview!(request);
+
+    expect(result).toEqual({ ok: false, error: "Please enter a valid work email." });
+  });
+
+  it("falls back to a generic message when the API cannot be reached", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+
+    const result = await createApiClient("https://api.dev.raffa.example").submitRenewalReview!(request);
+
+    expect(result).toEqual({ ok: false, error: "Your request could not be saved. Please try again." });
   });
 });

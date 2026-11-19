@@ -13,6 +13,11 @@ and ERP replacement are out of scope.
 
 ## What you use
 
+A visitor who is not signed in sees the public **landing page** at `/` (`web/src/routes/landing/`): the
+product, the renewal-uplift calculator and the "Free renewal review" form, which stores requests through
+`POST /api/public/renewal-reviews` (anonymous, rate-limited, honeypot). The Super Admin reads them in
+Pannello admin → **Renewal reviews**. "Sign in" on the landing page goes to `/signin`.
+
 Sign-in lands on **Ask Raffa** (`/ask`). The rail is two-tier:
 
 | Tier | Screen | Route |

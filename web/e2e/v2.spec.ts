@@ -241,7 +241,7 @@ const FALLBACK_MSA_PDF = buildTextPdf([
  * V1 spec can be deleted without breaking this one.
  */
 async function signInWithEntra(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/signin");
   await page.getByRole("button", { name: /continue with microsoft entra id/i }).click();
   await page.waitForURL(/login\.microsoftonline\.com/i, { timeout: 60_000 });
 

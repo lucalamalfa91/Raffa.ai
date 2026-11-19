@@ -148,7 +148,7 @@ test.describe("§20 Day-1 path — browser walk on demo", () => {
       );
 
       await test.step("Sign in — Entra ID Authorization Code + PKCE (AC-1 step 1; ADR-010, ADR-022)", async () => {
-        await page.goto("/");
+        await page.goto("/signin");
         await page.getByRole("button", { name: /continue with microsoft entra id/i }).click();
         await signInWithEntra(page);
       });

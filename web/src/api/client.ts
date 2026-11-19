@@ -160,6 +160,29 @@ export interface AdminCallResult<T> {
   error: string | null;
 }
 
+// Public landing page (`/` for visitors who are not signed in): the "Free renewal review" form.
+// Hand-written like the admin types above. `POST /api/public/renewal-reviews` is anonymous;
+// `GET /api/admin/renewal-reviews` lists the stored requests for the Super Admin.
+export interface RenewalReviewSubmission {
+  name: string;
+  email: string;
+  company: string;
+  renewal: string;
+  consent: boolean;
+  website: string;
+}
+
+export type RenewalReviewSubmitResult = { ok: true } | { ok: false; error: string };
+
+export interface AdminRenewalReviewBody {
+  id: string;
+  name: string;
+  email: string;
+  company: string;
+  renewal: string;
+  createdAt: string;
+}
+
 // Super Admin agent playground (docs/architecture/admin-agent-playground-plan.md). Hand-written like the
 // admin types above: `/api/admin/playground/*` is not in web/openapi/raffa-api.v1.json.
 export type PlaygroundSandboxKind = "empty" | "seeded" | "needs-review";
@@ -1803,6 +1826,13 @@ export interface ApiClient {
   regenerateAdminInvitation?(id: string): Promise<AdminCallResult<AdminIssuedInvitationBody>>;
   revokeAdminInvitation?(id: string): Promise<AdminCallResult<null>>;
   listAdminUsers?(): Promise<AdminCallResult<{ users: AdminUserBody[] }>>;
+  /** `GET /api/admin/renewal-reviews`: requests left on the landing page's review form, newest first. */
+  listAdminRenewalReviews?(): Promise<AdminCallResult<{ items: AdminRenewalReviewBody[] }>>;
+  /**
+   * `POST /api/public/renewal-reviews` (anonymous): stores one landing-page review request. Never
+   * throws; a 400/429 answer comes back as `{ ok: false, error }` with the server's own message.
+   */
+  submitRenewalReview?(request: RenewalReviewSubmission): Promise<RenewalReviewSubmitResult>;
   /** `GET /api/admin/playground/sandboxes`: the three synthetic workspaces (created on first use). */
   listPlaygroundSandboxes?(): Promise<AdminCallResult<{ sandboxes: PlaygroundSandboxBody[] }>>;
   /** `POST /api/admin/playground/runs`: one Ask turn on a sandbox, with the full trace. `history` carries earlier turns. */
@@ -2748,6 +2778,27 @@ export function createApiClient(
       adminCall<AdminIssuedInvitationBody>("POST", `/api/admin/invitations/${encodeURIComponent(id)}/regenerate`),
     revokeAdminInvitation: (id) => adminCall<null>("DELETE", `/api/admin/invitations/${encodeURIComponent(id)}`),
     listAdminUsers: () => adminCall<{ users: AdminUserBody[] }>("GET", "/api/admin/users"),
+    listAdminRenewalReviews: () =>
+      adminCall<{ items: AdminRenewalReviewBody[] }>("GET", "/api/admin/renewal-reviews"),
+    async submitRenewalReview(request) {
+      const fallback = "Your request could not be saved. Please try again.";
+      let response: Response;
+      try {
+        response = await apiFetch(new URL("/api/public/renewal-reviews", baseUrl), {
+          method: "POST",
+          // A visitor on the landing page is signed out, so this is normally just the content type;
+          // a signed-in caller's token rides along like on every other call (the server ignores it).
+          headers: { "Content-Type": "application/json", ...await authHeaders(getAccessToken) },
+          body: JSON.stringify(request),
+          cache: "no-store",
+        });
+      } catch {
+        return { ok: false, error: fallback };
+      }
+      if (response.ok) return { ok: true };
+      const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+      return { ok: false, error: typeof body?.error === "string" && body.error ? body.error : fallback };
+    },
     listPlaygroundSandboxes: () =>
       adminCall<{ sandboxes: PlaygroundSandboxBody[] }>("GET", "/api/admin/playground/sandboxes"),
     runPlayground: (input) => adminCall<PlaygroundRunBody>("POST", "/api/admin/playground/runs", input),

@@ -1,6 +1,14 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/config.json", "/staticwebapp.config.json", "/assets/*", "/samples/*", "/sw.js", "/brand/*"]
+    "exclude": [
+      "/config.json",
+      "/staticwebapp.config.json",
+      "/assets/*",
+      "/samples/*",
+      "/sw.js",
+      "/brand/*",
+      "/landing/*"
+    ]
   }
 }
